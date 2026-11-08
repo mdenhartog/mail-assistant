@@ -18,6 +18,8 @@ As answered by Marco on 2026-11-08:
 - A category has a **name and a description**. The description tells the language model why a mail belongs there, so it can choose the right category.
 - A mail that fits none of my categories goes into the **"other" category**.
 - When I change the list, the agent **sorts the mail it has already filed again**, so old mail follows the new list too.
+- I **always see what is going to be moved before it is moved**.
+- When I change or delete a category, **the language model decides where each mail of that category goes**.
 
 ## Why (the problem, who has it, how often)
 
@@ -27,7 +29,7 @@ Marco, for his personal mailbox. Today the agent invents the categories itself. 
 
 - I can see my list of categories, with their descriptions, and change it in the web application.
 - After I change the list, the next mails follow it: a mail is only filed under a category from my list, or under "other".
-- Mail that was filed before is sorted again according to the changed list.
+- Mail that was filed before is sorted again according to the changed list, and I see what will move before anything moves.
 - The mails I looked at and did not like in the first run end up where I want them.
 
 ## What it must not do
@@ -37,8 +39,8 @@ Marco, for his personal mailbox. Today the agent invents the categories itself. 
 
 ## Open questions
 
-- Sorting existing mail again moves mail in my real mailbox in bulk. Which mails does it cover: only the mails the agent has filed itself, or also mail it has not touched? Should I see what will move before it happens? (Marco)
-- When I change or delete a category, what happens to the mails filed under it: sorted again into the other categories, or into "other"? (Marco)
+- Sorting existing mail again moves mail in my real mailbox in bulk. Which mails does it cover: only the mails the agent has filed itself, or also mail it has not touched? (Marco)
+- I always see what will move before it happens. Do I approve the whole overview at once, or mail by mail, and what does the overview show (the mail, from which category, to which category)? (design, with Marco)
 - The web application needs a login. Who may open it (only me), and does it use the Google sign-in of ADR-0008? That touches identity and the threat model. (decision-gate, threat-model)
 - The web application and the agent must share the list of categories. Which of them owns it, and how does the agent get changes (it runs as a separate service with its own database)? (design)
 - Descriptions are sent to the language model together with the mail. The same limits as today apply (ADR-0018), but the text of my descriptions becomes part of what the model reads. (threat-model)
@@ -50,3 +52,5 @@ Marco, for his personal mailbox. Today the agent invents the categories itself. 
 > Ik wil dat je een intent maakt opnieuw. En dat er een soort categorisatie moet plaatsvinden voordat de mail een categorielabel aanmaakt. Dus ik wil dat een soort categorisatielaag komt waarin ik kan aangeven welke categorieën ik graag zou willen hebben. En dat moet ik ook aan de agent mee kunnen geven via een user interface. Zodat ik ook zodat de agent daarop gaat reageren en dat ik op die manier alles meer kan categoriseren in de juiste dingen. Want ik zie nu een aantal zaken al gecategoriseerd zijn op plekken die ik niet zo zou willen hebben.
 >
 > (Antwoorden op de vragen, 2026-11-08:) 1. alleen in te stellen via de web applicatie niet via telegram. 2. Naam plus ook een beschrijving waarom de LLM de juiste categorie kan bepalen. 3. Dan valt deze in de overige categorie. 4. ja
+>
+> (Tweede ronde, 2026-11-08:) 1. wil altijd zien wat er verplaatst gaat worden. 2. Dan moet de LLM bepalen waar de mail naartoe gaat
