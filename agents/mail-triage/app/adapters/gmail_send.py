@@ -81,6 +81,10 @@ class GmailSender:
         """Keep the Gmail service."""
         self._service = service
 
+    def check_repliable(self, original: FetchedMail) -> None:
+        """Raise ``NotRepliableError`` for automatic, list, bulk and no-reply mail; used before a draft is created."""
+        _check_repliable(original)
+
     def send_reply(self, original: FetchedMail, draft: ConfirmedDraft) -> str:
         """Send ``draft`` as a reply to ``original`` and return the id of the sent mail."""
         _check_repliable(original)

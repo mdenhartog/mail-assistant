@@ -190,6 +190,13 @@ def test_given_a_header_injection_attempt_when_building_the_mail_then_it_is_refu
     assert gmail.sent == []
 
 
+def test_given_a_mail_when_checked_before_drafting_then_automatic_mail_is_refused_and_normal_mail_passes() -> None:
+    GmailSender(object()).check_repliable(original())
+
+    with pytest.raises(NotRepliableError):
+        GmailSender(object()).check_repliable(original(headers={"List-Id": "<news.example.com>"}))
+
+
 @pytest.mark.parametrize("word", ["trash", "delete", "spam", "untrash"])
 def test_given_the_module_source_when_scanned_then_it_has_no_trash_delete_or_spam_operation(word: str) -> None:
     assert word.lower() not in SOURCE.lower()
