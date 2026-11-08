@@ -1,0 +1,17 @@
+# One release per worker: helm upgrade --install <name> deploy/charts/worker -f deploy/envs/<env>/<name>.yaml
+# Secure defaults (guardrail-kubernetes / guardrail-helm). A worker has no inbound port, so there is no Service, no
+# Ingress and no PodDisruptionBudget, and it always runs as exactly one copy that is never started next to the old one.
+nameOverride: ""
+image: { repository: ghcr.io/OWNER/mail-assistant/worker, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
+# Plain settings. Secrets never go here: name an existing Secret in envFromSecret (created by your secret store).
+env: {}
+envFromSecret: ""
+resources:
+  requests: { cpu: 50m, memory: 128Mi }
+  limits: { cpu: 500m, memory: 512Mi }
+# The worker touches this file at the end of every loop; the probe fails when it is older than maxAgeSeconds.
+heartbeat: { path: /tmp/heartbeat, maxAgeSeconds: 180 }
+# Outbound: DNS, HTTPS (Gmail, Anthropic, Telegram) and these ports inside the same namespace (the database).
+# A Kubernetes NetworkPolicy cannot name hosts; pinning HTTPS to the three services needs a CNI with FQDN policies.
+networkPolicy:
+  databasePorts: [5432]
