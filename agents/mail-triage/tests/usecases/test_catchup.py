@@ -238,6 +238,7 @@ async def test_given_25_unread_mails_when_it_runs_once_then_the_first_20_are_fil
 
     await catchup(mailbox, FakeJudge(), store).run_once()
 
+    assert len(mailbox.filed) == 20  # the design says 20 a run, whatever the constant is called
     assert mailbox.filed == all_ids[:RUN_LIMIT]
     assert store.state is not None
     assert store.state.finished_at is None
