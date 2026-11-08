@@ -43,6 +43,10 @@ def reply(payload: object, status: int = 200, headers: dict[str, str] | None = N
     return httpx.Response(status, json={"content": [{"type": "text", "text": text}]}, headers=headers)
 
 
+def reply_with_blocks(*blocks: dict[str, object]) -> httpx.Response:
+    return httpx.Response(200, json={"content": list(blocks), "stop_reason": "end_turn"})
+
+
 class Scripted:
     """A scripted model: answers in order (the last answer repeats) and remembers every request."""
 
@@ -319,3 +323,47 @@ def test_given_the_day_rolls_over_at_utc_midnight_when_remaining_is_read_then_th
     assert budget.remaining() == 4
     assert budget.try_spend()
     assert budget.remaining() == 3
+
+
+# ---- the answer is the text block, wherever it stands (found on the first real run of INT-003) ----------------------
+
+
+async def test_given_a_thinking_block_before_the_text_when_judged_then_the_text_block_is_the_answer() -> None:
+    model = Scripted(
+        reply_with_blocks({"type": "thinking", "thinking": ""}, {"type": "text", "text": json.dumps(verdict())})
+    )
+
+    result = await make_judge(model).judge(MAIL)
+
+    assert isinstance(result, Judgement)
+    assert result.category == "Finance"
+
+
+async def test_given_two_text_blocks_when_judged_then_the_first_text_block_is_used() -> None:
+    first = json.dumps(verdict(category="First"))
+    model = Scripted(
+        reply_with_blocks(
+            {"type": "text", "text": first}, {"type": "text", "text": json.dumps(verdict(category="Second"))}
+        )
+    )
+
+    result = await make_judge(model).judge(MAIL)
+
+    assert isinstance(result, Judgement)
+    assert result.category == "First"
+
+
+async def test_given_an_answer_cut_off_during_thinking_when_judged_then_there_is_no_text_and_it_needs_attention() -> (
+    None
+):
+    model = Scripted(reply_with_blocks({"type": "thinking", "thinking": "..."}))
+
+    assert await make_judge(model).judge(MAIL) == NeedsAttention("invalid_output")
+
+
+async def test_given_a_request_when_sent_then_there_is_room_for_thinking_before_the_answer() -> None:
+    model = Scripted(reply(verdict(confidence=0.95)))
+
+    await make_judge(model).judge(MAIL)
+
+    assert int(str(model.body()["max_tokens"])) >= 1500  # thinking tokens count; 340 of 400 were spent on a real mail

@@ -30,7 +30,7 @@ API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
 HTTP_OK = 200
 MAX_TEXT_CHARS = 8000
-MAX_OUTPUT_TOKENS = 400
+MAX_OUTPUT_TOKENS = 2000  # thinking tokens count against it; the JSON answer itself is about 150
 RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504, 529})
 MAX_BACKOFF_SECONDS = 30.0
 SYSTEM_PROMPT = (
@@ -174,9 +174,12 @@ def _retry_after(response: httpx.Response) -> float:
 
 
 def _answer_text(response: httpx.Response) -> str:
-    """The text of the first content block, or an empty string (which fails the schema check)."""
+    """The text of the first ``text`` block, wherever it stands (a ``thinking`` block may come first), else empty.
+
+    An empty string fails the schema check, so a cut-off or text-less answer needs attention instead of being trusted.
+    """
     try:
         blocks = response.json()["content"]
-        return str(blocks[0]["text"]) if blocks and blocks[0].get("type") == "text" else ""
-    except (ValueError, KeyError, TypeError, IndexError):
+        return next((str(block["text"]) for block in blocks if block.get("type") == "text"), "")
+    except (ValueError, KeyError, TypeError):
         return ""
