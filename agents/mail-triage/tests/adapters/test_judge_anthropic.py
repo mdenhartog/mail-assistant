@@ -294,7 +294,7 @@ def test_given_the_source_when_scanned_then_no_model_id_is_hard_coded() -> None:
 
 def test_given_calls_spent_when_remaining_is_read_then_it_counts_down_without_spending() -> None:
     budget = DailyBudget(limit=5, today=lambda: TODAY)
-    assert budget.try_spend() and budget.try_spend()
+    assert all(budget.try_spend() for _ in range(2))
 
     assert budget.remaining() == 3
     assert budget.remaining() == 3  # reading does not spend
@@ -311,7 +311,7 @@ def test_given_the_budget_is_used_up_when_remaining_is_read_then_it_is_zero() ->
 def test_given_the_day_rolls_over_at_utc_midnight_when_remaining_is_read_then_the_limit_is_fresh() -> None:
     day = ["2026-11-08"]
     budget = DailyBudget(limit=4, today=lambda: day[0])
-    assert budget.try_spend() and budget.try_spend() and budget.try_spend()
+    assert all(budget.try_spend() for _ in range(3))
     assert budget.remaining() == 1
 
     day[0] = "2026-11-09"
