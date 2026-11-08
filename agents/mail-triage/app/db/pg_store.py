@@ -16,7 +16,8 @@ from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults, MailMeta
 from app.core.judgement import Judgement
 from app.db import repos
-from app.db.models import Alert, Draft, MailItem, OverviewLog, PollState
+from app.db.models import Alert, CatchupState, Draft, MailItem, OverviewLog, PollState
+from app.usecases.catchup import CatchUpState
 from app.usecases.deliver_alerts import PendingAlert
 from app.usecases.overview import FiledMail
 from app.usecases.reply import AlertInfo, StoredDraft
@@ -101,6 +102,13 @@ class PgStore:
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
         """Record label, urgency, content and the alert (when there is one) in one transaction."""
+        await self._complete(message_id, outcome, backlog=False)
+
+    async def complete_backlog(self, message_id: str, outcome: Outcome) -> None:
+        """Like ``complete``, for a mail of the one-time catch-up: it is flagged so its alerts can be counted."""
+        await self._complete(message_id, outcome, backlog=True)
+
+    async def _complete(self, message_id: str, outcome: Outcome, *, backlog: bool) -> None:
         now, content = datetime.now(UTC), outcome.content
         values = {
             "label": outcome.label,
@@ -108,6 +116,7 @@ class PgStore:
             "confidence": outcome.confidence,
             "note": outcome.note or None,
             "completed": True,
+            "backlog": backlog,
             "sender": content.sender,
             "subject": content.subject,
             "reply_to": content.reply_to,
@@ -121,8 +130,43 @@ class PgStore:
         async with self._sessions.begin() as session:
             statement = update(MailItem).where(MailItem.gmail_message_id == message_id).values(**values)
             item_id = (await session.execute(statement.returning(MailItem.id))).scalar_one()
-            if outcome.alert is not None:
+            if (
+                outcome.alert is not None
+                and await session.scalar(select(Alert.id).where(Alert.mail_item_id == item_id)) is None
+            ):
                 session.add(Alert(mail_item_id=item_id, state=outcome.alert.value, created_at=now, updated_at=now))
+
+    # ---- one-time catch-up of old unread mail (INT-003) -------------------------------------------------------
+
+    async def catchup_state(self) -> CatchUpState | None:
+        """When the catch-up started and finished; ``None`` when it never started."""
+        async with self._sessions() as session:
+            row = await session.get(CatchupState, 1)
+        return CatchUpState(row.started_at, row.finished_at) if row else None
+
+    async def start_catchup(self, at: datetime) -> None:
+        """Store the cut-off. A second call, also a racing one, keeps the first time."""
+        statement = insert(CatchupState).values(id=1, started_at=at).on_conflict_do_nothing()
+        async with self._sessions.begin() as session:
+            await session.execute(statement)
+
+    async def finish_catchup(self, at: datetime) -> None:
+        """Mark the catch-up done. A second call keeps the first time."""
+        statement = (
+            update(CatchupState).where(CatchupState.id == 1, CatchupState.finished_at.is_(None)).values(finished_at=at)
+        )
+        async with self._sessions.begin() as session:
+            await session.execute(statement)
+
+    async def backlog_alerts(self) -> int:
+        """How many alerts the catch-up created, in any state."""
+        statement = (
+            select(func.count(Alert.id))
+            .join(MailItem, MailItem.id == Alert.mail_item_id)
+            .where(MailItem.backlog.is_(True))
+        )
+        async with self._sessions() as session:
+            return int((await session.execute(statement)).scalar_one())
 
     async def record_failure(self, message_id: str) -> int:
         """Count one more failed attempt and return the total."""

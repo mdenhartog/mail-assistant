@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -302,3 +303,103 @@ async def test_given_old_mail_content_when_purged_then_the_content_is_gone_and_t
         new = (await connection.execute(text("select sender from mail_item where gmail_message_id = 'new'"))).one()
     assert tuple(old) == (None, None, None, None, None, "Assistant/Finance", True)
     assert new[0] == "boss@example.com"
+
+
+# ---- U-backlog-02: the catch-up state and its alerts (INT-003, AC-B4, AC-B5, AC-B10) --------------------------------
+
+
+async def _count(engine: AsyncEngine, sql: str) -> int:
+    async with engine.connect() as connection:
+        return int((await connection.execute(text(sql))).scalar_one())
+
+
+async def test_given_no_catch_up_when_its_state_is_read_then_it_is_none(store: PgStore) -> None:
+    assert await store.catchup_state() is None
+
+
+async def test_given_a_started_catch_up_when_started_again_later_then_the_first_start_time_stays(
+    store: PgStore,
+) -> None:
+    await store.start_catchup(NOW)
+    await store.start_catchup(NOW + timedelta(hours=3))
+
+    state = await store.catchup_state()
+    assert state is not None
+    assert state.started_at == NOW
+    assert state.finished_at is None
+
+
+async def test_given_two_starts_at_the_same_moment_when_they_race_then_one_row_exists(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    await asyncio.gather(store.start_catchup(NOW), store.start_catchup(NOW + timedelta(seconds=1)))
+
+    assert await _count(engine, "select count(*) from catchup_state") == 1
+
+
+async def test_given_a_finished_catch_up_when_a_new_store_reads_it_then_it_is_still_finished(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    await store.start_catchup(NOW)
+    await store.finish_catchup(NOW + timedelta(hours=1))
+
+    state = await PgStore(async_sessionmaker(engine, expire_on_commit=False)).catchup_state()
+
+    assert state is not None
+    assert state.finished_at == NOW + timedelta(hours=1)
+
+
+async def test_given_a_finished_catch_up_when_finished_again_then_the_first_finish_time_stays(store: PgStore) -> None:
+    await store.start_catchup(NOW)
+    await store.finish_catchup(NOW + timedelta(hours=1))
+    await store.finish_catchup(NOW + timedelta(hours=9))
+
+    state = await store.catchup_state()
+    assert state is not None
+    assert state.finished_at == NOW + timedelta(hours=1)
+
+
+async def test_given_an_old_mail_with_an_alert_when_completed_as_backlog_then_it_is_flagged_and_has_one_alert(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    assert await store.claim("old1", "t-old1") is Claim.NEW
+
+    await store.complete_backlog("old1", outcome(alert=AlertState.OPEN))
+
+    assert await _count(engine, "select count(*) from mail_item where backlog and completed") == 1
+    assert await _count(engine, "select count(*) from alert") == 1
+
+
+async def test_given_a_normal_mail_when_completed_then_it_is_not_flagged_as_backlog(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    await add(store, "new1", outcome(alert=AlertState.OPEN))
+
+    assert await _count(engine, "select count(*) from mail_item where backlog") == 0
+
+
+async def test_given_complete_backlog_runs_twice_when_the_second_call_comes_then_there_is_still_one_alert(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    assert await store.claim("old1", "t-old1") is Claim.NEW
+    await store.complete_backlog("old1", outcome(alert=AlertState.OPEN))
+
+    await store.complete_backlog("old1", outcome(alert=AlertState.OPEN))
+
+    assert await _count(engine, "select count(*) from alert") == 1
+
+
+async def test_given_backlog_alerts_in_any_state_and_a_normal_alert_when_counted_then_only_backlog_alerts_count(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    for message_id, state in (("o1", AlertState.OPEN), ("o2", AlertState.HELD), ("o3", AlertState.OPEN)):
+        assert await store.claim(message_id, f"t-{message_id}") is Claim.NEW
+        await store.complete_backlog(message_id, outcome(alert=state))
+    async with engine.begin() as connection:
+        await connection.execute(text("update alert set state = 'closed' where id = (select min(id) from alert)"))
+        await connection.execute(text("update alert set state = 'snoozed' where id = (select max(id) from alert)"))
+    await add(store, "n1", outcome(alert=AlertState.OPEN))
+    assert await store.claim("o4", "t-o4") is Claim.NEW
+    await store.complete_backlog("o4", outcome(alert=None))  # urgent or not, no alert row: not counted
+
+    assert await store.backlog_alerts() == 3
