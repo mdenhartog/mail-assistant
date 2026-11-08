@@ -14,6 +14,9 @@ COPY apps/web apps/web
 RUN pnpm --filter web exec vite build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
+# Pick up the Alpine security fixes that are newer than the base image, then drop root again.
+USER 0
+RUN apk upgrade --no-cache
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
 USER 101
