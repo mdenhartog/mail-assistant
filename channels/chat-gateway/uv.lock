@@ -2,6 +2,27 @@ version = 1
 revision = 5
 requires-python = ">=3.12"
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
+[options.exclude-newer-package]
+anyio = "2026-11-08T23:59:59Z"
+boto3 = "2026-11-08T23:59:59Z"
+botocore = "2026-11-08T23:59:59Z"
+click = "2026-11-08T23:59:59Z"
+coverage = "2026-11-08T23:59:59Z"
+fastapi = "2026-11-08T23:59:59Z"
+filelock = "2026-11-08T23:59:59Z"
+pip = "2026-11-08T23:59:59Z"
+platformdirs = "2026-11-08T23:59:59Z"
+py-serializable = "2026-11-08T23:59:59Z"
+pydantic = "2026-11-08T23:59:59Z"
+pydantic-core = "2026-11-08T23:59:59Z"
+pytest-asyncio = "2026-11-08T23:59:59Z"
+ruff = "2026-11-08T23:59:59Z"
+typing-inspection = "2026-11-08T23:59:59Z"
+
 [[package]]
 name = "annotated-doc"
 version = "0.0.5"
