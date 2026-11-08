@@ -5,7 +5,8 @@
       "entry": [
         "commitlint.config.mjs",
         "scripts/**/*.mjs"
-      ]
+      ],
+      "ignoreBinaries": ["uv"]
     },
     "apps/web": {
       "project": [

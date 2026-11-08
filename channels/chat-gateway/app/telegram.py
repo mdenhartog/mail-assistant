@@ -51,6 +51,7 @@ class Message(BaseModel):
     text: str | None = None
 
 
+# nosemgrep: semgrep.kit-mutation-schema-without-forbid -- an inbound Telegram schema, not a mutation of ours
 class Update(BaseModel):
     """A Telegram update. Telegram adds fields over time, so unknown ones are ignored (not ours to forbid)."""
 
