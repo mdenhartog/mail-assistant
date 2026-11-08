@@ -41,6 +41,15 @@ class Pipeline:
         return RunSummary()
 
 
+class CatchUpStep:
+    def __init__(self, steps: Steps) -> None:
+        self.steps = steps
+
+    async def run_once(self) -> RunSummary:
+        await self.steps.step("catchup")
+        return RunSummary()
+
+
 class Delivery:
     def __init__(self, steps: Steps) -> None:
         self.steps = steps
@@ -108,6 +117,7 @@ def runner(
     return (
         Runner(
             pipeline=Pipeline(steps),
+            catchup=CatchUpStep(steps),
             delivery=Delivery(steps),
             snooze=Snooze(steps),
             overview=Overview(steps),
@@ -130,7 +140,7 @@ async def test_given_a_cycle_when_run_then_due_alerts_are_released_before_mail_i
 
     await run.mail_cycle()
 
-    assert steps.calls == ["release_due", "pipeline", "deliver", "overview", "purge"]
+    assert steps.calls == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
 
 
 async def test_given_a_cycle_when_it_ends_then_the_heartbeat_file_is_touched(tmp_path: Path) -> None:
@@ -150,7 +160,7 @@ async def test_given_a_failing_step_when_a_cycle_runs_then_the_others_still_run_
 
     await run.mail_cycle()
 
-    assert steps.calls == ["release_due", "pipeline", "deliver", "overview", "purge"]
+    assert steps.calls == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
     assert "very private" not in caplog.text
     assert "RuntimeError" in caplog.text
 
@@ -217,3 +227,24 @@ async def test_given_a_given_up_mail_when_noticed_then_marco_gets_one_plain_mess
     assert len(said) == 1
     assert "abc123" in said[0]
     assert "inbox" in said[0]
+
+
+async def test_given_the_catch_up_fails_when_a_cycle_runs_then_the_later_steps_and_the_heartbeat_still_happen(
+    tmp_path: Path,
+) -> None:
+    steps = Steps(failing={"catchup"})
+    run, _ = runner(steps, tmp_path)
+
+    await run.mail_cycle()
+
+    assert steps.calls == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert (tmp_path / "heartbeat").exists()
+
+
+async def test_given_the_pipeline_fails_when_a_cycle_runs_then_the_catch_up_still_runs(tmp_path: Path) -> None:
+    steps = Steps(failing={"pipeline"})
+    run, _ = runner(steps, tmp_path)
+
+    await run.mail_cycle()
+
+    assert steps.calls.index("catchup") > steps.calls.index("pipeline")

@@ -33,6 +33,14 @@ class PipelinePort(Protocol):
         ...
 
 
+class CatchUpPort(Protocol):
+    """Files the unread mail that was already in the inbox, once (INT-003)."""
+
+    async def run_once(self) -> RunSummary:
+        """One run."""
+        ...
+
+
 class DeliveryPort(Protocol):
     """Sends alerts."""
 
@@ -110,6 +118,7 @@ class Runner:
         self,
         *,
         pipeline: PipelinePort,
+        catchup: CatchUpPort,
         delivery: DeliveryPort,
         snooze: SnoozePort,
         overview: OverviewPort,
@@ -122,6 +131,7 @@ class Runner:
     ) -> None:
         """Wire the parts, the heartbeat file, the poll interval and the clock."""
         self._pipeline = pipeline
+        self._catchup = catchup
         self._delivery = delivery
         self._snooze = snooze
         self._overview = overview
@@ -134,9 +144,10 @@ class Runner:
         self._purged_on: date | None = None
 
     async def mail_cycle(self) -> None:
-        """Release due alerts, read mail, send alerts, send the overview, purge old content, show a heartbeat."""
+        """Release due alerts, read new mail, catch up on old mail, send alerts, send the overview, purge, heartbeat."""
         await self._guard("release_due", self._snooze.release_due())
         await self._guard("pipeline", self._pipeline.run_once())
+        await self._guard("catchup", self._catchup.run_once())  # after new mail, so new mail always comes first
         await self._guard("deliver", self._delivery.deliver_open_alerts())
         await self._guard("overview", self._overview.send_overview())
         await self._guard("purge", self._purge())

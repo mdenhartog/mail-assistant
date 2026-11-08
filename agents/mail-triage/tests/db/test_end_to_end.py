@@ -46,6 +46,10 @@ class FakeGmail:
     def list_new(self, history_id: str | None) -> tuple[list[str], str]:
         return ([], "100") if history_id is None else (["gm-1"], "200")
 
+    def list_unread_before(self, cutoff: datetime) -> list[str]:
+        del cutoff
+        return []  # no unread mail from before the agent started
+
     def fetch(self, message_id: str) -> FetchedMail:
         assert message_id == "gm-1"
         return self.mail

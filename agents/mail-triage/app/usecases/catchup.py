@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.adapters.gmail_read import FetchedMail
+    from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import Judgement
     from app.usecases.triage import FailureNotifier, Outcome
 
@@ -75,7 +76,7 @@ class CatchUpMailbox(Protocol):
 class CatchUpJudge(Protocol):
     """The model adapter."""
 
-    async def judge(self, mail: object) -> Judgement | NeedsAttention:
+    async def judge(self, mail: TrimmedMail) -> Judgement | NeedsAttention:
         """A valid judgement, or needs-attention."""
         ...
 

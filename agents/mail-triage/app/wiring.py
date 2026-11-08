@@ -28,6 +28,7 @@ from app.db import repos
 from app.db.migrate import upgrade
 from app.db.pg_store import PgStore
 from app.runner import FailureNotice, Runner
+from app.usecases.catchup import CatchUp
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
 from app.usecases.overview import OverviewService
@@ -70,6 +71,10 @@ class MailPorts:
         """New inbox mail ids and the new position."""
         return self._reader.list_new(history_id)
 
+    def list_unread_before(self, cutoff: datetime) -> list[str]:
+        """Ids of unread inbox mails older than the cut-off, newest first."""
+        return self._reader.list_unread_before(cutoff)
+
     def fetch(self, message_id: str) -> FetchedMail:
         """Headers and text of one mail."""
         return self._reader.fetch(message_id)
@@ -109,17 +114,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     inbox = TelegramInbox(
         client, settings.telegram_bot_token, settings.telegram_allowed_user_id, settings.telegram_allowed_chat_id
     )
-    judge = AnthropicJudge(
-        client,
-        settings.anthropic_api_key,
-        settings.model_small,
-        settings.model_large,
-        DailyBudget(settings.daily_model_budget),
-    )
+    budget = DailyBudget(settings.daily_model_budget)  # one budget: the catch-up only gets what new mail leaves
+    judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
     snooze = SnoozeService(store, outbox, now)
     reply = ReplyService(store, mailbox, sender, outbox, own_address=own_address, now=now, new_id=new_id)  # type: ignore[arg-type]
     return Runner(
         pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now),  # type: ignore[arg-type]
+        catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now),  # type: ignore[arg-type]
         delivery=AlertDelivery(store, outbox, now, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
         overview=OverviewService(store, outbox, now),
