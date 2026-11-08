@@ -1,7 +1,7 @@
 ---
 id: ADR-0019
 title: "Mail triage: one new agent component with its own Telegram client"
-status: proposed
+status: accepted
 area: architecture
 tags: [mail-triage, agents, telegram, gmail, postgresql]
 date: 2026-11-08

@@ -3,7 +3,7 @@ feature: mail-triage
 spec: docs/specs/mail-triage.md
 threat-model: docs/security/mail-triage-threat-model.md
 intent: INT-001
-status: draft
+status: approved
 date: 2026-11-08
 approver: Marco
 ---
@@ -99,7 +99,7 @@ ADR-0008 describes a web login; this feature does not need it. The owner gives c
 
 Web screens, multiple users, calendar, attachments, other mail providers.
 
-## Open for Marco
+## Confirmed by Marco (2026-11-08)
 
-- Confirm quiet hours 23:00–07:00 and the overview at 18:00 (spec C7).
-- Confirm that `chat-gateway` and `agents/assistant` stay unused and unchanged for now (ADR-0019).
+- Quiet hours 23:00–07:00 and the daily overview at 18:00 (spec C7).
+- `chat-gateway` and `agents/assistant` stay unused and unchanged for now (ADR-0019).
