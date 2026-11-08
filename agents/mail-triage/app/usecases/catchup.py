@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime  # noqa: TC003  # a dataclass field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Protocol
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+BACKLOG_ALERT_LIMIT = 5  # alerts the whole catch-up may create; urgent mail beyond it goes to the daily overview
 RUN_LIMIT = 20  # mails per run, so one run stays short and the minute cycle keeps serving new mail and Telegram
 BUDGET_RESERVE = 50  # model calls a day that stay for new mail (of the 200); fixed in code, like the quiet hours
 CALLS_PER_MAIL = 2  # the small model, and the large one when the small one is unsure
@@ -211,6 +212,8 @@ class CatchUp:
         if isinstance(verdict, NeedsAttention) and verdict.reason == "budget":
             return _Step.STOP  # an old mail is never filed as "needs attention" only because the budget ended
         outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now())
+        if outcome.alert is not None and await self._store.backlog_alerts() >= BACKLOG_ALERT_LIMIT:
+            outcome = replace(outcome, alert=None)  # still urgent, so the overview lists it (spec C-B5)
         label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete_backlog(mail.message_id, outcome)
