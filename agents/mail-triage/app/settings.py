@@ -33,7 +33,12 @@ class Settings(BaseSettings):
     model_small: str = Field(min_length=1)  # model ids come from configuration, never from literals in code
     model_large: str = Field(min_length=1)
     database_url: SecretStr = Field(min_length=1)  # contains the database password
+    google_client_id: str = Field(min_length=1)  # the OAuth client of the one-time consent and of token refresh
+    google_client_secret: SecretStr = Field(min_length=1)
+    token_encryption_key: SecretStr = Field(min_length=1)  # Fernet key for the stored refresh token (AC-25)
     poll_interval_seconds: int = Field(default=60, ge=1)  # spec C1
+    daily_model_budget: int = Field(default=200, ge=0)  # model calls per day (AC-26)
+    alerts_per_hour: int = Field(default=5, ge=1)  # individual alerts per hour before batching (AC-26)
 
     @classmethod
     def settings_customise_sources(

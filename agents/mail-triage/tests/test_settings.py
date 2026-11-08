@@ -19,6 +19,9 @@ VALID = {
     "MODEL_SMALL": "model-small-test",
     "MODEL_LARGE": "model-large-test",
     "DATABASE_URL": "postgresql+asyncpg://user:db-test-secret@db:5432/mail",
+    "GOOGLE_CLIENT_ID": "client-id-test.apps.googleusercontent.com",
+    "GOOGLE_CLIENT_SECRET": "google-client-test-secret",
+    "TOKEN_ENCRYPTION_KEY": "token-key-test-secret",
 }
 REQUIRED = tuple(VALID)
 
@@ -32,6 +35,13 @@ def test_given_all_required_values_when_settings_load_then_they_are_typed_with_s
     assert settings.model_small == "model-small-test"
     assert settings.model_large == "model-large-test"
     assert settings.poll_interval_seconds == 60  # spec C1
+    assert settings.daily_model_budget == 200  # spec C1 / AC-26
+    assert settings.alerts_per_hour == 5  # spec AC-26
+    assert settings.google_client_id == VALID["GOOGLE_CLIENT_ID"]
+    assert settings.google_client_secret.get_secret_value() == VALID["GOOGLE_CLIENT_SECRET"]
+    assert settings.token_encryption_key.get_secret_value() == VALID["TOKEN_ENCRYPTION_KEY"]
+    assert "google-client-test-secret" not in repr(settings)
+    assert "token-key-test-secret" not in repr(settings)
     assert settings.anthropic_api_key.get_secret_value() == VALID["ANTHROPIC_API_KEY"]
 
 

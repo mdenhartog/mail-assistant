@@ -1,0 +1,176 @@
+"""The run loop: a mail cycle every poll interval and a Telegram cycle that listens continuously.
+
+A step that fails is logged by type only (never its message, which could hold mail text) and the cycle goes on, so one
+broken part never stops the others (spec AC-12, AC-27). The heartbeat file is touched at the end of every mail cycle;
+the container probe fails when it gets too old.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import timedelta
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+    from datetime import date, datetime
+    from pathlib import Path
+
+    from app.adapters.telegram_inbox import Command
+    from app.usecases.triage import RunSummary
+
+logger = logging.getLogger(__name__)
+
+RETENTION = timedelta(days=30)  # ADR-0020
+
+
+class PipelinePort(Protocol):
+    """Reads, judges and files new mail."""
+
+    async def run_once(self) -> RunSummary:
+        """One run."""
+        ...
+
+
+class DeliveryPort(Protocol):
+    """Sends alerts."""
+
+    async def deliver_open_alerts(self) -> None:
+        """Send what is open and unsent."""
+        ...
+
+
+class SnoozePort(Protocol):
+    """Reopens snoozed alerts."""
+
+    async def release_due(self) -> list[str]:
+        """Release the due ones."""
+        ...
+
+
+class OverviewPort(Protocol):
+    """Sends the daily overview."""
+
+    async def send_overview(self) -> None:
+        """Send it when it is due."""
+        ...
+
+
+class PurgePort(Protocol):
+    """Clears old mail content."""
+
+    async def purge_content(self, before: datetime) -> int:
+        """Clear content older than ``before``."""
+        ...
+
+
+class InboxPort(Protocol):
+    """Telegram intake."""
+
+    async def poll_once(self) -> list[Command]:
+        """One long-poll."""
+        ...
+
+
+class RouterPort(Protocol):
+    """Command routing."""
+
+    async def handle(self, command: Command) -> None:
+        """Run one command."""
+        ...
+
+
+class Say(Protocol):
+    """A plain note to Marco."""
+
+    async def say(self, text: str) -> None:
+        """Send it."""
+        ...
+
+
+class FailureNotice:
+    """The one error notice for a mail the agent gave up on (spec AC-27)."""
+
+    def __init__(self, chat: Say) -> None:
+        """Keep the chat."""
+        self._chat = chat
+
+    async def notify_failure(self, message_id: str) -> None:
+        """Tell Marco; the mail itself stays untouched in the inbox."""
+        await self._chat.say(
+            f"I could not process the mail with id {message_id} after several tries. It stays in your inbox."
+        )
+
+
+class Runner:
+    """Runs the cycles."""
+
+    def __init__(  # noqa: PLR0913 - every part is injected for tests
+        self,
+        *,
+        pipeline: PipelinePort,
+        delivery: DeliveryPort,
+        snooze: SnoozePort,
+        overview: OverviewPort,
+        store: PurgePort,
+        inbox: InboxPort,
+        router: RouterPort,
+        heartbeat: Path,
+        interval_seconds: float,
+        now: Callable[[], datetime],
+    ) -> None:
+        """Wire the parts, the heartbeat file, the poll interval and the clock."""
+        self._pipeline = pipeline
+        self._delivery = delivery
+        self._snooze = snooze
+        self._overview = overview
+        self._store = store
+        self._inbox = inbox
+        self._router = router
+        self._heartbeat = heartbeat
+        self._interval = interval_seconds
+        self._now = now
+        self._purged_on: date | None = None
+
+    async def mail_cycle(self) -> None:
+        """Release due alerts, read mail, send alerts, send the overview, purge old content, show a heartbeat."""
+        await self._guard("release_due", self._snooze.release_due())
+        await self._guard("pipeline", self._pipeline.run_once())
+        await self._guard("deliver", self._delivery.deliver_open_alerts())
+        await self._guard("overview", self._overview.send_overview())
+        await self._guard("purge", self._purge())
+        self._heartbeat.touch()
+
+    async def _purge(self) -> None:
+        now = self._now()
+        if self._purged_on != now.date():
+            await self._store.purge_content(now - RETENTION)
+            self._purged_on = now.date()
+
+    @staticmethod
+    async def _guard(name: str, step: Awaitable[object]) -> None:
+        try:
+            await step
+        except Exception as error:
+            logger.warning("step %s failed kind=%s", name, type(error).__name__)
+
+    async def telegram_cycle(self) -> None:
+        """Wait for Marco's commands and route each one."""
+        for command in await self._inbox.poll_once():
+            await self._guard("command", self._router.handle(command))
+
+    async def run(self, stop: asyncio.Event) -> None:
+        """Run both loops until ``stop`` is set."""
+        await asyncio.gather(
+            self._loop(stop, self.mail_cycle, self._interval), self._loop(stop, self.telegram_cycle, 0)
+        )
+
+    @staticmethod
+    async def _loop(stop: asyncio.Event, cycle: Callable[[], Awaitable[None]], pause: float) -> None:
+        while not stop.is_set():
+            await cycle()
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=pause or 0.001)
+            except TimeoutError:
+                continue
