@@ -1,0 +1,6 @@
+apiVersion: v2
+name: worker
+description: A background worker of mail-assistant without an inbound port (for example the mail-triage agent), always exactly one copy
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

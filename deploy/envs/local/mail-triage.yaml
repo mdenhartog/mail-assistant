@@ -1,0 +1,8 @@
+# helm upgrade --install mail-triage deploy/charts/worker -f deploy/envs/local/mail-triage.yaml
+# Plain settings only. The secrets (ANTHROPIC_API_KEY, TELEGRAM_BOT_TOKEN, DATABASE_URL, TOKEN_ENCRYPTION_KEY, the
+# allowed Telegram ids and the model ids) live in the Kubernetes Secret named below, created by your secret store.
+image:
+  repository: ghcr.io/OWNER/mail-assistant/mail-triage
+envFromSecret: mail-triage-secrets
+env:
+  POLL_INTERVAL_SECONDS: "60"

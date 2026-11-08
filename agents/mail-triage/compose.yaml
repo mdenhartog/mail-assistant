@@ -2,8 +2,9 @@
 # The agent has no inbound port: it polls Gmail and Telegram. Secrets come from your .env, never from this file.
 services:
   mail-triage:
-    profiles: ["components"]
+    profiles: ["components", "dev"]
     build: { context: . }
+    depends_on: { db: { condition: service_healthy } }
     read_only: true
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
@@ -15,4 +16,4 @@ services:
       TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID:-}
       MODEL_SMALL: ${MAIL_TRIAGE_MODEL_SMALL:-}
       MODEL_LARGE: ${MAIL_TRIAGE_MODEL_LARGE:-}
-      DATABASE_URL: ${MAIL_TRIAGE_DATABASE_URL:-}
+      DATABASE_URL: ${MAIL_TRIAGE_DATABASE_URL:-postgresql+asyncpg://app:${POSTGRES_PASSWORD:-}@db:5432/app}
