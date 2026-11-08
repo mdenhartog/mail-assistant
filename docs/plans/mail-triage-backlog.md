@@ -31,6 +31,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
 ## Units
 
 ### U-backlog-01: Catch-up state table and backlog flag
+
 - Layer: backend (database)
 - Contract: migration `0003` creates `catchup_state(id int pk, started_at timestamptz not null, finished_at timestamptz null)` and adds `mail_item.backlog boolean not null default false`; models `CatchupState` and `MailItem.backlog`. The migration upgrades and downgrades cleanly and keeps existing rows.
 - Files: `migrations/versions/0003_catch_up.py`, `app/db/models.py`, `tests/db/test_migrate.py`
@@ -43,6 +44,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   3. Given a fresh database, When all migrations run, Then the model metadata matches the schema (no drift) (type: happy).
 
 ### U-backlog-02: Store methods for the catch-up
+
 - Layer: backend (persistence)
 - Contract: on `PgStore`: `catchup_state() -> CatchupState | None`, `start_catchup(at)` (idempotent: a second call keeps the first `started_at`), `finish_catchup(at)`, `complete_backlog(message_id, outcome)` (same as `complete` and sets `backlog = true`), `backlog_alerts() -> int` (alerts whose mail has `backlog = true`, any state).
 - Files: `app/db/pg_store.py`, `tests/db/test_pg_store.py`
@@ -58,6 +60,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   6. Given `complete_backlog` is called twice for the same mail, When the second call runs, Then there is still one alert (type: error; AC-B5).
 
 ### U-backlog-03: Budget remaining
+
 - Layer: backend
 - Contract: `DailyBudget.remaining() -> int`, read-only (never spends), resets with the date like `try_spend`.
 - Files: `app/adapters/judge_anthropic.py`, `tests/adapters/test_judge_anthropic.py`
@@ -70,6 +73,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   3. Given the date changes, When `remaining()` is read, Then it is the full limit again (type: edge).
 
 ### U-backlog-04: Gmail lists unread inbox mail before a cut-off
+
 - Layer: backend (adapter)
 - Contract: `GmailReader.list_unread_before(cutoff: datetime) -> list[str]`: ids of mails with labels INBOX and UNREAD, query `before:<epoch seconds> -in:sent`, newest first (Gmail's own order), all pages. Read-only; no new scope. Mails carrying the agent's own `SENT` label are left out (`OWN_MAIL`).
 - Files: `app/adapters/gmail_read.py`, `tests/adapters/test_gmail_read.py`
@@ -85,6 +89,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   6. Given the wrapper, When its public methods are inspected, Then it still has no trash, delete or spam operation (type: security; AC-B3, SC-14).
 
 ### U-backlog-05: Share the decision step (refactor, no behaviour change)
+
 - Layer: backend
 - Contract: `decide_outcome(verdict, mail, known_labels, now) -> Outcome` becomes a module-level function in `app/usecases/triage.py`; `TriagePipeline` calls it. No new parameter, no flag. This is a pure refactor: the existing tests stay green and are not edited.
 - Files: `app/usecases/triage.py`, `tests/usecases/test_triage.py` (one added test)
@@ -97,6 +102,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   3. Given the full existing test suite of the pipeline, When it runs, Then every test passes unchanged (type: regression).
 
 ### U-backlog-06: Overview lists old urgent mail
+
 - Layer: backend
 - Contract: `FiledMail` gets `urgent: bool`; `PgStore.filed_without_alert_since` fills it; `build_overview` adds the section "Old mail that looked urgent" (at most 10 lines, then "…and n more"), escaped and capped like the existing sections, only for mails filed without an alert and urgent. Counts per category are unchanged.
 - Files: `app/usecases/overview.py`, `app/db/pg_store.py`, `tests/usecases/test_overview.py`, `tests/db/test_pg_store.py`
@@ -111,6 +117,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   5. Given the store, When `filed_without_alert_since` runs, Then `urgent` is true only for urgent mails (type: happy).
 
 ### U-backlog-07: CatchUp use case: flow, order, skip and finish
+
 - Layer: backend (use case)
 - Contract: `CatchUp(mailbox, judge, store, notifier, budget, now).run_once() -> RunSummary`. On the first call it stores the cut-off (`start_catchup(now)`); a finished catch-up returns at once. Each run lists the mails (U-04), takes at most `RUN_LIMIT = 20` unfinished mails in the listed order (newest first), fetches, claims (`DONE`: skip), judges, decides (U-05), files and calls `complete_backlog`. When every listed mail is done and no retry is pending it calls `finish_catchup`. Failures use `record_failure`, `MAX_ATTEMPTS` and `notify_failure` like the pipeline.
 - Files: `app/usecases/catchup.py`, `tests/usecases/test_catchup.py`
@@ -130,6 +137,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   10. Given any run, When logs are inspected, Then they hold counts and ids only (type: security; AC-B13).
 
 ### U-backlog-08: CatchUp use case: budget and reserve
+
 - Layer: backend (use case)
 - Contract: before each mail `CatchUp` stops for the day when `budget.remaining() < BUDGET_RESERVE + 2` (`BUDGET_RESERVE = 50`; two calls cover the small and the large model). As a second guard it also stops, without filing, if the verdict is `NeedsAttention("budget")`. A stopped run leaves the mail untouched in the inbox and does not finish the catch-up.
 - Files: `app/usecases/catchup.py`, `tests/usecases/test_catchup.py`
@@ -145,6 +153,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   6. Given new mail and old mail in the same cycle, When the pipeline runs first and uses the budget, Then the catch-up only gets what is above the reserve (type: edge; AC-B7, AC-B15).
 
 ### U-backlog-09: CatchUp use case: alert cap
+
 - Layer: backend (use case)
 - Contract: an urgent old mail gets its alert (state from the shared `decide_outcome`, so quiet hours still apply) only while `store.backlog_alerts() < BACKLOG_ALERT_LIMIT` (5). At the limit the outcome is stored with `alert=None` (still `urgent = true`), so the overview lists it (U-06).
 - Files: `app/usecases/catchup.py`, `tests/usecases/test_catchup.py`
@@ -159,6 +168,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   5. Given an injected mail that the model calls urgent, When the cap is reached, Then no extra alert follows (type: security; AC-B14).
 
 ### U-backlog-10: Run the catch-up in the mail cycle
+
 - Layer: backend (wiring)
 - Contract: `Runner` gets a `CatchUpPort` and one `_guard("catchup", ...)` step after `pipeline`; `wiring.build` constructs `CatchUp` with the existing mailbox, judge, store and the same `DailyBudget` instance. A failing catch-up never stops the other steps.
 - Files: `app/runner.py`, `app/wiring.py`, `tests/test_runner.py`, `tests/test_wiring.py`
@@ -172,6 +182,7 @@ U-01, U-03, U-04, U-05 and U-06 share no files and can be built in parallel. U-0
   4. Given an installation with a stored history position and no catch-up state, When the agent starts, Then the catch-up starts without any setting or command (type: happy; AC-B4).
 
 ### U-backlog-11: End-to-end replay and runbook
+
 - Layer: backend (test) and docs
 - Contract: an end-to-end test on the existing real-PostgreSQL harness with fake Gmail, Telegram and Anthropic that replays 2026-11-08: 75 unread mails (some urgent), a budget of 200 and the reserve of 50, over two simulated days with new mail arriving in between. The runbook `docs/reviews/mail-triage-e2e.md` gets a catch-up check (check 9) and `docs/reviews/mail-triage-backlog.md` is created as the review record.
 - Files: `tests/db/test_catch_up_end_to_end.py`, `docs/reviews/mail-triage-e2e.md`, `docs/reviews/mail-triage-backlog.md`
