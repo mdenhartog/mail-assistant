@@ -24,4 +24,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 
 - ADR-0020 · Mail triage: store capped alert content for 30 days · area:data · tags:mail-triage,privacy,retention · decisions/ADR-0020-mail-triage-alert-content.md
 - ADR-0021 · Mail triage: one-time catch-up of unread inbox mail · area:architecture · tags:mail-triage,gmail,budget,state · decisions/ADR-0021-mail-triage-catch-up.md
+- ADR-0022 · Dependency cooldown of 7 days for uv, pnpm and Renovate · area:security · tags:supply-chain,uv,pnpm,renovate · decisions/ADR-0022-dependency-cooldown.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
