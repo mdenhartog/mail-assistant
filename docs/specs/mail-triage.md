@@ -58,7 +58,7 @@ Marco, the single owner of the mailbox. There is no other user and no web screen
 - C1: Polling interval is one minute; the target is that a mail is categorised within five minutes of arrival.
 - C2: Categories are Gmail labels under one prefix (`Assistant/`). The agent starts with a small set (for example: Needs reply, Appointments, Finance and bills, Orders and deliveries, Newsletters and promotions, Automatic notifications, Social) and may add a new category when none fits, up to a maximum of 15.
 - C3: The agent uses a small model first and escalates to a larger one when it is unsure (ADR-0014).
-- C4: The reply is addressed to the sender of the mail (or its Reply-To) in the same thread, in the language of the original mail.
+- C4: The reply is addressed to the `From` address of the mail in the same thread, in the language of the original mail. A different `Reply-To` is only used when Marco names it (threat model T-02).
 - C5: State (processed mails, pending alerts, confirmations, reminders) is kept in PostgreSQL (ADR-0007).
 - C6: A mail that Marco has not acted on stays open and is not alerted again until a reminder is due or Marco acts. The agent does not alert twice by itself.
 
@@ -92,6 +92,27 @@ Each criterion traces to INT-001 (what I want / must not do / how I will know it
 | AC-12 | **Given** Gmail, Telegram or the model is unavailable, **when** the agent runs, **then** no mail is skipped or processed twice, and processing resumes when the service is back. | How I will know |
 | AC-13 | **Given** no existing category fits, **when** the agent categorises, **then** it creates a new category label under the prefix, up to the maximum, and never creates more. | What I want |
 | AC-14 | **Given** normal operation, **when** logs and errors are written, **then** mail bodies, addresses beyond what is needed, and the API key and tokens never appear in them or in URLs. | Must not do |
+
+### Security acceptance criteria (from the threat model, `docs/security/mail-triage-threat-model.md`)
+
+| ID | Criterion | Threat |
+|---|---|---|
+| AC-15 | **Given** a Telegram update from a user or chat other than Marco's, **when** it arrives, **then** it is dropped without any reply or effect. | T-01 |
+| AC-16 | **Given** a mail whose `Reply-To` differs from `From`, **when** an alert is shown, **then** it is flagged, and a reply goes to `From` unless Marco names another address. | T-02 |
+| AC-17 | **Given** a draft, **when** it is shown for confirmation, **then** it always lists the exact recipient, subject and body. | T-02 |
+| AC-18 | **Given** model output that does not match the schema, **when** it is processed, **then** it is rejected and the mail is treated as needs-attention, not as ignorable. | T-03 |
+| AC-19 | **Given** mail text that contains instructions (to send, delete, hide itself or reveal other mail), **when** it is processed, **then** category, alerts, sending and deletion are unaffected by those instructions. | T-03 |
+| AC-20 | **Given** a confirmation, **when** Marco confirms, **then** only the draft it was issued for is sent, exactly once, and only while valid; a replayed or changed confirmation sends nothing. | T-04 |
+| AC-21 | **Given** mail text with markup or links, **when** an alert is built, **then** the text is escaped, length-capped and contains no masked links. | T-05 |
+| AC-22 | **Given** any alert, decision, confirmation or send, **when** it happens, **then** an audit record without a mail body is written. | T-06 |
+| AC-23 | **Given** a mail, **when** it is sent to the model, **then** only subject, sender and trimmed text are included, never attachments. | T-07 |
+| AC-24 | **Given** normal and failing operation, **when** logs and error reports are produced, **then** they contain no mail body, token, API key or URL with the bot token. | T-09 |
+| AC-25 | **Given** the database, **when** the refresh token is stored, **then** it is encrypted and the key is not in the database. | T-10 |
+| AC-26 | **Given** a mail flood, **when** the daily model budget or the alerts-per-hour cap is reached, **then** further mails are filed without more model calls, or alerts are batched into one summary. | T-11 |
+| AC-27 | **Given** a mail that keeps failing, **when** the retry limit is reached, **then** processing continues with other mails and Marco gets one error notice. | T-12, T-13 |
+| AC-28 | **Given** the Gmail client, **when** it is inspected and tested, **then** it offers no trash, delete or spam operation. | T-14 |
+| AC-29 | **Given** a mail from an automatic or list sender, or one the agent sent itself, **when** a reply is requested or mail is polled, **then** no reply is created and the agent's own mail is not processed. | T-15 |
+| AC-30 | **Given** the running containers, **when** they are started, **then** they run as non-root with only the allowed outbound connections. | T-17 |
 
 ## Constraints from existing decisions
 
