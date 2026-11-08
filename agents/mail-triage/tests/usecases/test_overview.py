@@ -7,7 +7,8 @@ from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 
 from app.core import time_policy
-from app.usecases.overview import FiledMail, OverviewService
+from app.core.alert_text import MAX_MESSAGE_CHARS
+from app.usecases.overview import SUBJECT_CHARS, FiledMail, OverviewService, build_overview
 
 if TYPE_CHECKING:
     import pytest
@@ -165,8 +166,6 @@ def old_urgent(sender: str = "boss@example.com", subject: str = "Pay the invoice
 
 
 def test_given_urgent_mail_filed_without_an_alert_when_the_overview_is_built_then_it_gets_its_own_section() -> None:
-    from app.usecases.overview import build_overview
-
     text = build_overview([filed("Assistant/Newsletter"), old_urgent()]).text
 
     assert "Old mail that looked urgent (1)" in text
@@ -175,8 +174,6 @@ def test_given_urgent_mail_filed_without_an_alert_when_the_overview_is_built_the
 
 
 def test_given_no_urgent_mail_without_an_alert_when_the_overview_is_built_then_the_text_is_unchanged() -> None:
-    from app.usecases.overview import build_overview
-
     mails = [filed("Assistant/Newsletter"), filed("Assistant/Shipping", confidence=0.5)]
 
     text = build_overview(mails).text
@@ -189,8 +186,6 @@ def test_given_no_urgent_mail_without_an_alert_when_the_overview_is_built_then_t
 
 
 def test_given_markup_in_an_urgent_subject_when_the_overview_is_built_then_it_is_escaped_and_capped() -> None:
-    from app.usecases.overview import SUBJECT_CHARS, build_overview
-
     text = build_overview([old_urgent(subject="<a href='https://evil.example'>click</a>" + "x" * 500)]).text
 
     assert "<a href" not in text
@@ -199,9 +194,6 @@ def test_given_markup_in_an_urgent_subject_when_the_overview_is_built_then_it_is
 
 
 def test_given_more_than_ten_urgent_mails_when_the_overview_is_built_then_ten_are_listed_and_the_rest_counted() -> None:
-    from app.core.alert_text import MAX_MESSAGE_CHARS
-    from app.usecases.overview import build_overview
-
     mails = [old_urgent(subject=f"Urgent number {n}") for n in range(13)]
 
     text = build_overview(mails).text
@@ -215,8 +207,6 @@ def test_given_more_than_ten_urgent_mails_when_the_overview_is_built_then_ten_ar
 def test_given_an_urgent_mail_that_is_also_unsure_when_the_overview_is_built_then_it_is_listed_in_both_sections() -> (
     None
 ):
-    from app.usecases.overview import build_overview
-
     text = build_overview([FiledMail("Assistant/Other", 0.4, "x@example.com", "Odd one", urgent=True)]).text
 
     assert "I was unsure about 1" in text

@@ -406,7 +406,7 @@ async def test_given_backlog_alerts_in_any_state_and_a_normal_alert_when_counted
     assert await store.backlog_alerts() == 3
 
 
-async def test_given_urgent_and_normal_mail_without_alerts_when_listed_for_the_overview_then_urgent_is_set_only_for_urgent(
+async def test_given_urgent_and_normal_mail_without_alerts_when_listed_then_urgent_is_set_only_for_urgent(
     store: PgStore,
 ) -> None:
     urgent_without_alert = replace(outcome("Assistant/Finance"), urgent=True, alert=None)
