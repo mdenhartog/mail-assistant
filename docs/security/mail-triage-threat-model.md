@@ -117,3 +117,39 @@ These are added to the spec as AC-15 to AC-30 and become tests in phase 5. They 
 3. Anthropic data handling: Marco checks the retention setting of his API account (zero retention if offered) before the first run; recorded in the ADR for A-1 in phase 3.
 4. Attachments are never read or sent to the model (spec D12, AC-23).
 5. Quiet hours apply; alerts inside them are held and sent together afterwards (spec D13, AC-32).
+
+## Delta: one-time catch-up of unread mail (INT-003, spec `mail-triage-backlog`, 2026-11-08)
+
+The catch-up adds no new component, no new Gmail scope and no new external system. It adds one new behaviour: a one-time bulk read of the unread inbox mail (75 mails on 2026-11-08) through the same fetch, judge, label and alert path as new mail. Trust boundaries are unchanged (Gmail, Anthropic API, Telegram, PostgreSQL). Data classification is unchanged: the same personal data, but in bulk and from the past.
+
+| id | element | STRIDE | threat | L | I | mitigation | criterion | ASVS / OWASP |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| T-18 | Catch-up list | S | A forged old mail pretends to be someone Marco trusts and is judged urgent. | M | M | Same judging rules as new mail; the reply still goes only to `From` (T-02); only 5 alerts can come from the catch-up. | AC-B10 | ASVS V5 |
+| T-19 | Old mail text | T | **Prompt injection** hidden in any of the old mails (an old mail is read for the first time, so Marco never saw it). | H | H | Unchanged defences of T-03: the model has no tools and returns one validated structure. Plus a cap of 5 alerts, so an injected "urgent" cannot flood Marco. | AC-B14, AC-B10 | OWASP LLM01 |
+| T-20 | Catch-up job | R | Nobody can tell which mails the catch-up handled or why some were left. | L | M | Counts only in logs; every filed mail has a `mail_item` row; every alert has an audit record; the "catch-up done" marker has a timestamp. | AC-B13 | ASVS V7 |
+| T-21 | Anthropic API | I | A bulk of old personal mail, including third parties' data, goes to the model in one burst. | M | M | Covered by accepted risk A-1 (ADR-0018). No new data: same trimming, no attachments, one mail per call. The number of mails is bounded by the unread inbox mails and by the daily budget. | AC-B13 | ASVS V8 |
+| T-22 | Logs, errors | I | A failing old mail puts its text into a log or an error notice. | L | H | Unchanged redaction (T-09); the catch-up logs counts and ids only. | AC-B13 | ASVS V7 |
+| T-23 | Model budget | D | The catch-up uses up the daily budget and new mail is not judged; or, when the budget is out, mails are filed as "needs attention" and alert Marco. | H | H | New mail is always handled first; the catch-up only uses what is left and stops for the day when the budget is out; no old mail is filed as `Assistant/Other` or alerted because of the budget. | AC-B7, AC-B8 | OWASP API4 |
+| T-24 | Telegram | D | Many old urgent mails produce a flood of alerts on the first day. | H | M | At most 5 alerts from the catch-up; the rest goes to the daily overview; quiet hours apply. | AC-B10, AC-B11 | – |
+| T-25 | Catch-up job | D | One mail that always fails blocks the whole catch-up or loops forever. | M | M | Same retry limit and "abandon with one notice" as T-12; the catch-up continues with the next mail. | AC-B12 | – |
+| T-26 | Catch-up job | T | The catch-up runs twice and handles a mail twice (restart, crash, second replica). | M | M | Idempotent processing keyed on the Gmail message id (T-13); a stored "done" marker; mails already filed are skipped. | AC-B5, AC-B6 | – |
+| T-27 | Gmail scope | E | The catch-up reaches more mail than intended (read mail, archive, spam, trash) or deletes mail. | M | H | The list query is only unread inbox mail; the Gmail wrapper still has no trash, delete or spam operation (T-14); the agent's own sent mail is excluded. | AC-B2, AC-B3 | ASVS V4 |
+
+### New security acceptance criteria
+
+SC-17 to SC-20 become AC-B13 and AC-B14 of the spec, plus the behaviour criteria AC-B2, AC-B3, AC-B5, AC-B6, AC-B7, AC-B8, AC-B10 and AC-B12 that carry security meaning:
+
+| id | Short form |
+| --- | --- |
+| SC-17 | The catch-up changes nothing except adding one `Assistant/...` label and removing the inbox label; read mail, mail outside the inbox and own sent mail are untouched, and nothing is trashed, deleted or sent. |
+| SC-18 | New mail is handled before old mail in every run, and running out of budget never files or alerts an old mail. |
+| SC-19 | No more than 5 Telegram alerts come from the catch-up. |
+| SC-20 | The catch-up is idempotent: a restart, a crash or a second run never processes a mail twice. |
+
+### Accepted risks
+
+No new accepted risk. A-1 (mail text to the Anthropic API) and A-2 (summaries through Telegram) from ADR-0018 already cover this: Marco's own mailbox, no new data fields, no attachments. The burst of 75 mails is a volume change, not a new kind of disclosure.
+
+### Open questions for the decision gate
+
+None. No new external system, provider or data field is added, so no new ADR is needed.

@@ -23,4 +23,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0019 · Mail triage: one new agent component with its own Telegram client · area:architecture · tags:mail-triage,agents,telegram · decisions/ADR-0019-mail-triage-architecture.md
 
 - ADR-0020 · Mail triage: store capped alert content for 30 days · area:data · tags:mail-triage,privacy,retention · decisions/ADR-0020-mail-triage-alert-content.md
+- ADR-0021 · Mail triage: one-time catch-up of unread inbox mail · area:architecture · tags:mail-triage,gmail,budget,state · decisions/ADR-0021-mail-triage-catch-up.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
