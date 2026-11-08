@@ -1,5 +1,5 @@
 {
-  "kitVersion": "0.1.0",
+  "kitVersion": "0.4.0",
   "activeGuardrails": [
     "guardrail-python",
     "guardrail-fastapi",
@@ -59,15 +59,26 @@
     "mobile": "responsive-web",
     "identity": {
       "provider": "google-oauth2",
-      "scopes": ["openid", "email", "profile", "gmail", "calendar"]
+      "scopes": [
+        "openid",
+        "email",
+        "profile",
+        "gmail",
+        "calendar"
+      ]
     },
     "designProcess": "per-feature",
     "designSystem": {
       "source": "generate",
       "style": "modern-ai-first",
-      "themes": ["light", "dark"],
+      "themes": [
+        "light",
+        "dark"
+      ],
       "wcag": "AA",
-      "languages": ["en"]
+      "languages": [
+        "en"
+      ]
     },
     "integrations": [
       {
@@ -87,7 +98,9 @@
     ],
     "agentPlatform": {
       "platform": "self",
-      "channels": ["telegram"]
+      "channels": [
+        "telegram"
+      ]
     },
     "bugAgent": {
       "mode": "fix",
@@ -135,6 +148,8 @@
       "discovery": "repo-docs"
     },
     "extraApprovals": [],
-    "productionGate": ["user"]
+    "productionGate": [
+      "user"
+    ]
   }
 }
