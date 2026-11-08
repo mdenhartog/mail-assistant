@@ -1,0 +1,1272 @@
+{
+  ".claude/settings.json": {
+    "mtime": 1794155768.817607,
+    "ast_hash": "ca63df8b2663f555a4b4de174012615d",
+    "semantic_hash": "ca63df8b2663f555a4b4de174012615d"
+  },
+  ".mcp.json": {
+    "mtime": 1794155768.8251548,
+    "ast_hash": "a9d9da8b6e99cbef878e88a7839bb114",
+    "semantic_hash": "a9d9da8b6e99cbef878e88a7839bb114"
+  },
+  ".release-please-manifest.json": {
+    "mtime": 1794169336.331465,
+    "ast_hash": "2515aaf6f5e49c546fc3dbd76fae1f03",
+    "semantic_hash": "2515aaf6f5e49c546fc3dbd76fae1f03"
+  },
+  ".sdlc/accepted-advisories.json": {
+    "mtime": 1794155768.8283129,
+    "ast_hash": "58e0494c51d30eb3494f7c9198986bb9",
+    "semantic_hash": "58e0494c51d30eb3494f7c9198986bb9"
+  },
+  ".sdlc/components.json": {
+    "mtime": 1794155768.8283129,
+    "ast_hash": "b3d83bc716b6bdc51284b582d1bff7b8",
+    "semantic_hash": "b3d83bc716b6bdc51284b582d1bff7b8"
+  },
+  ".sdlc/project.json": {
+    "mtime": 1794155768.8300202,
+    "ast_hash": "0602cf17d72583e7217e46127f1445f2",
+    "semantic_hash": "0602cf17d72583e7217e46127f1445f2"
+  },
+  "agents/assistant/app/__init__.py": {
+    "mtime": 1794155768.8346686,
+    "ast_hash": "8a7f6ccf121082f30c634cfbec414fe7",
+    "semantic_hash": "8a7f6ccf121082f30c634cfbec414fe7"
+  },
+  "agents/assistant/app/__main__.py": {
+    "mtime": 1794155768.8362176,
+    "ast_hash": "32f8502b610e573f197e6aad51abec25",
+    "semantic_hash": "32f8502b610e573f197e6aad51abec25"
+  },
+  "agents/assistant/app/a2a_main.py": {
+    "mtime": 1794155768.8362176,
+    "ast_hash": "913c50df366cac5b18872ec963529d95",
+    "semantic_hash": "913c50df366cac5b18872ec963529d95"
+  },
+  "agents/assistant/app/agent.py": {
+    "mtime": 1794155768.8362176,
+    "ast_hash": "e7d61a4eda3fc11c880fe25e28068802",
+    "semantic_hash": "e7d61a4eda3fc11c880fe25e28068802"
+  },
+  "agents/assistant/app/auth.py": {
+    "mtime": 1794155768.837765,
+    "ast_hash": "9b22c67774df086715bc0ea5f15457a1",
+    "semantic_hash": "9b22c67774df086715bc0ea5f15457a1"
+  },
+  "agents/assistant/app/healthcheck.py": {
+    "mtime": 1794155768.837765,
+    "ast_hash": "b79239211f2304e8bafae9d1faeed3a8",
+    "semantic_hash": "b79239211f2304e8bafae9d1faeed3a8"
+  },
+  "agents/assistant/app/main.py": {
+    "mtime": 1794155768.8393168,
+    "ast_hash": "41e448fc78252608b8e9561bbc16254b",
+    "semantic_hash": "41e448fc78252608b8e9561bbc16254b"
+  },
+  "agents/assistant/app/mcp_auth.py": {
+    "mtime": 1794155768.8393168,
+    "ast_hash": "5f0cd056703132822bd1291c2ceff817",
+    "semantic_hash": "5f0cd056703132822bd1291c2ceff817"
+  },
+  "agents/assistant/app/memory.py": {
+    "mtime": 1794155768.8408737,
+    "ast_hash": "69cf53e7e35ef7bf76c4ef666011fc84",
+    "semantic_hash": "69cf53e7e35ef7bf76c4ef666011fc84"
+  },
+  "agents/assistant/app/rag.py": {
+    "mtime": 1794155768.8408737,
+    "ast_hash": "1d29e3db85169a594db4da0c05e9dd6f",
+    "semantic_hash": "1d29e3db85169a594db4da0c05e9dd6f"
+  },
+  "agents/assistant/app/settings.py": {
+    "mtime": 1794155768.8423858,
+    "ast_hash": "a0343306438440698bb39ed208a78892",
+    "semantic_hash": "a0343306438440698bb39ed208a78892"
+  },
+  "agents/assistant/app/tools.py": {
+    "mtime": 1794155768.8429036,
+    "ast_hash": "a1736df599082ef8d98180363967bb9d",
+    "semantic_hash": "a1736df599082ef8d98180363967bb9d"
+  },
+  "agents/assistant/pyproject.toml": {
+    "mtime": 1794155768.8442228,
+    "ast_hash": "6571c687264f8f086c3ddf52311bd615",
+    "semantic_hash": "6571c687264f8f086c3ddf52311bd615"
+  },
+  "agents/assistant/tests/__init__.py": {
+    "mtime": 1794155768.8474784,
+    "ast_hash": "af40469a729fd9cc6c4bc1dd2b5a10bb",
+    "semantic_hash": "af40469a729fd9cc6c4bc1dd2b5a10bb"
+  },
+  "agents/assistant/tests/conftest.py": {
+    "mtime": 1794155768.8474784,
+    "ast_hash": "9a51cf7a2cddf63a6482db14acc229f0",
+    "semantic_hash": "9a51cf7a2cddf63a6482db14acc229f0"
+  },
+  "agents/assistant/tests/fakes.py": {
+    "mtime": 1794155768.8490462,
+    "ast_hash": "80803cae0671ae9dd8538e91d0be69b2",
+    "semantic_hash": "80803cae0671ae9dd8538e91d0be69b2"
+  },
+  "agents/assistant/tests/test_agent.py": {
+    "mtime": 1794155768.8490462,
+    "ast_hash": "685df6cf29dc94eb1acbeccf47a10202",
+    "semantic_hash": "685df6cf29dc94eb1acbeccf47a10202"
+  },
+  "agents/assistant/tests/test_auth.py": {
+    "mtime": 1794155768.8505933,
+    "ast_hash": "09a97ddcb67b124c27c5e155f019204f",
+    "semantic_hash": "09a97ddcb67b124c27c5e155f019204f"
+  },
+  "agents/assistant/tests/test_main.py": {
+    "mtime": 1794155768.8521142,
+    "ast_hash": "d289316e2b2500899c6ead7901c64c03",
+    "semantic_hash": "d289316e2b2500899c6ead7901c64c03"
+  },
+  "agents/assistant/tests/test_memory_settings_rag.py": {
+    "mtime": 1794155768.8521142,
+    "ast_hash": "982ad05ec6dd60ce3f9f40b4279e9540",
+    "semantic_hash": "982ad05ec6dd60ce3f9f40b4279e9540"
+  },
+  "agents/mail-triage/app/__init__.py": {
+    "mtime": 1794155768.85673,
+    "ast_hash": "b0f6bcd973af784b47d96293b6fdf2a9",
+    "semantic_hash": "b0f6bcd973af784b47d96293b6fdf2a9"
+  },
+  "agents/mail-triage/app/__main__.py": {
+    "mtime": 1794155768.858289,
+    "ast_hash": "6a492fb61f3132492e417bcc406d1c95",
+    "semantic_hash": "6a492fb61f3132492e417bcc406d1c95"
+  },
+  "agents/mail-triage/app/adapters/__init__.py": {
+    "mtime": 1794155768.858289,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/app/adapters/gmail_auth.py": {
+    "mtime": 1794155768.859842,
+    "ast_hash": "24a74c1f9e73bfb1d1c2de233ccc7d35",
+    "semantic_hash": "24a74c1f9e73bfb1d1c2de233ccc7d35"
+  },
+  "agents/mail-triage/app/adapters/gmail_read.py": {
+    "mtime": 1794162534.9326751,
+    "ast_hash": "0a2d438a4a4f8603986164dbbeccbddf",
+    "semantic_hash": "0a2d438a4a4f8603986164dbbeccbddf"
+  },
+  "agents/mail-triage/app/adapters/gmail_send.py": {
+    "mtime": 1794155791.48579,
+    "ast_hash": "6e759446d93ab0f69d939574c7a7f26e",
+    "semantic_hash": "6e759446d93ab0f69d939574c7a7f26e"
+  },
+  "agents/mail-triage/app/adapters/judge_anthropic.py": {
+    "mtime": 1794166518.2359166,
+    "ast_hash": "f658f6eb7e9fce52f2acfdb087baae7a",
+    "semantic_hash": "f658f6eb7e9fce52f2acfdb087baae7a"
+  },
+  "agents/mail-triage/app/adapters/telegram_inbox.py": {
+    "mtime": 1794156388.7439663,
+    "ast_hash": "5004a7d9da75b44599ebaf8bcfe5173b",
+    "semantic_hash": "5004a7d9da75b44599ebaf8bcfe5173b"
+  },
+  "agents/mail-triage/app/adapters/telegram_outbox.py": {
+    "mtime": 1794156396.6536021,
+    "ast_hash": "66226ba233c0d737a789a94ed57475aa",
+    "semantic_hash": "66226ba233c0d737a789a94ed57475aa"
+  },
+  "agents/mail-triage/app/consent.py": {
+    "mtime": 1794157153.9596443,
+    "ast_hash": "5de00bac0bccb1f6a633dac12ad3181c",
+    "semantic_hash": "5de00bac0bccb1f6a633dac12ad3181c"
+  },
+  "agents/mail-triage/app/core/__init__.py": {
+    "mtime": 1794155768.8634768,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/app/core/alert_state.py": {
+    "mtime": 1794155768.8644853,
+    "ast_hash": "86802df0f151a2b386d62c7b010bda58",
+    "semantic_hash": "86802df0f151a2b386d62c7b010bda58"
+  },
+  "agents/mail-triage/app/core/alert_text.py": {
+    "mtime": 1794155768.8644853,
+    "ast_hash": "102ee0c73bd3e0d50841e30ea31d687b",
+    "semantic_hash": "102ee0c73bd3e0d50841e30ea31d687b"
+  },
+  "agents/mail-triage/app/core/auth_results.py": {
+    "mtime": 1794155931.4979403,
+    "ast_hash": "670dc4be941ba4994478869be668e369",
+    "semantic_hash": "670dc4be941ba4994478869be668e369"
+  },
+  "agents/mail-triage/app/core/judgement.py": {
+    "mtime": 1794155768.8661416,
+    "ast_hash": "d88419c1db831f41da47f337685309ee",
+    "semantic_hash": "d88419c1db831f41da47f337685309ee"
+  },
+  "agents/mail-triage/app/core/time_policy.py": {
+    "mtime": 1794155768.8661416,
+    "ast_hash": "ec206c9fe287f45177de92768d02dca5",
+    "semantic_hash": "ec206c9fe287f45177de92768d02dca5"
+  },
+  "agents/mail-triage/app/db/__init__.py": {
+    "mtime": 1794155768.8676856,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/app/db/migrate.py": {
+    "mtime": 1794157096.2811697,
+    "ast_hash": "15f68a44a7edc074731b683fcfb7661b",
+    "semantic_hash": "15f68a44a7edc074731b683fcfb7661b"
+  },
+  "agents/mail-triage/app/db/models.py": {
+    "mtime": 1794162686.3023653,
+    "ast_hash": "ce44c87a41b2423c7f7822e9028d6e4d",
+    "semantic_hash": "ce44c87a41b2423c7f7822e9028d6e4d"
+  },
+  "agents/mail-triage/app/db/pg_store.py": {
+    "mtime": 1794162864.1748898,
+    "ast_hash": "e00da5ccceaf5b6ba106099ac85a4dfe",
+    "semantic_hash": "e00da5ccceaf5b6ba106099ac85a4dfe"
+  },
+  "agents/mail-triage/app/db/repos.py": {
+    "mtime": 1794155768.8692305,
+    "ast_hash": "0d4e3599e3d4d6d6b6009a1c82ddf102",
+    "semantic_hash": "0d4e3599e3d4d6d6b6009a1c82ddf102"
+  },
+  "agents/mail-triage/app/main.py": {
+    "mtime": 1794156841.8772027,
+    "ast_hash": "9d77f3e808b69cf4b5ad3407536d17ec",
+    "semantic_hash": "9d77f3e808b69cf4b5ad3407536d17ec"
+  },
+  "agents/mail-triage/app/obs/__init__.py": {
+    "mtime": 1794155768.8708038,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/app/obs/redaction.py": {
+    "mtime": 1794155768.8718135,
+    "ast_hash": "98dd7e52c70a4f85727dbc104c43de75",
+    "semantic_hash": "98dd7e52c70a4f85727dbc104c43de75"
+  },
+  "agents/mail-triage/app/runner.py": {
+    "mtime": 1794163265.1430192,
+    "ast_hash": "45f827830718939c5340aaa234658652",
+    "semantic_hash": "45f827830718939c5340aaa234658652"
+  },
+  "agents/mail-triage/app/settings.py": {
+    "mtime": 1794156499.5830166,
+    "ast_hash": "397ed48c30e09e7902349e12b538df17",
+    "semantic_hash": "397ed48c30e09e7902349e12b538df17"
+  },
+  "agents/mail-triage/app/usecases/__init__.py": {
+    "mtime": 1794155776.3047824,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/app/usecases/catchup.py": {
+    "mtime": 1794163643.686553,
+    "ast_hash": "9c3e1d383f34deee9e3a12f3c349a21f",
+    "semantic_hash": "9c3e1d383f34deee9e3a12f3c349a21f"
+  },
+  "agents/mail-triage/app/usecases/deliver_alerts.py": {
+    "mtime": 1794155784.461892,
+    "ast_hash": "5fdc384d900ad3f2faae1e0d2e866221",
+    "semantic_hash": "5fdc384d900ad3f2faae1e0d2e866221"
+  },
+  "agents/mail-triage/app/usecases/dispatch.py": {
+    "mtime": 1794156539.348679,
+    "ast_hash": "63219db1b514c6700dd6e5e16a87c839",
+    "semantic_hash": "63219db1b514c6700dd6e5e16a87c839"
+  },
+  "agents/mail-triage/app/usecases/overview.py": {
+    "mtime": 1794162839.208111,
+    "ast_hash": "99706ee3f93518259844c401346a0a6e",
+    "semantic_hash": "99706ee3f93518259844c401346a0a6e"
+  },
+  "agents/mail-triage/app/usecases/reply.py": {
+    "mtime": 1794155791.48579,
+    "ast_hash": "59ca9c58a787fdebdee34fc18bde1e64",
+    "semantic_hash": "59ca9c58a787fdebdee34fc18bde1e64"
+  },
+  "agents/mail-triage/app/usecases/snooze.py": {
+    "mtime": 1794155798.460144,
+    "ast_hash": "fbde3d817c934e9ddab7934e7f35bbb7",
+    "semantic_hash": "fbde3d817c934e9ddab7934e7f35bbb7"
+  },
+  "agents/mail-triage/app/usecases/triage.py": {
+    "mtime": 1794162600.1088872,
+    "ast_hash": "7021f7c99e0d154983a36c567a2d9959",
+    "semantic_hash": "7021f7c99e0d154983a36c567a2d9959"
+  },
+  "agents/mail-triage/app/wiring.py": {
+    "mtime": 1794163524.342482,
+    "ast_hash": "d617d315287a7ff9426315601d1dc37c",
+    "semantic_hash": "d617d315287a7ff9426315601d1dc37c"
+  },
+  "agents/mail-triage/migrations/env.py": {
+    "mtime": 1794155768.8738449,
+    "ast_hash": "3ec60da1cc2158b15429276eeaf5bb69",
+    "semantic_hash": "3ec60da1cc2158b15429276eeaf5bb69"
+  },
+  "agents/mail-triage/migrations/versions/0001_initial.py": {
+    "mtime": 1794155768.875437,
+    "ast_hash": "9e1a4c7a5fb1afb50d04a508895ecf61",
+    "semantic_hash": "9e1a4c7a5fb1afb50d04a508895ecf61"
+  },
+  "agents/mail-triage/migrations/versions/0002_alert_content.py": {
+    "mtime": 1794156235.52792,
+    "ast_hash": "30e68ba846e1839a4f4f30253cae2305",
+    "semantic_hash": "30e68ba846e1839a4f4f30253cae2305"
+  },
+  "agents/mail-triage/migrations/versions/0003_catch_up.py": {
+    "mtime": 1794162686.1358798,
+    "ast_hash": "d62c450fe2827a399a0e05fc4405e87f",
+    "semantic_hash": "d62c450fe2827a399a0e05fc4405e87f"
+  },
+  "agents/mail-triage/pyproject.toml": {
+    "mtime": 1794155828.520427,
+    "ast_hash": "5a31c90f329d2b9c77464571a9b1ccd4",
+    "semantic_hash": "5a31c90f329d2b9c77464571a9b1ccd4"
+  },
+  "agents/mail-triage/scripts/e2e_seed.py": {
+    "mtime": 1794157038.5568676,
+    "ast_hash": "eed27112cc7c13f228c42cb013a0b973",
+    "semantic_hash": "eed27112cc7c13f228c42cb013a0b973"
+  },
+  "agents/mail-triage/tests/__init__.py": {
+    "mtime": 1794155768.8770926,
+    "ast_hash": "d7c5f6c8fedd745e218008d2242d9084",
+    "semantic_hash": "d7c5f6c8fedd745e218008d2242d9084"
+  },
+  "agents/mail-triage/tests/adapters/__init__.py": {
+    "mtime": 1794155768.8786511,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/tests/adapters/conftest.py": {
+    "mtime": 1794155814.996723,
+    "ast_hash": "a405938c2e8790991ad3c1b7e0701c08",
+    "semantic_hash": "a405938c2e8790991ad3c1b7e0701c08"
+  },
+  "agents/mail-triage/tests/adapters/test_gmail_read.py": {
+    "mtime": 1794162615.0112934,
+    "ast_hash": "b2bd7763c49ab8a910459d407d73ab1d",
+    "semantic_hash": "b2bd7763c49ab8a910459d407d73ab1d"
+  },
+  "agents/mail-triage/tests/adapters/test_gmail_send.py": {
+    "mtime": 1794155791.4873016,
+    "ast_hash": "ee49c5fb4b85f389e817979b12e8b922",
+    "semantic_hash": "ee49c5fb4b85f389e817979b12e8b922"
+  },
+  "agents/mail-triage/tests/adapters/test_judge_anthropic.py": {
+    "mtime": 1794166518.344473,
+    "ast_hash": "8637a8e8fcb404959e62879833b74c79",
+    "semantic_hash": "8637a8e8fcb404959e62879833b74c79"
+  },
+  "agents/mail-triage/tests/adapters/test_telegram_inbox.py": {
+    "mtime": 1794155768.8817396,
+    "ast_hash": "61facb661e8500f15d7eb213ec6ba03d",
+    "semantic_hash": "61facb661e8500f15d7eb213ec6ba03d"
+  },
+  "agents/mail-triage/tests/adapters/test_telegram_outbox.py": {
+    "mtime": 1794156399.2358577,
+    "ast_hash": "147b28cfba2184a1a9f969958e23c331",
+    "semantic_hash": "147b28cfba2184a1a9f969958e23c331"
+  },
+  "agents/mail-triage/tests/adapters/test_token_store.py": {
+    "mtime": 1794155814.996723,
+    "ast_hash": "19b537ca5615baee5acdeb8034d2f0b0",
+    "semantic_hash": "19b537ca5615baee5acdeb8034d2f0b0"
+  },
+  "agents/mail-triage/tests/core/__init__.py": {
+    "mtime": 1794155768.8827848,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/tests/core/test_alert_state.py": {
+    "mtime": 1794155768.883299,
+    "ast_hash": "dab29f873df86035b49ce879863d1698",
+    "semantic_hash": "dab29f873df86035b49ce879863d1698"
+  },
+  "agents/mail-triage/tests/core/test_alert_text.py": {
+    "mtime": 1794155768.8848593,
+    "ast_hash": "477d23e9cfb70388c6423edf3d525c70",
+    "semantic_hash": "477d23e9cfb70388c6423edf3d525c70"
+  },
+  "agents/mail-triage/tests/core/test_auth_results.py": {
+    "mtime": 1794156042.9586143,
+    "ast_hash": "13b7dad762500f70e7151e08b7bf6b92",
+    "semantic_hash": "13b7dad762500f70e7151e08b7bf6b92"
+  },
+  "agents/mail-triage/tests/core/test_judgement.py": {
+    "mtime": 1794155768.8848593,
+    "ast_hash": "8cd8971619bf573ffb40c6473fa6d899",
+    "semantic_hash": "8cd8971619bf573ffb40c6473fa6d899"
+  },
+  "agents/mail-triage/tests/core/test_time_policy.py": {
+    "mtime": 1794155768.8848593,
+    "ast_hash": "cf3ebcbf79654fa08c2f78d7d914951b",
+    "semantic_hash": "cf3ebcbf79654fa08c2f78d7d914951b"
+  },
+  "agents/mail-triage/tests/db/__init__.py": {
+    "mtime": 1794155768.8864136,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/tests/db/conftest.py": {
+    "mtime": 1794155768.8879685,
+    "ast_hash": "d99787d6f346a3ce61a10788bae83385",
+    "semantic_hash": "d99787d6f346a3ce61a10788bae83385"
+  },
+  "agents/mail-triage/tests/db/test_catch_up_end_to_end.py": {
+    "mtime": 1794163550.3250666,
+    "ast_hash": "1ebef9f9efe0eb7394ff88801afb3b33",
+    "semantic_hash": "1ebef9f9efe0eb7394ff88801afb3b33"
+  },
+  "agents/mail-triage/tests/db/test_catchup_migration.py": {
+    "mtime": 1794162698.5475154,
+    "ast_hash": "194d199a1b1d0a5c2ba4669323fc3f26",
+    "semantic_hash": "194d199a1b1d0a5c2ba4669323fc3f26"
+  },
+  "agents/mail-triage/tests/db/test_catchup_wiring.py": {
+    "mtime": 1794163330.1452901,
+    "ast_hash": "fecfb9615ac9d856654b6eac6f9d1475",
+    "semantic_hash": "fecfb9615ac9d856654b6eac6f9d1475"
+  },
+  "agents/mail-triage/tests/db/test_end_to_end.py": {
+    "mtime": 1794163392.0084157,
+    "ast_hash": "2310197649281a2c5fb9c18be679dbd3",
+    "semantic_hash": "2310197649281a2c5fb9c18be679dbd3"
+  },
+  "agents/mail-triage/tests/db/test_migrate.py": {
+    "mtime": 1794157086.7380342,
+    "ast_hash": "dd9057c58cca41b8d07c6ab9cf6acb52",
+    "semantic_hash": "dd9057c58cca41b8d07c6ab9cf6acb52"
+  },
+  "agents/mail-triage/tests/db/test_persistence.py": {
+    "mtime": 1794155768.8879685,
+    "ast_hash": "cdfbd04949155d6aaf5064e5334b98c6",
+    "semantic_hash": "cdfbd04949155d6aaf5064e5334b98c6"
+  },
+  "agents/mail-triage/tests/db/test_pg_store.py": {
+    "mtime": 1794162905.65915,
+    "ast_hash": "8a5af0fdf68c19d6376590ae53ef9de9",
+    "semantic_hash": "8a5af0fdf68c19d6376590ae53ef9de9"
+  },
+  "agents/mail-triage/tests/infra/test_deploy.py": {
+    "mtime": 1794157107.8030467,
+    "ast_hash": "3d24f17c14a4e2f497913af9227e262b",
+    "semantic_hash": "3d24f17c14a4e2f497913af9227e262b"
+  },
+  "agents/mail-triage/tests/infra/test_env_example.py": {
+    "mtime": 1794156905.3087082,
+    "ast_hash": "b536565b2aa679392fa0a591daca33d0",
+    "semantic_hash": "b536565b2aa679392fa0a591daca33d0"
+  },
+  "agents/mail-triage/tests/obs/__init__.py": {
+    "mtime": 1794155768.8931522,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/tests/obs/test_redaction.py": {
+    "mtime": 1794155768.8941584,
+    "ast_hash": "ac6233f877eb1cb7a33456e19b1416bc",
+    "semantic_hash": "ac6233f877eb1cb7a33456e19b1416bc"
+  },
+  "agents/mail-triage/tests/test_consent.py": {
+    "mtime": 1794155814.9977214,
+    "ast_hash": "56cac83c6c5bcbd8ceadec0854a401da",
+    "semantic_hash": "56cac83c6c5bcbd8ceadec0854a401da"
+  },
+  "agents/mail-triage/tests/test_e2e_seed.py": {
+    "mtime": 1794157024.9194977,
+    "ast_hash": "fde778f7ab771d758e590fa21843fe0b",
+    "semantic_hash": "fde778f7ab771d758e590fa21843fe0b"
+  },
+  "agents/mail-triage/tests/test_main.py": {
+    "mtime": 1794156793.8483684,
+    "ast_hash": "f028cb76867d6f6e38a06e2b4042954b",
+    "semantic_hash": "f028cb76867d6f6e38a06e2b4042954b"
+  },
+  "agents/mail-triage/tests/test_runner.py": {
+    "mtime": 1794163250.0756898,
+    "ast_hash": "04148660339ca20b9c3bf81f5b772da5",
+    "semantic_hash": "04148660339ca20b9c3bf81f5b772da5"
+  },
+  "agents/mail-triage/tests/test_settings.py": {
+    "mtime": 1794156484.6267247,
+    "ast_hash": "b8dce92a65bc6c195578a174463375e7",
+    "semantic_hash": "b8dce92a65bc6c195578a174463375e7"
+  },
+  "agents/mail-triage/tests/usecases/__init__.py": {
+    "mtime": 1794155776.3075042,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "agents/mail-triage/tests/usecases/test_catchup.py": {
+    "mtime": 1794163642.3206792,
+    "ast_hash": "6eb0cfc79e7e8a863dd392bd997e637f",
+    "semantic_hash": "6eb0cfc79e7e8a863dd392bd997e637f"
+  },
+  "agents/mail-triage/tests/usecases/test_deliver_alerts.py": {
+    "mtime": 1794155784.463244,
+    "ast_hash": "970c1d7f476c33e6afb99335c2094212",
+    "semantic_hash": "970c1d7f476c33e6afb99335c2094212"
+  },
+  "agents/mail-triage/tests/usecases/test_dispatch.py": {
+    "mtime": 1794156540.6957061,
+    "ast_hash": "fce7089d9228d402d72793ebe012d6bc",
+    "semantic_hash": "fce7089d9228d402d72793ebe012d6bc"
+  },
+  "agents/mail-triage/tests/usecases/test_overview.py": {
+    "mtime": 1794162905.65915,
+    "ast_hash": "c7eb2f9cb5bc930ed51fcf4156f0de5c",
+    "semantic_hash": "c7eb2f9cb5bc930ed51fcf4156f0de5c"
+  },
+  "agents/mail-triage/tests/usecases/test_reply.py": {
+    "mtime": 1794155791.4888709,
+    "ast_hash": "64b4d4a48d75c4c6c317895fe76e5e0c",
+    "semantic_hash": "64b4d4a48d75c4c6c317895fe76e5e0c"
+  },
+  "agents/mail-triage/tests/usecases/test_snooze.py": {
+    "mtime": 1794155798.461144,
+    "ast_hash": "74e8aea7926a8ff5925d5ecdfa962598",
+    "semantic_hash": "74e8aea7926a8ff5925d5ecdfa962598"
+  },
+  "agents/mail-triage/tests/usecases/test_triage.py": {
+    "mtime": 1794162592.0394318,
+    "ast_hash": "0a13d11b05740f0ac0d23f6d82a26934",
+    "semantic_hash": "0a13d11b05740f0ac0d23f6d82a26934"
+  },
+  "apps/web/e2e/home.spec.ts": {
+    "mtime": 1794155768.9021077,
+    "ast_hash": "708d99a52792eb73061483787663600f",
+    "semantic_hash": "708d99a52792eb73061483787663600f"
+  },
+  "apps/web/eslint.config.mjs": {
+    "mtime": 1794155768.9021077,
+    "ast_hash": "bedfacdcef791682924e269cc5e8463e",
+    "semantic_hash": "bedfacdcef791682924e269cc5e8463e"
+  },
+  "apps/web/package.json": {
+    "mtime": 1794155768.903617,
+    "ast_hash": "13f4f9ab69b5552a065bbd97dd39f53d",
+    "semantic_hash": "13f4f9ab69b5552a065bbd97dd39f53d"
+  },
+  "apps/web/playwright.config.ts": {
+    "mtime": 1794155768.9051847,
+    "ast_hash": "502b6d5ae262ab43a995f9409a25ea6f",
+    "semantic_hash": "502b6d5ae262ab43a995f9409a25ea6f"
+  },
+  "apps/web/src/App.test.tsx": {
+    "mtime": 1794155768.9067504,
+    "ast_hash": "1d50b9621d8e148e2b1d6d064a8516d2",
+    "semantic_hash": "1d50b9621d8e148e2b1d6d064a8516d2"
+  },
+  "apps/web/src/App.tsx": {
+    "mtime": 1794155768.9073608,
+    "ast_hash": "332d922026ae076ba60ba56f07d4640d",
+    "semantic_hash": "332d922026ae076ba60ba56f07d4640d"
+  },
+  "apps/web/src/main.tsx": {
+    "mtime": 1794155768.9083657,
+    "ast_hash": "0c87c9591dad55a77bc642a2fcb8830d",
+    "semantic_hash": "0c87c9591dad55a77bc642a2fcb8830d"
+  },
+  "apps/web/src/test/axe.ts": {
+    "mtime": 1794155768.9083657,
+    "ast_hash": "419937d62b956e6b2c21989a37d4148f",
+    "semantic_hash": "419937d62b956e6b2c21989a37d4148f"
+  },
+  "apps/web/src/test/setup.ts": {
+    "mtime": 1794155768.909922,
+    "ast_hash": "522e3714e0d342c9b24b23367d8a85b2",
+    "semantic_hash": "522e3714e0d342c9b24b23367d8a85b2"
+  },
+  "apps/web/tsconfig.json": {
+    "mtime": 1794155768.909922,
+    "ast_hash": "a682d54baf85c66880842f0264a1f0c6",
+    "semantic_hash": "a682d54baf85c66880842f0264a1f0c6"
+  },
+  "apps/web/vite.config.ts": {
+    "mtime": 1794155768.9114828,
+    "ast_hash": "64c8e174dbc54eee0be1d07b51399124",
+    "semantic_hash": "64c8e174dbc54eee0be1d07b51399124"
+  },
+  "backend/app/__init__.py": {
+    "mtime": 1794155768.9145248,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/app/config.py": {
+    "mtime": 1794155768.9145248,
+    "ast_hash": "066c72900bcae2c07c009e90325a2d75",
+    "semantic_hash": "066c72900bcae2c07c009e90325a2d75"
+  },
+  "backend/app/core/__init__.py": {
+    "mtime": 1794155768.9161472,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/app/core/security.py": {
+    "mtime": 1794155768.9161472,
+    "ast_hash": "18abc47bfac8cdf82012f8febc0ac8e3",
+    "semantic_hash": "18abc47bfac8cdf82012f8febc0ac8e3"
+  },
+  "backend/app/main.py": {
+    "mtime": 1794155768.9177065,
+    "ast_hash": "a82ecef658f77c050441243bbf5b6cec",
+    "semantic_hash": "a82ecef658f77c050441243bbf5b6cec"
+  },
+  "backend/app/routers/__init__.py": {
+    "mtime": 1794155768.9177065,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/app/routers/health.py": {
+    "mtime": 1794155768.9192846,
+    "ast_hash": "9ab07abf59a787d809011f8ca6d63547",
+    "semantic_hash": "9ab07abf59a787d809011f8ca6d63547"
+  },
+  "backend/pyproject.toml": {
+    "mtime": 1794155768.9208505,
+    "ast_hash": "a047dadbd6a4fcf43be2be69f3b5ed71",
+    "semantic_hash": "a047dadbd6a4fcf43be2be69f3b5ed71"
+  },
+  "backend/tests/__init__.py": {
+    "mtime": 1794155768.9208505,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/tests/conftest.py": {
+    "mtime": 1794155768.9223607,
+    "ast_hash": "6269c39e2cd09e8627b4cbc98fe02072",
+    "semantic_hash": "6269c39e2cd09e8627b4cbc98fe02072"
+  },
+  "backend/tests/test_health_api.py": {
+    "mtime": 1794155768.9228766,
+    "ast_hash": "e35b608b790af4363d2893ca5541f818",
+    "semantic_hash": "e35b608b790af4363d2893ca5541f818"
+  },
+  "backend/tests/test_route_inventory.py": {
+    "mtime": 1794155768.9238148,
+    "ast_hash": "71b0e7b5d1849c4737400e0d49afa903",
+    "semantic_hash": "71b0e7b5d1849c4737400e0d49afa903"
+  },
+  "channels/chat-gateway/app/__init__.py": {
+    "mtime": 1794155768.9290159,
+    "ast_hash": "40e4c2c2c5131776e165b272c4a391d2",
+    "semantic_hash": "40e4c2c2c5131776e165b272c4a391d2"
+  },
+  "channels/chat-gateway/app/__main__.py": {
+    "mtime": 1794155768.9305437,
+    "ast_hash": "bdbfbc2f488147fd4dce23844d38aa14",
+    "semantic_hash": "bdbfbc2f488147fd4dce23844d38aa14"
+  },
+  "channels/chat-gateway/app/agent_client.py": {
+    "mtime": 1794155768.9310486,
+    "ast_hash": "b7c8fdbb515b495a1b5e45f49046a03d",
+    "semantic_hash": "b7c8fdbb515b495a1b5e45f49046a03d"
+  },
+  "channels/chat-gateway/app/dedupe.py": {
+    "mtime": 1794155768.9315646,
+    "ast_hash": "0887b6eeee6468eae88d5a26ffbfb492",
+    "semantic_hash": "0887b6eeee6468eae88d5a26ffbfb492"
+  },
+  "channels/chat-gateway/app/healthcheck.py": {
+    "mtime": 1794155768.932079,
+    "ast_hash": "b0c8410cfa8a0efc7ae32a7a3e07de56",
+    "semantic_hash": "b0c8410cfa8a0efc7ae32a7a3e07de56"
+  },
+  "channels/chat-gateway/app/main.py": {
+    "mtime": 1794155768.9330876,
+    "ast_hash": "d7a983ab0897c77d43ff4f7e70cc0420",
+    "semantic_hash": "d7a983ab0897c77d43ff4f7e70cc0420"
+  },
+  "channels/chat-gateway/app/settings.py": {
+    "mtime": 1794155768.933592,
+    "ast_hash": "45fcbcb19422230b98960de874348a12",
+    "semantic_hash": "45fcbcb19422230b98960de874348a12"
+  },
+  "channels/chat-gateway/app/telegram.py": {
+    "mtime": 1794155768.933592,
+    "ast_hash": "4567e57e9ca1a6e29e32f7a32964dc59",
+    "semantic_hash": "4567e57e9ca1a6e29e32f7a32964dc59"
+  },
+  "channels/chat-gateway/app/whatsapp.py": {
+    "mtime": 1794155768.9345982,
+    "ast_hash": "d41bc88b0da15c4641f213703248c411",
+    "semantic_hash": "d41bc88b0da15c4641f213703248c411"
+  },
+  "channels/chat-gateway/pyproject.toml": {
+    "mtime": 1794155768.9361503,
+    "ast_hash": "78e63392e8b72b08a2dc0b2b50d7521a",
+    "semantic_hash": "78e63392e8b72b08a2dc0b2b50d7521a"
+  },
+  "channels/chat-gateway/tests/__init__.py": {
+    "mtime": 1794155768.9361503,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "channels/chat-gateway/tests/fakes.py": {
+    "mtime": 1794155768.9377213,
+    "ast_hash": "9d966edbe3be10281ff29c3d75080a92",
+    "semantic_hash": "9d966edbe3be10281ff29c3d75080a92"
+  },
+  "channels/chat-gateway/tests/test_clients_and_settings.py": {
+    "mtime": 1794155768.9377213,
+    "ast_hash": "edd5b6fd01f9a491cd276ccc033647cf",
+    "semantic_hash": "edd5b6fd01f9a491cd276ccc033647cf"
+  },
+  "channels/chat-gateway/tests/test_telegram.py": {
+    "mtime": 1794155768.9393613,
+    "ast_hash": "78960c4c6dc34724c87c23b940e6f26d",
+    "semantic_hash": "78960c4c6dc34724c87c23b940e6f26d"
+  },
+  "channels/chat-gateway/tests/test_whatsapp.py": {
+    "mtime": 1794155768.9393613,
+    "ast_hash": "59210868e93e57cf80370a9447a52d73",
+    "semantic_hash": "59210868e93e57cf80370a9447a52d73"
+  },
+  "commitlint.config.mjs": {
+    "mtime": 1794155768.9424245,
+    "ast_hash": "6bbdafb8becfedc235cc1f11521d2a65",
+    "semantic_hash": "6bbdafb8becfedc235cc1f11521d2a65"
+  },
+  "deploy/charts/app/values.schema.json": {
+    "mtime": 1794155768.9517362,
+    "ast_hash": "173bc5a1d3d2e539ca7e25a6fb2e6d21",
+    "semantic_hash": "173bc5a1d3d2e539ca7e25a6fb2e6d21"
+  },
+  "knip.json": {
+    "mtime": 1794155768.9931257,
+    "ast_hash": "4d81e40207d269b15545ef9ce2305fc6",
+    "semantic_hash": "4d81e40207d269b15545ef9ce2305fc6"
+  },
+  "mcp-servers/tools/app/__init__.py": {
+    "mtime": 1794155768.9962351,
+    "ast_hash": "63016dc7ea177c390bcceed07e596c80",
+    "semantic_hash": "63016dc7ea177c390bcceed07e596c80"
+  },
+  "mcp-servers/tools/app/__main__.py": {
+    "mtime": 1794155768.9962351,
+    "ast_hash": "dbd9713e701ae70a2725f7458e17ca7e",
+    "semantic_hash": "dbd9713e701ae70a2725f7458e17ca7e"
+  },
+  "mcp-servers/tools/app/auth.py": {
+    "mtime": 1794155768.9977863,
+    "ast_hash": "9b22c67774df086715bc0ea5f15457a1",
+    "semantic_hash": "9b22c67774df086715bc0ea5f15457a1"
+  },
+  "mcp-servers/tools/app/healthcheck.py": {
+    "mtime": 1794155768.9977863,
+    "ast_hash": "b0c8410cfa8a0efc7ae32a7a3e07de56",
+    "semantic_hash": "b0c8410cfa8a0efc7ae32a7a3e07de56"
+  },
+  "mcp-servers/tools/app/server.py": {
+    "mtime": 1794155768.9977863,
+    "ast_hash": "b37343b5110b39fa46720345e9ecac00",
+    "semantic_hash": "b37343b5110b39fa46720345e9ecac00"
+  },
+  "mcp-servers/tools/app/settings.py": {
+    "mtime": 1794155768.9993436,
+    "ast_hash": "851f4ee6259730fd305b9553cc6ba93d",
+    "semantic_hash": "851f4ee6259730fd305b9553cc6ba93d"
+  },
+  "mcp-servers/tools/app/tools.py": {
+    "mtime": 1794155768.9993436,
+    "ast_hash": "1fab42f2ac499ae0daf1d4645569a9a2",
+    "semantic_hash": "1fab42f2ac499ae0daf1d4645569a9a2"
+  },
+  "mcp-servers/tools/pyproject.toml": {
+    "mtime": 1794155769.0025375,
+    "ast_hash": "ecb29d0ae196ed7efd16f3c4b5f2d396",
+    "semantic_hash": "ecb29d0ae196ed7efd16f3c4b5f2d396"
+  },
+  "mcp-servers/tools/tests/test_http.py": {
+    "mtime": 1794155769.003058,
+    "ast_hash": "8ed8ac28116dadef736459a52c7de5c8",
+    "semantic_hash": "8ed8ac28116dadef736459a52c7de5c8"
+  },
+  "mcp-servers/tools/tests/test_tools.py": {
+    "mtime": 1794155769.0040643,
+    "ast_hash": "78bec5ade81488899a5fb9161b18e7a8",
+    "semantic_hash": "78bec5ade81488899a5fb9161b18e7a8"
+  },
+  "package.json": {
+    "mtime": 1794155769.0056853,
+    "ast_hash": "d30cf020ac019f9e212e976d0866fbca",
+    "semantic_hash": "d30cf020ac019f9e212e976d0866fbca"
+  },
+  "packages/tokens/build.mjs": {
+    "mtime": 1794155769.0087788,
+    "ast_hash": "973b6f146e30cc2ad4b67ee057379658",
+    "semantic_hash": "973b6f146e30cc2ad4b67ee057379658"
+  },
+  "packages/tokens/contrast.test.mjs": {
+    "mtime": 1794155769.0087788,
+    "ast_hash": "914b68dbe5977b54cdcee28d096d4e6d",
+    "semantic_hash": "914b68dbe5977b54cdcee28d096d4e6d"
+  },
+  "packages/tokens/package.json": {
+    "mtime": 1794155769.0103543,
+    "ast_hash": "df8e765b50c41c38e634119132e5d962",
+    "semantic_hash": "df8e765b50c41c38e634119132e5d962"
+  },
+  "packages/tokens/theme.native.json": {
+    "mtime": 1794155769.0103543,
+    "ast_hash": "7a42596e0c9059b4f085dff6209e6ac1",
+    "semantic_hash": "7a42596e0c9059b4f085dff6209e6ac1"
+  },
+  "release-please-config.json": {
+    "mtime": 1794155769.0149462,
+    "ast_hash": "e4ceed77940f25a61d39e48d70fd5669",
+    "semantic_hash": "e4ceed77940f25a61d39e48d70fd5669"
+  },
+  "renovate.json": {
+    "mtime": 1794155769.0149462,
+    "ast_hash": "9a76d185628adc09812d2480cdc88434",
+    "semantic_hash": "9a76d185628adc09812d2480cdc88434"
+  },
+  "scripts/audit.mjs": {
+    "mtime": 1794155769.0165286,
+    "ast_hash": "deda7f55eafb60384cf6cb359c453c59",
+    "semantic_hash": "deda7f55eafb60384cf6cb359c453c59"
+  },
+  "scripts/check-mobile-bundle.mjs": {
+    "mtime": 1794155769.0165286,
+    "ast_hash": "6c4fc611f09b4566f2ff865a3ff2f239",
+    "semantic_hash": "6c4fc611f09b4566f2ff865a3ff2f239"
+  },
+  "scripts/components.mjs": {
+    "mtime": 1794155769.0181694,
+    "ast_hash": "9a9080e506f60b993149f8bb19670983",
+    "semantic_hash": "9a9080e506f60b993149f8bb19670983"
+  },
+  "scripts/lib/run-pnpm.mjs": {
+    "mtime": 1794155769.0181694,
+    "ast_hash": "316bf5a6142507066d5dd59ca9a3ff0b",
+    "semantic_hash": "316bf5a6142507066d5dd59ca9a3ff0b"
+  },
+  ".claude/rules/backend.md": {
+    "mtime": 1794155768.816036,
+    "ast_hash": "29b5ac13b1a5912523877304ab5c2379",
+    "semantic_hash": "29b5ac13b1a5912523877304ab5c2379"
+  },
+  ".claude/rules/infra.md": {
+    "mtime": 1794155768.817607,
+    "ast_hash": "0bff1af6f6afe93902435d06be571a05",
+    "semantic_hash": "0bff1af6f6afe93902435d06be571a05"
+  },
+  ".claude/rules/web.md": {
+    "mtime": 1794155768.817607,
+    "ast_hash": "b49a1a46e3f3a53c8e749c145a2102a1",
+    "semantic_hash": "b49a1a46e3f3a53c8e749c145a2102a1"
+  },
+  ".github/pull_request_template.md": {
+    "mtime": 1794155768.8222375,
+    "ast_hash": "63fe384e3d643b6991e3905c133e79ad",
+    "semantic_hash": "63fe384e3d643b6991e3905c133e79ad"
+  },
+  ".github/workflows/ci.yml": {
+    "mtime": 1794167574.992691,
+    "ast_hash": "6c06e4ee4e9a159815d8166fa13034ed",
+    "semantic_hash": "6c06e4ee4e9a159815d8166fa13034ed"
+  },
+  ".github/workflows/release.yml": {
+    "mtime": 1794167574.9941962,
+    "ast_hash": "361349351d54fffec69563f6e9ee23e3",
+    "semantic_hash": "361349351d54fffec69563f6e9ee23e3"
+  },
+  ".pre-commit-config.yaml": {
+    "mtime": 1794155768.8251548,
+    "ast_hash": "48b7e7f180181be46618e638496b3478",
+    "semantic_hash": "48b7e7f180181be46618e638496b3478"
+  },
+  ".semgrep/kit-rules.yml": {
+    "mtime": 1794155768.8300202,
+    "ast_hash": "b9555783dd0a18d7880d6c2896718168",
+    "semantic_hash": "b9555783dd0a18d7880d6c2896718168"
+  },
+  "CHANGELOG.md": {
+    "mtime": 1794169336.3325167,
+    "ast_hash": "3d8059b6e0fceb732694b999ea3a7d55",
+    "semantic_hash": "3d8059b6e0fceb732694b999ea3a7d55"
+  },
+  "CLAUDE.md": {
+    "mtime": 1794155768.8315787,
+    "ast_hash": "ae16cd6f3988113e3e4dce27ec986a07",
+    "semantic_hash": "ae16cd6f3988113e3e4dce27ec986a07"
+  },
+  "agents/assistant/README.md": {
+    "mtime": 1794155768.8346686,
+    "ast_hash": "bb6ebdf7be370e3dc01f4dd96b2e90e7",
+    "semantic_hash": "bb6ebdf7be370e3dc01f4dd96b2e90e7"
+  },
+  "agents/assistant/compose.yaml": {
+    "mtime": 1794155768.8429036,
+    "ast_hash": "0c51daf1e1067e4d57d2c81d79a8a28c",
+    "semantic_hash": "0c51daf1e1067e4d57d2c81d79a8a28c"
+  },
+  "agents/mail-triage/README.md": {
+    "mtime": 1794163683.1764655,
+    "ast_hash": "c154cdb6214fa360df7c2c5637d5bc8e",
+    "semantic_hash": "c154cdb6214fa360df7c2c5637d5bc8e"
+  },
+  "agents/mail-triage/compose.yaml": {
+    "mtime": 1794156944.5574274,
+    "ast_hash": "dab0367aa1c8a6f2f36bfeee3f0e1560",
+    "semantic_hash": "dab0367aa1c8a6f2f36bfeee3f0e1560"
+  },
+  "agents/mail-triage/tests/fixtures/injection/delete_all.txt": {
+    "mtime": 1794155768.8895397,
+    "ast_hash": "82619f4a9abf7a454650c22c5a3d908b",
+    "semantic_hash": "82619f4a9abf7a454650c22c5a3d908b"
+  },
+  "agents/mail-triage/tests/fixtures/injection/not_urgent.txt": {
+    "mtime": 1794155768.891121,
+    "ast_hash": "6ec1d0872a8bb77276c46fbca53cb093",
+    "semantic_hash": "6ec1d0872a8bb77276c46fbca53cb093"
+  },
+  "agents/mail-triage/tests/fixtures/injection/reveal.txt": {
+    "mtime": 1794155768.891121,
+    "ast_hash": "bc187fbc6bb0f3ac369def3088195e35",
+    "semantic_hash": "bc187fbc6bb0f3ac369def3088195e35"
+  },
+  "agents/mail-triage/tests/fixtures/injection/send_mail.txt": {
+    "mtime": 1794155768.8931522,
+    "ast_hash": "12d76b4136b2ecac0eeb3ae6721a1d40",
+    "semantic_hash": "12d76b4136b2ecac0eeb3ae6721a1d40"
+  },
+  "apps/web/CLAUDE.md": {
+    "mtime": 1794155768.8990316,
+    "ast_hash": "4b0d724bc5942aad03102e84a303bd26",
+    "semantic_hash": "4b0d724bc5942aad03102e84a303bd26"
+  },
+  "apps/web/index.html": {
+    "mtime": 1794155768.9031126,
+    "ast_hash": "0c4e2a08f9c5106bbd1b14716731ed91",
+    "semantic_hash": "0c4e2a08f9c5106bbd1b14716731ed91"
+  },
+  "backend/CLAUDE.md": {
+    "mtime": 1794155768.9135187,
+    "ast_hash": "665e813098191c4be86344319f7943fe",
+    "semantic_hash": "665e813098191c4be86344319f7943fe"
+  },
+  "channels/chat-gateway/README.md": {
+    "mtime": 1794155768.9285004,
+    "ast_hash": "4df114de519a9df5b4b4c76c83a06f4f",
+    "semantic_hash": "4df114de519a9df5b4b4c76c83a06f4f"
+  },
+  "channels/chat-gateway/compose.yaml": {
+    "mtime": 1794155768.9361503,
+    "ast_hash": "6c551ea82414489b2ac9657edfd27de1",
+    "semantic_hash": "6c551ea82414489b2ac9657edfd27de1"
+  },
+  "compose.yaml": {
+    "mtime": 1794155768.9429424,
+    "ast_hash": "2d204c1f82f073b8217e66757d07ddcc",
+    "semantic_hash": "2d204c1f82f073b8217e66757d07ddcc"
+  },
+  "deploy/charts/app/Chart.yaml": {
+    "mtime": 1794155768.945526,
+    "ast_hash": "e310dd95f8861df1e24fde13eb504f61",
+    "semantic_hash": "e310dd95f8861df1e24fde13eb504f61"
+  },
+  "deploy/charts/app/templates/ingress.yaml": {
+    "mtime": 1794155768.9470751,
+    "ast_hash": "c8dfc1722685725f896367da32acb90e",
+    "semantic_hash": "c8dfc1722685725f896367da32acb90e"
+  },
+  "deploy/charts/app/templates/networkpolicy.yaml": {
+    "mtime": 1794155768.9486313,
+    "ast_hash": "77fb165c5adf6b82163b961c9787289d",
+    "semantic_hash": "77fb165c5adf6b82163b961c9787289d"
+  },
+  "deploy/charts/app/templates/tests/test-health.yaml": {
+    "mtime": 1794155768.9486313,
+    "ast_hash": "b9d611cb88b071fdf632d66425ac615d",
+    "semantic_hash": "b9d611cb88b071fdf632d66425ac615d"
+  },
+  "deploy/charts/app/templates/workloads.yaml": {
+    "mtime": 1794155768.950217,
+    "ast_hash": "c1f28e37793d1669bd3f454d4b9d2f26",
+    "semantic_hash": "c1f28e37793d1669bd3f454d4b9d2f26"
+  },
+  "deploy/charts/app/values.yaml": {
+    "mtime": 1794155768.952256,
+    "ast_hash": "4c5cdeb7dac1f62b8eebc1a421c36c58",
+    "semantic_hash": "4c5cdeb7dac1f62b8eebc1a421c36c58"
+  },
+  "deploy/charts/component/Chart.yaml": {
+    "mtime": 1794155768.9532828,
+    "ast_hash": "bf7cabe08d7dffbdab28b39d3c5cb483",
+    "semantic_hash": "bf7cabe08d7dffbdab28b39d3c5cb483"
+  },
+  "deploy/charts/component/templates/component.yaml": {
+    "mtime": 1794155768.9549208,
+    "ast_hash": "a5dbbcaaeb18e39d282202141f3a7920",
+    "semantic_hash": "a5dbbcaaeb18e39d282202141f3a7920"
+  },
+  "deploy/charts/component/values.yaml": {
+    "mtime": 1794155768.9564385,
+    "ast_hash": "99ef05663b95e8d09181d13ff1073fb4",
+    "semantic_hash": "99ef05663b95e8d09181d13ff1073fb4"
+  },
+  "deploy/charts/worker/Chart.yaml": {
+    "mtime": 1794155821.8145006,
+    "ast_hash": "94582a8057847b3bd65b73bbbc23d3de",
+    "semantic_hash": "94582a8057847b3bd65b73bbbc23d3de"
+  },
+  "deploy/charts/worker/templates/worker.yaml": {
+    "mtime": 1794155821.8164966,
+    "ast_hash": "59a574a278ae0db6d5f7d315561d8a4a",
+    "semantic_hash": "59a574a278ae0db6d5f7d315561d8a4a"
+  },
+  "deploy/charts/worker/values.yaml": {
+    "mtime": 1794155821.8174994,
+    "ast_hash": "e8bf80967be0a35bfd2b521908498ab7",
+    "semantic_hash": "e8bf80967be0a35bfd2b521908498ab7"
+  },
+  "deploy/envs/local/mail-triage.yaml": {
+    "mtime": 1794155821.8184986,
+    "ast_hash": "a9028bfc936a59a244e659c79348d025",
+    "semantic_hash": "a9028bfc936a59a244e659c79348d025"
+  },
+  "deploy/envs/local/values.yaml": {
+    "mtime": 1794155768.9564385,
+    "ast_hash": "80d8bcb470846cb9c2258843d7ca9a17",
+    "semantic_hash": "80d8bcb470846cb9c2258843d7ca9a17"
+  },
+  "deploy/kind/kind-config.yaml": {
+    "mtime": 1794155768.9579887,
+    "ast_hash": "0e912383f44359c39b6d4ee05723dc8a",
+    "semantic_hash": "0e912383f44359c39b6d4ee05723dc8a"
+  },
+  "deploy/kind/selfsigned-issuer.yaml": {
+    "mtime": 1794155768.9579887,
+    "ast_hash": "54edbf58ad5e1d1ca7e2fb546767afc5",
+    "semantic_hash": "54edbf58ad5e1d1ca7e2fb546767afc5"
+  },
+  "deploy/kind/traefik-values.yaml": {
+    "mtime": 1794155768.9595368,
+    "ast_hash": "df84be79b174ac68908d864540fab1a9",
+    "semantic_hash": "df84be79b174ac68908d864540fab1a9"
+  },
+  "docs/design/mail-triage-backlog-design.md": {
+    "mtime": 1794163752.8914483,
+    "ast_hash": "d00e4e14de5811333f1170bf11de5e78",
+    "semantic_hash": "d00e4e14de5811333f1170bf11de5e78"
+  },
+  "docs/design/mail-triage-design.md": {
+    "mtime": 1794155768.9631252,
+    "ast_hash": "ca2f7f206709145154324e34acf744ca",
+    "semantic_hash": "ca2f7f206709145154324e34acf744ca"
+  },
+  "docs/intent/INT-001-categorise-mail-and-alert-via-telegram.md": {
+    "mtime": 1794155768.964544,
+    "ast_hash": "42978200eb963c5488c07b2144f8138e",
+    "semantic_hash": "42978200eb963c5488c07b2144f8138e"
+  },
+  "docs/intent/INT-002-adjustable-quiet-hours.md": {
+    "mtime": 1794162462.2253294,
+    "ast_hash": "a5c046a89c93cbc7e6f47f4c5449b5e4",
+    "semantic_hash": "a5c046a89c93cbc7e6f47f4c5449b5e4"
+  },
+  "docs/intent/INT-003-label-existing-unread-mail.md": {
+    "mtime": 1794162412.914932,
+    "ast_hash": "3c45f4715ad4f00aae34b7d6f279be18",
+    "semantic_hash": "3c45f4715ad4f00aae34b7d6f279be18"
+  },
+  "docs/intent/INT-004-choose-my-own-mail-categories.md": {
+    "mtime": 1794170175.1567855,
+    "ast_hash": "f941acd49975b727450858ac4aba3e48",
+    "semantic_hash": "f941acd49975b727450858ac4aba3e48"
+  },
+  "docs/intent/README.md": {
+    "mtime": 1794155768.964544,
+    "ast_hash": "a7e6a8e342fbc901e21d8c33c9e45f7d",
+    "semantic_hash": "a7e6a8e342fbc901e21d8c33c9e45f7d"
+  },
+  "docs/memory/components/project-workflow.md": {
+    "mtime": 1794155768.9676216,
+    "ast_hash": "f384c23166f5fcf4071ea5a1f50edcb8",
+    "semantic_hash": "f384c23166f5fcf4071ea5a1f50edcb8"
+  },
+  "docs/memory/decisions/ADR-0001-sdlc-kit.md": {
+    "mtime": 1794155768.969851,
+    "ast_hash": "49fabe8b56cfdf570ba17644c3a00112",
+    "semantic_hash": "49fabe8b56cfdf570ba17644c3a00112"
+  },
+  "docs/memory/decisions/ADR-0002-mobile-target.md": {
+    "mtime": 1794155768.969851,
+    "ast_hash": "b61180bb92b01f8c56e5212abf72681f",
+    "semantic_hash": "b61180bb92b01f8c56e5212abf72681f"
+  },
+  "docs/memory/decisions/ADR-0003-work-tracking.md": {
+    "mtime": 1794155768.9708576,
+    "ast_hash": "86da8b6da767b0286746f9acc93bb3ca",
+    "semantic_hash": "86da8b6da767b0286746f9acc93bb3ca"
+  },
+  "docs/memory/decisions/ADR-0004-source-control.md": {
+    "mtime": 1794155768.9719656,
+    "ast_hash": "86dfe51c40a64ef7ac23446ee9b00938",
+    "semantic_hash": "86dfe51c40a64ef7ac23446ee9b00938"
+  },
+  "docs/memory/decisions/ADR-0005-agent-platform.md": {
+    "mtime": 1794155768.9729738,
+    "ast_hash": "4456dcfb36bc18cd92f58dbece63f052",
+    "semantic_hash": "4456dcfb36bc18cd92f58dbece63f052"
+  },
+  "docs/memory/decisions/ADR-0006-gxp.md": {
+    "mtime": 1794155768.9734807,
+    "ast_hash": "ccb37e02f3fb3c67d3a05fe8a68be91b",
+    "semantic_hash": "ccb37e02f3fb3c67d3a05fe8a68be91b"
+  },
+  "docs/memory/decisions/ADR-0007-database.md": {
+    "mtime": 1794155768.9734807,
+    "ast_hash": "6a28f3394463b3ccdfa6c2d30a89fe48",
+    "semantic_hash": "6a28f3394463b3ccdfa6c2d30a89fe48"
+  },
+  "docs/memory/decisions/ADR-0008-identity.md": {
+    "mtime": 1794155768.9734807,
+    "ast_hash": "c386c015b31448a73507b358a3248071",
+    "semantic_hash": "c386c015b31448a73507b358a3248071"
+  },
+  "docs/memory/decisions/ADR-0009-design-process.md": {
+    "mtime": 1794155768.9750402,
+    "ast_hash": "e0cc84c30fc5df6d62ef701324ce588d",
+    "semantic_hash": "e0cc84c30fc5df6d62ef701324ce588d"
+  },
+  "docs/memory/decisions/ADR-0010-design-system.md": {
+    "mtime": 1794155768.9750402,
+    "ast_hash": "b5561b12ea5fe49abf1e9569aa147529",
+    "semantic_hash": "b5561b12ea5fe49abf1e9569aa147529"
+  },
+  "docs/memory/decisions/ADR-0011-api-integrations.md": {
+    "mtime": 1794155768.9760466,
+    "ast_hash": "f4337cec66b5410f9e068e7f3cfd22cd",
+    "semantic_hash": "f4337cec66b5410f9e068e7f3cfd22cd"
+  },
+  "docs/memory/decisions/ADR-0012-hosting.md": {
+    "mtime": 1794155768.9765496,
+    "ast_hash": "b434ba19af3fddbdfbc1fb2acf7de799",
+    "semantic_hash": "b434ba19af3fddbdfbc1fb2acf7de799"
+  },
+  "docs/memory/decisions/ADR-0013-observability.md": {
+    "mtime": 1794155768.9765496,
+    "ast_hash": "727aaee26470d530bcb5daaade679a8a",
+    "semantic_hash": "727aaee26470d530bcb5daaade679a8a"
+  },
+  "docs/memory/decisions/ADR-0014-model-routing.md": {
+    "mtime": 1794155768.9780984,
+    "ast_hash": "7e6831cc944a2ed1fa1e4383456ad8ef",
+    "semantic_hash": "7e6831cc944a2ed1fa1e4383456ad8ef"
+  },
+  "docs/memory/decisions/ADR-0015-bug-agent.md": {
+    "mtime": 1794155768.9780984,
+    "ast_hash": "9c9ebcf949ab81bd9d1c7b68043c5d28",
+    "semantic_hash": "9c9ebcf949ab81bd9d1c7b68043c5d28"
+  },
+  "docs/memory/decisions/ADR-0016-process-autonomy.md": {
+    "mtime": 1794155768.9796672,
+    "ast_hash": "1a383080f505e822783b899f5369e40c",
+    "semantic_hash": "1a383080f505e822783b899f5369e40c"
+  },
+  "docs/memory/decisions/ADR-0017-anthropic-api.md": {
+    "mtime": 1794155768.9796672,
+    "ast_hash": "0ae4280681dbbbe7485fab2108082280",
+    "semantic_hash": "0ae4280681dbbbe7485fab2108082280"
+  },
+  "docs/memory/decisions/ADR-0018-mail-triage-accepted-risks.md": {
+    "mtime": 1794155768.9812431,
+    "ast_hash": "6d599d34cde0e936b27b0644e8b95924",
+    "semantic_hash": "6d599d34cde0e936b27b0644e8b95924"
+  },
+  "docs/memory/decisions/ADR-0019-mail-triage-architecture.md": {
+    "mtime": 1794155768.9812431,
+    "ast_hash": "c455d51ebbb7995778c6151413825387",
+    "semantic_hash": "c455d51ebbb7995778c6151413825387"
+  },
+  "docs/memory/decisions/ADR-0020-mail-triage-alert-content.md": {
+    "mtime": 1794155892.0637612,
+    "ast_hash": "9159571b8041b5147f100eeb37c1f768",
+    "semantic_hash": "9159571b8041b5147f100eeb37c1f768"
+  },
+  "docs/memory/decisions/ADR-0021-mail-triage-catch-up.md": {
+    "mtime": 1794162450.1051495,
+    "ast_hash": "55813a1ad12b08c7c3336bd46b3d6218",
+    "semantic_hash": "55813a1ad12b08c7c3336bd46b3d6218"
+  },
+  "docs/memory/index.md": {
+    "mtime": 1794162192.0067253,
+    "ast_hash": "33f7ceca8566f20815410409b60cdf23",
+    "semantic_hash": "33f7ceca8566f20815410409b60cdf23"
+  },
+  "docs/plans/mail-triage-backlog.md": {
+    "mtime": 1794163752.8904488,
+    "ast_hash": "98a5724c654c30c1add400ca13c2b314",
+    "semantic_hash": "98a5724c654c30c1add400ca13c2b314"
+  },
+  "docs/plans/mail-triage.md": {
+    "mtime": 1794155768.9856062,
+    "ast_hash": "bb6fc209c98dbf624daa2f4f21d17428",
+    "semantic_hash": "bb6fc209c98dbf624daa2f4f21d17428"
+  },
+  "docs/reviews/README.md": {
+    "mtime": 1794155768.9856062,
+    "ast_hash": "493ae9212576cb2ba37b96b24ca4c511",
+    "semantic_hash": "493ae9212576cb2ba37b96b24ca4c511"
+  },
+  "docs/reviews/mail-triage-backlog.md": {
+    "mtime": 1794163675.2069962,
+    "ast_hash": "81510de14bf13b168aa4b39cc4fd8ca6",
+    "semantic_hash": "81510de14bf13b168aa4b39cc4fd8ca6"
+  },
+  "docs/reviews/mail-triage-e2e.md": {
+    "mtime": 1794163675.165197,
+    "ast_hash": "71e93d55d05694702c728f6445620493",
+    "semantic_hash": "71e93d55d05694702c728f6445620493"
+  },
+  "docs/security/mail-triage-threat-model.md": {
+    "mtime": 1794162412.9683175,
+    "ast_hash": "66f2b2b3fc5d1c51050cb9268ced4617",
+    "semantic_hash": "66f2b2b3fc5d1c51050cb9268ced4617"
+  },
+  "docs/signals/README.md": {
+    "mtime": 1794155768.9888775,
+    "ast_hash": "239da49b122dff73112f9e757f8855f0",
+    "semantic_hash": "239da49b122dff73112f9e757f8855f0"
+  },
+  "docs/specs/mail-triage-backlog.md": {
+    "mtime": 1794162412.9250422,
+    "ast_hash": "e04c7eb8381c933d4d172224c3815bc1",
+    "semantic_hash": "e04c7eb8381c933d4d172224c3815bc1"
+  },
+  "docs/specs/mail-triage.md": {
+    "mtime": 1794155768.9919574,
+    "ast_hash": "3b7959308263e05da7850bfbd6f94129",
+    "semantic_hash": "3b7959308263e05da7850bfbd6f94129"
+  },
+  "fixtures/README.md": {
+    "mtime": 1794155768.9919574,
+    "ast_hash": "9ae11a8d0cb4d06e2bbec85523353b4f",
+    "semantic_hash": "9ae11a8d0cb4d06e2bbec85523353b4f"
+  },
+  "mcp-servers/tools/README.md": {
+    "mtime": 1794155768.994682,
+    "ast_hash": "6e5070639cbf7dd7c24e34236a62383f",
+    "semantic_hash": "6e5070639cbf7dd7c24e34236a62383f"
+  },
+  "mcp-servers/tools/compose.yaml": {
+    "mtime": 1794155769.000893,
+    "ast_hash": "cf6f026eb301778778cbd7917f179a4e",
+    "semantic_hash": "cf6f026eb301778778cbd7917f179a4e"
+  },
+  "pnpm-workspace.yaml": {
+    "mtime": 1794155769.013392,
+    "ast_hash": "31da9ba2792b9323dc6f43f43999d759",
+    "semantic_hash": "31da9ba2792b9323dc6f43f43999d759"
+  }
+}
