@@ -5,6 +5,7 @@
 # db and mail always run. The IdP (Keycloak) is added once identity-architecture decides on it.
 name: mail-assistant
 include:
+  - agents/mail-triage/compose.yaml
   - channels/chat-gateway/compose.yaml
   - agents/assistant/compose.yaml
   - mcp-servers/tools/compose.yaml

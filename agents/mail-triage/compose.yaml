@@ -1,0 +1,31 @@
+# Local run of the mail-triage agent: docker compose --profile components up mail-triage
+# The agent has no inbound port: it polls Gmail and Telegram. Secrets come from your .env, never from this file.
+services:
+  mail-triage:
+    profiles: ["components", "dev"]
+    build: { context: . }
+    depends_on: { db: { condition: service_healthy } }
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp"]
+    # The loop touches /tmp/heartbeat after every mail cycle; unhealthy when it is older than three minutes.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/heartbeat')<180 else 1)"]
+      interval: 30s
+      start_period: 60s
+      retries: 3
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_USER_ID: ${TELEGRAM_ALLOWED_USER_ID:-}
+      TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID:-}
+      MODEL_SMALL: ${MAIL_TRIAGE_MODEL_SMALL:-}
+      MODEL_LARGE: ${MAIL_TRIAGE_MODEL_LARGE:-}
+      DATABASE_URL: ${MAIL_TRIAGE_DATABASE_URL:-postgresql+asyncpg://app:${POSTGRES_PASSWORD:-}@db:5432/app}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      TOKEN_ENCRYPTION_KEY: ${MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY:-}
+      POLL_INTERVAL_SECONDS: ${MAIL_TRIAGE_POLL_INTERVAL_SECONDS:-60}
+      DAILY_MODEL_BUDGET: ${MAIL_TRIAGE_DAILY_MODEL_BUDGET:-200}
+      ALERTS_PER_HOUR: ${MAIL_TRIAGE_ALERTS_PER_HOUR:-5}
