@@ -34,7 +34,6 @@ jobs:
   components:
     # Agents, MCP servers and channel gateways (.sdlc/components.json): lint, types, security, tests, audit, images.
     runs-on: ubuntu-latest
-    if: hashFiles('.sdlc/components.json') != ''
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10
@@ -109,7 +108,6 @@ jobs:
 
   helm:
     runs-on: ubuntu-latest
-    if: hashFiles('deploy/charts/app/Chart.yaml') != ''
     steps:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5
@@ -140,7 +138,7 @@ jobs:
     # GAMP 5 evidence run + validation package (only in projects with validation/system.yaml)
     runs-on: ubuntu-latest
     needs: [images]
-    if: hashFiles('validation/system.yaml') != ''
+    if: vars.GXP_ENABLED == 'true'  # off for this project (ADR-0006); hashFiles() is not allowed in a job-level if
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
