@@ -24,7 +24,31 @@ dev = [
 ]
 
 [tool.uv]
+exclude-newer = "7 days"
 package = false
+
+# Temporary: versions already locked that are younger than the cooldown. Remove after 2026-11-15 (ADR-0022).
+[tool.uv.exclude-newer-package]
+anyio = "2026-11-08T23:59:59Z"
+bedrock-agentcore = "2026-11-08T23:59:59Z"
+boto3 = "2026-11-08T23:59:59Z"
+botocore = "2026-11-08T23:59:59Z"
+click = "2026-11-08T23:59:59Z"
+coverage = "2026-11-08T23:59:59Z"
+fastapi = "2026-11-08T23:59:59Z"
+filelock = "2026-11-08T23:59:59Z"
+google-api-core = "2026-11-08T23:59:59Z"
+google-auth = "2026-11-08T23:59:59Z"
+pip = "2026-11-08T23:59:59Z"
+platformdirs = "2026-11-08T23:59:59Z"
+py-serializable = "2026-11-08T23:59:59Z"
+pydantic = "2026-11-08T23:59:59Z"
+pydantic-core = "2026-11-08T23:59:59Z"
+pytest-asyncio = "2026-11-08T23:59:59Z"
+ruff = "2026-11-08T23:59:59Z"
+sse-starlette = "2026-11-08T23:59:59Z"
+strands-agents = "2026-11-08T23:59:59Z"
+typing-inspection = "2026-11-08T23:59:59Z"
 
 [tool.ruff]
 target-version = "py312"
