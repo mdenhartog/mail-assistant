@@ -102,6 +102,7 @@ metadata:
   labels: {{- include "app.labels" $ctx | nindent 4 }}
 spec:
   minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels: {{- include "app.selector" $ctx | nindent 6 }}
 {{- end }}
