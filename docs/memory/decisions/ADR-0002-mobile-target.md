@@ -1,6 +1,6 @@
 ---
 id: ADR-0002
-title: Mobile target: no native app; responsive web
+title: "Mobile target: no native app; responsive web"
 status: accepted
 area: mobile-target
 tags: [mobile]

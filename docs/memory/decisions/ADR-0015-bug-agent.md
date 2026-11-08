@@ -1,6 +1,6 @@
 ---
 id: ADR-0015
-title: Bug agent: fix mode
+title: "Bug agent: fix mode"
 status: accepted
 area: bug-agent
 tags: [bug-agent, automation, qa]

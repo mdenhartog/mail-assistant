@@ -1,6 +1,6 @@
 ---
 id: ADR-0013
-title: Observability: Sentry + Grafana, synthetic journeys daily
+title: "Observability: Sentry + Grafana, synthetic journeys daily"
 status: accepted
 area: observability
 tags: [sentry, grafana, monitoring, production-signals]

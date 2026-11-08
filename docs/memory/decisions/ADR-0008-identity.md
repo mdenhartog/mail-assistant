@@ -1,6 +1,6 @@
 ---
 id: ADR-0008
-title: Identity: Google OAuth2
+title: "Identity: Google OAuth2"
 status: accepted
 area: identity
 tags: [oauth2, google, authentication]

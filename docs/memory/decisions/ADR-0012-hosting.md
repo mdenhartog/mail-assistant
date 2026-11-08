@@ -1,6 +1,6 @@
 ---
 id: ADR-0012
-title: Hosting: Kubernetes via Helm + Argo CD
+title: "Hosting: Kubernetes via Helm + Argo CD"
 status: accepted
 area: hosting
 tags: [kubernetes, helm, argocd, docker]

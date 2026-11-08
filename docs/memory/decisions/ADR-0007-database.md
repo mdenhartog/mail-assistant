@@ -1,6 +1,6 @@
 ---
 id: ADR-0007
-title: Database: PostgreSQL, no vector or time-series extension
+title: "Database: PostgreSQL, no vector or time-series extension"
 status: accepted
 area: database
 tags: [postgresql, database]

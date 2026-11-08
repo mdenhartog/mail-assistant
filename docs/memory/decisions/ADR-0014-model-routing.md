@@ -1,6 +1,6 @@
 ---
 id: ADR-0014
-title: Model routing: automatic Haiku → Sonnet → Opus
+title: "Model routing: automatic Haiku → Sonnet → Opus"
 status: accepted
 area: model-routing
 tags: [llm, model-routing, claude]

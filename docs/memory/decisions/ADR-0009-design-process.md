@@ -1,6 +1,6 @@
 ---
 id: ADR-0009
-title: Design process: clickable prototype per feature
+title: "Design process: clickable prototype per feature"
 status: accepted
 area: design-process
 tags: [prototype, ux, design]

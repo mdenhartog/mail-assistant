@@ -1,6 +1,6 @@
 ---
 id: ADR-0003
-title: Work tracking: repo docs
+title: "Work tracking: repo docs"
 status: accepted
 area: work-tracking
 tags: [specs, plans, git]

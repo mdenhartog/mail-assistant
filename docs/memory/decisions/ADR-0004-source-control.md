@@ -1,6 +1,6 @@
 ---
 id: ADR-0004
-title: Source control: GitHub
+title: "Source control: GitHub"
 status: accepted
 area: source-control
 tags: [github, ci, releases]

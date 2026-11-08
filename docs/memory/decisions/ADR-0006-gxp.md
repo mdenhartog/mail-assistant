@@ -1,6 +1,6 @@
 ---
 id: ADR-0006
-title: GxP relevance: not a GxP system
+title: "GxP relevance: not a GxP system"
 status: accepted
 area: gxp
 tags: [gamp5, validation]

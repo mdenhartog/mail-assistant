@@ -1,6 +1,6 @@
 ---
 id: ADR-0011
-title: API integrations: Gmail and Google Calendar
+title: "API integrations: Gmail and Google Calendar"
 status: accepted
 area: api-style
 tags: [gmail, google-calendar, rest, oauth2]

@@ -1,6 +1,6 @@
 ---
 id: ADR-0016
-title: Process autonomy: fixed gates only
+title: "Process autonomy: fixed gates only"
 status: accepted
 area: process
 tags: [autonomy, gates, approval]
