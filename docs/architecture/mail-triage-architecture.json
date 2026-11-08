@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mail Triage Agent",
+    "output": "mail-triage-architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1260, 560]
+  },
+  "components": [
+    { "id": "gmail", "type": "external", "label": "Gmail", "sublabel": "Marco's mailbox", "pos": [40, 60], "size": [150, 64] },
+    { "id": "anthropic", "type": "external", "label": "Anthropic API", "sublabel": "judges each mail", "pos": [40, 200], "size": [150, 64] },
+    { "id": "telegram", "type": "external", "label": "Telegram", "sublabel": "Bot API", "pos": [40, 340], "size": [150, 64] },
+    { "id": "marco", "type": "external", "label": "Marco", "sublabel": "the only user", "pos": [40, 470], "size": [150, 64] },
+
+    { "id": "gmail_adapter", "type": "backend", "label": "Gmail adapter", "sublabel": "allow-listed calls", "pos": [320, 60], "size": [160, 64] },
+    { "id": "model_adapter", "type": "security", "label": "Model adapter", "sublabel": "validated output only", "pos": [320, 200], "size": [160, 64] },
+    { "id": "telegram_adapter", "type": "backend", "label": "Telegram adapter", "sublabel": "long polling", "pos": [320, 340], "size": [160, 64] },
+
+    { "id": "core", "type": "backend", "label": "Core", "sublabel": "pure logic, no I/O", "pos": [610, 200], "size": [160, 64], "tag": "policy + alert states" },
+    { "id": "db_adapter", "type": "backend", "label": "DB adapter", "sublabel": "PgStore", "pos": [880, 200], "size": [150, 64] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "Alembic migrations", "pos": [1090, 200], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "security-group", "label": "agents/mail-triage (one replica)", "wraps": ["gmail_adapter", "model_adapter", "telegram_adapter", "core", "db_adapter"] }
+  ],
+  "connections": [
+    { "id": "gmail-calls", "from": "gmail_adapter", "to": "gmail", "label": "list, label, send" },
+    { "id": "model-calls", "from": "model_adapter", "to": "anthropic", "label": "JSON-schema judge" },
+    { "id": "telegram-polling", "from": "telegram_adapter", "to": "telegram", "label": "alerts, polling" },
+    { "id": "marco-buttons", "from": "marco", "to": "telegram", "label": "buttons, replies", "variant": "emphasis" },
+
+    { "id": "mail-into-core", "from": "gmail_adapter", "to": "core", "label": "FetchedMail", "variant": "dashed", "fromSide": "right", "toSide": "top" },
+    { "id": "judgement-into-core", "from": "model_adapter", "to": "core", "label": "Judgement", "variant": "security" },
+    { "id": "command-into-core", "from": "telegram_adapter", "to": "core", "label": "Command", "fromSide": "right", "toSide": "bottom" },
+    { "id": "core-to-store", "from": "core", "to": "db_adapter", "label": "store port" },
+    { "id": "store-sql", "from": "db_adapter", "to": "postgres", "label": "SQL" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Ports and adapters", "items": ["Core holds urgency policy, alert state machine, quiet hours, reminders and the daily overview", "Each adapter talks to one outside system through a port"] },
+    { "dot": "rose", "title": "Untrusted mail", "items": ["Mail text only reaches the model adapter", "Its only output is a validated Judgement; anything else becomes needs-attention"] },
+    { "dot": "emerald", "title": "Safety limits", "items": ["No trash, delete or spam call exists in the Gmail wrapper", "A reply is sent only after Marco confirms the stored draft", "Daily model budget and alerts-per-hour cap"] }
+  ]
+}
