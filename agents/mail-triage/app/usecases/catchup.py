@@ -1,8 +1,9 @@
 """The one-time catch-up of the unread mail that was already in the inbox (INT-003, ADR-0021).
 
 Each mail cycle first handles new mail (the pipeline). Then this use case works through the unread inbox mail from
-before the cut-off, newest first, with the same judging and labelling as new mail. The cut-off and "done" are the only things
-stored: Gmail is the list, because a filed mail loses its inbox label and so drops out of the next listing.
+before the cut-off, newest first, with the same judging and labelling as new mail. The cut-off and "done" are the
+only things stored: Gmail is the list, because a filed mail loses its inbox label and so drops out of the next
+listing.
 
 Logs and notices hold counts and ids only, never mail text (spec AC-B13).
 """
@@ -17,18 +18,21 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
+from app.core.judgement import NeedsAttention
 from app.usecases.triage import MAX_ATTEMPTS, Claim, RunSummary, decide_outcome
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.adapters.gmail_read import FetchedMail
-    from app.core.judgement import Judgement, NeedsAttention
+    from app.core.judgement import Judgement
     from app.usecases.triage import FailureNotifier, Outcome
 
 logger = logging.getLogger(__name__)
 
 RUN_LIMIT = 20  # mails per run, so one run stays short and the minute cycle keeps serving new mail and Telegram
+BUDGET_RESERVE = 50  # model calls a day that stay for new mail (of the 200); fixed in code, like the quiet hours
+CALLS_PER_MAIL = 2  # the small model, and the large one when the small one is unsure
 INBOX = "INBOX"
 UNREAD = "UNREAD"
 
@@ -160,8 +164,8 @@ class CatchUp:
             return summary
         processed = 0
         for message_id in ids:
-            if processed >= RUN_LIMIT:
-                return summary
+            if processed >= RUN_LIMIT or self._budget.remaining() < BUDGET_RESERVE + CALLS_PER_MAIL:
+                return summary  # the rest waits: for the next run, or for tomorrow's budget
             step = await self._step(message_id, summary)
             if step is _Step.STOP:
                 return summary
@@ -204,6 +208,8 @@ class CatchUp:
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return _Step.SKIPPED
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text))
+        if isinstance(verdict, NeedsAttention) and verdict.reason == "budget":
+            return _Step.STOP  # an old mail is never filed as "needs attention" only because the budget ended
         outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now())
         label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)

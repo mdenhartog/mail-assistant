@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from app.adapters.gmail_read import FetchedMail
-from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
+from app.adapters.judge_anthropic import DailyBudget, ModelUnavailable, TrimmedMail
 from app.core.judgement import Judgement, NeedsAttention
-from app.usecases.catchup import RUN_LIMIT, CatchUp, CatchUpState
+from app.usecases.catchup import BUDGET_RESERVE, RUN_LIMIT, CatchUp, CatchUpState
 from app.usecases.triage import MAX_ATTEMPTS, Claim, Outcome
 
 if TYPE_CHECKING:
@@ -50,6 +50,7 @@ class FakeMailbox:
         self.listed_with: list[datetime] = []
         self.list_error: Exception | None = None
         self.after_fetch: Callable[[str], None] = lambda _id: None
+        self.after_file: Callable[[str], None] = lambda _id: None
 
     def list_unread_before(self, cutoff: datetime) -> list[str]:
         self.calls.append("list_unread_before")
@@ -71,17 +72,29 @@ class FakeMailbox:
         del label_id
         self.calls.append("file")
         self.filed.append(message_id)
+        self.after_file(message_id)
 
 
 class FakeJudge:
-    def __init__(self, answer: Judgement | NeedsAttention | Exception | None = None) -> None:
+    def __init__(
+        self,
+        answer: Judgement | NeedsAttention | Exception | None = None,
+        *,
+        budget: DailyBudget | None = None,
+        cost: int = 1,
+    ) -> None:
         self.answer = answer or judgement()
+        self.budget = budget
+        self.cost = cost  # calls one mail takes from the budget: 1 (small model) or 2 (small, then large)
         self.failing: dict[str, Exception] = {}
         self.seen: list[TrimmedMail] = []
         self.order: list[str] = []
 
     async def judge(self, mail: TrimmedMail) -> Judgement | NeedsAttention:
         self.seen.append(mail)
+        for _ in range(self.cost if self.budget else 0):
+            assert self.budget is not None
+            self.budget.try_spend()
         failure = next((e for key, e in self.failing.items() if key in mail.text), None)
         if failure is not None:
             raise failure
@@ -160,9 +173,10 @@ def catchup(
     judge: FakeJudge,
     store: FakeStore,
     notifier: FakeNotifier | None = None,
-    now: datetime = NOW,
+    *,
+    budget: DailyBudget | Plenty | None = None,
 ) -> CatchUp:
-    return CatchUp(mailbox, judge, store, notifier or FakeNotifier(), Plenty(), now=lambda: now)
+    return CatchUp(mailbox, judge, store, notifier or FakeNotifier(), budget or Plenty(), now=lambda: NOW)
 
 
 def ids(count: int) -> list[str]:
@@ -393,3 +407,98 @@ async def test_given_a_fetch_that_fails_before_the_claim_when_it_runs_then_it_is
     assert summary.retry_later == 1
     assert mailbox.filed == ["m2"]
     assert "finish_catchup" not in store.events
+
+
+# ---- U-backlog-08: budget and reserve (INT-003; AC-B7, AC-B8, AC-B15) -----------------------------------------------
+
+DAY_ONE = "2026-11-09"
+DAY_TWO = "2026-11-10"
+CALLS = 2  # one mail can take two calls (small model, then the large one)
+ONE_MAIL = BUDGET_RESERVE + CALLS
+
+
+async def test_given_the_reserve_is_all_that_is_left_when_it_runs_then_no_mail_is_fetched_or_judged() -> None:
+    budget = DailyBudget(limit=ONE_MAIL - 1, today=lambda: DAY_ONE)  # 51 left: one short
+    mailbox, store, judge = FakeMailbox(["m1", "m2"]), FakeStore(), FakeJudge(budget=budget)
+
+    await catchup(mailbox, judge, store, budget=budget).run_once()
+
+    assert judge.seen == []
+    assert "fetch" not in mailbox.calls
+    assert "finish_catchup" not in store.events
+
+
+async def test_given_room_for_one_mail_above_the_reserve_when_it_runs_then_one_mail_is_judged_and_it_stops() -> None:
+    budget = DailyBudget(limit=ONE_MAIL, today=lambda: DAY_ONE)  # 52 left
+    mailbox, store = FakeMailbox(["m1", "m2", "m3"]), FakeStore()
+    judge = FakeJudge(budget=budget, cost=2)  # the large model was asked as well
+
+    await catchup(mailbox, judge, store, budget=budget).run_once()
+
+    assert mailbox.filed == ["m1"]
+    assert budget.remaining() == BUDGET_RESERVE  # the reserve is untouched
+    assert "finish_catchup" not in store.events
+
+
+async def test_given_the_budget_is_used_up_when_it_runs_then_nothing_is_filed_urgent_or_alerted() -> None:
+    budget = DailyBudget(limit=0, today=lambda: DAY_ONE)
+    mailbox, store = FakeMailbox(["m1", "m2"]), FakeStore()
+
+    await catchup(mailbox, FakeJudge(budget=budget), store, budget=budget).run_once()
+
+    assert mailbox.filed == []
+    assert store.done == {}  # nothing became "Assistant/Other", urgent or an alert
+
+
+async def test_given_the_next_day_when_it_runs_again_then_it_continues_with_the_fresh_budget() -> None:
+    day = [DAY_ONE]
+    budget = DailyBudget(limit=BUDGET_RESERVE + 2 * CALLS, today=lambda: day[0])  # room for two mails a day
+    mailbox, store = FakeMailbox(["m1", "m2", "m3", "m4"]), FakeStore()
+    use_case = catchup(mailbox, FakeJudge(budget=budget, cost=CALLS), store, budget=budget)
+    await use_case.run_once()
+    assert mailbox.filed == ["m1", "m2"]
+    assert "finish_catchup" not in store.events
+    mailbox.ids = ["m3", "m4"]  # Gmail no longer lists the filed mail
+
+    day[0] = DAY_TWO
+    await use_case.run_once()
+
+    assert mailbox.filed == ["m1", "m2", "m3", "m4"]
+    assert store.state is not None
+    assert store.state.finished_at == NOW
+
+
+async def test_given_the_day_rolls_over_during_a_run_when_the_next_mail_is_checked_then_it_continues() -> None:
+    day = [DAY_ONE]
+    budget = DailyBudget(limit=ONE_MAIL, today=lambda: day[0])  # room for one mail a day
+    mailbox, store = FakeMailbox(["m1", "m2"]), FakeStore()
+    mailbox.after_file = lambda mail_id: day.__setitem__(0, DAY_TWO) if mail_id == "m1" else None  # midnight, UTC
+
+    await catchup(mailbox, FakeJudge(budget=budget, cost=CALLS), store, budget=budget).run_once()
+
+    assert mailbox.filed == ["m1", "m2"]
+
+
+async def test_given_the_judge_still_says_the_budget_is_out_when_it_runs_then_the_mail_is_not_filed_and_it_stops() -> (
+    None
+):
+    mailbox, store = FakeMailbox(["m1", "m2"]), FakeStore()
+
+    await catchup(mailbox, FakeJudge(NeedsAttention("budget")), store).run_once()
+
+    assert mailbox.filed == []
+    assert store.done == {}
+    assert "finish_catchup" not in store.events
+
+
+async def test_given_the_pipeline_spent_part_of_a_shared_budget_when_the_catch_up_runs_then_it_leaves_the_reserve() -> (
+    None
+):
+    budget = DailyBudget(limit=60, today=lambda: DAY_ONE)
+    assert all(budget.try_spend() for _ in range(10))  # new mail in this cycle took 10 calls: 50 left
+    mailbox, store, judge = FakeMailbox(["m1"]), FakeStore(), FakeJudge(budget=budget)
+
+    await catchup(mailbox, judge, store, budget=budget).run_once()
+
+    assert judge.seen == []
+    assert budget.remaining() == BUDGET_RESERVE
