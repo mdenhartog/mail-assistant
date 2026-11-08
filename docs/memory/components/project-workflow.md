@@ -53,7 +53,7 @@ Requires: **user approval** (Marco). No GxP validation package required (ADR-000
 
 ## Diagram
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │  /sdlc:feature <name>                                                       │
 │                                                                             │

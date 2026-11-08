@@ -9,10 +9,12 @@ Intent: `docs/intent/INT-…` · Spec: `docs/specs/…` · Plan: `docs/plans/…
 <!-- new/changed threats and mitigations, or "no change to trust boundaries" with the reason -->
 
 ## Units in this PR
+
 | Unit | Criteria | Tests | Status |
 |---|---|---|---|
 
 ## Test evidence
+
 - [ ] Tests demonstrably red first, then green (see commits `test:` → `feat:`)
 - [ ] Backend: ruff, pyright, bandit, pytest (coverage ≥ 90 %)
 - [ ] Web/mobile: eslint, tsc, vitest (coverage ≥ 90 %), knip, `pnpm run audit`
@@ -20,6 +22,7 @@ Intent: `docs/intent/INT-…` · Spec: `docs/specs/…` · Plan: `docs/plans/…
 - [ ] GxP-relevant: GAMP 5 scenarios executed, evidence package attached (`validation/packages/…`)
 
 ## Screenshots
+
 | Mobile | Tablet | Desktop |
 |---|---|---|
 

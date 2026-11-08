@@ -12,6 +12,7 @@ The gateway sends `AGENT_TOKEN` as a bearer token: set it to the agent's `AGENT_
 A channel without an allow-list is refused at startup: otherwise anyone who finds the bot could use (and pay for) your agent.
 
 **Register the webhook** (the gateway must be reachable over public HTTPS; for a local test use a tunnel such as `cloudflared tunnel --url http://localhost:8300`):
+
 - Telegram: `https://api.telegram.org/bot<token>/setWebhook` with `url=https://<host>/telegram/webhook` and `secret_token=<TELEGRAM_WEBHOOK_SECRET>`.
 - WhatsApp: in the Meta app dashboard set the callback URL `https://<host>/whatsapp/webhook` and the verify token.
 

@@ -1,0 +1,16 @@
+// Markdown lint (pre-commit + CI). Every Markdown file in the project must pass: specs, ADRs,
+// plans, READMEs and CLAUDE.md files, whether a person or Claude wrote them.
+// Fix automatically with: npx markdownlint-cli2 --fix
+{
+  "config": {
+    "default": true,
+    "MD013": false,
+    "MD024": { "siblings_only": true },
+    "MD033": false,
+    "MD041": false,
+    "MD060": false
+  },
+  "globs": ["**/*.md"],
+  "gitignore": true,
+  "ignores": ["**/node_modules/**", "CHANGELOG.md", "validation/evidence/**", "validation/packages/**", ".venv/**"]
+}

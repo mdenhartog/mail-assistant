@@ -21,6 +21,11 @@ repos:
         files: ^backend/
       - id: ruff-format
         files: ^backend/
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.24.0
+    hooks:
+      - id: markdownlint-cli2
+        args: [--fix]
   - repo: https://github.com/hadolint/hadolint
     rev: v2.15.1
     hooks:
@@ -58,6 +63,12 @@ repos:
         entry: uv run --directory backend bandit -q -c pyproject.toml -r app
         language: system
         files: ^backend/.*\.py$
+        pass_filenames: false
+      - id: api-docs
+        name: api docs generated (openapi.json + reference.md)
+        entry: node scripts/docs.mjs api
+        language: system
+        files: ^backend/app/
         pass_filenames: false
       - id: web-lint
         name: eslint (web)

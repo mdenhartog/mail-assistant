@@ -10,7 +10,10 @@
     "audit": "node scripts/audit.mjs",
     "check:mobile-bundle": "node scripts/check-mobile-bundle.mjs",
     "components": "node scripts/components.mjs check",
-    "components:upgrade": "node scripts/components.mjs upgrade"
+    "components:upgrade": "node scripts/components.mjs upgrade",
+    "status": "node scripts/status.mjs",
+    "docs:api": "node scripts/docs.mjs api",
+    "docs:check": "node scripts/docs.mjs check"
   },
   "devDependencies": {
     "knip": "^6.44.2"
