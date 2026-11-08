@@ -12,7 +12,7 @@ from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
 from app.core.judgement import Judgement, NeedsAttention
-from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline
+from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline, decide_outcome
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -374,3 +374,37 @@ async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_
     content = store.outcomes["m1"].content
     assert content.reason == "Needs attention: budget"
     assert content.summary == ""
+
+
+# ---- U-backlog-05: the decision step is shared with the catch-up (INT-003) ------------------------------------------
+
+
+def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent_with_an_open_alert() -> None:
+    verdict = judgement("Finance", urgent=True, confidence=0.9)
+
+    outcome = decide_outcome(verdict, fetched("m1"), ["Assistant/Finance"], DAYTIME)
+
+    assert outcome.label == "Assistant/Finance"
+    assert outcome.urgent is True
+    assert outcome.alert is AlertState.OPEN
+    assert outcome.confidence == 0.9
+    assert outcome.content.subject == "Subject"
+    assert outcome.content.reason == "r"
+    assert outcome.content.summary == "s"
+
+
+def test_given_an_urgent_judgement_in_quiet_hours_when_decided_directly_then_the_alert_is_held() -> None:
+    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NIGHT)
+
+    assert outcome.alert is AlertState.HELD
+
+
+def test_given_a_needs_attention_verdict_when_decided_directly_then_it_is_other_urgent_with_a_note() -> None:
+    outcome = decide_outcome(NeedsAttention("invalid_output"), fetched("m1"), [], DAYTIME)
+
+    assert outcome.label == "Assistant/Other"
+    assert outcome.urgent is True
+    assert outcome.confidence is None
+    assert outcome.note == "needs_attention:invalid_output"
+    assert outcome.content.reason == "Needs attention: invalid_output"
+    assert outcome.content.summary == ""

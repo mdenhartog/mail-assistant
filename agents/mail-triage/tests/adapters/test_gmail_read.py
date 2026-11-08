@@ -368,7 +368,11 @@ def test_given_a_fetched_mail_when_read_then_it_carries_its_gmail_labels(gmail: 
         "id": "m1",
         "threadId": "t1",
         "labelIds": ["INBOX", "UNREAD"],
-        "payload": {"mimeType": "text/plain", "headers": [{"name": "From", "value": "a@b.c"}], "body": {"data": b64("hi")}},
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [{"name": "From", "value": "a@b.c"}],
+            "body": {"data": b64("hi")},
+        },
     }
 
     assert reader(gmail).fetch("m1").labels == frozenset({"INBOX", "UNREAD"})

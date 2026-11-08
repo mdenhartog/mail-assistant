@@ -147,6 +147,40 @@ class RunSummary:
     listing_failed: bool = False
 
 
+def decide_outcome(
+    verdict: Judgement | NeedsAttention, mail: FetchedMail, known_labels: list[str], now: datetime
+) -> Outcome:
+    """Label, urgency and content of one judged mail. Anything untrustworthy is urgent, never ignorable.
+
+    Shared by the pipeline (new mail) and the catch-up (old mail), so both decide exactly alike.
+    """
+    decision = resolve(verdict, known_labels) if isinstance(verdict, Judgement) else verdict
+    if isinstance(decision, Filing):
+        label, urgent, confidence, note = (
+            decision.label,
+            decision.judgement.urgent,
+            decision.judgement.confidence,
+            "",
+        )
+    else:
+        label, urgent, confidence, note = OTHER_LABEL, True, None, f"needs_attention:{decision.reason}"
+    if isinstance(verdict, Judgement):
+        reason, summary = verdict.reason, verdict.summary
+    else:
+        reason, summary = f"Needs attention: {verdict.reason}", ""
+    content = MailContent(
+        sender=mail.sender,
+        subject=mail.subject,
+        reply_to=mail.reply_to,
+        has_attachment=mail.has_attachment,
+        reason=reason,
+        summary=summary,
+        auth=parse_auth_results(mail.headers.get("Authentication-Results")),
+    )
+    alert = initial_state(in_quiet_hours=in_quiet_hours(now)) if urgent else None
+    return Outcome(label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content)
+
+
 class TriagePipeline:
     """One run of the poll loop."""
 
@@ -221,37 +255,9 @@ class TriagePipeline:
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text))
-        outcome = await self._decide(verdict, mail)
+        outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now())
         label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete(mail.message_id, outcome)
         summary.filed += 1
         summary.alerts += outcome.alert is not None
-
-    async def _decide(self, verdict: Judgement | NeedsAttention, mail: FetchedMail) -> Outcome:
-        """Label, urgency and content. Anything untrustworthy is urgent, never ignorable."""
-        decision = resolve(verdict, await self._store.known_labels()) if isinstance(verdict, Judgement) else verdict
-        if isinstance(decision, Filing):
-            label, urgent, confidence, note = (
-                decision.label,
-                decision.judgement.urgent,
-                decision.judgement.confidence,
-                "",
-            )
-        else:
-            label, urgent, confidence, note = OTHER_LABEL, True, None, f"needs_attention:{decision.reason}"
-        if isinstance(verdict, Judgement):
-            reason, summary = verdict.reason, verdict.summary
-        else:
-            reason, summary = f"Needs attention: {verdict.reason}", ""
-        content = MailContent(
-            sender=mail.sender,
-            subject=mail.subject,
-            reply_to=mail.reply_to,
-            has_attachment=mail.has_attachment,
-            reason=reason,
-            summary=summary,
-            auth=parse_auth_results(mail.headers.get("Authentication-Results")),
-        )
-        alert = initial_state(in_quiet_hours=in_quiet_hours(self._now())) if urgent else None
-        return Outcome(label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content)
