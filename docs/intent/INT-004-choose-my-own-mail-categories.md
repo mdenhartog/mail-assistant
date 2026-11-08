@@ -2,7 +2,7 @@
 id: INT-004
 title: Let me choose the mail categories myself
 originator: Marco
-status: draft
+status: confirmed
 date: 2026-11-08
 ---
 
