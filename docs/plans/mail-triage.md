@@ -4,7 +4,7 @@ spec: docs/specs/mail-triage.md
 design: docs/design/mail-triage-design.md
 threat-model: docs/security/mail-triage-threat-model.md
 intent: INT-001
-status: draft
+status: done
 date: 2026-11-08
 ---
 
