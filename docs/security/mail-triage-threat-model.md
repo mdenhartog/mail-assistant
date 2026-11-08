@@ -24,7 +24,7 @@ Out of scope: any web UI (none exists in this feature).
 ## Data classification
 
 | Data | Class | GDPR | Where it lives / travels |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Mail body, subject, sender and recipient addresses | Personal data, confidential (may contain special-category data, third parties' data) | Yes | Gmail → agent memory → Anthropic API; trimmed summary → Telegram |
 | Mail summary and reason in an alert | Personal data, confidential | Yes | Agent → Telegram servers → Marco's device |
 | Marco's reply text and the sent mail | Personal data, confidential | Yes | Telegram → agent → Gmail |
@@ -56,7 +56,7 @@ Trust boundaries: (1) internet ↔ our cluster, (2) between our components, (3) 
 L = likelihood, I = impact (L/M/H). Risk is the combination; "High" needs a mitigation, "Medium" a mitigation or an accepted risk.
 
 | id | element | STRIDE | threat | L | I | mitigation | criterion | ASVS / OWASP |
-|---|---|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | T-01 | Telegram gateway | S | Another person finds the bot and sends commands or confirms a draft as if they were Marco. | M | H | Only Marco's numeric Telegram user id and chat id are accepted (allow-list from configuration); all other updates are dropped without a reply. Gateway uses long polling so no public inbound endpoint exists. | SC-1 | ASVS V4 access control |
 | T-02 | Incoming mail | S | Forged `From` or a misleading `Reply-To` makes the agent show or use a wrong address, so a reply reaches an attacker. | H | H | The reply goes to the `From` address only. If `Reply-To` differs the alert shows a warning and Marco must name it explicitly. The confirmation shows the exact recipient. Authentication results (SPF/DKIM/DMARC) are shown in the alert when present. | SC-2, SC-3 | ASVS V5 |
 | T-03 | Model call | T | **Prompt injection**: mail text tells the model to send mail, delete, hide itself, mark itself non-urgent, or reveal other mail. | H | H | The model has no tools. It returns one structured object (category, urgent, reason, summary) that is validated against a schema; anything else is rejected. Sending, labelling and alerting are done by deterministic code. Mail text is passed as data, never merged into instructions. Low confidence or a schema failure means the mail is treated as needs-attention, not as ignorable. | SC-4, SC-5 | OWASP LLM01, LLM06; guardrail-llm |
@@ -80,7 +80,7 @@ L = likelihood, I = impact (L/M/H). Risk is the combination; "High" needs a miti
 These are added to the spec as AC-15 to AC-30 and become tests in phase 5. They are written in Given/When/Then there.
 
 | id | Short form |
-|---|---|
+| --- | --- |
 | SC-1 | Telegram updates from any user or chat other than Marco's are ignored. |
 | SC-2 | A reply goes to the `From` address; a differing `Reply-To` is flagged and never used silently. |
 | SC-3 | The confirmation always shows the exact recipient, subject and body. |
@@ -101,7 +101,7 @@ These are added to the spec as AC-15 to AC-30 and become tests in phase 5. They 
 ## Accepted risks (owner: Marco; each needs an ADR in phase 3)
 
 | id | Risk | Why accepted |
-|---|---|---|
+| --- | --- | --- |
 | A-1 | Mail text (including third parties' data) is sent to the Anthropic API. | Marco chose the Anthropic API for his own personal mailbox (D8). Reduced by trimming and by no attachments (SC-9). |
 | A-2 | Short summaries of mail are delivered through Telegram's servers. | Marco chose Telegram as the only interface (D3). Reduced by short summaries only (SC-7). |
 
@@ -110,10 +110,10 @@ These are added to the spec as AC-15 to AC-30 and become tests in phase 5. They 
 - C4 of the spec changes: the reply goes to the `From` address; `Reply-To` is only used when Marco names it (T-02).
 - AC-15 to AC-30 are added from SC-1 to SC-16.
 
-## Open questions → decision-gate
+## Decisions from the open questions (Marco, 2026-11-08)
 
-1. **Hidden mail.** Mails that the agent judges not urgent never alert Marco. A wrong "not urgent" is invisible. Should there be a short daily overview of what was not alerted? (Spec says no alert for those; this is a product choice for Marco.)
-2. **Telegram transport.** Long polling is the recommendation (no public endpoint, in line with polling Gmail). Webhook would need a public HTTPS address.
-3. **Anthropic data handling.** Which account and data-retention setting for the API key (zero-retention if offered)?
-4. **Attachments.** The spec assumes they are never read. Confirm: an alert may say "has an attachment" but never shows its content.
-5. **Quiet hours** (carried over from the spec).
+1. Hidden mail: a daily overview of mails that were not alerted is sent (spec D10, AC-31).
+2. Telegram transport: long polling (spec D11).
+3. Anthropic data handling: Marco checks the retention setting of his API account (zero retention if offered) before the first run; recorded in the ADR for A-1 in phase 3.
+4. Attachments are never read or sent to the model (spec D12, AC-23).
+5. Quiet hours apply; alerts inside them are held and sent together afterwards (spec D13, AC-32).

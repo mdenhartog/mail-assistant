@@ -42,7 +42,7 @@ Marco, the single owner of the mailbox. There is no other user and no web screen
 ## Decisions made by Marco
 
 | # | Decision | Source |
-|---|---|---|
+| --- | --- | --- |
 | D1 | Categories are chosen by the agent, based on the mail that actually arrives. | INT-001 |
 | D2 | A mail may be moved to a category; it may never be deleted. | INT-001 |
 | D3 | Alerts go through Telegram only. | INT-001 |
@@ -52,6 +52,10 @@ Marco, the single owner of the mailbox. There is no other user and no web screen
 | D7 | "Needs immediate attention" means: a real person asks Marco personally for something and expects an answer; something with a deadline or an appointment; official or financial matters. Newsletters, advertising and automatic notifications are never urgent. | brainstorm (Marco accepted this proposal) |
 | D8 | Models are called through the Anthropic API, not Bedrock. This supersedes the model part of ADR-0005 and is recorded as a new ADR in phase 3. | brainstorm |
 | D9 | New mail is fetched by polling Gmail (approach A below). | brainstorm |
+| D10 | Marco gets one short Telegram overview per day of mails that were not alerted, so a wrong "not urgent" does not stay invisible. | threat model question 1 |
+| D11 | The Telegram gateway uses long polling, not a webhook. | threat model question 2 |
+| D12 | Attachments are never read or sent to the model. An alert may say that a mail has an attachment. | threat model question 4 |
+| D13 | There are quiet hours: alerts that arise inside them are held and sent together when they end. The hours are fixed in phase 3 (proposal C7). | threat model question 5 |
 
 ## My calls (Marco may change these)
 
@@ -61,6 +65,7 @@ Marco, the single owner of the mailbox. There is no other user and no web screen
 - C4: The reply is addressed to the `From` address of the mail in the same thread, in the language of the original mail. A different `Reply-To` is only used when Marco names it (threat model T-02).
 - C5: State (processed mails, pending alerts, confirmations, reminders) is kept in PostgreSQL (ADR-0007).
 - C6: A mail that Marco has not acted on stays open and is not alerted again until a reminder is due or Marco acts. The agent does not alert twice by itself.
+- C7: Quiet hours are 23:00 to 07:00 in Marco's time zone (Europe/Amsterdam), configurable. The daily overview (D10) is sent at 18:00, configurable. Marco confirms or changes these in phase 3.
 
 ## Behaviour
 
@@ -77,7 +82,7 @@ Marco, the single owner of the mailbox. There is no other user and no web screen
 Each criterion traces to INT-001 (what I want / must not do / how I will know it works).
 
 | ID | Criterion | Traces to |
-|---|---|---|
+| --- | --- | --- |
 | AC-1 | **Given** a new mail in the inbox, **when** the agent runs, **then** the mail carries exactly one category label within five minutes of arrival and nothing else about it is changed. | What I want |
 | AC-2 | **Given** any mail in any state, **when** the agent runs, **then** it is never deleted, trashed or marked as spam by the agent. | Must not do |
 | AC-3 | **Given** a new mail that meets D7, **when** it is processed, **then** Marco receives one Telegram message with sender, subject, summary, reason and the three actions. | What I want; How I will know |
@@ -91,12 +96,14 @@ Each criterion traces to INT-001 (what I want / must not do / how I will know it
 | AC-11 | **Given** a Telegram message from any chat other than Marco's, **when** it arrives, **then** it is ignored and nothing is read, sent or changed. | Must not do |
 | AC-12 | **Given** Gmail, Telegram or the model is unavailable, **when** the agent runs, **then** no mail is skipped or processed twice, and processing resumes when the service is back. | How I will know |
 | AC-13 | **Given** no existing category fits, **when** the agent categorises, **then** it creates a new category label under the prefix, up to the maximum, and never creates more. | What I want |
+| AC-31 | **Given** mails that were not alerted today, **when** the daily overview time arrives, **then** Marco receives one short Telegram message with counts per category and the mails the agent was unsure about, and no message when nothing was filed. | What I want (overview) |
+| AC-32 | **Given** an urgent mail that arrives inside quiet hours, **when** it is processed, **then** it is filed at once but its alert is held and sent together with other held alerts when the quiet hours end. | How I will know |
 | AC-14 | **Given** normal operation, **when** logs and errors are written, **then** mail bodies, addresses beyond what is needed, and the API key and tokens never appear in them or in URLs. | Must not do |
 
 ### Security acceptance criteria (from the threat model, `docs/security/mail-triage-threat-model.md`)
 
 | ID | Criterion | Threat |
-|---|---|---|
+| --- | --- | --- |
 | AC-15 | **Given** a Telegram update from a user or chat other than Marco's, **when** it arrives, **then** it is dropped without any reply or effect. | T-01 |
 | AC-16 | **Given** a mail whose `Reply-To` differs from `From`, **when** an alert is shown, **then** it is flagged, and a reply goes to `From` unless Marco names another address. | T-02 |
 | AC-17 | **Given** a draft, **when** it is shown for confirmation, **then** it always lists the exact recipient, subject and body. | T-02 |
@@ -125,7 +132,7 @@ Each criterion traces to INT-001 (what I want / must not do / how I will know it
 ## Approaches considered
 
 | Approach | Trade-off | Chosen |
-|---|---|---|
+| --- | --- | --- |
 | **A. Polling** the Gmail API every minute | Simple, works locally and on Kubernetes without a public address. Delay of at most a couple of minutes. | **Yes (Marco)** |
 | B. Push through Gmail watch and Pub/Sub | Near-instant, but needs a public HTTPS endpoint, Google Cloud Pub/Sub and renewal every 7 days; larger attack surface. | No |
 
