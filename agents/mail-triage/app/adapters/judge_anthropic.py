@@ -71,11 +71,19 @@ class DailyBudget:
         self._day = self._today()
         self._used = 0
 
-    def try_spend(self) -> bool:
-        """Take one call from today's budget; ``False`` when it is used up."""
+    def _roll_over(self) -> None:
         day = self._today()
         if day != self._day:
             self._day, self._used = day, 0
+
+    def remaining(self) -> int:
+        """Calls left today. Reading never spends."""
+        self._roll_over()
+        return max(self._limit - self._used, 0)
+
+    def try_spend(self) -> bool:
+        """Take one call from today's budget; ``False`` when it is used up."""
+        self._roll_over()
         if self._used >= self._limit:
             return False
         self._used += 1
