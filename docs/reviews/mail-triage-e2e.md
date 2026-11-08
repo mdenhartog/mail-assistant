@@ -53,6 +53,7 @@ headers, so for the newsletter and the automatic notice the body text alone is j
 | 6 | Send a Telegram message from a different account to the bot | No reply, no effect | AC-11 |
 | 7 | Read `docker compose logs mail-triage` and `select * from audit_log` | No mail text, no tokens, no key; audit rows hold ids and hashes only | AC-22, AC-24 |
 | 8 | In Gmail, check Trash and Spam | Nothing of the test mails was deleted | AC-2, AC-28 |
+| 9 | Before the first start, leave a few unread mails in the test inbox; then start the agent and watch for two to five minutes | Each of those unread mails carries exactly one `Assistant/...` label, is out of the inbox and still unread; at most 5 Telegram alerts come from them (the rest of the urgent ones appear in the 18:00 overview); read mail and mail outside the inbox are untouched; `select started_at, finished_at from catchup_state` shows one row that finishes; a restart does not process the mails again | AC-B1 to AC-B6, AC-B10 |
 
 ## Clean up
 
