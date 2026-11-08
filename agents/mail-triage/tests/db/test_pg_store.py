@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -403,3 +404,31 @@ async def test_given_backlog_alerts_in_any_state_and_a_normal_alert_when_counted
     await store.complete_backlog("o4", outcome(alert=None))  # urgent or not, no alert row: not counted
 
     assert await store.backlog_alerts() == 3
+
+
+async def test_given_urgent_and_normal_mail_without_alerts_when_listed_for_the_overview_then_urgent_is_set_only_for_urgent(
+    store: PgStore,
+) -> None:
+    urgent_without_alert = replace(outcome("Assistant/Finance"), urgent=True, alert=None)
+    for message_id, result in (("u1", urgent_without_alert), ("n1", outcome("Assistant/Newsletter"))):
+        assert await store.claim(message_id, f"t-{message_id}") is Claim.NEW
+        await store.complete_backlog(message_id, result)
+
+    filed = await store.filed_without_alert_since(NOW - timedelta(days=1))
+
+    assert {(mail.label, mail.urgent) for mail in filed} == {
+        ("Assistant/Finance", True),
+        ("Assistant/Newsletter", False),
+    }
+
+
+async def test_given_an_urgent_mail_filed_yesterday_when_the_next_overview_is_listed_then_it_is_not_listed_again(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    assert await store.claim("u1", "t-u1") is Claim.NEW
+    await store.complete_backlog("u1", replace(outcome("Assistant/Finance"), urgent=True, alert=None))
+    async with engine.begin() as connection:
+        await connection.execute(text("update mail_item set created_at = now() - interval '1 day'"))
+    start_of_today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    assert await store.filed_without_alert_since(start_of_today) == []

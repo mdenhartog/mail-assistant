@@ -35,6 +35,7 @@ class FiledMail:
     confidence: float
     sender: str
     subject: str
+    urgent: bool = False  # judged urgent but no alert was sent (the one-time catch-up caps its alerts, INT-003)
 
 
 class OverviewStore(Protocol):
@@ -69,9 +70,9 @@ def _name(label: str) -> str:
     return label.removeprefix(LABEL_PREFIX)
 
 
-def _unsure_line(mail: FiledMail) -> str:
-    who, what, where = _safe(mail.sender, SENDER_CHARS), _safe(mail.subject, SUBJECT_CHARS), _name(mail.label)
-    return f"• {who}: {what} ({_safe(where, 40)})"
+def _line(mail: FiledMail, *, with_label: bool) -> str:
+    who, what = _safe(mail.sender, SENDER_CHARS), _safe(mail.subject, SUBJECT_CHARS)
+    return f"• {who}: {what} ({_safe(_name(mail.label), 40)})" if with_label else f"• {who}: {what}"
 
 
 def _text(mails: list[FiledMail], listed: int) -> str:
@@ -80,9 +81,15 @@ def _text(mails: list[FiledMail], listed: int) -> str:
     unsure = [mail for mail in mails if mail.confidence < LOW_CONFIDENCE]
     if unsure:
         lines.append(f"\n<b>I was unsure about {len(unsure)}:</b>")
-        lines.extend(_unsure_line(mail) for mail in unsure[:listed])
+        lines.extend(_line(mail, with_label=True) for mail in unsure[:listed])
         if len(unsure) > listed:
             lines.append(f"…and {len(unsure) - listed} more")
+    urgent = [mail for mail in mails if mail.urgent]
+    if urgent:
+        lines.append(f"\n<b>Old mail that looked urgent ({len(urgent)}):</b>")
+        lines.extend(_line(mail, with_label=False) for mail in urgent[:listed])
+        if len(urgent) > listed:
+            lines.append(f"…and {len(urgent) - listed} more")
     return "\n".join(lines)
 
 

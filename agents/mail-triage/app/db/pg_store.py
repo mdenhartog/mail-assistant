@@ -330,7 +330,10 @@ class PgStore:
         )
         async with self._sessions() as session:
             items = (await session.execute(statement)).scalars().all()
-        return [FiledMail(i.label or "", i.confidence or 0.0, i.sender or REMOVED, i.subject or REMOVED) for i in items]
+        return [
+            FiledMail(i.label or "", i.confidence or 0.0, i.sender or REMOVED, i.subject or REMOVED, urgent=i.urgent)
+            for i in items
+        ]
 
     async def overview_sent(self, day: date) -> bool:
         """Whether the overview of this day was settled."""

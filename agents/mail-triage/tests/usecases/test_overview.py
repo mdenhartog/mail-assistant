@@ -155,3 +155,69 @@ async def test_given_hostile_text_and_many_mails_when_built_then_it_is_escaped_a
     assert len(text) <= 4096
     assert "<a href" not in text
     assert "<b>x</b>" not in text
+
+
+# ---- U-backlog-06: old mail that looked urgent but got no alert (INT-003, AC-B10) -----------------------------------
+
+
+def old_urgent(sender: str = "boss@example.com", subject: str = "Pay the invoice") -> FiledMail:
+    return FiledMail(label="Assistant/Finance", confidence=0.9, sender=sender, subject=subject, urgent=True)
+
+
+def test_given_urgent_mail_filed_without_an_alert_when_the_overview_is_built_then_it_gets_its_own_section() -> None:
+    from app.usecases.overview import build_overview
+
+    text = build_overview([filed("Assistant/Newsletter"), old_urgent()]).text
+
+    assert "Old mail that looked urgent (1)" in text
+    assert "boss@example.com: Pay the invoice" in text
+    assert "Today I filed 2 mails" in text  # the counts per category stay as they were
+
+
+def test_given_no_urgent_mail_without_an_alert_when_the_overview_is_built_then_the_text_is_unchanged() -> None:
+    from app.usecases.overview import build_overview
+
+    mails = [filed("Assistant/Newsletter"), filed("Assistant/Shipping", confidence=0.5)]
+
+    text = build_overview(mails).text
+
+    assert "Old mail" not in text
+    assert (
+        text
+        == build_overview([FiledMail(m.label, m.confidence, m.sender, m.subject, urgent=False) for m in mails]).text
+    )
+
+
+def test_given_markup_in_an_urgent_subject_when_the_overview_is_built_then_it_is_escaped_and_capped() -> None:
+    from app.usecases.overview import SUBJECT_CHARS, build_overview
+
+    text = build_overview([old_urgent(subject="<a href='https://evil.example'>click</a>" + "x" * 500)]).text
+
+    assert "<a href" not in text
+    assert "&lt;a href" in text
+    assert "x" * (SUBJECT_CHARS + 1) not in text
+
+
+def test_given_more_than_ten_urgent_mails_when_the_overview_is_built_then_ten_are_listed_and_the_rest_counted() -> None:
+    from app.core.alert_text import MAX_MESSAGE_CHARS
+    from app.usecases.overview import build_overview
+
+    mails = [old_urgent(subject=f"Urgent number {n}") for n in range(13)]
+
+    text = build_overview(mails).text
+
+    assert "Old mail that looked urgent (13)" in text
+    assert text.count("Urgent number") == 10
+    assert "…and 3 more" in text
+    assert len(text) <= MAX_MESSAGE_CHARS
+
+
+def test_given_an_urgent_mail_that_is_also_unsure_when_the_overview_is_built_then_it_is_listed_in_both_sections() -> (
+    None
+):
+    from app.usecases.overview import build_overview
+
+    text = build_overview([FiledMail("Assistant/Other", 0.4, "x@example.com", "Odd one", urgent=True)]).text
+
+    assert "I was unsure about 1" in text
+    assert "Old mail that looked urgent (1)" in text
