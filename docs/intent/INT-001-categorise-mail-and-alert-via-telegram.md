@@ -35,5 +35,5 @@ I am warned only when a mail really arrives that I have to respond to.
 ## Original wording
 
 > Wat ik graag wil met het nieuwe intent is dat de mail die binnenkomt gelezen wordt en gecategoriseerd wordt naar hetgeen waar deze voor nodig is. Je mag zelf categorieën verzinnen die handig zijn bij alle categorieën die binnenkomen. In mijn mail, zodat ik een beter overzicht ga krijgen van mijn mail. Op het moment dat er een mail binnenkomt, wil ik dat de agent mij waarschuwt als deze mail direct mijn aandacht nodig heeft. Dit waarschuwen moet gebeuren via Telegram en via Telegram moet ik een mail kunnen opgeven wat daarna de agent automatisch weer netjes verstuurt naar degene die de mail zou moeten ontvangen of waar ik snel zou op moeten replyen.
-
+>
 > Wat er nu misgaat met mijn mail is dat ik heel vaak daar geen tijd voor heb. Mijn persoonlijke mail. En daardoor soms mailtjes mis. Dat is niet heel handig. En dat wil ik verbeteren. Of dat ik weet of dat het werkt, is gewoon alleen wanneer er echt mail komt waarop ik moet reageren. Als ik dat niet mag doen, is mails verwijderen. Wat wel mag gebeuren, is een mail verplaatsen naar een correcte categorie, zodat ik die later kan bekijken.
