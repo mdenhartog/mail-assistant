@@ -127,7 +127,7 @@ Each criterion traces to INT-001 (what I want / must not do / how I will know it
 - Agent and Telegram gateway are separate containers in `agents/` and `channels/` (ADR-0005); Kubernetes via Helm and Argo CD in production (ADR-0012).
 - PostgreSQL for state (ADR-0007); Sentry and Grafana for operation (ADR-0013).
 - The mailbox holds personal data. Mail text goes to the Anthropic API; this is accepted by Marco for his own mailbox and must be handled in the threat model (phase 2).
-- `guardrail-gmail` does not exist in the kit's guardrail list and is not active in `CLAUDE.md`. It must be created with `guardrail-author` before building (phase 3b).
+- `guardrail-gmail` and `guardrail-google-calendar` exist in the kit and are active in `CLAUDE.md`. Design: `docs/design/mail-triage-design.md`; decisions: ADR-0017, ADR-0018, ADR-0019.
 
 ## Approaches considered
 

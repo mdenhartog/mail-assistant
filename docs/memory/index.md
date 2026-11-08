@@ -18,4 +18,7 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0014 · Model routing: automatic Haiku → Sonnet → Opus · area:model-routing · tags:llm,model-routing · decisions/ADR-0014-model-routing.md
 - ADR-0015 · Bug agent: fix mode · area:bug-agent · tags:bug-agent,automation · decisions/ADR-0015-bug-agent.md
 - ADR-0016 · Process autonomy: fixed gates only · area:process · tags:autonomy,gates · decisions/ADR-0016-process-autonomy.md
+- ADR-0017 · Models through the Anthropic API, not Amazon Bedrock · area:agent-platform · tags:llm,anthropic,bedrock · decisions/ADR-0017-anthropic-api.md
+- ADR-0018 · Mail triage: accepted data-disclosure risks · area:security · tags:privacy,anthropic,telegram · decisions/ADR-0018-mail-triage-accepted-risks.md
+- ADR-0019 · Mail triage: one new agent component with its own Telegram client · area:architecture · tags:mail-triage,agents,telegram · decisions/ADR-0019-mail-triage-architecture.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
