@@ -8,7 +8,19 @@ from __future__ import annotations
 
 from datetime import date, datetime  # noqa: TC003  # SQLAlchemy reads the annotations at runtime
 
-from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -38,6 +50,8 @@ class MailItem(Base):
     auth_spf: Mapped[str | None] = mapped_column(String(16))
     auth_dkim: Mapped[str | None] = mapped_column(String(16))
     auth_dmarc: Mapped[str | None] = mapped_column(String(16))
+    # Filed by the one-time catch-up of old unread mail (INT-003), so its alerts can be counted.
+    backlog: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Progress of the pipeline for this mail.
     note: Mapped[str | None] = mapped_column(String(80))
     failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -116,3 +130,14 @@ class PollState(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     history_id: Mapped[str | None] = mapped_column(String(32))
+
+
+class CatchupState(Base):
+    """When the one-time catch-up of old unread mail started and finished (a single row, INT-003)."""
+
+    __tablename__ = "catchup_state"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_catchup_state_single_row"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
