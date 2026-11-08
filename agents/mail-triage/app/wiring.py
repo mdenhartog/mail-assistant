@@ -107,6 +107,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     heartbeat: Path,
     now: Callable[[], datetime],
     new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
+    today: Callable[[], str] | None = None,
 ) -> Runner:
     """Wire the store, the adapters and the use cases into a runner."""
     store = PgStore(sessions)
@@ -114,7 +115,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     inbox = TelegramInbox(
         client, settings.telegram_bot_token, settings.telegram_allowed_user_id, settings.telegram_allowed_chat_id
     )
-    budget = DailyBudget(settings.daily_model_budget)  # one budget: the catch-up only gets what new mail leaves
+    budget = DailyBudget(settings.daily_model_budget, today)  # one budget: the catch-up only gets what new mail leaves
     judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
     snooze = SnoozeService(store, outbox, now)
     reply = ReplyService(store, mailbox, sender, outbox, own_address=own_address, now=now, new_id=new_id)  # type: ignore[arg-type]
