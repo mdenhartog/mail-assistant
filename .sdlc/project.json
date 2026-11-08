@@ -1,6 +1,140 @@
 {
   "kitVersion": "0.1.0",
-  "activeGuardrails": ["guardrail-python", "guardrail-fastapi", "guardrail-pydantic", "guardrail-sqlalchemy-alembic", "guardrail-pytest", "guardrail-typescript", "guardrail-react", "guardrail-react-router", "guardrail-tanstack-query", "guardrail-vite", "guardrail-tailwind", "guardrail-vitest-rtl", "guardrail-playwright", "guardrail-a11y", "guardrail-tls-certificates", "guardrail-docker", "guardrail-compose", "guardrail-kubernetes", "guardrail-helm", "guardrail-mcp-server", "guardrail-strands-agents", "guardrail-agent-memory", "guardrail-rag", "guardrail-a2a", "guardrail-llm", "guardrail-telegram"],
+  "activeGuardrails": [
+    "guardrail-python",
+    "guardrail-fastapi",
+    "guardrail-pydantic",
+    "guardrail-sqlalchemy-alembic",
+    "guardrail-pytest",
+    "guardrail-typescript",
+    "guardrail-react",
+    "guardrail-react-router",
+    "guardrail-tanstack-query",
+    "guardrail-vite",
+    "guardrail-tailwind",
+    "guardrail-vitest-rtl",
+    "guardrail-playwright",
+    "guardrail-a11y",
+    "guardrail-tls-certificates",
+    "guardrail-docker",
+    "guardrail-compose",
+    "guardrail-kubernetes",
+    "guardrail-helm",
+    "guardrail-mcp-server",
+    "guardrail-strands-agents",
+    "guardrail-agent-memory",
+    "guardrail-rag",
+    "guardrail-a2a",
+    "guardrail-llm",
+    "guardrail-telegram",
+    "guardrail-oauth2-oidc",
+    "guardrail-gmail",
+    "guardrail-google-calendar"
+  ],
   "ignoredDependencies": [],
-  "fastChecks": []
+  "fastChecks": [],
+  "setup": {
+    "projectKind": "scaffolded",
+    "workTracking": {
+      "specs": "repo-docs",
+      "specsPath": "docs/specs/",
+      "plansPath": "docs/plans/",
+      "approver": "Marco"
+    },
+    "sourceControl": {
+      "host": "github",
+      "repo": "mdenhartog/mail-assistant",
+      "mergeApprover": "Marco",
+      "ci": "github-actions",
+      "release": "release-please"
+    },
+    "databases": {
+      "relational": "postgresql",
+      "vector": "none",
+      "timeseries": "none",
+      "cache": "none"
+    },
+    "knowledgeMcp": [],
+    "gxp": false,
+    "mobile": "responsive-web",
+    "identity": {
+      "provider": "google-oauth2",
+      "scopes": ["openid", "email", "profile", "gmail", "calendar"]
+    },
+    "designProcess": "per-feature",
+    "designSystem": {
+      "source": "generate",
+      "style": "modern-ai-first",
+      "themes": ["light", "dark"],
+      "wcag": "AA",
+      "languages": ["en"]
+    },
+    "integrations": [
+      {
+        "system": "gmail",
+        "guardrail": "guardrail-gmail",
+        "direction": "outbound",
+        "interface": "rest",
+        "firstFeature": null
+      },
+      {
+        "system": "google-calendar",
+        "guardrail": "guardrail-google-calendar",
+        "direction": "outbound",
+        "interface": "rest",
+        "firstFeature": null
+      }
+    ],
+    "agentPlatform": {
+      "platform": "self",
+      "channels": ["telegram"]
+    },
+    "bugAgent": {
+      "mode": "fix",
+      "watchWindowHours": 48,
+      "maxAttempts": 3,
+      "maxOpenPRs": 3
+    },
+    "observability": {
+      "errorTracking": "sentry",
+      "metrics": "grafana",
+      "syntheticJourneys": "daily"
+    }
+  },
+  "models": {
+    "routing": "auto",
+    "tiers": {
+      "light": "claude-haiku-4-5-20251001",
+      "standard": "claude-sonnet-4-6",
+      "complex": "claude-opus-4-7"
+    }
+  },
+  "workflow": {
+    "phases": {
+      "prototype": "per-feature",
+      "gxpTrack": "off",
+      "mobile": "responsive-web",
+      "release": "kubernetes"
+    },
+    "integrations": [
+      {
+        "system": "gmail",
+        "guardrail": "guardrail-gmail",
+        "style": "rest",
+        "firstFeature": null
+      },
+      {
+        "system": "google-calendar",
+        "guardrail": "guardrail-google-calendar",
+        "style": "rest",
+        "firstFeature": null
+      }
+    ],
+    "routing": {
+      "specs": "repo-docs",
+      "discovery": "repo-docs"
+    },
+    "extraApprovals": [],
+    "productionGate": ["user"]
+  }
 }

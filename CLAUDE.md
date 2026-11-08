@@ -13,7 +13,7 @@ All project artefacts are written in English: code, comments, docs, specs, ADRs,
 - Local: `docker compose --profile dev up` · production: Kubernetes via Helm + Argo CD (`deploy/`)
 
 ## Active guardrails
-guardrail-python, guardrail-fastapi, guardrail-pydantic, guardrail-sqlalchemy-alembic, guardrail-pytest, guardrail-typescript, guardrail-react, guardrail-react-router, guardrail-tanstack-query, guardrail-vite, guardrail-tailwind, guardrail-vitest-rtl, guardrail-playwright, guardrail-a11y, guardrail-tls-certificates, guardrail-docker, guardrail-compose, guardrail-kubernetes, guardrail-helm, guardrail-mcp-server, guardrail-strands-agents, guardrail-agent-memory, guardrail-rag, guardrail-a2a, guardrail-llm, guardrail-telegram
+guardrail-python, guardrail-fastapi, guardrail-pydantic, guardrail-sqlalchemy-alembic, guardrail-pytest, guardrail-typescript, guardrail-react, guardrail-react-router, guardrail-tanstack-query, guardrail-vite, guardrail-tailwind, guardrail-vitest-rtl, guardrail-playwright, guardrail-a11y, guardrail-tls-certificates, guardrail-docker, guardrail-compose, guardrail-kubernetes, guardrail-helm, guardrail-mcp-server, guardrail-strands-agents, guardrail-agent-memory, guardrail-rag, guardrail-a2a, guardrail-llm, guardrail-telegram, guardrail-oauth2-oidc, guardrail-gmail, guardrail-google-calendar
 
 Load a guardrail only when you touch code of that type. New language/framework/system: `/sdlc:add-guardrail <name>`.
 
