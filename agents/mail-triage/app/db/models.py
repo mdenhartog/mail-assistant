@@ -6,9 +6,9 @@ one exception is ``draft.body``, the reply Marco has written himself, which is n
 
 from __future__ import annotations
 
-from datetime import datetime  # noqa: TC003  # SQLAlchemy reads the annotations at runtime
+from datetime import date, datetime  # noqa: TC003  # SQLAlchemy reads the annotations at runtime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -28,6 +28,30 @@ class MailItem(Base):
     urgent: Mapped[bool] = mapped_column(Boolean, default=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Capped mail-derived content for alerts and the overview, cleared after 30 days (ADR-0020). Never the body.
+    sender: Mapped[str | None] = mapped_column(String(320))
+    subject: Mapped[str | None] = mapped_column(String(300))
+    reply_to: Mapped[str | None] = mapped_column(String(320))
+    reason: Mapped[str | None] = mapped_column(String(200))
+    summary: Mapped[str | None] = mapped_column(String(400))
+    has_attachment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    auth_spf: Mapped[str | None] = mapped_column(String(16))
+    auth_dkim: Mapped[str | None] = mapped_column(String(16))
+    auth_dmarc: Mapped[str | None] = mapped_column(String(16))
+    # Progress of the pipeline for this mail.
+    note: Mapped[str | None] = mapped_column(String(80))
+    failures: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    abandoned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+
+class OverviewLog(Base):
+    """One row per day whose overview was settled (sent, or skipped because nothing was filed)."""
+
+    __tablename__ = "overview_log"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    settled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class Alert(Base):
@@ -40,6 +64,8 @@ class Alert(Base):
     state: Mapped[str] = mapped_column(String(16))
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    awaiting_input: Mapped[str | None] = mapped_column(String(16))  # what Marco is asked to type next
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
