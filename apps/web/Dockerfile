@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# Build context: repository root (the web app depends on workspace packages).
+# Renovate pins these base images to digests (guardrail-docker).
+FROM node:24-bookworm-slim AS build
+ENV PNPM_HOME=/pnpm PATH="/pnpm:$PATH" CI=1
+RUN corepack enable
+WORKDIR /repo
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY apps/web/package.json apps/web/
+COPY packages/tokens/package.json packages/tokens/
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --filter web...
+COPY packages/tokens packages/tokens
+COPY apps/web apps/web
+RUN pnpm --filter web exec vite build
+
+FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
+COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /repo/apps/web/dist /usr/share/nginx/html
+USER 101
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=3s CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]

@@ -1,0 +1,13 @@
+# Local run of the tools MCP server: docker compose --profile components up tools
+services:
+  tools:
+    profiles: ["components"]
+    build: { context: . }
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp"]
+    environment:
+      # Empty is allowed so that other docker compose commands work; the server refuses to start without a 32+ character token.
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN_TOOLS:-}
+    ports: ["127.0.0.1:${PORT_TOOLS:-8100}:8000"]

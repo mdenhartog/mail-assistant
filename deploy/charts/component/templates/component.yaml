@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "component.name" . }}
+  labels: {{- include "component.labels" . | nindent 4 }}
+  {{- with .Values.serviceAccountAnnotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: {{ not (empty .Values.serviceAccountAnnotations) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "component.name" . }}
+  labels: {{- include "component.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels: {{- include "component.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "component.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "component.name" . }}
+      automountServiceAccountToken: {{ not (empty .Values.serviceAccountAnnotations) }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "component.selector" . | nindent 14 }}
+      containers:
+        - name: component
+          image: {{ include "component.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: {{ .Values.port }} }
+          env:
+            - { name: PORT, value: {{ .Values.port | quote }} }
+            {{- range $k, $v := .Values.env }}
+            - { name: {{ $k }}, value: {{ $v | quote }} }
+            {{- end }}
+          {{- if .Values.envFromSecret }}
+          envFrom:
+            - secretRef: { name: {{ .Values.envFromSecret }} }
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          startupProbe:
+            httpGet: { path: {{ .Values.healthPath }}, port: http }
+            failureThreshold: 30
+            periodSeconds: 2
+          livenessProbe:
+            httpGet: { path: {{ .Values.healthPath }}, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: {{ .Values.healthPath }}, port: http }
+            periodSeconds: 5
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: aws, mountPath: /home/app/.aws }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+        - { name: aws, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "component.name" . }}
+  labels: {{- include "component.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "component.selector" . | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.port }}, targetPort: http }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "component.name" . }}
+  labels: {{- include "component.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels: {{- include "component.selector" . | nindent 6 }}
+{{- if .Values.networkPolicy.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "component.name" . }}
+  labels: {{- include "component.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "component.selector" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    {{- if .Values.networkPolicy.allowFromSameNamespace }}
+    - from:
+        - podSelector: {}
+      ports: [{ port: {{ .Values.port }} }]
+    {{- end }}
+    {{- if .Values.networkPolicy.allowFromIngress }}
+    - from:
+        - namespaceSelector: {}
+      ports: [{ port: {{ .Values.port }} }]
+    {{- end }}
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    - ports: [{ port: 443 }]
+    {{- range .Values.networkPolicy.extraEgressPorts }}
+    - ports: [{ port: {{ . }} }]
+    {{- end }}
+    {{- if .Values.networkPolicy.allowToSameNamespace }}
+    - to:
+        - podSelector: {}
+    {{- end }}
+{{- end }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "component.name" . }}
+  labels: {{- include "component.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ .Values.ingress.clusterIssuer }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  tls:
+    - hosts: [{{ required "ingress.host is required when ingress.enabled" .Values.ingress.host }}]
+      secretName: {{ include "component.name" . }}-tls
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - { path: /, pathType: Prefix, backend: { service: { name: {{ include "component.name" . }}, port: { name: http } } } }
+{{- end }}

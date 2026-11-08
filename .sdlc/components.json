@@ -1,0 +1,34 @@
+{
+  "components": [
+    {
+      "name": "tools",
+      "kind": "mcp-server",
+      "path": "mcp-servers/tools",
+      "protocol": "MCP",
+      "port": 8100,
+      "containerPort": 8000,
+      "memory": false,
+      "auth": "iam"
+    },
+    {
+      "name": "assistant",
+      "kind": "agent",
+      "path": "agents/assistant",
+      "protocol": "HTTP",
+      "port": 8200,
+      "containerPort": 8080,
+      "memory": true,
+      "auth": "iam"
+    },
+    {
+      "name": "chat-gateway",
+      "kind": "channel",
+      "path": "channels/chat-gateway",
+      "protocol": "HTTP",
+      "port": 8300,
+      "containerPort": 8000,
+      "memory": false,
+      "auth": "iam"
+    }
+  ]
+}

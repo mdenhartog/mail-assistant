@@ -1,0 +1,79 @@
+# Commit-level checks (secure-by-design, layer 1). Renovate keeps the revs current.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^deploy/charts/.*/templates/
+      - id: check-json
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.15.1
+    hooks:
+      - id: hadolint-docker
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.27.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies: ["@commitlint/config-conventional"]
+  # Docker-based so they also work on Windows (semgrep has no native Windows build).
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged)
+        language: docker_image
+        entry: zricethezav/gitleaks:v8.30.1 git --pre-commit --redact --staged --verbose
+        pass_filenames: false
+      - id: semgrep
+        name: semgrep (OWASP + secrets + kit rules)
+        language: docker_image
+        entry: -e SEMGREP_SEND_METRICS=off semgrep/semgrep:1.182.0 semgrep scan --config p/owasp-top-ten --config p/secrets --config .semgrep/ --error --skip-unknown-extensions
+        types_or: [python, ts, tsx, javascript]
+  # Called directly (no `bash -c`): on Windows `bash` may resolve to WSL, where uv/node are absent.
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright (backend)
+        entry: uv run --directory backend pyright
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+      - id: bandit
+        name: bandit (backend)
+        entry: uv run --directory backend bandit -q -c pyproject.toml -r app
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+      - id: web-lint
+        name: eslint (web)
+        entry: pnpm --filter web lint
+        language: system
+        files: ^(apps/web|packages)/
+        pass_filenames: false
+      - id: web-typecheck
+        name: tsc (web)
+        entry: pnpm --filter web typecheck
+        language: system
+        files: ^(apps/web|packages)/
+        pass_filenames: false
+      - id: tokens-up-to-date
+        name: design tokens generated
+        entry: node packages/tokens/build.mjs --check
+        language: system
+        files: ^packages/tokens/
+        pass_filenames: false

@@ -1,0 +1,28 @@
+# One release per component: helm upgrade --install <name> deploy/charts/component -f deploy/envs/<env>/<name>.yaml
+# Secure defaults (guardrail-kubernetes / guardrail-helm); an environment file overrides only what differs.
+nameOverride: ""
+image: { repository: ghcr.io/OWNER/mail-assistant/component, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
+replicas: 2
+port: 8000
+# Plain settings. Secrets never go here: name an existing Secret in envFromSecret (created by your secret store).
+env: {}
+envFromSecret: ""
+healthPath: /ping
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { cpu: "1", memory: 1Gi }
+# Agents that call Bedrock or AgentCore from Kubernetes need AWS credentials: annotate the service account
+# (IRSA on EKS, Workload Identity elsewhere), e.g. eks.amazonaws.com/role-arn: arn:aws:iam::<account>:role/<role>
+serviceAccountAnnotations: {}
+ingress:
+  enabled: false        # channel gateways (Telegram, WhatsApp webhooks) need a public HTTPS endpoint
+  className: ""
+  host: ""
+  clusterIssuer: letsencrypt-prod
+networkPolicy:
+  enabled: true
+  allowFromSameNamespace: true   # other components of this project may call this one
+  allowFromIngress: false        # set true for channel gateways
+  allowToSameNamespace: true     # this component may call other components of the project (agent -> MCP server, gateway -> agent)
+  extraEgressPorts: []           # more outbound ports than 443, for example a database: [5432]
+podDisruptionBudget: { minAvailable: 1 }

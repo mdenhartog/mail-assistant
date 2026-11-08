@@ -1,0 +1,64 @@
+[project]
+name = "mail-assistant-tools"
+version = "0.1.0"
+description = "tools MCP server"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=2.3.0",
+    "pydantic>=2.14.3",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "httpx2>=2.16.0",
+    "pip-audit>=2.10.1",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "TC", "RUF", "ASYNC", "S", "PT", "DTZ", "ERA", "TID", "ANN", "D", "C90", "PL"]
+ignore = ["D100", "D104"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D", "ANN", "PLR2004"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+omit = ["app/__main__.py", "app/healthcheck.py"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

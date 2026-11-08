@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+# eslint 9 is flagged deprecated, but eslint-plugin-react and eslint-plugin-jsx-a11y do not support eslint 10 yet
+# (guardrail-typescript; the cap is tracked in plugins/sdlc/guardrails/stack.json). Remove this when they do.
+allowedDeprecatedVersions:
+  eslint: "9"
+overrides:
+  minimatch@>=7.0.0 <11.0.1: ^11.0.1

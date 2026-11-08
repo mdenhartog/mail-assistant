@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/coverage
+**/playwright-report
+**/test-results
+**/.venv
+**/__pycache__
+.git
+.worktrees
+.env
+.env.*
+!.env.example

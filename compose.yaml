@@ -1,0 +1,93 @@
+# Local stack (guardrail-compose). Profiles:
+#   dev       — hot reload backend + Vite dev server
+#   prod-like — the production images (read-only, non-root) for e2e, ZAP and demos
+#   test      — runs the backend and web test suites in containers, like CI
+# db and mail always run. The IdP (Keycloak) is added once identity-architecture decides on it.
+name: mail-assistant
+include:
+  - channels/chat-gateway/compose.yaml
+  - agents/assistant/compose.yaml
+  - mcp-servers/tools/compose.yaml
+
+x-hardening: &hardening
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  tmpfs: ["/tmp"]
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
+    volumes: ["db-data:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      retries: 10
+
+  mail:
+    image: axllent/mailpit:v1.32.0
+    ports: ["127.0.0.1:${MAIL_PORT:-8025}:8025"]
+
+  api-dev:
+    profiles: ["dev"]
+    build: { context: ./backend, target: build }
+    command: ["uv", "run", "--frozen", "uvicorn", "app.main:create_app", "--factory", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    working_dir: /srv
+    environment:
+      APP_ENVIRONMENT: development
+    volumes: ["./backend/app:/srv/app"]
+    ports: ["127.0.0.1:${API_DEV_PORT:-8000}:8000"]
+    depends_on: { db: { condition: service_healthy } }
+
+  web-dev:
+    profiles: ["dev"]
+    image: node:24-bookworm-slim
+    working_dir: /repo
+    command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm --filter web dev"]
+    volumes: [".:/repo", "web-node-modules:/repo/node_modules"]
+    ports: ["127.0.0.1:${WEB_DEV_PORT:-5173}:5173"]
+
+  api:
+    profiles: ["prod-like"]
+    <<: *hardening
+    build: { context: ./backend }
+    environment:
+      APP_ENVIRONMENT: production
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 5s
+      retries: 10
+    depends_on: { db: { condition: service_healthy } }
+
+  web:
+    profiles: ["prod-like"]
+    <<: *hardening
+    tmpfs: ["/tmp", "/var/cache/nginx"]
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
+    depends_on: { api: { condition: service_healthy } }
+
+  api-test:
+    profiles: ["test"]
+    build: { context: ./backend, target: build }
+    working_dir: /srv
+    command: ["sh", "-c", "uv sync --frozen && uv run pytest"]
+    volumes: ["./backend:/srv"]
+    environment:
+      APP_ENVIRONMENT: test
+
+  web-test:
+    profiles: ["test"]
+    image: node:24-bookworm-slim
+    working_dir: /repo
+    command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm -r test"]
+    volumes: [".:/repo", "web-node-modules:/repo/node_modules"]
+
+volumes:
+  db-data:
+  web-node-modules:

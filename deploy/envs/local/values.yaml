@@ -1,0 +1,13 @@
+# kind cluster (/sdlc:k8s-local). Images are loaded into kind from the local prod-like build.
+api:
+  image: { repository: "mail-assistant-api", tag: "latest", pullPolicy: Never }
+  replicas: 1
+  autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 1, targetCPUUtilizationPercentage: 70 }
+web:
+  image: { repository: "mail-assistant-web", tag: "latest", pullPolicy: Never }
+  replicas: 1
+  autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 1, targetCPUUtilizationPercentage: 70 }
+ingress:
+  host: app.localtest.me
+  clusterIssuer: selfsigned-local
+podDisruptionBudget: { minAvailable: 0 }

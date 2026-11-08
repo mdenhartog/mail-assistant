@@ -1,0 +1,30 @@
+# Secure defaults (guardrail-kubernetes / guardrail-helm). Environments override only what differs.
+api:
+  image: { repository: ghcr.io/mdenhartog/mail-assistant/api, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
+  replicas: 2
+  port: 8000
+  env:
+    APP_ENVIRONMENT: production
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
+
+web:
+  image: { repository: ghcr.io/mdenhartog/mail-assistant/web, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
+  replicas: 2
+  port: 8080
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits: { cpu: 250m, memory: 128Mi }
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPUUtilizationPercentage: 70 }
+
+ingress:
+  enabled: true
+  className: ""
+  host: app.example.com
+  clusterIssuer: letsencrypt-prod
+  hsts: true
+
+podDisruptionBudget: { minAvailable: 1 }
+networkPolicy: { enabled: true }

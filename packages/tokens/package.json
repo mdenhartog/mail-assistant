@@ -1,0 +1,16 @@
+{
+  "name": "@mail-assistant/tokens",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./tokens.css": "./tokens.css",
+    "./theme.native.json": "./theme.native.json"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test",
+    "lint": "node build.mjs --check",
+    "typecheck": "node -e \"\""
+  }
+}

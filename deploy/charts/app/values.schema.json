@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["api", "web", "ingress", "podDisruptionBudget", "networkPolicy"],
+  "definitions": {
+    "image": {
+      "type": "object",
+      "required": ["repository", "pullPolicy"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["IfNotPresent", "Always", "Never"] }
+      }
+    },
+    "component": {
+      "type": "object",
+      "required": ["image", "replicas", "port", "resources", "autoscaling"],
+      "properties": {
+        "image": { "$ref": "#/definitions/image" },
+        "replicas": { "type": "integer", "minimum": 1 },
+        "port": { "type": "integer", "minimum": 1025, "maximum": 65535 },
+        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "resources": {
+          "type": "object",
+          "required": ["requests", "limits"],
+          "properties": {
+            "requests": { "type": "object", "required": ["cpu", "memory"] },
+            "limits": { "type": "object", "required": ["cpu", "memory"] }
+          }
+        },
+        "autoscaling": {
+          "type": "object",
+          "required": ["enabled", "minReplicas", "maxReplicas", "targetCPUUtilizationPercentage"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "minReplicas": { "type": "integer", "minimum": 1 },
+            "maxReplicas": { "type": "integer", "minimum": 1 },
+            "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "api": { "$ref": "#/definitions/component" },
+    "web": { "$ref": "#/definitions/component" },
+    "ingress": {
+      "type": "object",
+      "required": ["enabled", "host", "clusterIssuer", "hsts"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string", "minLength": 1 },
+        "clusterIssuer": { "type": "string", "minLength": 1 },
+        "hsts": { "type": "boolean" }
+      }
+    },
+    "podDisruptionBudget": { "type": "object", "required": ["minAvailable"] },
+    "networkPolicy": { "type": "object", "required": ["enabled"], "properties": { "enabled": { "type": "boolean" } } }
+  }
+}

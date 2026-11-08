@@ -1,0 +1,28 @@
+# Local run of the chat-gateway gateway: docker compose --profile components up chat-gateway
+# Telegram and WhatsApp must reach it over public HTTPS: use a tunnel for local tests (see README.md).
+services:
+  chat-gateway:
+    profiles: ["components"]
+    build: { context: . }
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp"]
+    environment:
+      AGENT_BACKEND: ${AGENT_BACKEND_CHAT_GATEWAY:-http}
+      AGENT_URL: ${AGENT_URL_CHAT_GATEWAY:-}
+      AGENT_TOKEN: ${AGENT_TOKEN_CHAT_GATEWAY:-}
+      AGENT_RUNTIME_ARN: ${AGENT_RUNTIME_ARN_CHAT_GATEWAY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      TELEGRAM_ALLOWED_CHAT_IDS: ${TELEGRAM_ALLOWED_CHAT_IDS:-}
+      WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+      WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+      WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_ALLOWED_NUMBERS: ${WHATSAPP_ALLOWED_NUMBERS:-}
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    ports: ["127.0.0.1:${PORT_CHAT_GATEWAY:-8300}:8000"]

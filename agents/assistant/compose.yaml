@@ -1,0 +1,28 @@
+# Local run of the assistant agent: docker compose --profile components up assistant
+# AWS credentials for Bedrock come from your environment (AWS_PROFILE or AWS_ACCESS_KEY_ID...), never from this file.
+services:
+  assistant:
+    profiles: ["components"]
+    build: { context: . }
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp", "/home/app/.aws"]
+    environment:
+      AGENT_PROTOCOL: http
+      PORT: "8080"
+      # Who may call the agent: a bearer token (the channel gateway sends it as AGENT_TOKEN). The agent refuses to start without one.
+      AGENT_AUTH_MODE: ${AGENT_AUTH_MODE_ASSISTANT:-token}
+      AGENT_AUTH_TOKEN: ${AGENT_AUTH_TOKEN_ASSISTANT:-}
+      MEMORY_BACKEND: ${MEMORY_BACKEND_ASSISTANT:-local}
+      MEMORY_ID: ${MEMORY_ID_ASSISTANT:-}
+      AGENT_MODEL_ID: ${AGENT_MODEL_ID:-}
+      AGENT_MCP_URLS: ${AGENT_MCP_URLS_ASSISTANT:-}
+      AGENT_MCP_TOKEN: ${AGENT_MCP_TOKEN_ASSISTANT:-}
+      AGENT_MCP_RUNTIME_ARNS: ${AGENT_MCP_RUNTIME_ARNS_ASSISTANT:-}
+      KNOWLEDGE_BASE_ID: ${KNOWLEDGE_BASE_ID:-}
+      AWS_REGION: ${AWS_REGION:-eu-west-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+    ports: ["127.0.0.1:${PORT_ASSISTANT:-8200}:8080"]

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: component
+description: One agent, MCP server or channel gateway of mail-assistant (install once per component)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

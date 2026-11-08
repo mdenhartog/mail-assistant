@@ -1,0 +1,81 @@
+# Custom rules backing the kit's guardrails. Add a rule here when a guardrail's NEVER item can be
+# detected statically (guardrail-author step 3).
+rules:
+  - id: kit-token-in-web-storage
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: "Tokens must not be stored in localStorage/sessionStorage (guardrail-oauth2-oidc, guardrail-react)."
+    pattern-either:
+      - pattern: localStorage.setItem($KEY, ...)
+      - pattern: sessionStorage.setItem($KEY, ...)
+    metavariable-regex:
+      metavariable: $KEY
+      regex: (?i).*token.*
+
+  - id: kit-tls-verification-disabled
+    languages: [python]
+    severity: ERROR
+    message: "Disabling certificate validation is forbidden (guardrail-tls-certificates)."
+    pattern-either:
+      - pattern: httpx.$CLIENT(..., verify=False, ...)
+      - pattern: httpx2.$CLIENT(..., verify=False, ...)
+      - pattern: requests.$METHOD(..., verify=False, ...)
+
+  - id: kit-http-client-without-timeout
+    languages: [python]
+    severity: WARNING
+    message: "Set an explicit timeout on every outbound HTTP client (guardrail-api-client)."
+    patterns:
+      - pattern-either:
+          - pattern: httpx.AsyncClient(...)
+          - pattern: httpx.Client(...)
+      - pattern-not: httpx.AsyncClient(..., timeout=$T, ...)
+      - pattern-not: httpx.Client(..., timeout=$T, ...)
+      - pattern-not: httpx.AsyncClient(..., transport=$TR, ...)
+
+  - id: kit-httpx2-client-without-timeout
+    languages: [python]
+    severity: WARNING
+    message: "Set an explicit timeout on every outbound HTTP client (guardrail-api-client)."
+    patterns:
+      - pattern-either:
+          - pattern: httpx2.AsyncClient(...)
+          - pattern: httpx2.Client(...)
+      - pattern-not: httpx2.AsyncClient(..., timeout=$T, ...)
+      - pattern-not: httpx2.Client(..., timeout=$T, ...)
+      - pattern-not: httpx2.AsyncClient(..., transport=$TR, ...)
+
+  - id: kit-bedrock-model-id-literal
+    languages: [python]
+    severity: WARNING
+    message: "Take the Bedrock model id or inference profile from configuration, not from a literal (guardrail-bedrock)."
+    paths:
+      exclude: ["**/tests/**"]
+    pattern-regex: '["''](?:(?:us|eu|apac|global|us-gov)\.)?(?:anthropic|amazon|meta|mistral|cohere|ai21|deepseek|openai|qwen)\.[a-z0-9][a-z0-9.-]*-v\d+(?::\d+)?["'']'
+
+  - id: kit-module-level-loader-option
+    languages: [python]
+    severity: ERROR
+    message: "Do not define loader options at module level (guardrail-sqlalchemy-alembic)."
+    pattern-either:
+      - pattern: $X = selectinload(...)
+      - pattern: $X = joinedload(...)
+    paths:
+      include: ["backend/app/**"]
+
+  - id: kit-mutation-schema-without-forbid
+    languages: [python]
+    severity: WARNING
+    message: "Request schemas for mutations need model_config = ConfigDict(extra='forbid') (guardrail-pydantic)."
+    patterns:
+      - pattern: |
+          class $NAME(BaseModel):
+              ...
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: .*(Create|Update|Patch)$
+      - pattern-not: |
+          class $NAME(BaseModel):
+              ...
+              model_config = ConfigDict(..., extra="forbid", ...)
+              ...

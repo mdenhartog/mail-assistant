@@ -1,0 +1,6 @@
+{
+  "kitVersion": "0.1.0",
+  "activeGuardrails": ["guardrail-python", "guardrail-fastapi", "guardrail-pydantic", "guardrail-sqlalchemy-alembic", "guardrail-pytest", "guardrail-typescript", "guardrail-react", "guardrail-react-router", "guardrail-tanstack-query", "guardrail-vite", "guardrail-tailwind", "guardrail-vitest-rtl", "guardrail-playwright", "guardrail-a11y", "guardrail-tls-certificates", "guardrail-docker", "guardrail-compose", "guardrail-kubernetes", "guardrail-helm", "guardrail-mcp-server", "guardrail-strands-agents", "guardrail-agent-memory", "guardrail-rag", "guardrail-a2a", "guardrail-llm", "guardrail-telegram"],
+  "ignoredDependencies": [],
+  "fastChecks": []
+}

@@ -1,0 +1,77 @@
+[project]
+name = "mail-assistant-api"
+version = "0.1.0"
+description = "Mail Assistant backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.162.2",
+    "pydantic>=2.14.3",
+    "pydantic-settings>=2.16.2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "deptry>=0.25.1",
+    "diff-cover>=11.0.1",
+    "httpx>=0.28.1",
+    "hypothesis>=6.170.15",
+    "pip-audit>=2.10.1",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.4.1.post1",
+    "pytest-cov>=7.1.0",
+    "respx>=0.23.1",
+    "ruff>=0.17.4",
+    "vulture>=2.16",
+    "xenon>=0.9.3",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "TC", "RUF", "ASYNC", "S", "PT", "DTZ", "ERA", "TID", "ANN", "D", "C90", "PL"]
+ignore = ["D100", "D104"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D", "ANN", "PLR2004"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-q --strict-markers --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90"
+
+[tool.coverage.run]
+omit = ["app/__main__.py"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["uvicorn"]  # used as the server in the Dockerfile, not imported
+
+[tool.vulture]
+paths = ["app"]
+min_confidence = 80
