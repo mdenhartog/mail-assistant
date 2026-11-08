@@ -29,6 +29,16 @@
       "containerPort": 8000,
       "memory": false,
       "auth": "iam"
+    },
+    {
+      "name": "mail-triage",
+      "kind": "agent",
+      "path": "agents/mail-triage",
+      "protocol": "HTTP",
+      "port": 8201,
+      "containerPort": 8080,
+      "memory": true,
+      "auth": "iam"
     }
   ]
 }

@@ -1,0 +1,18 @@
+# Local run of the mail-triage agent: docker compose --profile components up mail-triage
+# The agent has no inbound port: it polls Gmail and Telegram. Secrets come from your .env, never from this file.
+services:
+  mail-triage:
+    profiles: ["components"]
+    build: { context: . }
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    tmpfs: ["/tmp"]
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_USER_ID: ${TELEGRAM_ALLOWED_USER_ID:-}
+      TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID:-}
+      MODEL_SMALL: ${MAIL_TRIAGE_MODEL_SMALL:-}
+      MODEL_LARGE: ${MAIL_TRIAGE_MODEL_LARGE:-}
+      DATABASE_URL: ${MAIL_TRIAGE_DATABASE_URL:-}
