@@ -162,6 +162,9 @@ def test_given_the_compose_service_when_read_then_it_is_hardened_and_starts_with
     assert "dev" in service["profiles"]
     assert service["depends_on"]["db"]["condition"] == "service_healthy"
     assert "ports" not in service
+    check = service["healthcheck"]["test"]  # guardrail-compose: a healthcheck on every service
+    assert check[0] == "CMD"
+    assert "/tmp/heartbeat" in " ".join(check)  # noqa: S108 - the container's own tmpfs
 
 
 def test_given_the_compose_file_when_read_then_it_holds_no_secret_value() -> None:
