@@ -2,7 +2,7 @@
 id: INT-004
 title: Let me choose the mail categories myself
 originator: Marco
-status: draft
+status: confirmed
 date: 2026-11-08
 ---
 
@@ -19,8 +19,9 @@ As answered by Marco on 2026-11-08:
 - A mail that fits none of my categories goes into the **"other" category**.
 - When I change the list, the agent **sorts the mail it has already filed again**, so old mail follows the new list too.
 - I **always see what is going to be moved before it is moved**. I can approve it **all at once and also mail by mail**; both must be possible.
-- Sorting again covers **all mail**, not only the mail the agent has filed itself.
-- I sign in to the web application with **Google (OAuth2)**. My own account must work, **and signing in with another account must also be possible**.
+- Sorting again covers **all mail that is in the categories**, but **not the mail in the spam, deleted (trash) and archive folders**.
+- I sign in to the web application with **Google (OAuth2)**. My own account must work, **and another Google account must also be able to sign in**.
+- I can **start several agents, each handling a different mailbox**.
 - When I change or delete a category, **the language model decides where each mail of that category goes**.
 
 ## Why (the problem, who has it, how often)
@@ -41,9 +42,10 @@ Marco, for his personal mailbox. Today the agent invents the categories itself. 
 
 ## Open questions
 
-- "All mail" is a large scope: sorting again may touch every mail in the mailbox, including mail I already read and mail that is old. Is that what is meant, or does "all" mean all mail of the agent's own labels and the inbox? Is there any mail that must never be moved (for example starred or important mail)? (Marco)
+- The agent files mail by removing it from the inbox, which Gmail itself calls archiving. Which "archive" is meant to stay out of the sorting: mail that I archived myself without any category label? And what exactly counts as "in the categories": the mails that carry one of the agent's category labels? (Marco)
 - What does the overview of what will move show (the mail, from which category, to which category), and how does it stay readable when many mails move? (design, with Marco)
-- "Another account" can mean two things: (a) another Google account of mine that also signs in to the same mailbox and categories, or (b) another person with their own mailbox and their own categories (several users). The base spec has no multi-user support (non-goal). Which one is meant? Who exactly may sign in (an allow-list of accounts)? (Marco)
+- Several agents, each with its own mailbox, and one web application: does the web application show and manage all of them after I sign in? Does every mailbox have its own list of categories, or can mailboxes share one list? (Marco)
+- Which signed-in Google account may manage which agent and mailbox: only the owner of that mailbox, or an allow-list of accounts that I decide? (Marco)
 - Signing in with Google touches identity (ADR-0008, Google OAuth2) and the threat model; the Gmail permission of the agent stays separate from the sign-in of the web application. (decision-gate, threat-model)
 - The web application and the agent must share the list of categories. Which of them owns it, and how does the agent get changes (it runs as a separate service with its own database)? (design)
 - Descriptions are sent to the language model together with the mail. The same limits as today apply (ADR-0018), but the text of my descriptions becomes part of what the model reads. (threat-model)
@@ -59,3 +61,5 @@ Marco, for his personal mailbox. Today the agent invents the categories itself. 
 > (Tweede ronde, 2026-11-08:) 1. wil altijd zien wat er verplaatst gaat worden. 2. Dan moet de LLM bepalen waar de mail naartoe gaat
 >
 > (Derde ronde, 2026-11-08:) 1. alles. 2. beide moet mogelijk zijn. 3. OAuth2 van Google mijn account moet kunnen maar ook met een ander account
+>
+> (Vierde ronde, 2026-11-08:) 1. Alle mail is alle mail in de categorieen maar niet degene in spam, delete, archive folders. 2. Een ander google account moet wel kunnen inloggen. Je kan verschillende agents opstarten elk die een andere mailbox behandeld. Dat probeer ik te zeggenb
