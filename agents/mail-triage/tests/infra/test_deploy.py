@@ -143,6 +143,12 @@ def test_given_the_image_when_built_then_it_runs_as_a_numeric_non_root_user() ->
     assert int(uid) != 0
 
 
+def test_given_the_image_when_built_then_it_carries_the_migrations_the_agent_applies_at_start() -> None:
+    text = (COMPONENT / "Dockerfile").read_text(encoding="utf-8")
+
+    assert re.search(r"^COPY migrations \./migrations$", text, re.MULTILINE)
+
+
 def test_given_the_dockerfile_when_scanned_then_it_has_no_secret_or_env_file() -> None:
     text = (COMPONENT / "Dockerfile").read_text(encoding="utf-8")
 

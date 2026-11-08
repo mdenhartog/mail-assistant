@@ -14,7 +14,7 @@ Anthropic (`tests/db/test_end_to_end.py`); this run proves the real services beh
 ## What you need (from Marco)
 
 | Item | Where to get it | Goes into |
-|---|---|---|
+| --- | --- | --- |
 | Anthropic API key and two model ids | console.anthropic.com | `ANTHROPIC_API_KEY`, `MAIL_TRIAGE_MODEL_SMALL`, `MAIL_TRIAGE_MODEL_LARGE` |
 | Telegram bot token | chat with @BotFather, `/newbot` | `TELEGRAM_BOT_TOKEN` |
 | Your Telegram user id | message @userinfobot | `TELEGRAM_ALLOWED_USER_ID`, `TELEGRAM_ALLOWED_CHAT_ID` |
@@ -28,8 +28,10 @@ that holds no real mail.
 ## Start
 
 1. `docker compose --profile dev up -d db` and wait until it is healthy.
-2. In `agents/mail-triage`: `uv run alembic upgrade head` (with `DATABASE_URL` pointing at the compose database).
-3. `uv run python -m app.consent`, sign in with the **test** Gmail account and accept the three permissions.
+2. In `agents/mail-triage`, with `DATABASE_URL` pointing at the compose database and the other variables from `.env`
+   exported: `uv run python -m app.consent`. It creates the tables when they are missing, opens your browser, and
+   asks for the three Gmail permissions: sign in with the **test** Gmail account and accept them.
+3. Check the database now holds one row in `oauth_token` and that its `ciphertext` is unreadable.
 4. `docker compose --profile dev up -d --build mail-triage` and open the logs: `docker compose logs -f mail-triage`.
 5. Send the Telegram bot a message once (Start) so it may write to you.
 
@@ -42,7 +44,7 @@ headers, so for the newsletter and the automatic notice the body text alone is j
 ## Checks
 
 | # | Do | Expect | Criteria |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | Send the four seed mails | Within about 2 minutes all four carry exactly one `Assistant/...` label and have left the inbox; only the personal request produced a Telegram alert with Reply, Remind me later and No more reminders | AC-1, AC-3, AC-4 |
 | 2 | Press **Reply**, type an answer, press **Send** on the draft | Nothing is sent until Send; the second account then receives the answer in the same thread; no reminder follows | AC-6, AC-7 |
 | 3 | On a new urgent mail press **Remind me later**, answer `1` | One new alert arrives after an hour (or change the due time in the database for a quick test) | AC-9 |

@@ -25,6 +25,7 @@ from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
+from app.db.migrate import upgrade
 from app.db.pg_store import PgStore
 from app.runner import FailureNotice, Runner
 from app.usecases.deliver_alerts import AlertDelivery
@@ -146,6 +147,7 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
         if not await repos.try_lock(lock_connection):
             logger.error("another copy of the agent holds the lock; exiting")
             return EXIT_LOCKED
+        await upgrade(settings.database_url.get_secret_value())
         refresh_token = await TokenStore(sessions, TokenCipher(settings.token_encryption_key)).load()
         if refresh_token is None:
             logger.error("no Google consent stored; run: python -m app.consent")

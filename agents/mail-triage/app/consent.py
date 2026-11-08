@@ -167,6 +167,9 @@ async def main() -> None:  # pragma: no cover - thin shell around the tested pie
     from app.adapters.token_store import TokenCipher, TokenStore  # noqa: PLC0415
 
     redirect_uri = f"http://{LOOPBACK}:{REDIRECT_PORT}{CALLBACK_PATH}"
+    from app.db.migrate import upgrade  # noqa: PLC0415
+
+    await upgrade(os.environ["DATABASE_URL"])  # the token table must exist before the agent has ever started
     engine = create_async_engine(os.environ["DATABASE_URL"])
     store = TokenStore(
         async_sessionmaker(engine, expire_on_commit=False), TokenCipher(SecretStr(os.environ["TOKEN_ENCRYPTION_KEY"]))
