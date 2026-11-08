@@ -2,7 +2,7 @@
 feature: mail-triage-backlog
 spec: docs/specs/mail-triage-backlog.md
 intent: INT-003
-status: approved
+status: done
 date: 2026-11-08
 ---
 

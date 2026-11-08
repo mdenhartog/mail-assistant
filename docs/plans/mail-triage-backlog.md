@@ -4,7 +4,7 @@ spec: docs/specs/mail-triage-backlog.md
 design: docs/design/mail-triage-backlog-design.md
 threat-model: docs/security/mail-triage-threat-model.md (delta INT-003)
 intent: INT-003
-status: draft
+status: done
 date: 2026-11-08
 ---
 
