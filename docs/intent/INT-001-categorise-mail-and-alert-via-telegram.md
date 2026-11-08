@@ -2,7 +2,7 @@
 id: INT-001
 title: Categorise mail and alert me via Telegram
 originator: Marco
-status: draft
+status: confirmed
 date: 2026-11-08
 ---
 
