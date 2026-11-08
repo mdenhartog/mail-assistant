@@ -21,3 +21,10 @@ validation/evidence/runs/
 validation/evidence/.playwright-output/
 validation/packages/
 cdk.out/
+
+# claude-sdlc-kit 0.4.0
+docs/STATUS.md
+docs/tutorials/videos/
+
+# Claude Code worktrees
+.claude/worktrees/

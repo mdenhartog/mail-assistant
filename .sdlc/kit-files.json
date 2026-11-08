@@ -1,0 +1,21 @@
+{
+  "kitVersion": "0.4.0",
+  "files": {
+    ".claude/rules/backend.md": "c402952f8bde6ffa6003aa11299750f1e8bfb8752543160565bfd0866955330e",
+    ".claude/rules/infra.md": "a9bb514990dcdde68e53ce94b5f20a3af9e0237f9b4985467ce8dcd038af616d",
+    ".claude/rules/web.md": "15619678bb0f285fa2d371eb00acb63e0ad22132f1633c5b12558f6c3acabf65",
+    ".github/pull_request_template.md": "5ed85fc21c5d759f74d79ffbf72315af352ba82ca0ccc6bbca706b631122c3f5",
+    ".github/workflows/ci.yml": "898a85ce4011b267a8f8fbce8803bd4c85426460d483194df2fd7101daebd045",
+    ".github/workflows/release.yml": "fea5ae9fa197428603e911d3a050888e9a9d5567bfb24f42140e756decc3a439",
+    ".markdownlint-cli2.jsonc": "56be85f29a751607a1f324ec4961a8717b6792a38e0dca9a24745424d85993b3",
+    ".pre-commit-config.yaml": "f3c410809e2d69d4711afb0c6a17db1a440d6b5a73f5dc2ef4df956ff2dc980c",
+    ".semgrep/kit-rules.yml": "39c16e4ff97caf0fcf903c7e5bbc6fd269becf6874aa5e53cb8afc3c7f80261c",
+    "commitlint.config.mjs": "9c46dd6e2258b8783f57255cbcdd09fd13c0283069b281568806ba147df85340",
+    "scripts/audit.mjs": "07347d93d28df1d08064e99eb3c02fac7712d2e479683c190f818fa53a61825c",
+    "scripts/check-mobile-bundle.mjs": "293d8f8a9cce1ef179944608e0560ee731934ebd5d23c0f68bbb6f335617040f",
+    "scripts/components.mjs": "b5c44d6f874f4d18171acd85b6ad28c06777337de4df4afc3a6b2317a8740a4f",
+    "scripts/docs.mjs": "a5c3ad22ec2967ed57326448fc21a97baa1fbf7d1a0d6766bc58a4ed8d7fe31a",
+    "scripts/lib/run-pnpm.mjs": "2049b5f62dabf175faa95ad6c8ff6f0852ac01e317fee3e37781a8fe4a453f62",
+    "scripts/status.mjs": "b01d2be4c668767aec7741fbb69edbd791369f94ef895b94c04f444be08eb3c7"
+  }
+}

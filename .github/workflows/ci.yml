@@ -29,7 +29,18 @@ jobs:
       - run: uv run xenon --max-absolute B --max-modules A --max-average A app
       - run: uv run deptry .
       - run: uv run pytest
+      - run: uv run python -m app.export_openapi --check
       - run: uv run pip-audit
+
+  docs:
+    # Markdown lint (specs, ADRs, plans, READMEs, CLAUDE.md) and the documentation check (README, API reference, user guide, links).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - run: npx --yes markdownlint-cli2@0.24.0
+      - run: node scripts/docs.mjs check
 
   components:
     # Agents, MCP servers and channel gateways (.sdlc/components.json): lint, types, security, tests, audit, images.

@@ -14,7 +14,7 @@ Extends `docs/design/mail-triage-design.md`. Only what changes is described here
 
 A new use case `CatchUp` runs inside the existing mail cycle, right after the normal pipeline. It lists the unread inbox mails that are older than a stored cut-off time, newest first, and files them through the same judge, labels and alert path as new mail, with three differences that make it safe: it stops for the day when the model budget (minus a reserve for new mail) is used up, it creates at most 5 alerts in total, and it records its progress in one small table so that it runs exactly once.
 
-```
+```text
 mail_cycle:  release_due → pipeline.run_once (new mail, unchanged)
                          → catchup.run_once  (NEW)  → deliver alerts → overview → purge
 catchup.run_once:
