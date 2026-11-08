@@ -57,6 +57,12 @@ class _MaskBotToken(logging.Filter):
 _MASK = _MaskBotToken()
 
 
+def mask_bot_token_in_http_logs() -> None:
+    """Mask ``/bot<token>/`` in the HTTP client's own request log (installed once per logger)."""
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).addFilter(_MASK)
+
+
 def _obj(value: object) -> dict[str, Any] | None:
     return cast("dict[str, Any]", value) if isinstance(value, dict) else None
 
@@ -75,8 +81,7 @@ class TelegramInbox:
     ) -> None:
         """Wire the shared HTTP client, the bot token and the single allowed user and chat."""
         self._client = client
-        for name in ("httpx", "httpcore"):
-            logging.getLogger(name).addFilter(_MASK)
+        mask_bot_token_in_http_logs()
         self._token = token
         self._user = allowed_user_id
         self._chat = allowed_chat_id
