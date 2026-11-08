@@ -10,7 +10,8 @@ from __future__ import annotations
 import base64
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC
 from email.utils import parseaddr
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING, Any
@@ -19,10 +20,12 @@ from googleapiclient.errors import HttpError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from datetime import datetime
 
 LABEL_PREFIX = "Assistant/"
 INBOX = "INBOX"
 OWN_MAIL = "SENT"
+UNREAD = "UNREAD"
 ME = "me"
 MAX_ATTEMPTS = 5
 BACKOFF_SECONDS = 1.0
@@ -64,6 +67,7 @@ class FetchedMail:
     text: str
     has_attachment: bool
     headers: dict[str, str]
+    labels: frozenset[str] = field(default_factory=frozenset)
 
 
 class _TextOnly(HTMLParser):
@@ -174,6 +178,26 @@ class GmailReader:
             if not token:
                 return ids, latest
 
+    def list_unread_before(self, cutoff: datetime) -> list[str]:
+        """Ids of unread inbox mails that arrived before ``cutoff``, in Gmail's order (newest first).
+
+        Own sent mail is left out by the query. The cut-off must carry a timezone: Gmail takes UTC epoch seconds.
+        """
+        if cutoff.tzinfo is None:
+            raise ValueError("the cut-off needs a timezone")
+        query = f"before:{int(cutoff.astimezone(UTC).timestamp())} -in:sent"
+        ids: list[str] = []
+        token: str | None = None
+        while True:
+            request: dict[str, Any] = {"userId": ME, "labelIds": [INBOX, UNREAD], "q": query}
+            if token:
+                request["pageToken"] = token
+            page = self._run(self._service.users().messages().list(**request))
+            ids.extend(item["id"] for item in page.get("messages", []))
+            token = page.get("nextPageToken")
+            if not token:
+                return ids
+
     def _history_page(self, history_id: str, token: str | None) -> dict[str, Any]:
         query: dict[str, Any] = {
             "userId": ME,
@@ -210,6 +234,7 @@ class GmailReader:
             text=_text_of(parts),
             has_attachment=has_attachment,
             headers=headers,
+            labels=frozenset(raw.get("labelIds", [])),
         )
 
     def ensure_label(self, name: str) -> str:

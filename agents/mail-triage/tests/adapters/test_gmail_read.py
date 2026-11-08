@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,7 @@ class FakeGmail:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.history_pages: list[Any] = []
+        self.message_pages: list[Any] = []  # per page: a dict, or a list of outcomes (errors first)
         self.messages: dict[str, Any] = {}
         self.labels: list[dict[str, str]] = []
         self.modify_outcomes: list[Any] = [{}]
@@ -68,6 +70,9 @@ class FakeGmail:
         self.calls.append(("list", kw))
         if "startHistoryId" in kw:
             return Request([self.history_pages[int(kw.get("pageToken") or 0)]])
+        if "q" in kw:
+            page = self.message_pages[int(kw.get("pageToken") or 0)]
+            return Request(page if isinstance(page, list) else [page])
         return Request([{"labels": self.labels}])
 
     def get(self, **kw: Any) -> Request:
@@ -279,3 +284,91 @@ def test_given_a_refresh_token_when_credentials_are_built_then_they_refresh_on_f
     assert sorted(credentials.scopes or []) == sorted(gmail_auth.SCOPES)
     assert len(gmail_auth.SCOPES) == 3
     assert "https://mail.google.com/" not in gmail_auth.SCOPES
+
+
+# ---- U-backlog-04: unread inbox mail before a cut-off (INT-003, AC-B1, AC-B2, AC-B3, AC-B9) ----------------------
+
+CUTOFF = datetime(2026, 11, 8, 18, 0, tzinfo=timezone(timedelta(hours=1)))  # 17:00 UTC
+CUTOFF_EPOCH = int(datetime(2026, 11, 8, 17, 0, tzinfo=UTC).timestamp())
+
+
+def listed(gmail: FakeGmail) -> list[dict[str, Any]]:
+    return [kw for name, kw in gmail.calls if name == "list" and "q" in kw]
+
+
+def test_given_a_cutoff_when_unread_mail_is_listed_then_the_query_is_inbox_unread_before_epoch_without_own_mail(
+    gmail: FakeGmail,
+) -> None:
+    gmail.message_pages = [{"messages": [{"id": "a"}]}]
+
+    ids = reader(gmail).list_unread_before(CUTOFF)
+
+    assert ids == ["a"]
+    (request,) = listed(gmail)
+    assert request["userId"] == "me"
+    assert request["labelIds"] == ["INBOX", "UNREAD"]
+    assert request["q"] == f"before:{CUTOFF_EPOCH} -in:sent"
+
+
+def test_given_a_timezone_aware_cutoff_when_listed_then_it_is_converted_to_utc_epoch_seconds(gmail: FakeGmail) -> None:
+    gmail.message_pages = [{}]
+
+    reader(gmail).list_unread_before(CUTOFF)
+    reader(gmail).list_unread_before(CUTOFF.astimezone(UTC))
+
+    assert [kw["q"] for kw in listed(gmail)] == [f"before:{CUTOFF_EPOCH} -in:sent"] * 2
+
+
+def test_given_a_naive_cutoff_when_listed_then_it_is_rejected_and_nothing_is_asked(gmail: FakeGmail) -> None:
+    with pytest.raises(ValueError, match="timezone"):
+        reader(gmail).list_unread_before(datetime(2026, 11, 8, 17, 0))  # noqa: DTZ001 - the point of the test
+
+    assert gmail.calls == []
+
+
+def test_given_three_pages_and_an_empty_last_page_when_listed_then_all_ids_come_back_in_gmails_order(
+    gmail: FakeGmail,
+) -> None:
+    gmail.message_pages = [
+        {"messages": [{"id": "new1"}, {"id": "new2"}], "nextPageToken": "1"},
+        {"messages": [{"id": "mid"}], "nextPageToken": "2"},
+        {},
+    ]
+
+    assert reader(gmail).list_unread_before(CUTOFF) == ["new1", "new2", "mid"]
+    assert [kw.get("pageToken") for kw in listed(gmail)] == [None, "1", "2"]
+
+
+def test_given_no_matching_mail_when_listed_then_the_list_is_empty(gmail: FakeGmail) -> None:
+    gmail.message_pages = [{"resultSizeEstimate": 0}]
+
+    assert reader(gmail).list_unread_before(CUTOFF) == []
+
+
+def test_given_a_rate_limit_when_listed_then_it_is_retried_with_backoff(gmail: FakeGmail) -> None:
+    gmail.message_pages = [[http_error(429, "rateLimitExceeded"), {"messages": [{"id": "a"}]}]]
+    sleeps: list[float] = []
+
+    assert reader(gmail, sleeps).list_unread_before(CUTOFF) == ["a"]
+    assert len(sleeps) == 1
+
+
+def test_given_the_listing_when_it_runs_then_it_only_lists_and_never_changes_or_deletes_anything(
+    gmail: FakeGmail,
+) -> None:
+    gmail.message_pages = [{"messages": [{"id": "a"}]}]
+
+    reader(gmail).list_unread_before(CUTOFF)
+
+    assert {name for name, _ in gmail.calls} == {"list"}
+
+
+def test_given_a_fetched_mail_when_read_then_it_carries_its_gmail_labels(gmail: FakeGmail) -> None:
+    gmail.messages["m1"] = {
+        "id": "m1",
+        "threadId": "t1",
+        "labelIds": ["INBOX", "UNREAD"],
+        "payload": {"mimeType": "text/plain", "headers": [{"name": "From", "value": "a@b.c"}], "body": {"data": b64("hi")}},
+    }
+
+    assert reader(gmail).fetch("m1").labels == frozenset({"INBOX", "UNREAD"})
