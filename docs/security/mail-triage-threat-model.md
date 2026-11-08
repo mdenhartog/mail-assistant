@@ -2,7 +2,7 @@
 feature: mail-triage
 spec: docs/specs/mail-triage.md
 intent: INT-001
-status: draft
+status: approved
 date: 2026-11-08
 approver: Marco
 ---
