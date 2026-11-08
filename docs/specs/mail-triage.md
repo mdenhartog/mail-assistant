@@ -65,7 +65,7 @@ Marco, the single owner of the mailbox. There is no other user and no web screen
 - C4: The reply is addressed to the `From` address of the mail in the same thread, in the language of the original mail. A different `Reply-To` is only used when Marco names it (threat model T-02).
 - C5: State (processed mails, pending alerts, confirmations, reminders) is kept in PostgreSQL (ADR-0007).
 - C6: A mail that Marco has not acted on stays open and is not alerted again until a reminder is due or Marco acts. The agent does not alert twice by itself.
-- C7: Quiet hours are 23:00 to 07:00 in Marco's time zone (Europe/Amsterdam), configurable. The daily overview (D10) is sent at 18:00, configurable. Marco confirms or changes these in phase 3.
+- C7: Quiet hours are 23:00 to 07:00 in Marco's time zone (Europe/Amsterdam). The daily overview (D10) is sent at 18:00, and "tomorrow" in a snooze means 09:00. Confirmed by Marco. For the first release these values are **fixed in the code (hardcoded), not configurable**; making them adjustable is a later intent (INT-002).
 
 ## Behaviour
 

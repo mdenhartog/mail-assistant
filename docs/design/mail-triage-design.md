@@ -83,7 +83,8 @@ There is no wrapper operation for trash, delete or spam. A test fails if the wra
 | `TELEGRAM_ALLOWED_USER_ID`, `TELEGRAM_ALLOWED_CHAT_ID` | config | Marco only (AC-15) |
 | Gmail OAuth client id and secret | secret | one-time consent run for the owner stores the encrypted refresh token |
 | Model ids (small, large) | config | not literals |
-| Quiet hours, overview time, poll interval, daily model budget, alerts per hour | config | defaults from spec C1, C7 |
+| Poll interval, daily model budget, alerts per hour | config | defaults from spec C1 |
+| Quiet hours (23:00-07:00), overview time (18:00), snooze "tomorrow" (09:00), time zone (Europe/Amsterdam) | **constants in code** | hardcoded on purpose for the first release (spec C7); adjustable later through INT-002 |
 
 ADR-0008 describes a web login; this feature does not need it. The owner gives consent once with a small command-line flow, and the agent uses the stored refresh token.
 

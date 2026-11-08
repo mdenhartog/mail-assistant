@@ -43,7 +43,7 @@ Parallel groups: (U-02, U-03, U-04, U-05, U-06, U-07, U-08, U-09, U-11, U-17, U-
 - Parallel: no
 - Guardrails: guardrail-pydantic, guardrail-docker, guardrail-llm
 - Criteria:
-  1. Given all required values, When settings load, Then they are typed and defaults match spec C1 and C7 (happy).
+  1. Given all required values, When settings load, Then they are typed and defaults match spec C1; quiet hours, overview time and time zone are not settings (they are constants, spec C7) (happy).
   2. Given a missing `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN` or allowed user id, When the app starts, Then it refuses to start with a message that names the missing key but not any value (error, security).
   3. Given settings are printed or logged, When secrets are present, Then they appear masked (security).
   4. Given model ids, When configured, Then no model id literal exists in code (edge).
@@ -67,7 +67,7 @@ Parallel groups: (U-02, U-03, U-04, U-05, U-06, U-07, U-08, U-09, U-11, U-17, U-
 ### U-mail-triage-03: Time policy (quiet hours, snooze, overview time)
 
 - Layer: backend (pure core)
-- Contract: `in_quiet_hours(now, config)`, `next_quiet_end(now)`, `snooze_due(now, hours | "tomorrow")`, `next_overview(now)` with Marco's time zone.
+- Contract: `in_quiet_hours(now)`, `next_quiet_end(now)`, `snooze_due(now, hours | "tomorrow")`, `next_overview(now)`; the values (23:00-07:00, 18:00, 09:00, Europe/Amsterdam) are module constants (spec C7), not configuration.
 - Files: `app/core/time_policy.py`, `tests/core/test_time_policy.py`
 - Depends on: U-01
 - Parallel: yes
@@ -76,7 +76,7 @@ Parallel groups: (U-02, U-03, U-04, U-05, U-06, U-07, U-08, U-09, U-11, U-17, U-
   1. Given 23:30 local, When asked, Then it is quiet hours and the end is 07:00 next day (happy; AC-32).
   2. Given 07:00 exactly, When asked, Then not quiet (edge).
   3. Given a daylight-saving change night, When computing the end of quiet hours, Then it is 07:00 local time (edge).
-  4. Given "tomorrow" at 15:00, When snoozing, Then due is the next day at 09:00 local (happy; proposal: 09:00, configurable; AC-9).
+  4. Given "tomorrow" at 15:00, When snoozing, Then due is the next day at 09:00 local (happy; AC-9).
   5. Given a number of hours that is zero, negative or above 168, When snoozing, Then it is rejected (error).
   6. Given 17:59 and 18:00, When computing the next overview, Then 18:00 today and 18:00 tomorrow (edge; AC-31).
 
@@ -289,7 +289,7 @@ Parallel groups: (U-02, U-03, U-04, U-05, U-06, U-07, U-08, U-09, U-11, U-17, U-
   1. Given mails filed today without alert, When the overview time arrives, Then one message gives counts per category and lists the mails with low confidence (happy; AC-31).
   2. Given nothing was filed, When the time arrives, Then no message is sent (edge; AC-31).
   3. Given the overview was already sent today, When run again, Then nothing is sent (edge).
-  4. Given overview time falls in quiet hours (configuration), When it arrives, Then it is sent when quiet hours end (edge).
+  4. Given the overview time were to fall inside quiet hours, When it arrives, Then it is sent when quiet hours end (edge; guards a future change, see INT-002).
 
 ### U-mail-triage-17: Log and error-report redaction
 
