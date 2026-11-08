@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Protocol
 from app.adapters.gmail_read import HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.alert_state import AlertState, initial_state
+from app.core.auth_results import parse_auth_results
 from app.core.judgement import OTHER_LABEL, Filing, Judgement, NeedsAttention, resolve
 from app.core.time_policy import in_quiet_hours
 
@@ -26,10 +27,36 @@ if TYPE_CHECKING:
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
+    from app.core.alert_text import AuthResults
 
 logger = logging.getLogger(__name__)
 
 MAX_ATTEMPTS = 3  # tries per mail before it is given up on and one notice is requested
+
+
+@dataclass(frozen=True, slots=True)
+class MailContent:
+    """The capped, mail-derived content kept for alerts and the overview (ADR-0020). Never the body."""
+
+    sender: str
+    subject: str
+    reply_to: str | None
+    has_attachment: bool
+    reason: str
+    summary: str
+    auth: AuthResults
+
+
+@dataclass(frozen=True, slots=True)
+class Outcome:
+    """What became of one mail: its label, urgency, alert state and content."""
+
+    label: str
+    urgent: bool
+    confidence: float | None
+    alert: AlertState | None
+    note: str
+    content: MailContent
 
 
 class Claim(StrEnum):
@@ -87,16 +114,7 @@ class TriageStore(Protocol):
         """Category labels in use."""
         ...
 
-    async def complete(  # noqa: PLR0913
-        self,
-        message_id: str,
-        *,
-        label: str,
-        urgent: bool,
-        confidence: float | None,
-        alert: AlertState | None,
-        note: str,
-    ) -> None:
+    async def complete(self, message_id: str, outcome: Outcome) -> None:
         """Record the outcome for a mail, with its alert state when it needs one."""
         ...
 
@@ -203,19 +221,37 @@ class TriagePipeline:
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text))
-        label, urgent, confidence, note = await self._decide(verdict)
-        label_id = await asyncio.to_thread(self._mail.ensure_label, label)
+        outcome = await self._decide(verdict, mail)
+        label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
-        alert = initial_state(in_quiet_hours=in_quiet_hours(self._now())) if urgent else None
-        await self._store.complete(
-            mail.message_id, label=label, urgent=urgent, confidence=confidence, alert=alert, note=note
-        )
+        await self._store.complete(mail.message_id, outcome)
         summary.filed += 1
-        summary.alerts += alert is not None
+        summary.alerts += outcome.alert is not None
 
-    async def _decide(self, verdict: Judgement | NeedsAttention) -> tuple[str, bool, float | None, str]:
-        """Label, urgency, confidence and note. Anything untrustworthy is urgent, never ignorable."""
-        outcome = resolve(verdict, await self._store.known_labels()) if isinstance(verdict, Judgement) else verdict
-        if isinstance(outcome, Filing):
-            return outcome.label, outcome.judgement.urgent, outcome.judgement.confidence, ""
-        return OTHER_LABEL, True, None, f"needs_attention:{outcome.reason}"
+    async def _decide(self, verdict: Judgement | NeedsAttention, mail: FetchedMail) -> Outcome:
+        """Label, urgency and content. Anything untrustworthy is urgent, never ignorable."""
+        decision = resolve(verdict, await self._store.known_labels()) if isinstance(verdict, Judgement) else verdict
+        if isinstance(decision, Filing):
+            label, urgent, confidence, note = (
+                decision.label,
+                decision.judgement.urgent,
+                decision.judgement.confidence,
+                "",
+            )
+        else:
+            label, urgent, confidence, note = OTHER_LABEL, True, None, f"needs_attention:{decision.reason}"
+        if isinstance(verdict, Judgement):
+            reason, summary = verdict.reason, verdict.summary
+        else:
+            reason, summary = f"Needs attention: {verdict.reason}", ""
+        content = MailContent(
+            sender=mail.sender,
+            subject=mail.subject,
+            reply_to=mail.reply_to,
+            has_attachment=mail.has_attachment,
+            reason=reason,
+            summary=summary,
+            auth=parse_auth_results(mail.headers.get("Authentication-Results")),
+        )
+        alert = initial_state(in_quiet_hours=in_quiet_hours(self._now())) if urgent else None
+        return Outcome(label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content)

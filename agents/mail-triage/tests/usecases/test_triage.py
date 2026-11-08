@@ -10,8 +10,9 @@ import pytest
 from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
+from app.core.alert_text import AuthResults
 from app.core.judgement import Judgement, NeedsAttention
-from app.usecases.triage import MAX_ATTEMPTS, Claim, TriagePipeline
+from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -93,6 +94,7 @@ class FakeStore:
     labels: list[str] = field(default_factory=lambda: ["Assistant/Finance", "Assistant/Other"])
     claimed: set[str] = field(default_factory=set)
     done: dict[str, Completed] = field(default_factory=dict)
+    outcomes: dict[str, Outcome] = field(default_factory=dict)
     failures: dict[str, int] = field(default_factory=dict)
     abandoned: set[str] = field(default_factory=set)
 
@@ -114,20 +116,11 @@ class FakeStore:
     async def known_labels(self) -> list[str]:
         return list(self.labels)
 
-    async def complete(  # noqa: PLR0913
-        self,
-        message_id: str,
-        *,
-        label: str,
-        urgent: bool,
-        confidence: float | None,
-        alert: AlertState | None,
-        note: str,
-    ) -> None:
-        del confidence
-        self.done[message_id] = Completed(label, urgent, alert, note)
-        if label not in self.labels:
-            self.labels.append(label)
+    async def complete(self, message_id: str, outcome: Outcome) -> None:
+        self.done[message_id] = Completed(outcome.label, outcome.urgent, outcome.alert, outcome.note)
+        self.outcomes[message_id] = outcome
+        if outcome.label not in self.labels:
+            self.labels.append(outcome.label)
 
     async def record_failure(self, message_id: str) -> int:
         self.failures[message_id] = self.failures.get(message_id, 0) + 1
@@ -343,3 +336,41 @@ async def test_given_nothing_new_when_run_then_nothing_happens(count: int) -> No
 
     assert summary.filed == count
     assert store.history == "200"
+
+
+async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped_content_for_alerts() -> None:
+    mailbox, store = FakeMailbox(["m1"]), FakeStore()
+    mailbox.mails["m1"] = FetchedMail(
+        message_id="m1",
+        thread_id="t-m1",
+        sender="boss@example.com",
+        reply_to="other@example.net",
+        subject="Budget",
+        text="body that must not be stored",
+        has_attachment=True,
+        headers={"Authentication-Results": "mx; spf=fail; dkim=pass; dmarc=pass"},
+    )
+    verdict = Judgement(category="Finance", urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
+
+    await pipeline(mailbox, FakeJudge(verdict), store).run_once()
+
+    assert store.outcomes["m1"].content == MailContent(
+        sender="boss@example.com",
+        subject="Budget",
+        reply_to="other@example.net",
+        has_attachment=True,
+        reason="Due Friday",
+        summary="Pay it",
+        auth=AuthResults(spf="fail", dkim="pass", dmarc="pass"),
+    )
+    assert "body that must not be stored" not in str(store.outcomes["m1"])
+
+
+async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_no_model_text() -> None:
+    store = FakeStore()
+
+    await pipeline(FakeMailbox(["m1"]), FakeJudge(NeedsAttention("budget")), store).run_once()
+
+    content = store.outcomes["m1"].content
+    assert content.reason == "Needs attention: budget"
+    assert content.summary == ""
