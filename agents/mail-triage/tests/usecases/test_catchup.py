@@ -15,6 +15,7 @@ from app.core.alert_state import AlertState
 from app.core.judgement import Judgement, NeedsAttention
 from app.usecases.catchup import BACKLOG_ALERT_LIMIT, BUDGET_RESERVE, RUN_LIMIT, CatchUp, CatchUpState
 from app.usecases.triage import MAX_ATTEMPTS, Claim, Outcome
+from tests.usecases.fakes_policy import FakePolicySource
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -178,7 +179,9 @@ def catchup(
     *,
     budget: DailyBudget | Plenty | None = None,
 ) -> CatchUp:
-    return CatchUp(mailbox, judge, store, notifier or FakeNotifier(), budget or Plenty(), now=lambda: NOW)
+    return CatchUp(
+        mailbox, judge, store, notifier or FakeNotifier(), budget or Plenty(), now=lambda: NOW, policy=FakePolicySource()
+    )
 
 
 def ids(count: int) -> list[str]:
@@ -570,11 +573,17 @@ async def test_given_25_urgent_mails_over_two_runs_when_done_then_the_alerts_wen
 async def test_given_urgent_old_mail_in_quiet_hours_when_it_runs_then_held_alerts_count_toward_the_cap() -> None:
     all_ids = ids(7)
     mailbox, store = FakeMailbox(all_ids), FakeStore()
-    use_case = CatchUp(mailbox, FakeJudge(judgement(urgent=True)), store, FakeNotifier(), Plenty(), now=lambda: NIGHT)
+    source = FakePolicySource()
+    use_case = CatchUp(
+        mailbox, FakeJudge(judgement(urgent=True)), store, FakeNotifier(), Plenty(), now=lambda: NIGHT, policy=source
+    )
 
     await use_case.run_once()
 
     assert [store.done[i].alert for i in all_ids] == [AlertState.HELD] * BACKLOG_ALERT_LIMIT + [None, None]
+    assert source.calls == len(all_ids)  # one snapshot per mail, never mixed within a mail
+    assert store.done[all_ids[0]].release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
+    assert store.done[all_ids[-1]].release_at is None  # over the cap: no alert, so nothing to release
 
 
 async def test_given_injected_mails_that_the_model_calls_urgent_when_it_runs_then_still_only_five_alerts_exist() -> (
