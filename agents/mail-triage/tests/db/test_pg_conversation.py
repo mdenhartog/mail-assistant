@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from app.core.alert_state import AlertState
 from app.db.pg_conversation import NO_EXPIRY, ConversationStore
 from app.db.pg_store import PgStore
+from app.usecases.dispatch import CommandRouter
+from app.usecases.snooze import SnoozeService
 from tests.db.test_pg_store import add, outcome
+from tests.usecases.test_dispatch import FakeChat, FakeReply
+from tests.usecases.test_dispatch import button as press
+from tests.usecases.test_dispatch import text as typed
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -176,6 +181,39 @@ async def test_given_a_snooze_question_when_a_reply_question_starts_for_another_
     await store.set_awaiting(first.alert_id, None)  # clearing an alert that is not the pending one changes nothing
 
     assert await store.awaiting() == (second.alert_id, "reply_text")
+
+
+async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the_alert_is_snoozed_and_nothing_awaited(
+    engine: AsyncEngine,
+) -> None:
+    store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    await add(store, "m1", outcome(alert=AlertState.OPEN))
+    [pending] = await store.unsent()
+    chat = FakeChat()
+    router = CommandRouter(FakeReply(), SnoozeService(store, chat, lambda: NOW), store, chat)
+
+    await router.handle(press(f"later:{pending.alert_id}"))
+    await router.handle(typed("3"))
+
+    assert await store.state_of(pending.alert_id) is AlertState.SNOOZED
+    assert await store.awaiting() is None
+
+
+async def test_given_the_real_store_when_reply_replaces_a_pending_snooze_then_the_next_text_is_the_reply(
+    engine: AsyncEngine,
+) -> None:
+    store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    await add(store, "m1", outcome(alert=AlertState.OPEN))
+    [pending] = await store.unsent()
+    chat, reply = FakeChat(), FakeReply()
+    router = CommandRouter(reply, SnoozeService(store, chat, lambda: NOW), store, chat)
+
+    await router.handle(press(f"later:{pending.alert_id}"))
+    await router.handle(press(f"reply:{pending.alert_id}"))
+    await router.handle(typed("Yes, tomorrow."))
+
+    assert reply.calls == [("begin", pending.alert_id), ("start_reply", pending.alert_id, "Yes, tomorrow.")]
+    assert await store.state_of(pending.alert_id) is AlertState.OPEN
 
 
 async def test_given_no_dialogue_when_cleared_then_nothing_happens(conversations: ConversationStore) -> None:
