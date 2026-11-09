@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 
@@ -27,19 +27,37 @@ def filed(label: str, confidence: float = 0.9, sender: str = "a@example.com", su
 
 @dataclass
 class FakeStore:
+    """The filed mails and the overview log in one fake; ``timed`` holds mails with the moment they were filed."""
+
     mails: list[FiledMail] = field(default_factory=list)
-    sent_days: set[date] = field(default_factory=set)
+    sent_days: dict[date, datetime] = field(default_factory=dict)
     asked_since: list[datetime] = field(default_factory=list)
+    timed: list[tuple[datetime, FiledMail]] = field(default_factory=list)
 
     async def filed_without_alert_since(self, since: datetime) -> list[FiledMail]:
         self.asked_since.append(since)
-        return list(self.mails)
+        return [*self.mails, *(mail for filed_at, mail in self.timed if filed_at >= since)]
 
     async def overview_sent(self, day: date) -> bool:
         return day in self.sent_days
 
-    async def mark_overview_sent(self, day: date) -> None:
-        self.sent_days.add(day)
+    async def mark_overview_sent(self, day: date, settled_at: datetime) -> None:
+        self.sent_days.setdefault(day, settled_at)
+
+    async def last_settled_at(self) -> datetime | None:
+        return max(self.sent_days.values(), default=None)
+
+
+class FakePolicies:
+    """A PolicySource that hands out the policy it holds now and counts the reads."""
+
+    def __init__(self, policy: TimePolicy = DEFAULT_POLICY) -> None:
+        self.policy = policy
+        self.reads = 0
+
+    async def current(self) -> TimePolicy:
+        self.reads += 1
+        return self.policy
 
 
 class FakeOutbox:
@@ -54,7 +72,7 @@ class FakeOutbox:
 def service(
     store: FakeStore, outbox: FakeOutbox, now: datetime, policy: TimePolicy = DEFAULT_POLICY
 ) -> OverviewService:
-    return OverviewService(store, outbox, now=lambda: now, policy=policy)
+    return OverviewService(store, store, outbox, now=lambda: now, policies=FakePolicies(policy))
 
 
 async def test_given_mails_filed_today_when_the_time_arrives_then_one_message_has_counts_and_unsure_mails() -> None:
@@ -108,18 +126,20 @@ async def test_given_it_is_before_the_overview_time_when_run_then_nothing_is_sen
     assert outbox.messages == []
 
 
-async def test_given_the_overview_time_inside_quiet_hours_when_it_arrives_then_it_waits_until_they_end() -> None:
-    late_overview = replace(DEFAULT_POLICY, overview_at=time(23, 30))
+async def test_given_the_overview_time_skipped_by_a_clock_change_into_quiet_hours_when_it_arrives_then_it_waits() -> (
+    None
+):
+    # 02:30 does not exist on 29 March 2026 in Amsterdam: the overview resolves to 03:00, the start of quiet hours.
+    policy = make_policy(quiet_start=time(3, 0), quiet_end=time(8, 0), overview_at=time(2, 30))
     store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
-    late_evening = datetime(2026, 11, 9, 22, 45, tzinfo=UTC)  # 23:45 local
 
-    await service(store, outbox, late_evening, late_overview).send_overview()
+    await service(store, outbox, datetime(2026, 3, 29, 1, 30, tzinfo=UTC), policy).send_overview()  # 03:30 local
     assert outbox.messages == []
 
-    await service(store, outbox, NEXT_MORNING, late_overview).send_overview()
+    await service(store, outbox, datetime(2026, 3, 29, 6, 30, tzinfo=UTC), policy).send_overview()  # 08:30 local
 
     assert len(outbox.messages) == 1
-    assert TODAY in store.sent_days
+    assert date(2026, 3, 29) in store.sent_days
 
 
 async def test_given_another_zone_when_the_time_arrives_there_then_the_overview_follows_that_zone() -> None:
