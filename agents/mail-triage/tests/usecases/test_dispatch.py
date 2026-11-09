@@ -14,7 +14,6 @@ from app.usecases.reply import StoredDraft
 from schedule_policy.testing import FakeClock
 from tests.usecases.fakes_dialogue import FakeConversations, FakeSettings
 
-
 _UPDATE_IDS = itertools.count(1)
 
 

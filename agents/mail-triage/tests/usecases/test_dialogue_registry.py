@@ -20,6 +20,7 @@ from tests.usecases.test_dispatch import Rig, button, text
 TOKEN = "123456:ABC-secret-token"  # noqa: S105 - a fake token for tests
 CANARY = "Pacific/Kiritimati"
 
+
 def registered(rig: Rig) -> CommandRouter:
     router = rig.router()
     router.register(rig.settings)
@@ -35,7 +36,7 @@ async def open_card(rig: Rig, router: CommandRouter) -> str:
 # ---- criterion 1: starting a dialogue replaces the stored one and says what was dropped (AC-5) ---------------------
 
 
-async def test_given_a_pending_snooze_question_when_settings_starts_then_it_is_replaced_and_the_text_is_the_answer() -> (
+async def test_given_a_pending_snooze_question_when_settings_starts_then_it_is_replaced_and_text_is_the_answer() -> (
     None
 ):
     rig = Rig()
@@ -56,9 +57,7 @@ async def test_given_a_pending_snooze_question_when_settings_starts_then_it_is_r
     assert rig.reply.calls == []
 
 
-async def test_given_a_pending_settings_question_when_settings_starts_again_then_the_drop_is_told_and_a_new_card_opens() -> (
-    None
-):
+async def test_given_a_pending_settings_question_when_settings_starts_again_then_the_drop_is_told() -> None:
     rig = Rig()
     router = registered(rig)
     first = await open_card(rig, router)
@@ -80,7 +79,7 @@ async def test_given_no_pending_question_when_settings_starts_then_nothing_is_sa
     current = await rig.conversations.current()
     assert current is not None
     assert current.expires_at == rig.clock.now() + SETTINGS_TTL
-    assert SETTINGS_TTL == timedelta(minutes=15)
+    assert timedelta(minutes=15) == SETTINGS_TTL
 
 
 async def test_given_a_command_and_awaited_text_when_a_slash_command_comes_then_the_command_wins() -> None:
@@ -120,7 +119,7 @@ async def test_given_a_replayed_button_when_it_arrives_twice_then_it_is_handled_
     assert rig.chat.acknowledged == ["cb1"]
 
 
-async def test_given_more_updates_than_the_memory_holds_when_an_old_one_is_replayed_then_the_memory_stayed_bounded() -> (
+async def test_given_more_updates_than_the_memory_holds_when_an_old_one_is_replayed_then_memory_stayed_bounded() -> (
     None
 ):
     rig = Rig()
@@ -149,7 +148,9 @@ async def test_given_a_settings_style_button_in_any_state_when_tapped_then_the_c
     assert rig.chat.acknowledged == ["cb1"]
 
 
-async def test_given_no_settings_handler_when_a_settings_button_is_tapped_then_it_is_answered_and_nothing_else() -> None:
+async def test_given_no_settings_handler_when_a_settings_button_is_tapped_then_it_is_answered_and_nothing_else() -> (
+    None
+):
     rig = Rig()
     router = rig.router()
 
@@ -193,7 +194,7 @@ def test_given_a_settings_button_when_built_then_it_is_ascii_within_the_callback
 
     assert data == expected.replace("N", nonce)
     assert data.isascii()
-    assert len(data.encode("ascii")) <= 64  # noqa: PLR2004 - Telegram's callback_data limit
+    assert len(data.encode("ascii")) <= 64
 
 
 @pytest.mark.parametrize(
@@ -250,9 +251,7 @@ async def test_given_malformed_settings_data_when_tapped_then_nothing_runs_and_t
 # ---- criterion 2: stale and foreign nonces do nothing except offer a fresh card (AC-4) ----------------------------
 
 
-async def test_given_a_settings_button_with_an_old_nonce_when_tapped_then_nothing_changes_and_a_fresh_card_is_offered() -> (
-    None
-):
+async def test_given_an_old_nonce_button_when_tapped_then_nothing_changes_and_a_fresh_card_is_offered() -> None:
     rig = Rig()
     router = registered(rig)
     old = await open_card(rig, router)

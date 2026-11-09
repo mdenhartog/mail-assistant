@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -12,10 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from app.core.alert_state import AlertState
 from app.db.pg_conversation import NO_EXPIRY, ConversationStore
 from app.db.pg_store import PgStore
-from app.usecases.dispatch import CommandRouter
+from app.usecases.dispatch import CommandRouter, button_data
 from app.usecases.snooze import SnoozeService
 from tests.db.test_pg_store import add, outcome
-from tests.usecases.test_dispatch import FakeChat, FakeReply
+from tests.usecases.fakes_dialogue import FakeSettings
+from tests.usecases.test_dispatch import FakeChat, FakeReply, FakeSnooze
 from tests.usecases.test_dispatch import button as press
 from tests.usecases.test_dispatch import text as typed
 
@@ -184,7 +186,8 @@ async def test_given_a_snooze_question_when_a_reply_question_starts_for_another_
 
 
 async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the_alert_is_snoozed_and_nothing_awaited(
-    engine: AsyncEngine, conversations: ConversationStore,
+    engine: AsyncEngine,
+    conversations: ConversationStore,
 ) -> None:
     store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
     await add(store, "m1", outcome(alert=AlertState.OPEN))
@@ -200,7 +203,8 @@ async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the
 
 
 async def test_given_the_real_store_when_reply_replaces_a_pending_snooze_then_the_next_text_is_the_reply(
-    engine: AsyncEngine, conversations: ConversationStore,
+    engine: AsyncEngine,
+    conversations: ConversationStore,
 ) -> None:
     store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
     await add(store, "m1", outcome(alert=AlertState.OPEN))
@@ -231,3 +235,58 @@ async def test_given_a_pending_question_when_the_store_is_rebuilt_then_awaiting_
     await PgStore(sessions).set_awaiting(pending.alert_id, "reply_text")
 
     assert await PgStore(sessions).awaiting() == (pending.alert_id, "reply_text")
+
+
+async def _settings_rig(
+    engine: AsyncEngine, conversations: ConversationStore
+) -> tuple[CommandRouter, FakeSettings, FakeChat]:
+    chat, settings = FakeChat(), FakeSettings()
+    router = CommandRouter(
+        FakeReply(), FakeSnooze(), PgStore(async_sessionmaker(engine, expire_on_commit=False)), chat, conversations
+    )
+    router.register(settings)
+    await router.handle(typed("/settings"))
+    return router, settings, chat
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "used"),
+    [
+        (timedelta(minutes=14, seconds=59), True),
+        (timedelta(minutes=15), False),
+        (timedelta(minutes=15, seconds=1), False),
+    ],
+)
+async def test_given_the_real_store_when_a_settings_button_is_tapped_around_the_limit_then_only_before_it_counts(
+    engine: AsyncEngine, conversations: ConversationStore, clock: Clock, elapsed: timedelta, *, used: bool
+) -> None:
+    router, settings, chat = await _settings_rig(engine, conversations)
+    clock.now = NOW + elapsed
+
+    await router.handle(press(button_data("set", settings.began[0].nonce, "overview_time")))
+
+    assert bool(settings.buttons) is used
+    assert bool(chat.edited) is not used
+
+
+async def test_given_the_real_store_when_the_same_button_is_tapped_twice_at_once_then_only_one_tap_reaches_the_handler(
+    engine: AsyncEngine, conversations: ConversationStore
+) -> None:
+    router, settings, _chat = await _settings_rig(engine, conversations)
+    data = button_data("set", settings.began[0].nonce, "quiet_hours")
+
+    await asyncio.gather(router.handle(press(data)), router.handle(press(data)))
+
+    assert settings.writes == ["button:set:quiet_hours"]  # the atomic advance gave the turn to exactly one update
+
+
+async def test_given_the_real_store_when_a_tap_and_a_text_race_then_no_turn_of_the_conversation_is_used_twice(
+    engine: AsyncEngine, conversations: ConversationStore
+) -> None:
+    router, settings, _chat = await _settings_rig(engine, conversations)
+    data = button_data("set", settings.began[0].nonce, "quiet_hours")
+
+    await asyncio.gather(router.handle(press(data)), router.handle(typed("22:00")))
+
+    nonces = [nonce for nonce, *_rest in [*settings.buttons, *settings.texts]]
+    assert 1 <= len(nonces) == len(set(nonces))  # a text has no nonce: it answers whichever step is open when it lands

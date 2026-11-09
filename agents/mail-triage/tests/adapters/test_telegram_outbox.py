@@ -152,7 +152,9 @@ async def test_given_an_ok_false_answer_when_sent_then_it_is_an_error() -> None:
         await outbox(fake).say("hi")
 
 
-async def test_given_an_old_question_when_edited_then_the_text_is_replaced_in_place_and_the_buttons_are_removed() -> None:
+async def test_given_an_old_question_when_edited_then_the_text_is_replaced_in_place_and_the_buttons_are_removed() -> (
+    None
+):
     fake = FakeTelegram(ok())
 
     await outbox(fake).edit_message(9, "Expired <b>not bold</b>")
