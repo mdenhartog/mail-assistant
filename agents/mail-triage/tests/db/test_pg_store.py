@@ -155,6 +155,44 @@ async def test_given_a_held_alert_when_released_then_it_is_open_and_unsent(store
     assert [a.alert_id for a in await store.unsent()] == [held.alert_id]
 
 
+RELEASE_AT = datetime(2026, 11, 10, 6, 0, tzinfo=UTC)
+
+
+async def test_given_a_held_alert_with_a_release_moment_when_completed_then_the_moment_is_stored_and_listed(
+    store: PgStore,
+) -> None:
+    await add(store, "m1", replace(outcome(alert=AlertState.HELD), release_at=RELEASE_AT))
+
+    [held] = await store.held()
+
+    assert held.release_at == RELEASE_AT
+
+
+async def test_given_an_open_alert_when_completed_then_it_has_no_release_moment(store: PgStore) -> None:
+    await add(store, "m1", outcome(alert=AlertState.HELD))
+
+    [held] = await store.held()
+
+    assert held.release_at is None
+
+
+async def test_given_a_snoozed_alert_when_held_again_then_the_release_moment_is_stored_and_cleared_on_release(
+    store: PgStore,
+) -> None:
+    await add(store, "m1", outcome(alert=AlertState.OPEN))
+    [pending] = await store.unsent()
+    await store.set_state(pending.alert_id, AlertState.SNOOZED, due_at=NOW)
+
+    await store.set_state(pending.alert_id, AlertState.HELD, resend=True, release_at=RELEASE_AT)
+    [held] = await store.held()
+    await store.release(held.alert_id)
+
+    assert held.release_at == RELEASE_AT
+    assert held.alert_id == pending.alert_id
+    [released] = await store.unsent()
+    assert released.release_at is None
+
+
 async def test_given_a_snoozed_alert_when_due_then_it_is_listed_and_resending_makes_it_unsent_again(
     store: PgStore,
 ) -> None:
