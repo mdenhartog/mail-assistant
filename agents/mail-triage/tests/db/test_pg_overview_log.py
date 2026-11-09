@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import text
@@ -88,16 +89,18 @@ async def test_given_the_overview_sent_in_amsterdam_when_the_zone_becomes_new_yo
     store, outbox, policies = PgStore(sessions), Outbox(), Policies(DEFAULT_POLICY)
     clock = [SENT]
     service = OverviewService(store, log, outbox, now=lambda: clock[0], policies=policies)
-    await add(store, "before", outcome("Assistant/Finance"))
-    await add(store, "after", outcome("Assistant/Newsletters"))
-    async with engine.begin() as connection:
-        for message_id, filed_at in (("before", SENT - timedelta(hours=1)), ("after", SENT + timedelta(minutes=20))):
+
+    async def file(message_id: str, label: str, filed_at: datetime) -> None:
+        await add(store, message_id, outcome(label))
+        async with engine.begin() as connection:
             await connection.execute(
                 text("update mail_item set created_at = :t where gmail_message_id = :m"),
                 {"t": filed_at, "m": message_id},
             )
 
+    await file("before", "Assistant/Finance", SENT - timedelta(hours=1))
     await service.send_overview()  # 18:01 in Amsterdam: the mail filed before
+    await file("after", "Assistant/Newsletters", SENT + timedelta(minutes=20))
     policies.policy = make_policy(zone="America/New_York")
     clock[0] = datetime(2026, 11, 9, 23, 5, tzinfo=UTC)  # 18:05 in New York, the same local date
     await service.send_overview()
@@ -109,3 +112,11 @@ async def test_given_the_overview_sent_in_amsterdam_when_the_zone_becomes_new_yo
     assert "Finance: 1" in outbox.messages[0].text
     assert "Newsletters: 1" in outbox.messages[1].text
     assert await log.last_settled_at() == clock[0]
+
+
+async def test_given_an_instant_in_another_offset_when_read_back_then_it_is_the_same_moment(log: PgOverviewLog) -> None:
+    amsterdam = datetime(2026, 11, 9, 18, 1, tzinfo=ZoneInfo("Europe/Amsterdam"))
+
+    await log.mark_overview_sent(DAY, amsterdam)
+
+    assert await log.last_settled_at() == SENT

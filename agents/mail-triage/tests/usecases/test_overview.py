@@ -21,6 +21,7 @@ BEFORE = datetime(2026, 11, 9, 16, 59, tzinfo=UTC)  # 17:59 in Amsterdam
 AFTER = datetime(2026, 11, 9, 17, 1, tzinfo=UTC)  # 18:01 in Amsterdam
 NEXT_MORNING = datetime(2026, 11, 10, 6, 30, tzinfo=UTC)  # 07:30 in Amsterdam
 TODAY = date(2026, 11, 9)
+FAR_FUTURE = datetime(9999, 1, 1, tzinfo=UTC)
 
 
 def filed(label: str, confidence: float = 0.9, sender: str = "a@example.com", subject: str = "Hi") -> FiledMail:
@@ -35,7 +36,7 @@ class FakeStore:
     sent_days: dict[date, datetime] = field(default_factory=dict)
     asked_since: list[datetime] = field(default_factory=list)
     timed: list[tuple[datetime, FiledMail]] = field(default_factory=list)
-    now: datetime = datetime.max.replace(tzinfo=UTC)  # a mail filed after this moment does not exist yet
+    now: datetime = FAR_FUTURE  # a mail filed after this moment does not exist yet
 
     async def filed_without_alert_since(self, since: datetime) -> list[FiledMail]:
         self.asked_since.append(since)
