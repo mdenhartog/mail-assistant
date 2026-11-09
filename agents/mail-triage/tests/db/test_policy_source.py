@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from app.db.pg_policy_source import PgPolicySource, SettingsReader
 from app.db.pg_settings_store import PgSettingsStore
-from app.db.repos import StoredSettings, StoredSettingsInvalid
+from app.db.repos import SettingsStoreFailure, StoredSettings, StoredSettingsInvalid
 from app.usecases.policy_notice import PolicyNotice
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy
 from schedule_policy.testing import make_policy
@@ -391,3 +391,25 @@ async def test_given_a_row_deleted_after_a_good_read_when_read_then_the_defaults
     assert await source.current() == GOOD
     assert await source.current() == DEFAULT_POLICY
     assert notifier.sent == []
+
+
+async def test_given_a_store_failure_when_read_then_the_log_line_names_the_driver_class_and_sqlstate_once() -> None:
+    notifier = FakeNotifier()
+    failure = SettingsStoreFailure("UndefinedTableError", "42P01")
+    source = PgPolicySource(ScriptedStore(failure, failure), PolicyNotice(notifier))
+    messages: list[str] = []
+
+    class Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            messages.append(record.getMessage())
+
+    handler = Capture()
+    logger = logging.getLogger("app.db.pg_policy_source")
+    logger.addHandler(handler)
+    try:
+        assert (await source.current(), await source.current()) == (DEFAULT_POLICY, DEFAULT_POLICY)
+    finally:
+        logger.removeHandler(handler)
+
+    assert messages == ["settings_unreadable error=UndefinedTableError sqlstate=42P01"] * 2
+    assert len(notifier.sent) == 1
