@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.core.alert_text import AlertMessage, AuthResults, DigestEntry, MailMeta, build_alert, build_digest
 from app.core.time_policy import in_quiet_hours
-from schedule_policy.policy import DEFAULT_POLICY
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -21,6 +20,8 @@ if TYPE_CHECKING:
 
     from app.core.alert_state import AlertState
     from app.core.judgement import Judgement
+    from app.usecases.policy_notice import PolicySource
+    from schedule_policy.policy import TimePolicy
 
 DEFAULT_HOURLY_CAP = 5
 
@@ -34,6 +35,7 @@ class PendingAlert:
     meta: MailMeta
     judgement: Judgement
     auth: AuthResults
+    release_at: datetime | None = None  # held alerts: the quiet end valid when held (None: held before it existed)
 
 
 class AlertStore(Protocol):
@@ -76,6 +78,16 @@ def _entries(alerts: Sequence[PendingAlert]) -> list[DigestEntry]:
     return [DigestEntry(sender=a.meta.sender, subject=a.meta.subject) for a in alerts]
 
 
+def _due(alert: PendingAlert, now: datetime, policy: TimePolicy) -> bool:
+    """An alert is released when ``now`` has reached its release moment, even inside newly changed quiet hours.
+
+    An alert held before ``release_at`` existed has no moment: it waits for the end of quiet hours under the snapshot.
+    """
+    if alert.release_at is None:
+        return not in_quiet_hours(now, policy)
+    return now >= alert.release_at
+
+
 class AlertDelivery:
     """Sends alerts to Marco."""
 
@@ -84,19 +96,20 @@ class AlertDelivery:
         store: AlertStore,
         outbox: Outbox,
         now: Callable[[], datetime],
+        policy: PolicySource,
         hourly_cap: int = DEFAULT_HOURLY_CAP,
     ) -> None:
-        """Wire the store, the Telegram outbox, the clock and the cap."""
+        """Wire the store, the Telegram outbox, the clock, the policy source and the cap."""
         self._store = store
         self._outbox = outbox
         self._now = now
+        self._policy = policy
         self._cap = hourly_cap
 
     async def deliver_open_alerts(self) -> None:
-        """Release held alerts when quiet hours are over, then send what is open and unsent."""
+        """Release the held alerts that are due, then send what is open and unsent. One policy snapshot per call."""
         now = self._now()
-        if not in_quiet_hours(now, DEFAULT_POLICY):
-            await self._release_held()
+        await self._release_held(now, await self._policy.current())
         unsent = await self._store.unsent()
         if not unsent:
             return
@@ -108,8 +121,8 @@ class AlertDelivery:
         if excess:
             await self._send_summary(excess, now)
 
-    async def _release_held(self) -> None:
-        held = await self._store.held()
+    async def _release_held(self, now: datetime, policy: TimePolicy) -> None:
+        held = [a for a in await self._store.held() if _due(a, now, policy)]
         for alert in held:
             await self._store.release(alert.alert_id)
         if len(held) > 1:

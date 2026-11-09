@@ -70,7 +70,7 @@ class FakeOutbox:
 
 
 def delivery(store: FakeStore, outbox: FakeOutbox, now: datetime = DAYTIME, cap: int = 5) -> AlertDelivery:
-    return AlertDelivery(store, outbox, now=lambda: now, hourly_cap=cap)
+    return AlertDelivery(store, outbox, now=lambda: now, policy=FakePolicySource(DEFAULT_POLICY), hourly_cap=cap)
 
 
 async def test_given_an_open_alert_when_delivered_then_one_message_is_sent_and_its_id_stored() -> None:
