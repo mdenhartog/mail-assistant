@@ -167,7 +167,7 @@ async def _insert_schedule(connection: asyncpg.Connection, **overrides: object) 
         ("ck_schedule_minutes_range", {"quiet_start": -1}),
         ("ck_schedule_quiet_distinct", {"quiet_start": 600, "quiet_end": 600}),
         ("ck_schedule_window_length", {"quiet_start": 600, "quiet_end": 630}),
-        ("ck_schedule_window_length", {"quiet_start": 0, "quiet_end": 781}),
+        ("ck_schedule_window_length", {"quiet_start": 0, "quiet_end": 781, "remind_at": 900}),
         ("ck_schedule_overview_outside", {"overview_at": 700}),
         ("ck_schedule_overview_outside", {"overview_at": 600}),
         ("ck_schedule_remind_outside", {"remind_at": 899}),

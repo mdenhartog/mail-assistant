@@ -17,6 +17,31 @@ depends_on = None
 
 _TZ = sa.DateTime(timezone=True)
 
+# Minutes from the quiet start to the quiet end, going forward over midnight when needed.
+_LENGTH = "((quiet_end - quiet_start + 1440) % 1440)"
+
+
+def _outside(column: str) -> str:
+    """SQL for "the time is outside the quiet window": start inclusive, end exclusive, midnight-safe."""
+    return f"(({column} - quiet_start + 1440) % 1440) >= {_LENGTH}"
+
+
+def _schedule_checks() -> list[sa.CheckConstraint]:
+    return [
+        sa.CheckConstraint("id = 1", name="ck_schedule_single_row"),
+        sa.CheckConstraint(
+            "quiet_start BETWEEN 0 AND 1439 AND quiet_end BETWEEN 0 AND 1439 "
+            "AND overview_at BETWEEN 0 AND 1439 AND remind_at BETWEEN 0 AND 1439",
+            name="ck_schedule_minutes_range",
+        ),
+        sa.CheckConstraint("quiet_start <> quiet_end", name="ck_schedule_quiet_distinct"),
+        sa.CheckConstraint(f"{_LENGTH} BETWEEN 60 AND 720", name="ck_schedule_window_length"),
+        sa.CheckConstraint(_outside("overview_at"), name="ck_schedule_overview_outside"),
+        sa.CheckConstraint(_outside("remind_at"), name="ck_schedule_remind_outside"),
+        sa.CheckConstraint("zone ~ '^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$'", name="ck_schedule_zone_pattern"),
+        sa.CheckConstraint("updated_via IN ('telegram', 'web')", name="ck_schedule_updated_via"),
+    ]
+
 
 def upgrade() -> None:
     """Create the schema, its two tables, the conversation row and the column."""
@@ -33,6 +58,7 @@ def upgrade() -> None:
         sa.Column("updated_at", _TZ, nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_via", sa.String(16), nullable=False),
         sa.Column("updated_by", sa.String(64), nullable=False),
+        *_schedule_checks(),
         schema="settings",
     )
     op.create_table(
@@ -53,6 +79,8 @@ def upgrade() -> None:
         sa.Column("partial", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")),
         sa.Column("nonce", sa.String(64), nullable=False),
         sa.Column("expires_at", _TZ, nullable=False),
+        sa.CheckConstraint("id = 1", name="ck_conversation_single_row"),
+        sa.CheckConstraint("kind IN ('snooze', 'reply', 'settings')", name="ck_conversation_kind"),
     )
     op.add_column("alert", sa.Column("release_at", _TZ))
 

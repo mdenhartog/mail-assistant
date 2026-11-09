@@ -152,7 +152,27 @@ class Schedule(Base):
     """The one row of adjustable times: quiet hours, daily overview, reminder default, zone (ADR-0025)."""
 
     __tablename__ = "schedule"
-    __table_args__ = {"schema": "settings"}
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_schedule_single_row"),
+        CheckConstraint(
+            "quiet_start BETWEEN 0 AND 1439 AND quiet_end BETWEEN 0 AND 1439 "
+            "AND overview_at BETWEEN 0 AND 1439 AND remind_at BETWEEN 0 AND 1439",
+            name="ck_schedule_minutes_range",
+        ),
+        CheckConstraint("quiet_start <> quiet_end", name="ck_schedule_quiet_distinct"),
+        CheckConstraint("((quiet_end - quiet_start + 1440) % 1440) BETWEEN 60 AND 720", name="ck_schedule_window_length"),
+        CheckConstraint(
+            "((overview_at - quiet_start + 1440) % 1440) >= ((quiet_end - quiet_start + 1440) % 1440)",
+            name="ck_schedule_overview_outside",
+        ),
+        CheckConstraint(
+            "((remind_at - quiet_start + 1440) % 1440) >= ((quiet_end - quiet_start + 1440) % 1440)",
+            name="ck_schedule_remind_outside",
+        ),
+        CheckConstraint("zone ~ '^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$'", name="ck_schedule_zone_pattern"),
+        CheckConstraint("updated_via IN ('telegram', 'web')", name="ck_schedule_updated_via"),
+        {"schema": "settings"},
+    )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     zone: Mapped[str] = mapped_column(Text)
@@ -185,6 +205,10 @@ class Conversation(Base):
     """The pending Telegram dialogue, if any (a single row, ADR-0026)."""
 
     __tablename__ = "conversation"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_conversation_single_row"),
+        CheckConstraint("kind IN ('snooze', 'reply', 'settings')", name="ck_conversation_kind"),
+    )
 
     id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
     kind: Mapped[str] = mapped_column(String(16))  # snooze, reply or settings
