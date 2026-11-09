@@ -11,6 +11,8 @@ from app.adapters.telegram_inbox import Command
 from app.core.alert_state import AlertState
 from app.usecases.dispatch import CommandRouter
 from app.usecases.reply import StoredDraft
+from schedule_policy.testing import FakeClock
+from tests.usecases.fakes_dialogue import FakeConversations, FakeSettings
 
 
 _UPDATE_IDS = itertools.count(1)
@@ -81,12 +83,20 @@ class FakeChat:
     def __init__(self) -> None:
         self.said: list[str] = []
         self.acknowledged: list[str] = []
+        self.edited: list[tuple[int, str]] = []
+        self.offered: list[tuple[str, str, str]] = []
 
     async def say(self, text: str) -> None:
         self.said.append(text)
 
     async def answer_callback(self, callback_id: str) -> None:
         self.acknowledged.append(callback_id)
+
+    async def edit_message(self, message_id: int, text: str) -> None:
+        self.edited.append((message_id, text))
+
+    async def offer(self, text: str, label: str, data: str) -> None:
+        self.offered.append((text, label, data))
 
 
 @dataclass
@@ -95,10 +105,16 @@ class Rig:
     snooze: FakeSnooze = field(default_factory=FakeSnooze)
     store: FakeStore = field(default_factory=FakeStore)
     chat: FakeChat = field(default_factory=FakeChat)
+    clock: FakeClock = field(default_factory=FakeClock)
+    conversations: FakeConversations = field(init=False)
+    settings: FakeSettings = field(default_factory=FakeSettings)
+
+    def __post_init__(self) -> None:
+        self.conversations = FakeConversations(self.clock)
 
     def router(self) -> CommandRouter:
         self.snooze.store = self.store
-        return CommandRouter(self.reply, self.snooze, self.store, self.chat)
+        return CommandRouter(self.reply, self.snooze, self.store, self.chat, self.conversations)
 
 
 async def test_given_the_reply_button_when_pressed_then_the_reply_starts_and_the_next_text_is_the_reply() -> None:

@@ -184,13 +184,13 @@ async def test_given_a_snooze_question_when_a_reply_question_starts_for_another_
 
 
 async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the_alert_is_snoozed_and_nothing_awaited(
-    engine: AsyncEngine,
+    engine: AsyncEngine, conversations: ConversationStore,
 ) -> None:
     store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
     chat = FakeChat()
-    router = CommandRouter(FakeReply(), SnoozeService(store, chat, lambda: NOW), store, chat)
+    router = CommandRouter(FakeReply(), SnoozeService(store, chat, lambda: NOW), store, chat, conversations)
 
     await router.handle(press(f"later:{pending.alert_id}"))
     await router.handle(typed("3"))
@@ -200,13 +200,13 @@ async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the
 
 
 async def test_given_the_real_store_when_reply_replaces_a_pending_snooze_then_the_next_text_is_the_reply(
-    engine: AsyncEngine,
+    engine: AsyncEngine, conversations: ConversationStore,
 ) -> None:
     store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
     chat, reply = FakeChat(), FakeReply()
-    router = CommandRouter(reply, SnoozeService(store, chat, lambda: NOW), store, chat)
+    router = CommandRouter(reply, SnoozeService(store, chat, lambda: NOW), store, chat, conversations)
 
     await router.handle(press(f"later:{pending.alert_id}"))
     await router.handle(press(f"reply:{pending.alert_id}"))
