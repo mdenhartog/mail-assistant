@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
@@ -12,6 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.db.models import AuditLog, Draft, MailItem
 
 if TYPE_CHECKING:
+    from schedule_policy.policy import TimePolicy
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 LOCK_KEY = 7_265_001  # arbitrary constant: one running agent per database
@@ -106,3 +108,33 @@ async def consume_draft(session: AsyncSession, draft_id: str, digest: str, *, no
     if (await session.execute(statement)).first() is None:
         return None
     return (await session.execute(select(Draft).where(Draft.id == draft_id))).scalar_one()
+
+
+# ---- settings port (ADR-0025) ---------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class StoredSettings:
+    """The stored schedule row: the policy plus the version and who changed it last."""
+
+    policy: TimePolicy
+    version: int
+    updated_at: datetime
+    updated_via: str
+    updated_by: str
+
+
+class VersionConflict(Exception):  # noqa: N818  # named by the contract (spec AC-29), not an "...Error"
+    """The row changed since the caller read it; nothing was written."""
+
+
+class SettingsStore(Protocol):
+    """Read, replace and undo the one schedule row."""
+
+    async def read(self) -> StoredSettings | None:
+        """The stored row, or None when none was ever written."""
+        ...
+
+    async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
+        """Replace the whole row if it is still at ``expected_version`` (0 = no row yet)."""
+        ...
