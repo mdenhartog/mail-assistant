@@ -178,6 +178,12 @@ async def test_given_a_snooze_question_when_a_reply_question_starts_for_another_
     assert await store.awaiting() == (second.alert_id, "reply_text")
 
 
+async def test_given_no_dialogue_when_cleared_then_nothing_happens(conversations: ConversationStore) -> None:
+    await conversations.clear()
+
+    assert await conversations.current() is None
+
+
 async def test_given_a_pending_question_when_the_store_is_rebuilt_then_awaiting_still_answers(
     engine: AsyncEngine,
 ) -> None:
