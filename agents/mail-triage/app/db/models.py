@@ -82,7 +82,6 @@ class Alert(Base):
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    awaiting_input: Mapped[str | None] = mapped_column(String(16))  # what Marco is asked to type next
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # When a held alert may be delivered: the quiet end under the policy valid when it was held (INT-002).

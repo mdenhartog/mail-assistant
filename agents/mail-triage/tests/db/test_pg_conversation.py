@@ -153,7 +153,7 @@ async def test_given_an_expired_dialogue_when_advanced_then_nothing_changes(
     assert await conversations.advance(started.nonce, "end", {}) is None
 
 
-async def test_given_a_set_awaiting_when_stored_then_the_conversation_row_holds_it_and_the_alert_column_stays_empty(
+async def test_given_a_set_awaiting_when_stored_then_the_conversation_row_holds_it_and_the_alert_has_no_such_column(
     engine: AsyncEngine,
 ) -> None:
     store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
@@ -164,9 +164,17 @@ async def test_given_a_set_awaiting_when_stored_then_the_conversation_row_holds_
 
     async with engine.connect() as connection:
         row = (await connection.execute(text("select kind, target, step from conversation"))).one()
-        column = (await connection.execute(text("select awaiting_input from alert"))).scalar_one()
+        columns = (
+            (
+                await connection.execute(
+                    text("select column_name from information_schema.columns where table_name = 'alert'")
+                )
+            )
+            .scalars()
+            .all()
+        )
     assert tuple(row) == ("snooze", pending.alert_id, "hours")
-    assert column is None
+    assert "awaiting_input" not in columns
     assert await store.awaiting() == (pending.alert_id, "snooze_hours")
 
 
