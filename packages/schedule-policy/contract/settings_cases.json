@@ -1,0 +1,33 @@
+{
+  "description": "Contract cases for the schedule row (INT-002, AC-36). One list shared by schedule_policy.validate, the agent's settings store and web-settings. 'rules' is the exact list of refusal rule ids, in the order validate reports them; an empty list means valid. Times are HH:MM, or HH:MM:SS / HH:MM+hh:mm for the two rules about malformed times.",
+  "cases": [
+    {"id": "defaults", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "canary_zone", "policy": {"zone": "Pacific/Kiritimati", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "three_part_zone", "policy": {"zone": "America/Argentina/Buenos_Aires", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "utc_zone", "policy": {"zone": "UTC", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "window_exactly_60_minutes", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "22:00", "quiet_end": "23:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "window_exactly_12_hours", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "20:00", "quiet_end": "08:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "window_not_crossing_midnight", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "13:00", "quiet_end": "15:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "window_from_midnight", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "00:00", "quiet_end": "06:00", "overview_at": "23:59", "remind_at": "06:00"}, "rules": []},
+    {"id": "window_starting_last_minute", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:59", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "overview_at_quiet_end_is_outside", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "07:00", "remind_at": "09:00"}, "rules": []},
+    {"id": "remind_at_quiet_end_is_outside", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "07:00"}, "rules": []},
+    {"id": "overview_one_minute_before_quiet_start", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "22:59", "remind_at": "09:00"}, "rules": []},
+
+    {"id": "zone_not_in_the_tz_database", "policy": {"zone": "Mars/Olympus", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["zone_unknown"]},
+    {"id": "zone_empty", "policy": {"zone": "", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["zone_unknown"]},
+    {"id": "zone_is_a_path", "policy": {"zone": "../etc/passwd", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["zone_unknown"]},
+    {"id": "zone_with_trailing_space", "policy": {"zone": "Europe/Amsterdam ", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["zone_unknown"]},
+    {"id": "time_with_seconds", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00:30", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["time_not_whole_minute"]},
+    {"id": "time_with_utc_offset", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00+01:00", "remind_at": "09:00"}, "rules": ["time_has_zone"]},
+    {"id": "quiet_window_empty", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "07:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["quiet_window_empty"]},
+    {"id": "window_59_minutes", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "22:00", "quiet_end": "22:59", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["quiet_window_length"]},
+    {"id": "window_721_minutes", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "20:00", "quiet_end": "08:01", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["quiet_window_length"]},
+    {"id": "window_13_hours", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "20:00", "quiet_end": "09:00", "overview_at": "18:00", "remind_at": "09:00"}, "rules": ["quiet_window_length"]},
+    {"id": "overview_at_quiet_start_is_inside", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "23:00", "remind_at": "09:00"}, "rules": ["overview_in_quiet_hours"]},
+    {"id": "overview_after_midnight_inside", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "03:00", "remind_at": "09:00"}, "rules": ["overview_in_quiet_hours"]},
+    {"id": "remind_at_quiet_start_is_inside", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "23:00"}, "rules": ["remind_in_quiet_hours"]},
+    {"id": "remind_one_minute_before_quiet_end", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "18:00", "remind_at": "06:59"}, "rules": ["remind_in_quiet_hours"]},
+    {"id": "overview_and_remind_both_inside", "policy": {"zone": "Europe/Amsterdam", "quiet_start": "23:00", "quiet_end": "07:00", "overview_at": "01:00", "remind_at": "02:00"}, "rules": ["overview_in_quiet_hours", "remind_in_quiet_hours"]}
+  ]
+}
