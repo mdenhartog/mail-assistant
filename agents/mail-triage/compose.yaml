@@ -3,7 +3,8 @@
 services:
   mail-triage:
     profiles: ["components", "dev"]
-    build: { context: . }
+    # Repo-root context (paths in an included file are relative to this file): the image carries packages/schedule-policy.
+    build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
     depends_on: { db: { condition: service_healthy } }
     read_only: true
     security_opt: ["no-new-privileges:true"]

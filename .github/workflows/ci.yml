@@ -57,11 +57,17 @@ jobs:
           for f in agents/*/Dockerfile mcp-servers/*/Dockerfile channels/*/Dockerfile; do
             if [ -f "$f" ]; then docker run --rm -i hadolint/hadolint:v2.15.1 < "$f"; fi
           done
+      - name: shared package is in the mail-triage image
+        run: |
+          docker build -f agents/mail-triage/Dockerfile -t local/mail-triage:ci .
+          docker run --rm --entrypoint python local/mail-triage:ci -c "from schedule_policy.policy import DEFAULT_POLICY; assert DEFAULT_POLICY"
       - name: build and scan the images
         run: |
           for dir in agents/* mcp-servers/* channels/*; do
             if [ -f "$dir/Dockerfile" ]; then
-              docker build -t "local/$(basename "$dir"):ci" "$dir"
+              # Images that depend on a shared package (packages/*) are built from the repo root.
+              case "$dir" in agents/mail-triage) context=. ;; *) context="$dir" ;; esac
+              docker build -f "$dir/Dockerfile" -t "local/$(basename "$dir"):ci" "$context"
               docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.2 image --exit-code 1 --ignore-unfixed --severity HIGH,CRITICAL "local/$(basename "$dir"):ci"
             fi
           done

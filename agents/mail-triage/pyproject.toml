@@ -12,6 +12,7 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.2",
+    "schedule-policy",
     "sqlalchemy[asyncio]>=2.1.8",
     "tzdata>=2026.6",
 ]
@@ -34,6 +35,10 @@ dev = [
 [tool.uv]
 exclude-newer = "7 days"
 package = false
+
+# Shared package of INT-002 (design: Packaging). The image is built from the repo root so this path exists there too.
+[tool.uv.sources]
+schedule-policy = { path = "../../packages/schedule-policy" }
 
 # Temporary: versions already locked that are younger than the cooldown. Remove after 2026-11-15 (ADR-0022).
 [tool.uv.exclude-newer-package]
@@ -71,7 +76,7 @@ max-complexity = 8
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "schedule_policy"]
 
 [tool.pyright]
 typeCheckingMode = "strict"

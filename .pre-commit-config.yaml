@@ -30,6 +30,7 @@ repos:
     rev: v2.15.1
     hooks:
       - id: hadolint-docker
+        exclude: \.dockerignore$  # Dockerfile.dockerignore is an ignore list, not a Dockerfile
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.27.0
     hooks:

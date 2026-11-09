@@ -1,0 +1,10 @@
+# Build context is the repository root: send only what the mail-triage image needs (allow-list).
+*
+!agents/mail-triage/pyproject.toml
+!agents/mail-triage/uv.lock
+!agents/mail-triage/app
+!agents/mail-triage/migrations
+!packages/schedule-policy/pyproject.toml
+!packages/schedule-policy/schedule_policy
+**/__pycache__
+**/*.pyc
