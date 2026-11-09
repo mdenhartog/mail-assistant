@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.core.alert_text import AlertMessage, AuthResults, DigestEntry, MailMeta, build_alert, build_digest
 from app.core.time_policy import in_quiet_hours
+from schedule_policy.policy import DEFAULT_POLICY
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -94,7 +95,7 @@ class AlertDelivery:
     async def deliver_open_alerts(self) -> None:
         """Release held alerts when quiet hours are over, then send what is open and unsent."""
         now = self._now()
-        if not in_quiet_hours(now):
+        if not in_quiet_hours(now, DEFAULT_POLICY):
             await self._release_held()
         unsent = await self._store.unsent()
         if not unsent:

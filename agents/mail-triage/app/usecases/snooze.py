@@ -11,7 +11,8 @@ import re
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from app.core.alert_state import AlertState, Event, InvalidTransitionError, transition
-from app.core.time_policy import InvalidSnoozeError, in_quiet_hours, snooze_due
+from app.core.time_policy import InvalidSnoozeError, in_quiet_hours, remind_due
+from schedule_policy.policy import DEFAULT_POLICY
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -76,7 +77,7 @@ class SnoozeService:
         try:
             if amount is None:
                 raise InvalidSnoozeError
-            due = snooze_due(self._now(), amount)
+            due = remind_due(self._now(), amount, DEFAULT_POLICY)
         except InvalidSnoozeError:
             await self._say.say(ASK_AGAIN)
             return
@@ -93,7 +94,7 @@ class SnoozeService:
     async def release_due(self) -> list[str]:
         """Reopen snoozed alerts that are due (held when it is quiet hours); each one only once."""
         now = self._now()
-        event = Event.DUE_IN_QUIET_HOURS if in_quiet_hours(now) else Event.DUE
+        event = Event.DUE_IN_QUIET_HOURS if in_quiet_hours(now, DEFAULT_POLICY) else Event.DUE
         released: list[str] = []
         for alert_id in await self._store.due_snoozed(now):
             await self._store.set_state(alert_id, transition(AlertState.SNOOZED, event), resend=True)

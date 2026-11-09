@@ -35,6 +35,7 @@ from app.usecases.overview import OverviewService
 from app.usecases.reply import ReplyService
 from app.usecases.snooze import SnoozeService
 from app.usecases.triage import TriagePipeline
+from schedule_policy.policy import DEFAULT_POLICY
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -124,7 +125,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now),  # type: ignore[arg-type]
         delivery=AlertDelivery(store, outbox, now, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
-        overview=OverviewService(store, outbox, now),
+        overview=OverviewService(store, outbox, now, DEFAULT_POLICY),
         store=store,
         inbox=inbox,
         router=CommandRouter(reply, snooze, store, outbox),

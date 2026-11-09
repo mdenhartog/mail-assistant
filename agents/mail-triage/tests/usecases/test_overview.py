@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time
 from typing import TYPE_CHECKING
 
-from app.core import time_policy
 from app.core.alert_text import MAX_MESSAGE_CHARS
 from app.usecases.overview import SUBJECT_CHARS, FiledMail, OverviewService, build_overview
+from schedule_policy.policy import DEFAULT_POLICY
+from schedule_policy.testing import make_policy
 
 if TYPE_CHECKING:
-    import pytest
-
     from app.core.alert_text import AlertMessage
+    from schedule_policy.policy import TimePolicy
 
 BEFORE = datetime(2026, 11, 9, 16, 59, tzinfo=UTC)  # 17:59 in Amsterdam
 AFTER = datetime(2026, 11, 9, 17, 1, tzinfo=UTC)  # 18:01 in Amsterdam
@@ -51,8 +51,10 @@ class FakeOutbox:
         return len(self.messages)
 
 
-def service(store: FakeStore, outbox: FakeOutbox, now: datetime) -> OverviewService:
-    return OverviewService(store, outbox, now=lambda: now)
+def service(
+    store: FakeStore, outbox: FakeOutbox, now: datetime, policy: TimePolicy = DEFAULT_POLICY
+) -> OverviewService:
+    return OverviewService(store, outbox, now=lambda: now, policy=policy)
 
 
 async def test_given_mails_filed_today_when_the_time_arrives_then_one_message_has_counts_and_unsure_mails() -> None:
@@ -106,20 +108,40 @@ async def test_given_it_is_before_the_overview_time_when_run_then_nothing_is_sen
     assert outbox.messages == []
 
 
-async def test_given_the_overview_time_inside_quiet_hours_when_it_arrives_then_it_waits_until_they_end(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(time_policy, "OVERVIEW_AT", time(23, 30))  # a future change, see INT-002
+async def test_given_the_overview_time_inside_quiet_hours_when_it_arrives_then_it_waits_until_they_end() -> None:
+    late_overview = replace(DEFAULT_POLICY, overview_at=time(23, 30))
     store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
     late_evening = datetime(2026, 11, 9, 22, 45, tzinfo=UTC)  # 23:45 local
 
-    await service(store, outbox, late_evening).send_overview()
+    await service(store, outbox, late_evening, late_overview).send_overview()
     assert outbox.messages == []
 
-    await service(store, outbox, NEXT_MORNING).send_overview()
+    await service(store, outbox, NEXT_MORNING, late_overview).send_overview()
 
     assert len(outbox.messages) == 1
     assert TODAY in store.sent_days
+
+
+async def test_given_another_zone_when_the_time_arrives_there_then_the_overview_follows_that_zone() -> None:
+    new_york = make_policy(zone="America/New_York")
+    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+
+    await service(store, outbox, datetime(2026, 11, 9, 22, 59, tzinfo=UTC), new_york).send_overview()  # 17:59 there
+    assert outbox.messages == []
+
+    await service(store, outbox, datetime(2026, 11, 9, 23, 1, tzinfo=UTC), new_york).send_overview()  # 18:01 there
+
+    assert len(outbox.messages) == 1
+    assert TODAY in store.sent_days
+
+
+async def test_given_a_day_whose_midnight_is_skipped_when_the_overview_runs_then_the_day_starts_at_01_00() -> None:
+    santiago = make_policy(zone="America/Santiago")
+    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+
+    await service(store, outbox, datetime(2026, 9, 6, 22, 30, tzinfo=UTC), santiago).send_overview()  # 19:30 there
+
+    assert store.asked_since == [datetime(2026, 9, 6, 4, 0, tzinfo=UTC)]  # 01:00 local, the first valid moment
 
 
 async def test_given_a_quiet_day_when_the_time_arrives_then_it_is_remembered_so_a_late_mail_does_not_trigger_one() -> (
