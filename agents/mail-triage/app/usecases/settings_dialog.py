@@ -26,7 +26,7 @@ from schedule_policy.parse import parse_time
 from schedule_policy.policy import DEFAULT_POLICY, validate
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
     from datetime import timedelta
 
     from app.core.alert_text import AlertMessage
@@ -127,7 +127,7 @@ class SettingsDialog:
                 await self._repeat(conversation)
 
     @asynccontextmanager
-    async def _guard(self) -> AsyncIterator[None]:
+    async def _guard(self) -> AsyncGenerator[None]:
         """A store failure ends the dialogue with an honest note; nothing was written by the failed call."""
         try:
             yield
@@ -269,7 +269,9 @@ class SettingsDialog:
     async def _offer_again(self, conversation: OpenConversation) -> None:
         proposed = await self._with_new_window(conversation)
         if proposed is not None:
-            await self._send_offer(conversation.nonce, proposed, [p for p in validate(proposed) if p.rule in _MOVED_FIELD])
+            await self._send_offer(
+                conversation.nonce, proposed, [p for p in validate(proposed) if p.rule in _MOVED_FIELD]
+            )
 
     async def _move(self, conversation: OpenConversation) -> None:
         """Take the offer: move every trapped value to the quiet end and store everything in one write."""

@@ -1,20 +1,24 @@
-"""U-quiet-hours-09: the settings dialogue: card, times, quiet hours, conflicts (spec C-2, C-3, C-8; AC-2, AC-8 to AC-13)."""
+"""U-quiet-hours-09: the settings dialogue: card, times, quiet hours, conflicts (C-2, C-3, C-8; AC-2, AC-8 to 13)."""
+# ruff: noqa: RUF001  # the full-width digits in the refused-forms table are the point of that test row
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
+from typing import TYPE_CHECKING
 
 import pytest
 
-from app.core.alert_text import AlertMessage, Button
 from app.db.repos import PolicyRefused, SettingsStoreFailure, StoredSettings, VersionConflict
-from app.usecases.dispatch import CommandRouter
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy, validate
 from schedule_policy.testing import make_policy
 from tests.usecases.test_dispatch import FakeChat, Rig, button, text
+
+if TYPE_CHECKING:
+    from app.core.alert_text import AlertMessage, Button
+    from app.usecases.dispatch import CommandRouter
 
 USER = 4242
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
@@ -303,9 +307,17 @@ _SEEDED = make_policy(overview_at=time(20, 0), remind_at=time(21, 0))
     ("start", "end", "sentence"),
     [
         ("22:00", "11:00", "Quiet hours can be 1 to 12 hours. 22:00 to 11:00 is 13 hours. Try 22:00 to 10:00."),
-        ("07:00", "19:01", "Quiet hours can be 1 to 12 hours. 07:00 to 19:01 is 12 hours 1 minute. Try 07:00 to 19:00."),
+        (
+            "07:00",
+            "19:01",
+            "Quiet hours can be 1 to 12 hours. 07:00 to 19:01 is 12 hours 1 minute. Try 07:00 to 19:00.",
+        ),
         ("07:00", "07:30", "Quiet hours can be 1 to 12 hours. 07:00 to 07:30 is 30 minutes. Try 07:00 to 08:00."),
-        ("23:00", "23:00", "Quiet hours must start and end at different times. 23:00 to 23:00 is empty. Try 23:00 to 11:00."),
+        (
+            "23:00",
+            "23:00",
+            "Quiet hours must start and end at different times. 23:00 to 23:00 is empty. Try 23:00 to 11:00.",
+        ),
     ],
 )
 async def test_given_a_window_outside_one_to_twelve_hours_when_answered_then_it_is_refused_with_rule_value_and_example(
@@ -383,7 +395,10 @@ async def test_given_a_refused_form_when_typed_then_it_is_refused_and_nothing_re
 
     assert bot.store.writes == []
     assert bot.store.reads == reads
-    assert bot.last.text.splitlines()[-2:] == ["Quiet hours, step 1 of 2: start time", "Type a time, for example 23:00."]
+    assert bot.last.text.splitlines()[-2:] == [
+        "Quiet hours, step 1 of 2: start time",
+        "Type a time, for example 23:00.",
+    ]
     assert "could not read" in bot.last.text.splitlines()[0]
     assert "Try 23:00" in bot.last.text.splitlines()[0]
     assert bot.labels() == ["Cancel"]
@@ -403,13 +418,17 @@ async def _quiet_hours(bot: Bot, start: str, end: str) -> None:
     await bot.type(end)
 
 
-async def test_given_overview_1800_when_the_window_17_to_03_is_answered_then_it_is_refused_with_a_one_tap_move() -> None:
+async def test_given_overview_1800_when_the_window_17_to_03_is_answered_then_it_is_refused_with_a_one_tap_move() -> (
+    None
+):
     bot = bot_with(make_policy(overview_at=time(18, 0), remind_at=time(9, 0)))
 
     await _quiet_hours(bot, "17:00", "03:00")
 
     lines = bot.last.text.splitlines()
-    assert lines[0] == "Quiet hours 17:00 to 03:00 are not saved yet: the daily overview at 18:00 would fall inside them."
+    assert (
+        lines[0] == "Quiet hours 17:00 to 03:00 are not saved yet: the daily overview at 18:00 would fall inside them."
+    )
     assert lines[1] == "Move the daily overview to 03:00 and save both?"
     assert bot.labels() == ["Move to 03:00 and save", "Cancel"]
     assert bot.store.writes == []
@@ -428,9 +447,7 @@ async def test_given_the_offered_move_when_taken_then_the_window_and_the_moved_o
     assert bot.last.text.splitlines()[0] == "Saved."
 
 
-async def test_given_overview_and_reminder_inside_the_new_window_when_the_move_is_taken_then_both_move_in_one_write() -> (
-    None
-):
+async def test_given_overview_and_reminder_trapped_when_the_move_is_taken_then_both_move_in_one_write() -> None:
     bot = bot_with(make_policy(overview_at=time(6, 0), remind_at=time(5, 30)))
 
     await _quiet_hours(bot, "23:00", "07:00")
@@ -476,7 +493,7 @@ async def test_given_text_while_the_move_is_offered_then_the_offer_is_shown_agai
 # ---- criterion 7: a change made elsewhere meanwhile (AC-29) -------------------------------------------------------
 
 
-async def test_given_the_row_changed_elsewhere_when_the_answer_comes_then_nothing_is_written_and_a_fresh_card_is_shown() -> (
+async def test_given_the_row_changed_elsewhere_when_the_answer_comes_then_nothing_is_written_and_a_new_card_shows() -> (
     None
 ):
     bot = bot_with(make_policy())
@@ -507,7 +524,10 @@ async def test_given_the_row_changes_between_the_check_and_the_write_when_saving
 
     await bot.type("19:00")
 
-    assert bot.last.text.splitlines()[0] == "Your settings changed elsewhere. Nothing was saved. These are the current values."
+    assert (
+        bot.last.text.splitlines()[0]
+        == "Your settings changed elsewhere. Nothing was saved. These are the current values."
+    )
     assert bot.labels()[0] == "Change quiet hours"
 
 
@@ -525,9 +545,7 @@ async def test_given_the_row_changed_elsewhere_when_the_move_is_taken_then_nothi
 # ---- the time zone question belongs to U-10: until then a marked 'not available yet' branch -----------------------
 
 
-async def test_given_the_time_zone_button_when_tapped_then_marco_is_told_it_is_not_available_yet_and_nothing_changes() -> (
-    None
-):
+async def test_given_the_time_zone_button_when_tapped_then_marco_is_told_it_is_not_available_yet() -> None:
     bot = bot_with(make_policy())
     await bot.settings()
 
@@ -553,7 +571,7 @@ async def test_given_text_on_the_card_when_typed_then_marco_is_pointed_to_the_bu
 # ---- criterion 9: nothing leaks into the logs (AC-33) --------------------------------------------------------------
 
 CANARY = "Pacific/Kiritimati"
-TOKEN = "123456:ABC-secret-token"  # a fake bot token typed by mistake
+TOKEN = "123456:ABC-secret-token"  # noqa: S105  # a fake bot token typed by mistake
 
 
 async def test_given_failure_paths_when_logs_are_captured_then_no_zone_token_answer_or_nonce_appears(

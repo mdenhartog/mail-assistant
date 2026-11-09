@@ -1,4 +1,4 @@
-"""The words of the settings dialogue (spec C-10, Behaviour 1 to 5): English, 24-hour time, the terms of the alert texts.
+"""The words of the settings dialogue (spec C-10, Behaviour 1 to 5): English, 24-hour time, the alert-text terms.
 
 Every message is HTML for Telegram, so everything that is not written here is escaped. Nothing in this module logs.
 """
