@@ -233,3 +233,10 @@ def test_given_a_day_when_its_overview_moment_is_asked_then_the_clock_change_rul
 
     assert overview_on(date(2026, 3, 29), policy) == utc("2026-03-29T01:00")  # 02:30 does not exist: 03:00
     assert overview_on(date(2026, 11, 9), make_policy()) == utc("2026-11-09T17:00")  # 18:00 in winter time
+
+
+def test_given_a_half_hour_gap_when_a_time_inside_it_is_asked_then_it_is_the_end_of_that_gap() -> None:
+    lord_howe = make_policy(zone="Australia/Lord_Howe", overview_at=time(2, 15))  # 02:00 jumps to 02:30
+
+    assert overview_on(date(2026, 10, 4), lord_howe) == utc("2026-10-03T15:30")
+    assert overview_on(date(2026, 10, 5), lord_howe) == utc("2026-10-04T15:15")  # a normal day: 02:15 at UTC+11
