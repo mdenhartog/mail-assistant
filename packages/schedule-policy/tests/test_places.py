@@ -42,6 +42,19 @@ def test_given_new_york_when_looked_up_then_hit_has_label_and_offset_at_now():
     assert summer.utc_offset_minutes == -240
 
 
+def test_given_a_listed_iana_name_when_looked_up_then_accepted():
+    hits = places.lookup("Europe/Vienna", now=NOW).hits
+
+    assert [hit.zone for hit in hits] == ["Europe/Vienna"]
+    assert hits[0].label == "Vienna, Austria (UTC+1)"
+    assert zones("europe/vienna") == ["Europe/Vienna"]
+
+
+@pytest.mark.parametrize("text", ["Europe/Nowhere", "Pacific/Auckland", "UTC", "America/../etc"])
+def test_given_an_unlisted_iana_name_when_looked_up_then_nothing(text):
+    assert places.lookup(text, now=NOW) == places.LookupResult()
+
+
 @pytest.mark.parametrize(
     ("text", "zone"),
     [
