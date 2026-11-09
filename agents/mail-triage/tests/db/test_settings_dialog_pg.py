@@ -59,9 +59,10 @@ def rig(engine: AsyncEngine) -> Rig:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     chat = RecordingChat()
     store = PgSettingsStore(sessions)
-    conversations = ConversationStore(sessions, FakeClock().now)
+    clock = FakeClock()
+    conversations = ConversationStore(sessions, clock.now)
     router = CommandRouter(FakeReply(), FakeSnooze(), FakeStore(), chat, conversations)
-    router.register(SettingsDialog(store, chat, conversations, USER))
+    router.register(SettingsDialog(store, chat, conversations, USER, clock.now))
     return Rig(store, chat, router)
 
 

@@ -78,7 +78,7 @@ class Bot:
         self.chat = RecordingChat()
         self.rig.chat = self.chat
         self.router = self.rig.router()
-        self.dialog = SettingsDialog(self.store, self.chat, self.rig.conversations, USER)
+        self.dialog = SettingsDialog(self.store, self.chat, self.rig.conversations, USER, self.rig.clock.now)
         self.router.register(self.dialog)
 
     @property
@@ -541,22 +541,6 @@ async def test_given_the_row_changed_elsewhere_when_the_move_is_taken_then_nothi
 
     assert bot.store.writes == []
     assert bot.last.text.startswith("Your settings changed elsewhere.")
-
-
-# ---- the time zone question belongs to U-10: until then a marked 'not available yet' branch -----------------------
-
-
-async def test_given_the_time_zone_button_when_tapped_then_marco_is_told_it_is_not_available_yet() -> None:
-    bot = bot_with(make_policy())
-    await bot.settings()
-
-    await bot.tap("Change time zone")
-
-    assert bot.last.text.splitlines()[0] == "Changing the time zone is not available yet."
-    assert bot.labels()[0] == "Change quiet hours"  # the card, with live buttons
-    assert bot.store.writes == []
-    await bot.tap("Change daily overview")
-    assert bot.last.text.startswith("Daily overview: type a time")
 
 
 async def test_given_text_on_the_card_when_typed_then_marco_is_pointed_to_the_buttons() -> None:
