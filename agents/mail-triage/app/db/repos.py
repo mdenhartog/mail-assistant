@@ -137,6 +137,19 @@ class PolicyRefused(Exception):  # noqa: N818  # named by the contract, not an "
         self.problems = problems
 
 
+class StoredSettingsInvalid(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The stored row exists but breaks a rule (for example a zone the tz database no longer has).
+
+    ``read()`` raises this instead of returning a policy nobody validated. U-08's PolicySource catches it and falls
+    back to the last good values or the defaults (C-9). Only rule ids are kept: the stored values never reach a log.
+    """
+
+    def __init__(self, rules: tuple[str, ...]) -> None:
+        """Keep the broken rule ids."""
+        super().__init__(", ".join(rules))
+        self.rules = rules
+
+
 class NothingToUndo(Exception):  # noqa: N818  # named by the contract, not an "...Error"
     """The version asked for is the first write: it replaced nothing, so there is nothing to put back."""
 

@@ -10,7 +10,7 @@ from sqlalchemy import Integer, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import Schedule, SettingsChange
-from app.db.repos import NothingToUndo, PolicyRefused, StoredSettings, VersionConflict
+from app.db.repos import NothingToUndo, PolicyRefused, StoredSettings, StoredSettingsInvalid, VersionConflict
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -87,10 +87,19 @@ class PgSettingsStore:
         self._sessions = sessions
 
     async def read(self) -> StoredSettings | None:
-        """The stored row, or None when none was ever written."""
+        """The stored row, or None when none was ever written.
+
+        Raises:
+            StoredSettingsInvalid: the row exists but fails ``validate``; it is never returned as a policy.
+        """
         async with self._sessions() as session:
             row = await session.get(Schedule, ROW)
-        return _stored(row) if row else None
+        if row is None:
+            return None
+        stored = _stored(row)
+        if problems := validate(stored.policy):
+            raise StoredSettingsInvalid(tuple(problem.rule for problem in problems))
+        return stored
 
     async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
         """Replace the whole row if it is still at ``expected_version`` (0 = insert the first row).
