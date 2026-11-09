@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from app.db.models import AuditLog, Draft, MailItem
 
 if TYPE_CHECKING:
-    from schedule_policy.policy import TimePolicy
+    from schedule_policy.policy import Problem, TimePolicy
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 LOCK_KEY = 7_265_001  # arbitrary constant: one running agent per database
@@ -126,6 +126,15 @@ class StoredSettings:
 
 class VersionConflict(Exception):  # noqa: N818  # named by the contract (spec AC-29), not an "...Error"
     """The row changed since the caller read it; nothing was written."""
+
+
+class PolicyRefused(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The policy broke a rule of ``schedule_policy.validate``; it was refused before the database was touched."""
+
+    def __init__(self, problems: list[Problem]) -> None:
+        """Keep the broken rules (rule id, value given, example) for the dialogue to word."""
+        super().__init__(", ".join(problem.rule for problem in problems))  # rule ids only: no values in messages
+        self.problems = problems
 
 
 class SettingsStore(Protocol):

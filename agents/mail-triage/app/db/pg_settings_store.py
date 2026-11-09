@@ -5,12 +5,12 @@ from __future__ import annotations
 from datetime import time
 from typing import TYPE_CHECKING
 
-from schedule_policy.policy import TimePolicy
+from schedule_policy.policy import TimePolicy, validate
 from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import Schedule
-from app.db.repos import StoredSettings, VersionConflict
+from app.db.repos import PolicyRefused, StoredSettings, VersionConflict
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -83,8 +83,11 @@ class PgSettingsStore:
         """Replace the whole row if it is still at ``expected_version`` (0 = insert the first row).
 
         Raises:
+            PolicyRefused: the policy breaks a rule; the database was not touched.
             VersionConflict: the row is not at ``expected_version``; nothing was written.
         """
+        if problems := validate(policy):
+            raise PolicyRefused(problems)
         async with self._sessions.begin() as session:
             row = await _replace(session, _values(policy, expected_version, via, by), expected_version)
         if row is None:
