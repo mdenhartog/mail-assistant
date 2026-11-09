@@ -109,14 +109,6 @@ class MailPorts:
         return self._sender.send_reply(original, draft)
 
 
-class DefaultPolicySource:
-    """The policy until the stored settings are wired in (U-quiet-hours-14): always the defaults."""
-
-    async def current(self) -> TimePolicy:
-        """The default policy."""
-        return DEFAULT_POLICY
-
-
 def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is read from the environment
     settings: Settings,
     *,
