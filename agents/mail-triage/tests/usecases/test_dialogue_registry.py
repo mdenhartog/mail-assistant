@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import timedelta
 
 import pytest
@@ -15,6 +16,9 @@ from app.usecases.dispatch import (
     button_data,
 )
 from tests.usecases.test_dispatch import Rig, button, text
+
+TOKEN = "123456:ABC-secret-token"  # noqa: S105 - a fake token for tests
+CANARY = "Pacific/Kiritimati"
 
 def registered(rig: Rig) -> CommandRouter:
     router = rig.router()
@@ -409,3 +413,108 @@ async def test_given_two_texts_at_once_when_handled_then_only_one_is_the_answer(
     await asyncio.gather(router.handle(text("18:00")), router.handle(text("19:00")))
 
     assert len(rig.settings.texts) == 1
+
+
+# ---- criteria 7 and 8: settings questions expire after 15 minutes (AC-6) ------------------------------------------
+
+EXPIRY_TABLE = [
+    pytest.param(timedelta(minutes=14, seconds=59), True, id="14:59:59-used"),
+    pytest.param(timedelta(minutes=15), False, id="15:00:00-expired"),
+    pytest.param(timedelta(minutes=15, seconds=1), False, id="15:00:01-expired"),
+]
+
+
+@pytest.mark.parametrize(("elapsed", "used"), EXPIRY_TABLE)
+async def test_given_the_expiry_table_when_a_button_is_tapped_then_it_is_used_only_before_fifteen_minutes(
+    elapsed: timedelta, *, used: bool
+) -> None:
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+    rig.clock.advance(elapsed)
+
+    await router.handle(button(button_data("set", nonce, "overview_time")))
+
+    assert rig.chat.acknowledged == ["cb1"]
+    if used:
+        assert rig.settings.writes == ["button:set:overview_time"]
+        assert rig.chat.edited == rig.chat.offered == []
+    else:
+        assert rig.settings.writes == []
+        assert rig.chat.edited == [(9, "Expired")]  # the old message loses its buttons
+        assert rig.chat.offered == [("That question expired. Nothing was changed.", "Start again", "start:settings")]
+
+
+@pytest.mark.parametrize(("elapsed", "used"), EXPIRY_TABLE)
+async def test_given_the_expiry_table_when_text_arrives_then_it_is_an_answer_only_before_fifteen_minutes(
+    elapsed: timedelta, *, used: bool
+) -> None:
+    rig = Rig()
+    router = registered(rig)
+    await open_card(rig, router)
+    rig.clock.advance(elapsed)
+
+    await router.handle(text("18:00"))
+
+    if used:
+        assert [answer for _nonce, answer in rig.settings.texts] == ["18:00"]
+        assert rig.chat.said == []
+    else:
+        assert rig.settings.texts == []
+        assert rig.chat.said == [USE_BUTTONS]  # the usual answer, never a settings answer
+        assert rig.chat.edited == []
+
+
+async def test_given_an_expired_cancel_button_when_tapped_then_it_only_says_expired() -> None:
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+    rig.clock.advance(timedelta(minutes=20))
+
+    await router.handle(button(button_data("cancel", nonce)))
+
+    assert rig.chat.edited == [(9, "Expired")]
+    assert rig.settings.writes == []
+
+
+# ---- criterion 12: logs (AC-33) ----------------------------------------------------------------------------------
+
+
+async def test_given_rejections_when_logged_then_no_token_nonce_answer_or_zone_appears(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+    stale = button_data("set", "x" * 22, "zone")
+
+    await router.handle(button(stale))  # a stale nonce
+    await router.handle(text(f"{CANARY} {TOKEN}"))  # an answer that carries the canary zone and a token
+    await router.handle(button(button_data("set", nonce, "zone")))  # the nonce the answer just rotated away
+    rig.clock.advance(timedelta(minutes=16))
+    await router.handle(button(button_data("undo", rig.settings.texts[-1][0])))  # an expired question
+
+    assert caplog.records, "rejections are logged by reason only, so this check is not vacuous"
+    for needle in (CANARY, TOKEN, nonce, stale, "x" * 22):
+        assert needle not in caplog.text
+
+
+async def test_given_a_failing_handler_when_logged_then_the_error_reaches_the_caller_and_no_value_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    rig = Rig()
+    router = registered(rig)
+    await open_card(rig, router)
+
+    async def failing(*_args: object) -> None:
+        raise RuntimeError("store down")
+
+    rig.settings.on_text = failing  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="store down"):
+        await router.handle(text(f"{CANARY} {TOKEN}"))
+
+    assert CANARY not in caplog.text
+    assert TOKEN not in caplog.text
