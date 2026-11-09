@@ -188,7 +188,8 @@ async def test_given_previous_values_that_no_longer_validate_when_undone_then_re
     async with engine.begin() as connection:  # as if the tz database had dropped the old zone
         await connection.execute(
             text(
-                "update settings.settings_change set old = jsonb_set(old, '{zone}', '\"Mars/Olympus\"') where old is not null"
+                "update settings.settings_change set old = jsonb_set(old, '{zone}', '\"Mars/Olympus\"') "
+                "where old is not null"
             )
         )
 
