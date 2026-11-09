@@ -150,3 +150,32 @@ async def test_given_an_ok_false_answer_when_sent_then_it_is_an_error() -> None:
 
     with pytest.raises(TelegramError):
         await outbox(fake).say("hi")
+
+
+async def test_given_an_old_question_when_edited_then_the_text_is_replaced_in_place_and_the_buttons_are_removed() -> (
+    None
+):
+    fake = FakeTelegram(ok())
+
+    await outbox(fake).edit_message(9, "Expired <b>not bold</b>")
+
+    assert fake.requests[0].url.path == f"/bot{TOKEN}/editMessageText"
+    assert fake.body() == {
+        "chat_id": CHAT,
+        "message_id": 9,
+        "text": "Expired <b>not bold</b>",
+        "reply_markup": {"inline_keyboard": []},
+        "link_preview_options": {"is_disabled": True},
+    }
+
+
+async def test_given_a_note_with_one_button_when_offered_then_it_is_plain_text_with_that_button() -> None:
+    fake = FakeTelegram(ok())
+
+    await outbox(fake).offer("Expired.", "Start again", "start:settings")
+
+    body = fake.body()
+    assert fake.requests[0].url.path == f"/bot{TOKEN}/sendMessage"
+    assert body["text"] == "Expired."
+    assert "parse_mode" not in body
+    assert body["reply_markup"] == {"inline_keyboard": [[{"text": "Start again", "callback_data": "start:settings"}]]}

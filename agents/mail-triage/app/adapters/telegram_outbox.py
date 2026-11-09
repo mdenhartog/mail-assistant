@@ -71,6 +71,27 @@ class TelegramOutbox:
         payload = {"chat_id": self._chat, "text": text[:MAX_TEXT_CHARS], "link_preview_options": {"is_disabled": True}}
         await self._call("sendMessage", payload)
 
+    async def edit_message(self, message_id: int, text: str) -> None:
+        """Replace the text of an earlier message in place and remove its buttons."""
+        payload = {
+            "chat_id": self._chat,
+            "message_id": message_id,
+            "text": text[:MAX_TEXT_CHARS],
+            "reply_markup": {"inline_keyboard": []},
+            "link_preview_options": {"is_disabled": True},
+        }
+        await self._call("editMessageText", payload)
+
+    async def offer(self, text: str, label: str, data: str) -> None:
+        """Send a short plain-text note with one button."""
+        payload = {
+            "chat_id": self._chat,
+            "text": text[:MAX_TEXT_CHARS],
+            "link_preview_options": {"is_disabled": True},
+            "reply_markup": {"inline_keyboard": [[{"text": label, "callback_data": data}]]},
+        }
+        await self._call("sendMessage", payload)
+
     async def answer_callback(self, callback_id: str) -> None:
         """Stop the spinner on a pressed button."""
         await self._call("answerCallbackQuery", {"callback_query_id": callback_id})

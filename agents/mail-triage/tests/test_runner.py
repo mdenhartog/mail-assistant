@@ -179,7 +179,7 @@ async def test_given_two_cycles_on_the_same_day_when_run_then_old_content_is_pur
 
 
 async def test_given_commands_from_marco_when_the_telegram_cycle_runs_then_each_is_routed(tmp_path: Path) -> None:
-    commands = [Command("text", "3", 1, 1, None), Command("button", "stop:1", 1, 2, "cb")]
+    commands = [Command("text", "3", 1, 1, None, 1), Command("button", "stop:1", 1, 2, "cb", 2)]
     router = Router()
     run, _ = runner(Steps(), tmp_path, inbox=Inbox([commands]), router=router)
 
@@ -192,7 +192,7 @@ async def test_given_a_command_that_fails_when_routed_then_the_next_one_still_ru
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.DEBUG)
-    commands = [Command("text", "secret words", 1, 1, None), Command("text", "more", 1, 2, None)]
+    commands = [Command("text", "secret words", 1, 1, None, 1), Command("text", "more", 1, 2, None, 2)]
     router = Router(fail=True)
     run, _ = runner(Steps(), tmp_path, inbox=Inbox([commands]), router=router)
 
