@@ -54,6 +54,14 @@ _SEED_ALERTS = (
 )
 
 
+# The column is gone at head (0005): an alert is seeded without it.
+_SEED_ALERTS_WITHOUT_QUESTION = (
+    "insert into mail_item (gmail_message_id, thread_id, urgent, created_at) values ('m1', 't1', true, now()); "
+    "insert into alert (mail_item_id, state, due_at, created_at, updated_at) "
+    "select id, 'held', now(), now(), now() from mail_item"
+)
+
+
 async def test_given_revision_0003_with_alerts_when_migrated_then_tables_exist_and_alerts_keep_their_data(
     database_url: str,
 ) -> None:
@@ -67,15 +75,15 @@ async def test_given_revision_0003_with_alerts_when_migrated_then_tables_exist_a
         for r in await _fetch(database_url, "select table_schema, table_name from information_schema.tables")
     }
     assert {("settings", "schedule"), ("settings", "settings_change"), ("public", "conversation")} <= tables
-    rows = await _fetch(database_url, "select state, awaiting_input, release_at from alert")
-    assert [(r["state"], r["awaiting_input"], r["release_at"]) for r in rows] == [("held", "snooze", None)]
+    rows = await _fetch(database_url, "select state, release_at from alert")
+    assert [(r["state"], r["release_at"]) for r in rows] == [("held", None)]
 
 
 async def test_given_the_migration_when_downgraded_then_schema_tables_and_column_are_gone_and_data_is_kept(
     database_url: str,
 ) -> None:
     await _migrate(database_url, "head")
-    await _execute(database_url, _SEED_ALERTS)
+    await _execute(database_url, _SEED_ALERTS_WITHOUT_QUESTION)
 
     before = {
         r["schema_name"] for r in await _fetch(database_url, "select schema_name from information_schema.schemata")
@@ -100,7 +108,7 @@ async def test_given_the_migration_when_downgraded_then_schema_tables_and_column
     assert "awaiting_input" in columns
     assert await _fetch(database_url, "select 1 from pg_proc where proname = 'settings_audit'") == []
     rows = await _fetch(database_url, "select state, awaiting_input from alert")
-    assert [(r["state"], r["awaiting_input"]) for r in rows] == [("held", "snooze")]
+    assert [(r["state"], r["awaiting_input"]) for r in rows] == [("held", None)]
 
 
 async def test_given_a_fresh_database_when_all_migrations_run_then_the_models_match_the_schema(
