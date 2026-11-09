@@ -21,6 +21,17 @@ def test_given_new_york_in_any_case_when_looked_up_then_america_new_york(text):
     assert zones(text) == ["America/New_York"]
 
 
+def test_given_64_and_65_characters_when_looked_up_then_the_second_is_refused_before_matching(monkeypatch):
+    assert places.lookup("a" * 64, now=NOW).hits == ()
+
+    def fail_if_matching(*_args: object) -> None:
+        raise AssertionError("matching must not run for a refused text")
+
+    monkeypatch.setattr(places, "_index", fail_if_matching)
+    with pytest.raises(places.PlaceTextTooLongError):
+        places.lookup("a" * 65, now=NOW)
+
+
 def test_given_new_york_when_looked_up_then_hit_has_label_and_offset_at_now():
     winter = places.lookup("New York", now=NOW).hits[0]
     summer = places.lookup("New York", now=SUMMER).hits[0]
