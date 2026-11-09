@@ -26,6 +26,7 @@ from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
 from app.db.migrate import upgrade
+from app.db.pg_conversation import ConversationStore
 from app.db.pg_store import PgStore
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
@@ -127,7 +128,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         overview=OverviewService(store, outbox, now),
         store=store,
         inbox=inbox,
-        router=CommandRouter(reply, snooze, store, outbox),
+        router=CommandRouter(reply, snooze, store, outbox, ConversationStore(sessions, now)),
         heartbeat=heartbeat,
         interval_seconds=settings.poll_interval_seconds,
         now=now,
