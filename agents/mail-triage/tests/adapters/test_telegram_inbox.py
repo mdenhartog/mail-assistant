@@ -10,7 +10,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from app.adapters.telegram_inbox import Command, TelegramInbox
+from app.adapters.telegram_inbox import MAX_BUTTON_DATA_CHARS, Command, TelegramInbox
 
 TOKEN = "123456:ABC-secret-token"  # noqa: S105 - a fake token for tests
 USER = 4242
@@ -208,3 +208,41 @@ async def test_given_items_that_are_not_objects_when_polled_then_they_are_ignore
     fake.batches = [["junk", 5, message(1)]]  # type: ignore[list-item]
 
     assert len(await make_inbox(fake).poll_once()) == 1
+
+
+async def test_given_updates_when_polled_then_each_command_carries_its_telegram_update_id() -> None:
+    inbox = make_inbox(FakeTelegram([message(41, "3"), button(42, "reply:12")]))
+
+    text, press = await inbox.poll_once()
+
+    assert (text.update_id, press.update_id) == (41, 42)
+
+
+NONCE = "Ab3_dEf-Gh1JkLm2NoPqRs"  # 22 URL-safe characters, like the conversation nonce
+
+
+@pytest.mark.parametrize("data", [f"set:zone:{NONCE}", f"tz:0:{NONCE}", f"cancel:{NONCE}", f"undo:{NONCE}"])
+async def test_given_a_settings_button_with_a_valid_nonce_from_another_chat_when_polled_then_it_is_dropped(
+    data: str,
+) -> None:
+    fake = FakeTelegram([button(1, data, chat=999), button(2, data, user=999)])
+
+    assert await make_inbox(fake).poll_once() == []
+    assert len(fake.requests) == 1  # nothing is answered, not even the callback
+
+
+async def test_given_settings_commands_from_a_user_or_chat_that_is_not_allowed_when_polled_then_nothing_comes_out() -> (
+    None
+):
+    fake = FakeTelegram([message(1, "/settings", user=999), message(2, "/settings", chat=999)])
+
+    assert await make_inbox(fake).poll_once() == []
+    assert len(fake.requests) == 1
+
+
+async def test_given_a_settings_button_with_the_longest_data_when_polled_then_it_is_not_cut() -> None:
+    data = f"set:overview_time:{NONCE}"
+    [command] = await make_inbox(FakeTelegram([button(1, data)])).poll_once()
+
+    assert command.data == data
+    assert len(data.encode("ascii")) <= MAX_BUTTON_DATA_CHARS
