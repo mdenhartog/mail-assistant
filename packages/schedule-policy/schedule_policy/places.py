@@ -13,6 +13,13 @@ from importlib import resources
 from zoneinfo import ZoneInfo
 
 
+MAX_TEXT_LENGTH = 64
+
+
+class PlaceTextTooLongError(ValueError):
+    """The typed text is longer than ``MAX_TEXT_LENGTH`` characters; it is refused before any matching."""
+
+
 @dataclass(frozen=True)
 class PlaceHit:
     """One selectable time zone: its IANA name, a button label and the UTC offset at lookup time."""
@@ -66,5 +73,7 @@ def _hit(entry: _Entry, now: datetime) -> PlaceHit:
 
 def lookup(text: str, *, now: datetime) -> LookupResult:
     """Find time zones for a typed place name; ``now`` must be timezone-aware."""
+    if len(text) > MAX_TEXT_LENGTH:
+        raise PlaceTextTooLongError(f"place text is longer than {MAX_TEXT_LENGTH} characters")
     entries = _index().get(_normalize(text), ())
     return LookupResult(hits=tuple(_hit(entry, now) for entry in entries))
