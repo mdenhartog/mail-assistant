@@ -152,7 +152,7 @@ class StoredSettingsInvalid(Exception):  # noqa: N818  # named by the contract, 
 
 
 class SettingsStoreFailure(Exception):  # noqa: N818  # named by the contract, not an "...Error"
-    """The database refused or lost a write. Carries the error class and SQLSTATE only, never statement parameters."""
+    """The database refused or lost a read or a write. Carries the error class and SQLSTATE only, never statement parameters."""
 
     def __init__(self, cause_class: str, sqlstate: str | None) -> None:
         """Keep what is safe to log about the cause."""

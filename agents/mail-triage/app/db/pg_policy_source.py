@@ -11,9 +11,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Protocol
 
-from sqlalchemy.exc import DBAPIError
-
-from app.db.repos import StoredSettingsInvalid
+from app.db.repos import SettingsStoreFailure, StoredSettingsInvalid
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy
 
 if TYPE_CHECKING:
@@ -38,10 +36,9 @@ class SettingsReader(Protocol):
 
 
 def _describe(error: Exception) -> str:
-    """The error class and, for a database error, its SQLSTATE: what is safe to log (no parameters, no row values)."""
-    if isinstance(error, DBAPIError) and error.orig is not None:
-        driver_error = error.orig.__cause__ or error.orig  # the asyncpg class names the fault; SQLAlchemy's is generic
-        return f"{type(driver_error).__name__} sqlstate={getattr(error.orig, 'sqlstate', None)}"
+    """The error class and, for a store failure, its SQLSTATE: what is safe to log (no parameters, no row values)."""
+    if isinstance(error, SettingsStoreFailure):
+        return f"{error.cause_class} sqlstate={error.sqlstate}"
     return type(error).__name__
 
 
