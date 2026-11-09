@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 
@@ -547,3 +548,36 @@ async def test_given_text_on_the_card_when_typed_then_marco_is_pointed_to_the_bu
 
     assert bot.last.text.splitlines()[0] == "Tap one of the Change buttons below."
     assert bot.labels()[0] == "Change quiet hours"
+
+
+# ---- criterion 9: nothing leaks into the logs (AC-33) --------------------------------------------------------------
+
+CANARY = "Pacific/Kiritimati"
+TOKEN = "123456:ABC-secret-token"  # a fake bot token typed by mistake
+
+
+async def test_given_failure_paths_when_logs_are_captured_then_no_zone_token_answer_or_nonce_appears(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    bot = bot_with(make_policy(zone=CANARY, overview_at=time(18, 0)))
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type(TOKEN)  # refused
+    await bot.type("../etc")  # refused
+    await bot.type("17:00")
+    await bot.type("03:00")  # the move is offered
+    bot.store.row = StoredSettings(make_policy(zone=CANARY), 2, NOW, "web", "someone")
+    await bot.tap("Move to 03:00 and save")  # changed elsewhere
+    await bot.tap("Change daily overview")
+    bot.store.write_error = SettingsStoreFailure("OperationalError", "08006")
+    await bot.type("19:00")  # the database fails
+
+    assert [m.text for m in bot.chat.sent][-1].startswith("I could not save that.")
+    assert any(CANARY in m.text for m in bot.chat.sent)  # the card does show the zone to Marco ...
+    logged = "\n".join(f"{record.getMessage()} {record.exc_text} {record.args}" for record in caplog.records)
+    for secret in (CANARY, TOKEN, "../etc", "123456"):  # ... but never to a log
+        assert secret not in logged
+    assert "08006" in logged  # the class and SQLSTATE are logged
+    nonces = [piece for message in bot.chat.sent for b in message.buttons for piece in b.data.split(":")[-1:]]
+    assert all(nonce not in logged for nonce in nonces if len(nonce) > 8)
