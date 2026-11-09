@@ -15,3 +15,21 @@ heartbeat: { path: /tmp/heartbeat, maxAgeSeconds: 180 }
 # A Kubernetes NetworkPolicy cannot name hosts; pinning HTTPS to the three services needs a CNI with FQDN policies.
 networkPolicy:
   databasePorts: [5432]
+# Database migration (ADR-0025): a Job that runs before every install/upgrade as an Argo CD PreSync hook (and as a Helm
+# pre-install/pre-upgrade hook when the chart is used without Argo CD). It connects as the OWNER role, migrates, and sets
+# up the runtime role. Off by default: only a worker with a database needs it.
+# secretName names an EXISTING Secret that the operator creates (see README); only this Job reads it, never the worker.
+# Keys: DATABASE_OWNER_URL (owner connection string) and RUNTIME_ROLE_PASSWORD (password of mail_triage_runtime, the same
+# one that is inside DATABASE_URL of the worker's own Secret). No value ever goes into a values file.
+migration:
+  enabled: false
+  secretName: ""
+  command: [python, -m, app, migrate]
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
+  networkPolicy:
+    databasePorts: [5432]

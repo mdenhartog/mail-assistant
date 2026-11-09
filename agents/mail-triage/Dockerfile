@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # The mail-triage agent has no inbound port; it polls Gmail and Telegram. Its health check reads /tmp/heartbeat
-# (see compose.yaml and deploy/charts/worker). It applies its own database migrations when it starts.
+# (see compose.yaml and deploy/charts/worker). It does not migrate when it starts: `python -m app migrate` is a separate
+# one-shot job with the owner role (ADR-0025).
 # Build context: the repository root (docker build -f agents/mail-triage/Dockerfile .), because the agent depends on the
 # shared package packages/schedule-policy (a uv path dependency, ../../packages/schedule-policy). The directory layout
 # below mirrors the repository so that the relative path in pyproject.toml and uv.lock resolves.

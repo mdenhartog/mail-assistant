@@ -6,3 +6,8 @@ image:
 envFromSecret: mail-triage-secrets
 env:
   POLL_INTERVAL_SECONDS: "60"
+# Migration Job (ADR-0025): runs as a PreSync hook with the OWNER credentials from the Secret named here (a name only;
+# the operator creates it, see deploy/charts/worker/README.md). The worker itself never sees it.
+migration:
+  enabled: true
+  secretName: mail-triage-migration
