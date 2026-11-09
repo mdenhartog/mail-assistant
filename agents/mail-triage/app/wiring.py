@@ -27,6 +27,7 @@ from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
 from app.db.migrate import upgrade
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_store import PgStore
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
@@ -46,6 +47,7 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
     from app.settings import Settings
+    from schedule_policy.policy import TimePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,14 @@ class MailPorts:
         return self._sender.send_reply(original, draft)
 
 
+class DefaultPolicySource:
+    """The policy until the stored settings are wired in (U-quiet-hours-14): always the defaults."""
+
+    async def current(self) -> TimePolicy:
+        """The default policy."""
+        return DEFAULT_POLICY
+
+
 def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is read from the environment
     settings: Settings,
     *,
@@ -126,7 +136,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now),  # type: ignore[arg-type]
         delivery=AlertDelivery(store, outbox, now, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
-        overview=OverviewService(store, outbox, now, DEFAULT_POLICY),
+        overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, DefaultPolicySource()),
         store=store,
         inbox=inbox,
         router=CommandRouter(reply, snooze, store, outbox, ConversationStore(sessions, now)),
