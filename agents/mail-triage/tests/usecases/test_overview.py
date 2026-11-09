@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, time
+from dataclasses import dataclass, field, replace
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from app.core.alert_text import MAX_MESSAGE_CHARS
+from app.core.time_policy import in_quiet_hours, overview_on
 from app.usecases.overview import SUBJECT_CHARS, FiledMail, OverviewService, build_overview
-from schedule_policy.policy import DEFAULT_POLICY
+from schedule_policy.policy import DEFAULT_POLICY, validate
 from schedule_policy.testing import make_policy
 
 if TYPE_CHECKING:
@@ -253,3 +255,147 @@ def test_given_an_urgent_mail_that_is_also_unsure_when_the_overview_is_built_the
 
     assert "I was unsure about 1" in text
     assert "Old mail that looked urgent (1)" in text
+
+
+# ---- U-quiet-hours-13: the window runs from the last settled instant, across zone changes (AC-27) ------------------
+
+AMSTERDAM = DEFAULT_POLICY
+NEW_YORK = make_policy(zone="America/New_York")
+AUCKLAND = make_policy(zone="Pacific/Auckland")
+
+
+class Rig:
+    """One store, outbox and policy source; the clock and the policy are moved from the test."""
+
+    def __init__(self, policy: TimePolicy = AMSTERDAM) -> None:
+        self.store, self.outbox, self.policies = FakeStore(), FakeOutbox(), FakePolicies(policy)
+        self.now = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+        self.service = OverviewService(
+            self.store, self.store, self.outbox, now=lambda: self.now, policies=self.policies
+        )
+
+    def file(self, at: datetime, subject: str = "Hi") -> None:
+        self.store.timed.append((at, filed("Assistant/Finance", subject=subject)))
+
+    async def run(self, at: datetime) -> None:
+        self.now = at
+        await self.service.send_overview()
+
+
+def test_given_valid_policies_when_the_overview_falls_in_quiet_hours_then_only_because_a_clock_change_skipped_it() -> (
+    None
+):
+    # Why the "yesterday" branch of the old _pending_day is unreachable: validation puts the overview time outside
+    # quiet hours, so the overview moment is inside them only when the wall time does not exist that day.
+    policies = [
+        DEFAULT_POLICY,
+        make_policy(quiet_start=time(3, 0), quiet_end=time(8, 0), overview_at=time(2, 30)),
+        make_policy(zone="America/New_York", quiet_start=time(1, 0), quiet_end=time(7, 0), overview_at=time(0, 30)),
+        make_policy(zone="America/Santiago", quiet_start=time(1, 30), quiet_end=time(9, 0), overview_at=time(0, 30)),
+    ]
+    inside = []
+    for policy in policies:
+        assert validate(policy) == []
+        for offset in range(366):
+            day = date(2026, 1, 1) + timedelta(days=offset)
+            moment = overview_on(day, policy)
+            if in_quiet_hours(moment, policy):
+                inside.append((policy.zone, day))
+                assert (
+                    moment.astimezone(ZoneInfo(policy.zone)).time() != policy.overview_at
+                )  # the wall time was skipped
+    assert inside  # the clock-change case does exist, so the quiet check in send_overview stays
+
+
+async def test_given_the_overview_sent_in_amsterdam_when_the_zone_becomes_new_york_then_no_second_one_that_date() -> (
+    None
+):
+    rig = Rig()
+    rig.file(datetime(2026, 11, 9, 16, 0, tzinfo=UTC), "before")
+    await rig.run(datetime(2026, 11, 9, 17, 1, tzinfo=UTC))  # 18:01 Amsterdam
+    rig.file(datetime(2026, 11, 9, 17, 20, tzinfo=UTC), "after")
+    rig.policies.policy = NEW_YORK
+
+    await rig.run(datetime(2026, 11, 9, 23, 5, tzinfo=UTC))  # 18:05 New York, still 9 November there
+
+    assert len(rig.outbox.messages) == 1
+
+
+async def test_given_the_zone_changed_same_evening_when_the_next_overview_comes_then_it_is_at_18_00_new_york_time() -> (
+    None
+):
+    rig = Rig()
+    rig.file(datetime(2026, 11, 9, 16, 0, tzinfo=UTC), "before")
+    await rig.run(datetime(2026, 11, 9, 17, 1, tzinfo=UTC))
+    rig.file(datetime(2026, 11, 9, 17, 20, tzinfo=UTC), "after")
+    rig.policies.policy = NEW_YORK
+
+    await rig.run(datetime(2026, 11, 10, 22, 59, tzinfo=UTC))  # 17:59 New York on 10 November
+    assert len(rig.outbox.messages) == 1
+    await rig.run(datetime(2026, 11, 10, 23, 1, tzinfo=UTC))  # 18:01 New York
+
+    assert len(rig.outbox.messages) == 2
+    assert "Today I filed 1 mails" in rig.outbox.messages[1].text  # the mail filed after the first one, not dropped
+
+
+async def test_given_a_previous_overview_when_the_next_runs_then_the_window_starts_at_its_settled_instant() -> None:
+    rig = Rig()
+    settled = datetime(2026, 11, 9, 17, 1, tzinfo=UTC)
+    rig.file(datetime(2026, 11, 9, 16, 0, tzinfo=UTC))
+    await rig.run(settled)
+
+    await rig.run(datetime(2026, 11, 10, 17, 1, tzinfo=UTC))
+
+    assert rig.store.asked_since[-1] == settled
+
+
+async def test_given_zone_changes_back_and_forth_when_mail_is_filed_every_hour_then_each_mail_is_in_one_overview() -> (
+    None
+):
+    rig = Rig()
+    changes = {
+        datetime(2026, 11, 9, 20, 0, tzinfo=UTC): NEW_YORK,  # the evening of an overview already sent
+        datetime(2026, 11, 11, 3, 0, tzinfo=UTC): AMSTERDAM,  # New York back to Amsterdam: the local date moves on
+        datetime(2026, 11, 12, 0, 0, tzinfo=UTC): AUCKLAND,  # a jump of 12 hours ahead: a local day is skipped
+        datetime(2026, 11, 12, 12, 0, tzinfo=UTC): NEW_YORK,  # back behind: the local date is repeated
+        datetime(2026, 11, 13, 10, 0, tzinfo=UTC): AUCKLAND,
+    }
+    first = datetime(2026, 11, 9, 0, 15, tzinfo=UTC)
+    hours = 24 * 6
+    filed_at = [first + timedelta(hours=hour) for hour in range(hours)]
+    for moment in filed_at:
+        rig.file(moment)
+    for hour in range(hours):
+        run_at = first + timedelta(hours=hour, minutes=30)  # a quarter past: after the mail of that hour
+        rig.policies.policy = changes.get(run_at.replace(minute=0), rig.policies.policy)
+        await rig.run(run_at)
+
+    counts = [int(m.text.split("filed ")[1].split(" ")[0]) for m in rig.outbox.messages]
+    settled = max(rig.store.sent_days.values())
+    assert len(counts) >= 4
+    assert sum(counts) == len([moment for moment in filed_at if moment < settled])  # none dropped, none twice
+
+
+async def test_given_a_changed_overview_time_when_the_next_overview_comes_then_it_is_used_for_that_one_only() -> None:
+    rig = Rig()
+    rig.file(datetime(2026, 11, 9, 16, 0, tzinfo=UTC))
+    await rig.run(datetime(2026, 11, 9, 17, 1, tzinfo=UTC))  # sent at the old time, 18:01
+    rig.policies.policy = replace(AMSTERDAM, overview_at=time(20, 0))
+    rig.file(datetime(2026, 11, 9, 17, 30, tzinfo=UTC))
+
+    await rig.run(datetime(2026, 11, 9, 19, 30, tzinfo=UTC))  # 20:30 the same evening: today's is already settled
+    assert len(rig.outbox.messages) == 1
+    await rig.run(datetime(2026, 11, 10, 17, 30, tzinfo=UTC))  # 18:30 next day: before the new time
+    assert len(rig.outbox.messages) == 1
+    await rig.run(datetime(2026, 11, 10, 19, 1, tzinfo=UTC))  # 20:01 next day
+
+    assert len(rig.outbox.messages) == 2
+
+
+async def test_given_one_run_when_the_overview_is_sent_then_the_policy_is_read_once() -> None:
+    rig = Rig()
+    rig.file(datetime(2026, 11, 9, 16, 0, tzinfo=UTC))
+
+    await rig.run(datetime(2026, 11, 9, 17, 1, tzinfo=UTC))
+
+    assert rig.policies.reads == 1
