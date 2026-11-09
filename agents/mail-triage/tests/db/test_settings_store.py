@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import re
 import traceback
 from dataclasses import replace
 from datetime import time
@@ -15,7 +17,9 @@ import pytest
 from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
 from sqlalchemy import text
+from schedule_policy.policy import TimePolicy
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.db.pg_settings_store import PgSettingsStore
@@ -267,6 +271,76 @@ async def test_given_a_fault_after_validation_when_an_update_commits_then_row_an
 
     assert await store.read() == second
     assert await _audit_count(engine) == 2
+
+
+CASES_FILE = Path(__file__).resolve().parents[4] / "packages" / "schedule-policy" / "contract" / "settings_cases.json"
+CASES: list[dict[str, Any]] = json.loads(CASES_FILE.read_text("utf-8"))["cases"]
+# Rules the migration's CHECK constraints also enforce; the rest (known zone, whole minutes, no offset) need code.
+DATABASE_RULES = {"quiet_window_empty", "quiet_window_length", "overview_in_quiet_hours", "remind_in_quiet_hours"}
+
+
+def _contract_policy(raw: dict[str, str]) -> TimePolicy:
+    return TimePolicy(
+        zone=raw["zone"],
+        quiet_start=time.fromisoformat(raw["quiet_start"]),
+        quiet_end=time.fromisoformat(raw["quiet_end"]),
+        overview_at=time.fromisoformat(raw["overview_at"]),
+        remind_at=time.fromisoformat(raw["remind_at"]),
+    )
+
+
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+async def test_given_a_contract_case_when_written_through_the_store_then_the_outcome_matches_the_package(
+    case: dict[str, Any], store: PgSettingsStore
+) -> None:
+    policy = _contract_policy(case["policy"])
+
+    if case["rules"]:
+        with pytest.raises(PolicyRefused) as refused:
+            await store.write(policy, 0, "web", "u1")
+        assert [problem.rule for problem in refused.value.problems] == case["rules"]
+        assert await store.read() is None
+    else:
+        written = await store.write(policy, 0, "web", "u1")
+        assert written.policy == policy
+        assert await store.read() == written
+
+
+@pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
+async def test_given_a_contract_case_when_inserted_as_minutes_then_the_database_checks_agree_where_they_can(
+    case: dict[str, Any], engine: AsyncEngine
+) -> None:
+    rules = set(case["rules"])
+    if rules - DATABASE_RULES and rules != {"zone_unknown"}:
+        pytest.skip("malformed times cannot be stored as minutes")
+    raw = case["policy"]
+
+    def minutes(text_value: str) -> int:
+        clock = time.fromisoformat(text_value)
+        return clock.hour * 60 + clock.minute
+
+    statement = text(
+        "insert into settings.schedule (id, zone, quiet_start, quiet_end, overview_at, remind_at, updated_via, "
+        "updated_by) values (1, :zone, :qs, :qe, :ov, :rm, 'web', 'u1')"
+    )
+    params = {
+        "zone": raw["zone"],
+        "qs": minutes(raw["quiet_start"]),
+        "qe": minutes(raw["quiet_end"]),
+        "ov": minutes(raw["overview_at"]),
+        "rm": minutes(raw["remind_at"]),
+    }
+    zone_shape_ok = re.fullmatch(r"[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}", raw["zone"]) is not None
+    # A well-formed but unknown zone name is beyond SQL (ADR-0025): the database lets it through, validate refuses it.
+    expected_accepted = (not (rules & DATABASE_RULES)) and zone_shape_ok
+
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(statement, params)
+    except IntegrityError:
+        assert not expected_accepted
+    else:
+        assert expected_accepted
 
 
 CANARY = "Pacific/Kiritimati"
