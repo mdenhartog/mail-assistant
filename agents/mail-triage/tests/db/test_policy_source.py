@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import time
+from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING, TypeVar
 
 import asyncpg
@@ -14,17 +14,16 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from app.db.pg_policy_source import PgPolicySource
+from app.db.pg_policy_source import PgPolicySource, SettingsReader
 from app.db.pg_settings_store import PgSettingsStore
+from app.db.repos import StoredSettings, StoredSettingsInvalid
 from app.usecases.policy_notice import PolicyNotice
-from schedule_policy.policy import DEFAULT_POLICY
+from schedule_policy.policy import DEFAULT_POLICY, TimePolicy
 from schedule_policy.testing import make_policy
 from tests.db.conftest import alembic_config
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Awaitable
-
-    from app.db.repos import SettingsStore, StoredSettings
 
 T = TypeVar("T")
 RUNTIME_ROLE = "mail_triage_runtime"
@@ -110,9 +109,9 @@ async def _corrupt(engine: AsyncEngine, case: str) -> None:
 
 @pytest.mark.parametrize("case", list(_CORRUPTIONS))
 @pytest.mark.parametrize("had_good_read", [False, True])
-async def test_given_an_invalid_stored_row_when_read_then_last_good_or_default_one_notice_and_settings_invalid_logged(
+async def test_given_an_invalid_stored_row_when_read_then_last_good_or_default_one_notice_and_log(  # noqa: PLR0913, PLR0917
     case: str,
-    had_good_read: bool,  # noqa: FBT001
+    had_good_read: bool,
     store: PgSettingsStore,
     engine: AsyncEngine,
     source: PgPolicySource,
@@ -202,7 +201,7 @@ async def _create_runtime_role(url: str) -> None:
 
 
 @pytest.fixture
-async def broken_store(request: pytest.FixtureRequest, database_url: str) -> AsyncIterator[SettingsStore]:
+async def broken_store(request: pytest.FixtureRequest, database_url: str) -> AsyncIterator[SettingsReader]:
     """A store that fails in the way named by the test parameter, against a real PostgreSQL where one is needed."""
     kind: str = request.param
     urls = {"missing_table": database_url}  # a database no migration has run on
@@ -231,8 +230,11 @@ _LOGGED = {
 
 
 @pytest.mark.parametrize("broken_store", list(_LOGGED), indirect=True)
-async def test_given_a_database_that_cannot_answer_when_read_then_the_fallback_within_the_deadline_and_the_class_logged(
-    broken_store: SettingsStore, notifier: FakeNotifier, caplog: pytest.LogCaptureFixture, request: pytest.FixtureRequest
+async def test_given_a_database_that_cannot_answer_when_read_then_the_fallback_and_the_class_logged(
+    broken_store: SettingsReader,
+    notifier: FakeNotifier,
+    caplog: pytest.LogCaptureFixture,
+    request: pytest.FixtureRequest,
 ) -> None:
     caplog.set_level(logging.DEBUG)
     request_kind: str = request.node.callspec.params["broken_store"]
@@ -250,3 +252,142 @@ async def test_given_a_database_that_cannot_answer_when_read_then_the_fallback_w
     assert all(expected in logged for expected in _LOGGED[request_kind]), logged
     assert "settings_invalid" not in logged
     assert "nothing" not in caplog.text  # the password inside the refused connection's error text
+
+
+# ---- criteria 4, 5, 6: last good, canary, one notice per incident -------------------------------------------------
+
+
+async def test_given_a_good_read_then_a_corrupted_row_when_read_then_the_first_values_and_a_fresh_process_the_defaults(
+    store: PgSettingsStore, engine: AsyncEngine, source: PgPolicySource, notifier: FakeNotifier
+) -> None:
+    await store.write(GOOD, 0, "telegram", "u1")
+    assert await source.current() == GOOD
+    await _corrupt(engine, "unknown_zone")
+
+    assert await source.current() == GOOD
+
+    fresh_process = PgPolicySource(store, PolicyNotice(notifier))
+    assert await fresh_process.current() == DEFAULT_POLICY
+
+
+CANARY = "Pacific/Kiritimati"
+BOT_TOKEN = "123456789:AAH-secret_token_value"  # noqa: S105  # a made-up token shape for the redaction check
+
+
+class FailingNotifier:
+    """Telegram is down; its error text carries the bot token, as an HTTP library's does inside the request URL."""
+
+    async def say(self, text: str) -> None:
+        raise RuntimeError(f"POST https://api.telegram.org/bot{BOT_TOKEN}/sendMessage failed")
+
+
+@pytest.mark.parametrize("case", ["unknown_zone", "window_of_13_hours", "overview_inside_the_window", "null_value"])
+async def test_given_a_canary_zone_when_corrupted_and_fallen_back_then_no_log_shows_it_but_the_notice_does(
+    case: str,
+    store: PgSettingsStore,
+    engine: AsyncEngine,
+    notifier: FakeNotifier,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    source = PgPolicySource(store, PolicyNotice(notifier))
+    await store.write(make_policy(zone=CANARY), 0, "telegram", "u1")
+    assert (await source.current()).zone == CANARY
+    await _corrupt(engine, case)  # the stored row still holds the canary zone in three of the four cases
+
+    assert (await source.current()).zone == CANARY
+
+    assert CANARY in notifier.sent[0]  # Marco must be told what is in use; the notice goes to Telegram, not the log
+    assert caplog.records
+    for record in caplog.records:
+        everything = f"{record.getMessage()} {record.args} {record.exc_text} {record.__dict__}"
+        assert "Kiritimati" not in everything
+    assert "Kiritimati" not in caplog.text
+
+
+async def test_given_telegram_is_down_when_the_notice_fails_then_the_read_still_answers_and_no_token_is_logged(
+    store: PgSettingsStore, engine: AsyncEngine, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    source = PgPolicySource(store, PolicyNotice(FailingNotifier()))
+    await store.write(GOOD, 0, "telegram", "u1")
+    await source.current()
+    await _corrupt(engine, "unknown_zone")
+
+    assert await source.current() == GOOD
+
+    assert "policy_notice_failed" in caplog.text
+    assert BOT_TOKEN not in caplog.text
+    assert "secret_token_value" not in caplog.text
+
+
+class ScriptedStore:
+    """A settings store that answers each read with the next item of the script: a row, None, or an error to raise."""
+
+    def __init__(self, *script: StoredSettings | Exception | None) -> None:
+        self._script = list(script)
+
+    async def read(self) -> StoredSettings | None:
+        outcome = self._script.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _row(policy: TimePolicy = DEFAULT_POLICY) -> StoredSettings:
+    return StoredSettings(policy, 1, datetime(2026, 1, 1, tzinfo=UTC), "telegram", "u1")
+
+
+async def test_given_an_incident_over_several_reads_when_it_persists_then_one_notice_until_it_recovers() -> None:
+    notifier = FakeNotifier()
+    invalid = StoredSettingsInvalid(("zone_unknown",))
+    store = ScriptedStore(invalid, invalid, TimeoutError(), invalid, _row(), invalid, invalid)
+    source = PgPolicySource(store, PolicyNotice(notifier))
+
+    for _ in range(4):  # the incident goes on, with two kinds of fault
+        await source.current()
+    assert len(notifier.sent) == 1
+
+    await source.current()  # recovery
+    assert len(notifier.sent) == 1
+
+    await source.current()  # a new incident
+    await source.current()
+    assert len(notifier.sent) == 2
+
+
+async def test_given_reads_that_fail_at_the_same_moment_when_they_run_together_then_one_notice() -> None:
+    notifier = FakeNotifier()
+    invalid = StoredSettingsInvalid(("zone_unknown",))
+    source = PgPolicySource(ScriptedStore(*[invalid] * 5), PolicyNotice(notifier))
+
+    await asyncio.gather(*(source.current() for _ in range(5)))
+
+    assert len(notifier.sent) == 1
+
+
+async def test_given_a_notice_that_could_not_be_sent_when_the_next_read_fails_then_it_is_tried_again() -> None:
+    class FlakyNotifier(FakeNotifier):
+        async def say(self, text: str) -> None:
+            if not self.sent and not hasattr(self, "tried"):
+                self.tried = True
+                raise ConnectionError
+            await super().say(text)
+
+    notifier = FlakyNotifier()
+    invalid = StoredSettingsInvalid(("zone_unknown",))
+    source = PgPolicySource(ScriptedStore(invalid, invalid, invalid), PolicyNotice(notifier))
+
+    for _ in range(3):
+        await source.current()
+
+    assert len(notifier.sent) == 1
+
+
+async def test_given_a_row_deleted_after_a_good_read_when_read_then_the_defaults_without_a_notice() -> None:
+    notifier = FakeNotifier()
+    source = PgPolicySource(ScriptedStore(_row(GOOD), None), PolicyNotice(notifier))
+
+    assert await source.current() == GOOD
+    assert await source.current() == DEFAULT_POLICY
+    assert notifier.sent == []
