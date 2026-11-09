@@ -1,7 +1,7 @@
 ---
 id: ADR-0008
 title: "Identity: Google OAuth2"
-status: accepted
+status: superseded
 area: identity
 tags: [oauth2, google, authentication]
 date: 2026-11-08

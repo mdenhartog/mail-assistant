@@ -9,7 +9,6 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0005 · Agent platform: self with Telegram · area:agent-platform · tags:agents,mcp,a2a · decisions/ADR-0005-agent-platform.md
 - ADR-0006 · GxP relevance: not a GxP system · area:gxp · tags:gamp5,validation · decisions/ADR-0006-gxp.md
 - ADR-0007 · Database: PostgreSQL, no extensions · area:database · tags:postgresql,database · decisions/ADR-0007-database.md
-- ADR-0008 · Identity: Google OAuth2 · area:identity · tags:oauth2,google,authentication · decisions/ADR-0008-identity.md
 - ADR-0009 · Design process: clickable prototype per feature · area:design-process · tags:prototype,ux,design · decisions/ADR-0009-design-process.md
 - ADR-0010 · Design system: generate modern AI-first style · area:design-system · tags:design,tokens,tailwind · decisions/ADR-0010-design-system.md
 - ADR-0011 · API integrations: Gmail and Google Calendar · area:api-style · tags:gmail,google-calendar,rest,oauth2 · decisions/ADR-0011-api-integrations.md
@@ -26,4 +25,8 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0021 · Mail triage: one-time catch-up of unread inbox mail · area:architecture · tags:mail-triage,gmail,budget,state · decisions/ADR-0021-mail-triage-catch-up.md
 - ADR-0022 · Dependency cooldown of 7 days for uv, pnpm and Renovate · area:security · tags:supply-chain,uv,pnpm,renovate · decisions/ADR-0022-dependency-cooldown.md
 - ADR-0023 · Adjustable quiet hours: settings in a shared PostgreSQL table · area:architecture · tags:mail-triage,settings,postgresql,web · decisions/ADR-0023-settings-shared-table.md
+- ADR-0024 · Web sign-in: generic OIDC provider, identity scopes only · area:identity · tags:oidc,oauth2,authentication,web · decisions/ADR-0024-web-signin-generic-oidc.md
+- ADR-0025 · Settings contract: own schema, agent-owned migrations, shared policy package · area:architecture · tags:mail-triage,settings,postgresql,contract · decisions/ADR-0025-settings-contract.md
+- ADR-0026 · Mail triage: one conversation state for all Telegram dialogues · area:architecture · tags:mail-triage,telegram,state · decisions/ADR-0026-single-conversation-state.md
+- ADR-0027 · Wall-clock times: resolution of non-existent and ambiguous local times · area:architecture · tags:mail-triage,time,dst · decisions/ADR-0027-wall-clock-resolution.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
