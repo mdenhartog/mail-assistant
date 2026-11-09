@@ -1,0 +1,6 @@
+{
+  "countries": [],
+  "places": [
+    {"name": "New York", "country": "United States", "zone": "America/New_York", "aliases": []}
+  ]
+}
