@@ -58,6 +58,17 @@ def time_question(key: str) -> str:
     return f"{VALUE_NAMES[key]}: type a time, for example {TIME_EXAMPLES[key]}."
 
 
+def did_you_mean(suggestion: str) -> str:
+    """A near miss: the listed name that is closest to what was typed, offered as a button."""
+    return f"Did you mean {suggestion}?\nTap it, or type another place."
+
+
+def with_choices(text: str, choices: list[tuple[str, str]], cancel_data: str) -> AlertMessage:
+    """A question with one button per ``(label, callback data)`` choice, then Cancel."""
+    buttons = (*(Button(label, data) for label, data in choices), Button("Cancel", cancel_data))
+    return AlertMessage(html.escape(text, quote=False), buttons)
+
+
 def quiet_start_question() -> str:
     """Step 1 of the quiet hours."""
     return f"{VALUE_NAMES[QUIET]}, step 1 of 2: start time\nType a time, for example 23:00."
@@ -109,7 +120,11 @@ def refusal(problem: Problem, window_minutes: int) -> str:
 
 
 CHANGED_ELSEWHERE = "Your settings changed elsewhere. Nothing was saved. These are the current values."
-ZONE_LATER = "Changing the time zone is not available yet."  # replaced by the zone question in U-quiet-hours-10
+ZONE_QUESTION = f"{VALUE_NAMES[ZONE]}: type a city or a country, for example Paris or Japan."
+ZONE_NOT_FOUND = "I could not find a time zone for that. Try the nearest big city or the country."
+ZONE_NOT_A_PLACE = "That does not look like a city or a country (letters only, at most 64 characters)."
+ZONE_CHOOSE = "Which one do you mean? Tap a button, or type another place."
+ZONE_TAP_ONE = "Tap one of the buttons below, or type another place."
 TAP_A_BUTTON = "Tap one of the Change buttons below."
 _MOVABLE = {
     "overview_in_quiet_hours": "the daily overview",

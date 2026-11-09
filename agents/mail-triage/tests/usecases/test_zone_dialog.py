@@ -1,4 +1,4 @@
-"""U-quiet-hours-10: the time zone question: lookup, buttons, near miss, nothing found, refusals (C-6; AC-9, AC-14 to 19, 33)."""
+"""U-quiet-hours-10: the time zone question: lookup, buttons, near miss, nothing found (C-6, AC-9, AC-14 to 19)."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from app.db.repos import SettingsStoreFailure, StoredSettings
 from app.usecases import settings_dialog
 from schedule_policy import places
 from schedule_policy.testing import make_policy
-from tests.usecases.test_settings_dialog import NOW, USER, Bot, bot_with
 from tests.usecases.test_dispatch import button
+from tests.usecases.test_settings_dialog import NOW, USER, Bot, bot_with
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -62,13 +62,15 @@ async def test_given_the_time_zone_button_when_tapped_then_a_city_or_country_is_
 
 
 @pytest.mark.parametrize("answer", ["New York", "new york", "NEW YORK", "NYC"])
-async def test_given_a_single_place_when_answered_then_its_zone_is_stored_as_a_whole_policy_write(answer: str) -> None:
+async def test_given_a_single_place_when_answered_then_its_zone_is_written(answer: str) -> None:
     bot = bot_with(make_policy(overview_at=time(17, 0)))
     await _at_zone_question(bot)
 
     await bot.type(answer)
 
-    assert bot.store.writes == [(make_policy(overview_at=time(17, 0), zone="America/New_York"), 1, "telegram", str(USER))]
+    assert bot.store.writes == [
+        (make_policy(overview_at=time(17, 0), zone="America/New_York"), 1, "telegram", str(USER))
+    ]
     assert bot.last.text.splitlines()[0] == "Saved."
     assert "Time zone: America/New_York" in bot.last.text.splitlines()
 
@@ -155,7 +157,7 @@ async def test_given_a_near_miss_when_answered_then_did_you_mean_with_a_button_t
 # ---- criterion 4: nothing found (AC-17) ------------------------------------------------------------------------------
 
 
-async def test_given_nothing_found_when_answered_then_it_says_so_suggests_a_big_city_or_country_and_keeps_cancel() -> None:
+async def test_given_nothing_found_when_answered_then_it_says_so_suggests_a_hint_and_keeps_cancel() -> None:
     bot = bot_with(make_policy())
     await _at_zone_question(bot)
 
@@ -274,6 +276,20 @@ async def test_given_a_tz_button_with_an_index_outside_the_candidates_when_tappe
     assert [w[0].zone for w in bot.store.writes] == ["Europe/Paris"]
 
 
+async def test_given_candidate_buttons_when_repeated_then_the_choices_return_under_a_new_nonce() -> None:
+    bot = bot_with(make_policy())
+    await _at_zone_question(bot)
+    await bot.type("Paris")
+    first = bot.last.buttons[0].data.rsplit(":", 1)[1]
+
+    await bot.router.handle(button(f"tz:9:{first}"))
+
+    assert bot.last.buttons[0].data.rsplit(":", 1)[1] != first
+    assert bot.last.text.startswith("Tap one of the buttons below")
+    await bot.router.handle(button(f"tz:0:{first}"))  # the old button is now stale
+    assert bot.store.writes == []
+
+
 async def test_given_a_tz_button_when_tapped_on_the_card_step_then_nothing_is_stored() -> None:
     bot = bot_with(make_policy())
     await bot.settings()
@@ -285,7 +301,7 @@ async def test_given_a_tz_button_when_tapped_on_the_card_step_then_nothing_is_st
     assert bot.labels()[0] == "Change quiet hours"
 
 
-async def test_given_a_tz_button_when_tapped_while_a_zone_is_asked_but_no_choices_exist_then_nothing_is_stored() -> None:
+async def test_given_a_tz_button_when_no_choices_exist_then_nothing_is_stored() -> None:
     bot = bot_with(make_policy())
     await _at_zone_question(bot)
     current = await bot.rig.conversations.current()
@@ -312,15 +328,32 @@ async def test_given_a_listed_iana_name_when_typed_then_it_is_stored() -> None:
 async def test_given_an_unlisted_iana_name_when_typed_then_nothing_is_found_and_it_is_not_logged_or_echoed(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    # Pacific/Kiritimati is listed in places.json (Kiribati), so a zone that really is not listed stands in for it.
+    unlisted = "Antarctica/Troll"
+    caplog.set_level(logging.DEBUG)
+    bot = bot_with(make_policy())
+    await _at_zone_question(bot)
+
+    await bot.type(unlisted)
+
+    assert bot.store.writes == []
+    assert "I could not find a time zone for that." in bot.last.text
+    assert unlisted not in bot.last.text
+    logged = "\n".join(f"{r.getMessage()} {r.exc_text} {r.args}" for r in caplog.records)
+    assert unlisted not in logged
+    assert "Troll" not in logged
+
+
+async def test_given_the_canary_zone_is_typed_when_it_is_stored_then_it_never_appears_in_a_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     caplog.set_level(logging.DEBUG)
     bot = bot_with(make_policy())
     await _at_zone_question(bot)
 
     await bot.type(CANARY)
 
-    assert bot.store.writes == []
-    assert "I could not find a time zone for that." in bot.last.text
-    assert CANARY not in bot.last.text
+    assert [w[0].zone for w in bot.store.writes] == [CANARY]  # listed, so it is accepted (AC-19)
     logged = "\n".join(f"{r.getMessage()} {r.exc_text} {r.args}" for r in caplog.records)
     assert CANARY not in logged
     assert "Kiritimati" not in logged
@@ -349,7 +382,7 @@ async def test_given_zone_paths_when_logs_are_captured_then_no_typed_place_zone_
 # ---- storing: conflicts and failures (as in U-09) --------------------------------------------------------------------
 
 
-async def test_given_another_writer_between_question_and_answer_when_answered_then_changed_elsewhere_and_a_fresh_card() -> None:
+async def test_given_another_writer_between_question_and_answer_when_answered_then_a_fresh_card_is_shown() -> None:
     bot = bot_with(make_policy())
     await _at_zone_question(bot)
     bot.store.row = StoredSettings(make_policy(remind_at=time(8, 0)), 2, NOW, "web", "someone")

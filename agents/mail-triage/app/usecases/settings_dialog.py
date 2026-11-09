@@ -7,13 +7,19 @@ Every write is the WHOLE new policy through ``SettingsStore.write`` with the ver
 made elsewhere meanwhile is a ``VersionConflict`` and never overwritten. Nothing here logs a typed answer, a nonce, a
 token or a zone: failures are logged by class and SQLSTATE only.
 
-Not in this unit: the time zone question (U-quiet-hours-10; its button answers "not available yet" until then) and the
-full-picture confirmation with Undo (U-quiet-hours-11; after a save the card is shown again under a plain "Saved.").
+The time zone question (spec C-6): Marco types a city or a country; ``places.lookup`` (with the injected clock's
+``now``) finds the zone. One hit is stored; several hits, a country with several zones or a near miss become buttons
+``tz:<index>:<nonce>`` whose index points into the candidates kept in the conversation's ``partial``, never a zone name.
+Text that cannot be a place name is refused before the lookup is called.
+
+Not in this unit: the full-picture confirmation with Undo (U-quiet-hours-11; after a save the card is shown again under
+a plain "Saved.").
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import time
@@ -23,6 +29,7 @@ from app.core import settings_text
 from app.db.repos import PolicyRefused, SettingsStoreFailure, VersionConflict
 from app.usecases.dispatch import SETTINGS_TTL, button_data
 from schedule_policy.parse import parse_time
+from schedule_policy.places import MAX_TEXT_LENGTH, lookup
 from schedule_policy.policy import DEFAULT_POLICY, validate
 
 if TYPE_CHECKING:
@@ -33,6 +40,7 @@ if TYPE_CHECKING:
     from app.db.pg_conversation import Kind, OpenConversation
     from app.db.repos import SettingsStore, StoredSettings
     from app.usecases.dispatch import ConversationPort
+    from schedule_policy.places import PlaceHit
     from schedule_policy.policy import Problem, TimePolicy
 
 logger = logging.getLogger(__name__)
@@ -41,6 +49,8 @@ CARD = "card"
 ASK_START = "quiet_start"
 ASK_END = "quiet_end"
 CONFLICT = "conflict"
+ASK_ZONE = "zone"
+PICK_ZONE = "zone_pick"
 OVERVIEW = settings_text.OVERVIEW
 REMIND = settings_text.REMIND
 MOVE = "move"
@@ -48,6 +58,8 @@ SAVED = "Saved."
 _SINGLE_TIME_FIELD = {OVERVIEW: "overview_at", REMIND: "remind_at"}
 _MOVED_FIELD = {"overview_in_quiet_hours": "overview_at", "remind_in_quiet_hours": "remind_at"}
 _EXAMPLE = {ASK_START: "23:00", ASK_END: "07:00", OVERVIEW: "18:00", REMIND: "09:00"}
+# Text that may be a place name: starts with a letter, then letters, digits, spaces and . ' / + - _ (IANA names).
+_PLACE = re.compile("[^\\W\\d_][\\w .'\\u2019/+-]*")
 
 
 class DialogChat(Protocol):
@@ -70,7 +82,25 @@ def _question_text(conversation: OpenConversation) -> str:
         return settings_text.quiet_start_question()
     if conversation.step == ASK_END:
         return settings_text.quiet_end_question(_hhmm(conversation.partial["start"]))
+    if conversation.step == ASK_ZONE:
+        return settings_text.ZONE_QUESTION
     return settings_text.time_question(conversation.step)
+
+
+def _place_text(text: str) -> str | None:
+    """The trimmed text if it can be a place name (short, letter first, no ``..``, no control characters)."""
+    trimmed = text.strip()
+    if not trimmed or len(trimmed) > MAX_TEXT_LENGTH or ".." in trimmed or not _PLACE.fullmatch(trimmed):
+        return None
+    return trimmed
+
+
+def _choices(conversation: OpenConversation) -> tuple[list[str], list[str]]:
+    """The candidate zones and their labels kept in the conversation (empty when there are none)."""
+    zones, labels = conversation.partial.get("zones"), conversation.partial.get("labels")
+    if not isinstance(zones, list) or not isinstance(labels, list) or len(zones) != len(labels):
+        return [], []
+    return [str(zone) for zone in zones], [str(label) for label in labels]
 
 
 def _version(stored: StoredSettings | None) -> int:
@@ -119,6 +149,8 @@ class SettingsDialog:
                 await self._quiet_start(conversation, text)
             elif step == ASK_END:
                 await self._quiet_end(conversation, text)
+            elif step in {ASK_ZONE, PICK_ZONE}:
+                await self._zone_text(conversation, text)
             else:
                 await self._repeat(conversation, settings_text.TAP_A_BUTTON if step == CARD else None)
 
@@ -129,6 +161,8 @@ class SettingsDialog:
                 await self._ask(conversation, argument)
             elif action == "set" and conversation.step == CONFLICT and argument == MOVE:
                 await self._move(conversation)
+            elif action == "tz" and conversation.step == PICK_ZONE:
+                await self._zone_button(conversation, argument)
             else:
                 await self._repeat(conversation)
 
@@ -160,8 +194,8 @@ class SettingsDialog:
             await self._question(conversation, ASK_START, conversation.partial, settings_text.quiet_start_question())
         elif key in _SINGLE_TIME_FIELD:
             await self._question(conversation, key, conversation.partial, settings_text.time_question(key))
-        elif key == settings_text.ZONE:  # the question arrives with U-quiet-hours-10
-            await self._repeat(conversation, settings_text.ZONE_LATER)
+        elif key == settings_text.ZONE:
+            await self._question(conversation, ASK_ZONE, conversation.partial, settings_text.ZONE_QUESTION)
         else:
             await self._repeat(conversation)
 
@@ -178,7 +212,9 @@ class SettingsDialog:
         step = conversation.step
         if step == CONFLICT:
             await self._offer_again(conversation)
-        elif step in _EXAMPLE:
+        elif step == PICK_ZONE and _choices(conversation)[0]:
+            await self._send_choices(conversation.nonce, conversation, lead or settings_text.ZONE_TAP_ONE)
+        elif step in _EXAMPLE or step in {ASK_ZONE, PICK_ZONE}:
             question = _question_text(conversation)
             text = f"{lead}\n\n{question}" if lead else question
             await self._chat.send(settings_text.with_cancel(text, button_data("cancel", conversation.nonce)))
@@ -210,6 +246,52 @@ class SettingsDialog:
         start = _hhmm(conversation.partial["start"])
         await self._save(conversation, {"quiet_start": start, "quiet_end": end})
 
+    async def _zone_text(self, conversation: OpenConversation, text: str) -> None:
+        """Look the typed place up; the lookup is only called with text that can be a place name."""
+        place = _place_text(text)
+        if place is None:
+            await self._ask_zone_again(conversation, settings_text.ZONE_NOT_A_PLACE)
+            return
+        found = lookup(place, now=self._now())
+        if len(found.hits) == 1:
+            await self._save(conversation, {"zone": found.hits[0].zone})
+        elif found.hits:
+            await self._offer_zones(conversation, found.hits, settings_text.ZONE_CHOOSE)
+        elif found.suggestion is not None and (close := lookup(found.suggestion, now=self._now()).hits):
+            await self._offer_zones(conversation, close, settings_text.did_you_mean(found.suggestion))
+        else:
+            await self._ask_zone_again(conversation, settings_text.ZONE_NOT_FOUND)
+
+    async def _ask_zone_again(self, conversation: OpenConversation, lead: str) -> None:
+        """Say why the answer did not work and ask for the place again (the zone question, with Cancel)."""
+        partial = {"version": conversation.partial["version"]}
+        await self._question(conversation, ASK_ZONE, partial, f"{lead}\n\n{settings_text.ZONE_QUESTION}")
+
+    async def _offer_zones(self, conversation: OpenConversation, hits: tuple[PlaceHit, ...], text: str) -> None:
+        """Keep the candidates in the conversation and show one button per candidate (the index, never the zone)."""
+        partial = {
+            "version": conversation.partial["version"],
+            "zones": [hit.zone for hit in hits],
+            "labels": [hit.label for hit in hits],
+        }
+        moved = await self._conversations.advance(conversation.nonce, PICK_ZONE, partial)
+        if moved is not None:
+            await self._send_choices(moved.nonce, moved, text)
+
+    async def _send_choices(self, nonce: str, conversation: OpenConversation, text: str) -> None:
+        labels = _choices(conversation)[1]
+        choices = [(label, button_data("tz", nonce, str(index))) for index, label in enumerate(labels)]
+        await self._chat.send(settings_text.with_choices(text, choices, button_data("cancel", nonce)))
+
+    async def _zone_button(self, conversation: OpenConversation, argument: str) -> None:
+        """Store the candidate the button points to; an index outside the candidates changes nothing."""
+        zones = _choices(conversation)[0]
+        index = int(argument) if argument.isdecimal() else -1
+        if 0 <= index < len(zones):
+            await self._save(conversation, {"zone": zones[index]})
+        else:
+            await self._repeat(conversation, settings_text.ZONE_TAP_ONE)
+
     # ---- storing -------------------------------------------------------------------------------------------------
 
     async def _current(self, conversation: OpenConversation) -> TimePolicy | None:
@@ -223,7 +305,7 @@ class SettingsDialog:
     async def _changed_elsewhere(self, conversation: OpenConversation) -> None:
         await self._card(conversation, settings_text.CHANGED_ELSEWHERE)
 
-    async def _save(self, conversation: OpenConversation, changes: dict[str, time]) -> None:
+    async def _save(self, conversation: OpenConversation, changes: dict[str, time | str]) -> None:
         """Change some values of the stored policy as one whole new policy."""
         current = await self._current(conversation)
         if current is not None:
