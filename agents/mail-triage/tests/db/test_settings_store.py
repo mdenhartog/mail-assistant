@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.db.pg_settings_store import PgSettingsStore
-from app.db.repos import PolicyRefused, StoredSettings, VersionConflict
+from app.db.repos import NothingToUndo, PolicyRefused, StoredSettings, VersionConflict
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -118,6 +118,51 @@ async def test_given_a_stored_row_when_an_invalid_policy_is_written_then_the_row
 
     assert await store.read() == first
     assert await _audit_count(engine) == 1
+
+
+async def test_given_an_undo_with_the_current_version_when_run_then_the_previous_values_return_as_an_audited_write(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    before = make_policy()
+    first = await store.write(before, 0, "web", "u1")
+    second = await store.write(make_policy(zone="America/New_York", quiet_start=time(22, 0)), first.version, "telegram", "u2")
+
+    undone = await store.undo(second.version, "telegram", "u2")
+
+    assert undone.policy == before
+    assert undone.version == second.version + 1
+    assert await store.read() == undone
+    assert await _audit_count(engine) == 3
+
+
+async def test_given_an_undo_with_an_old_version_when_run_then_version_conflict_and_nothing_changes(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    first = await store.write(make_policy(), 0, "web", "u1")
+    second = await store.write(make_policy(quiet_start=time(22, 0)), first.version, "telegram", "u2")
+    third = await store.write(make_policy(quiet_start=time(21, 0)), second.version, "web", "u3")
+
+    with pytest.raises(VersionConflict):
+        await store.undo(second.version, "telegram", "u2")
+
+    assert await store.read() == third
+    assert await _audit_count(engine) == 3
+
+
+async def test_given_only_the_first_write_when_undone_then_there_is_nothing_to_undo(
+    store: PgSettingsStore,
+) -> None:
+    first = await store.write(make_policy(), 0, "web", "u1")
+
+    with pytest.raises(NothingToUndo):
+        await store.undo(first.version, "telegram", "u1")
+
+    assert await store.read() == first
+
+
+async def test_given_no_row_when_undone_then_version_conflict(store: PgSettingsStore) -> None:
+    with pytest.raises(VersionConflict):
+        await store.undo(1, "telegram", "u1")
 
 
 async def test_given_writes_when_they_commit_then_each_adds_exactly_one_audit_record(
