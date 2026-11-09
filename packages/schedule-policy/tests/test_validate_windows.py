@@ -7,7 +7,7 @@ from schedule_policy.testing import make_policy
 
 
 def _window(start: time, end: time):
-    return validate(make_policy(quiet_start=start, quiet_end=end, overview_at=time(12, 0), remind_at=time(12, 30)))
+    return validate(make_policy(quiet_start=start, quiet_end=end, overview_at=time(20, 0), remind_at=time(21, 0)))
 
 
 @pytest.mark.parametrize(
