@@ -5,6 +5,7 @@ Pure and offline: the list is the bundled ``places.json``; the UTC offset is com
 
 from __future__ import annotations
 
+import difflib
 import json
 import unicodedata
 from dataclasses import dataclass
@@ -38,6 +39,7 @@ class LookupResult:
     suggestion: str | None = None
 
 
+
 @dataclass(frozen=True)
 class _Entry:
     name: str
@@ -45,7 +47,14 @@ class _Entry:
     zone: str
 
 
+@dataclass(frozen=True)
+class _Index:
+    names: dict[str, tuple[_Entry, ...]]
+    zones: dict[str, _Entry]
+
+
 _LETTER_FOLDS = str.maketrans({"ı": "i", "ø": "o", "ł": "l", "đ": "d", "æ": "ae", "œ": "oe", "ð": "d", "þ": "th"})
+_SUGGESTION_CUTOFF = 0.8
 
 
 def _normalize(text: str) -> str:
@@ -56,14 +65,16 @@ def _normalize(text: str) -> str:
 
 
 @cache
-def _index() -> dict[str, tuple[_Entry, ...]]:
+def _index() -> _Index:
     data = json.loads(resources.files("schedule_policy").joinpath("places.json").read_text(encoding="utf-8"))
-    index: dict[str, list[_Entry]] = {}
+    names: dict[str, list[_Entry]] = {}
+    zones: dict[str, _Entry] = {}
     for raw in data["places"]:
         entry = _Entry(raw["name"], raw["country"], raw["zone"])
+        zones.setdefault(entry.zone.casefold(), entry)
         for key in (raw["name"], *raw["aliases"]):
-            index.setdefault(_normalize(key), []).append(entry)
-    return {key: tuple(entries) for key, entries in index.items()}
+            names.setdefault(_normalize(key), []).append(entry)
+    return _Index({key: tuple(entries) for key, entries in names.items()}, zones)
 
 
 def _format_offset(minutes: int) -> str:
@@ -82,5 +93,14 @@ def lookup(text: str, *, now: datetime) -> LookupResult:
     """Find time zones for a typed place name; ``now`` must be timezone-aware."""
     if len(text) > MAX_TEXT_LENGTH:
         raise PlaceTextTooLongError(f"place text is longer than {MAX_TEXT_LENGTH} characters")
-    entries = _index().get(_normalize(text), ())
-    return LookupResult(hits=tuple(_hit(entry, now) for entry in entries))
+    index = _index()
+    key = _normalize(text)
+    if key in index.names:
+        return LookupResult(hits=tuple(_hit(entry, now) for entry in index.names[key]))
+    listed = index.zones.get(text.strip().casefold())
+    if listed is not None:
+        return LookupResult(hits=(_hit(listed, now),))
+    close = difflib.get_close_matches(key, index.names, n=1, cutoff=_SUGGESTION_CUTOFF)
+    if close:
+        return LookupResult(suggestion=index.names[close[0]][0].name)
+    return LookupResult()
