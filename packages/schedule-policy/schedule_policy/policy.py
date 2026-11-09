@@ -1,9 +1,22 @@
-"""The schedule policy: four values and one zone, validated as a whole row (spec C-2, ADR-0027)."""
+"""The schedule policy: four values and one zone, validated as a whole row (spec C-2, ADR-0027).
+
+Times are wall-clock times in ``zone``. The quiet window starts inclusive and ends exclusive, as ``in_quiet_hours``
+does today, and its length is counted in clock minutes, never in elapsed time (so a 23 h or 25 h day does not matter).
+"""
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import time
+from functools import lru_cache
+from zoneinfo import available_timezones
+
+MINUTES_PER_DAY = 24 * 60
+MIN_WINDOW_MINUTES = 60
+MAX_WINDOW_MINUTES = 12 * 60
+MAX_ZONE_LENGTH = 64
+_ZONE_NAME = re.compile(r"[A-Za-z0-9_+\-]+(?:/[A-Za-z0-9_+\-]+){0,2}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -15,6 +28,18 @@ class TimePolicy:
     quiet_end: time
     overview_at: time
     remind_at: time
+
+    @property
+    def window_minutes(self) -> int:
+        """Length of the quiet window in clock minutes (0 when start equals end)."""
+        return (_minute_of_day(self.quiet_end) - _minute_of_day(self.quiet_start)) % MINUTES_PER_DAY
+
+    def is_quiet(self, clock: time) -> bool:
+        """True from the quiet start up to, not including, the quiet end."""
+        start, end, now = (_minute_of_day(t) for t in (self.quiet_start, self.quiet_end, clock))
+        if start < end:
+            return start <= now < end
+        return now >= start or now < end
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +60,75 @@ DEFAULT_POLICY = TimePolicy(
 )
 
 
+def _minute_of_day(clock: time) -> int:
+    return clock.hour * 60 + clock.minute
+
+
+def _hhmm(minutes: int) -> str:
+    minutes %= MINUTES_PER_DAY
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def _show(clock: time) -> str:
+    if clock.second or clock.microsecond:
+        return clock.isoformat()
+    return _hhmm(_minute_of_day(clock))
+
+
+@lru_cache(maxsize=1)
+def _known_zones() -> frozenset[str]:
+    return frozenset(available_timezones())
+
+
+def _zone_problems(zone: str) -> list[Problem]:
+    plausible = len(zone) <= MAX_ZONE_LENGTH and _ZONE_NAME.fullmatch(zone) is not None
+    if plausible and zone in _known_zones():
+        return []
+    return [Problem("zone_unknown", zone[:MAX_ZONE_LENGTH], f"Try {DEFAULT_POLICY.zone}")]
+
+
+def _time_problems(policy: TimePolicy) -> list[Problem]:
+    problems: list[Problem] = []
+    for clock in (policy.quiet_start, policy.quiet_end, policy.overview_at, policy.remind_at):
+        if clock.second or clock.microsecond:
+            problems.append(Problem("time_not_whole_minute", _show(clock), f"Try {_hhmm(_minute_of_day(clock))}"))
+        if clock.tzinfo is not None:
+            problems.append(Problem("time_has_zone", _show(clock), f"Try {_hhmm(_minute_of_day(clock))}"))
+    return problems
+
+
+def _window_problems(policy: TimePolicy) -> list[Problem]:
+    start, end = _minute_of_day(policy.quiet_start), _minute_of_day(policy.quiet_end)
+    shown = f"{_hhmm(start)} to {_hhmm(end)}"
+    length = policy.window_minutes
+    if length == 0:
+        return [Problem("quiet_window_empty", shown, f"Try {_hhmm(start)} to {_hhmm(start + MAX_WINDOW_MINUTES)}")]
+    if length < MIN_WINDOW_MINUTES:
+        return [Problem("quiet_window_length", shown, f"Try {_hhmm(start)} to {_hhmm(start + MIN_WINDOW_MINUTES)}")]
+    if length > MAX_WINDOW_MINUTES:
+        return [Problem("quiet_window_length", shown, f"Try {_hhmm(start)} to {_hhmm(start + MAX_WINDOW_MINUTES)}")]
+    return []
+
+
+def _outside_problems(policy: TimePolicy) -> list[Problem]:
+    if policy.window_minutes == 0:
+        return []
+    move_to = f"Try {_hhmm(_minute_of_day(policy.quiet_end))}"
+    return [
+        Problem(rule, _show(clock), move_to)
+        for rule, clock in (
+            ("overview_in_quiet_hours", policy.overview_at),
+            ("remind_in_quiet_hours", policy.remind_at),
+        )
+        if policy.is_quiet(clock)
+    ]
+
+
 def validate(policy: TimePolicy) -> list[Problem]:
     """Check the whole row; an empty list means valid."""
-    return []
+    return [
+        *_zone_problems(policy.zone),
+        *_time_problems(policy),
+        *_window_problems(policy),
+        *_outside_problems(policy),
+    ]
