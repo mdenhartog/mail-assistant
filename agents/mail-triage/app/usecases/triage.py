@@ -19,8 +19,7 @@ from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.alert_state import AlertState, initial_state
 from app.core.auth_results import parse_auth_results
 from app.core.judgement import OTHER_LABEL, Filing, Judgement, NeedsAttention, resolve
-from app.core.time_policy import in_quiet_hours
-from schedule_policy.policy import DEFAULT_POLICY
+from app.core.time_policy import in_quiet_hours, next_quiet_end
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -29,6 +28,8 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.alert_text import AuthResults
+    from app.usecases.policy_notice import PolicySource
+    from schedule_policy.policy import TimePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class Outcome:
     alert: AlertState | None
     note: str
     content: MailContent
+    release_at: datetime | None = None  # a held alert: the next quiet end under the policy valid when it was held
 
 
 class Claim(StrEnum):
@@ -149,11 +151,16 @@ class RunSummary:
 
 
 def decide_outcome(
-    verdict: Judgement | NeedsAttention, mail: FetchedMail, known_labels: list[str], now: datetime
+    verdict: Judgement | NeedsAttention,
+    mail: FetchedMail,
+    known_labels: list[str],
+    now: datetime,
+    policy: TimePolicy,
 ) -> Outcome:
     """Label, urgency and content of one judged mail. Anything untrustworthy is urgent, never ignorable.
 
-    Shared by the pipeline (new mail) and the catch-up (old mail), so both decide exactly alike.
+    Shared by the pipeline (new mail) and the catch-up (old mail), so both decide exactly alike. ``policy`` is the
+    snapshot of this one decision: inside its quiet hours the alert is held until the next quiet end under it.
     """
     decision = resolve(verdict, known_labels) if isinstance(verdict, Judgement) else verdict
     if isinstance(decision, Filing):
@@ -178,8 +185,11 @@ def decide_outcome(
         summary=summary,
         auth=parse_auth_results(mail.headers.get("Authentication-Results")),
     )
-    alert = initial_state(in_quiet_hours=in_quiet_hours(now, DEFAULT_POLICY)) if urgent else None
-    return Outcome(label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content)
+    alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy)) if urgent else None
+    release_at = next_quiet_end(now, policy) if alert is AlertState.HELD else None
+    return Outcome(
+        label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content, release_at=release_at
+    )
 
 
 class TriagePipeline:
@@ -192,13 +202,15 @@ class TriagePipeline:
         store: TriageStore,
         notifier: FailureNotifier,
         now: Callable[[], datetime],
+        policy: PolicySource,
     ) -> None:
-        """Wire the ports and the clock."""
+        """Wire the ports, the clock and the policy source."""
         self._mail = mailbox
         self._judge = judge
         self._store = store
         self._notifier = notifier
         self._now = now
+        self._policy = policy
 
     async def run_once(self) -> RunSummary:
         """Process every new mail once; move the position forward only when nothing is left to retry."""
@@ -256,7 +268,8 @@ class TriagePipeline:
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text))
-        outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now())
+        policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
+        outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now(), policy)
         label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete(mail.message_id, outcome)

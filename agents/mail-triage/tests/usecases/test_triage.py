@@ -430,6 +430,19 @@ def test_given_new_york_quiet_hours_when_an_urgent_mail_arrives_at_2330_there_th
     assert outcome.release_at == datetime(2026, 11, 10, 12, 0, tzinfo=UTC)  # 07:00 in New York
 
 
+def test_given_a_needs_attention_verdict_in_quiet_hours_when_decided_then_it_is_held_with_a_release_moment() -> None:
+    outcome = decide_outcome(NeedsAttention("budget"), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+
+    assert outcome.alert is AlertState.HELD
+    assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)
+
+
+def test_given_a_non_urgent_mail_in_quiet_hours_when_decided_then_there_is_no_alert_and_no_release_moment() -> None:
+    outcome = decide_outcome(judgement(urgent=False), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+
+    assert (outcome.alert, outcome.release_at) == (None, None)
+
+
 async def test_given_a_stored_change_when_the_next_alert_arises_then_it_is_judged_with_the_new_values() -> None:
     source = FakePolicySource(DEFAULT_POLICY)  # 13:00 in Amsterdam: not quiet
     first_store = FakeStore()
