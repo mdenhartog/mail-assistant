@@ -60,7 +60,7 @@ class PolicyNotice:
         self._open = True  # before the await: two reads failing at once send one notice
         try:
             await self._notifier.say(notice_text(in_use, reason))
-        except Exception as error:  # noqa: BLE001  # a Telegram fault must not stop the agent from alerting
+        except Exception as error:  # a Telegram fault must not stop the agent from alerting
             self._open = False
             logger.warning("policy_notice_failed error=%s", type(error).__name__)
 

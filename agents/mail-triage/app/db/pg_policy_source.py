@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy.exc import DBAPIError
 
@@ -19,18 +19,27 @@ from schedule_policy.policy import DEFAULT_POLICY, TimePolicy
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
-    from app.db.repos import SettingsStore
+    from app.db.repos import StoredSettings
     from app.usecases.policy_notice import PolicyNotice
+
+    type Deadline = Callable[[Awaitable[StoredSettings | None], float], Awaitable[StoredSettings | None]]
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
 READ_TIMEOUT_SECONDS = 2.0
+
+
+class SettingsReader(Protocol):
+    """The one thing this source needs from the settings store."""
+
+    async def read(self) -> StoredSettings | None:
+        """The stored row, or None when none was ever written."""
+        ...
 
 
 def _describe(error: Exception) -> str:
     """The error class and, for a database error, its SQLSTATE: what is safe to log (no parameters, no row values)."""
-    if isinstance(error, DBAPIError):
+    if isinstance(error, DBAPIError) and error.orig is not None:
         driver_error = error.orig.__cause__ or error.orig  # the asyncpg class names the fault; SQLAlchemy's is generic
         return f"{type(driver_error).__name__} sqlstate={getattr(error.orig, 'sqlstate', None)}"
     return type(error).__name__
@@ -41,9 +50,9 @@ class PgPolicySource:
 
     def __init__(
         self,
-        store: SettingsStore,
+        store: SettingsReader,
         notice: PolicyNotice,
-        deadline: Callable[[Awaitable[T], float], Awaitable[T]] = asyncio.wait_for,
+        deadline: Deadline = asyncio.wait_for,
     ) -> None:
         """Keep the store, the notice and the deadline seam (tests pass one that needs no real waiting)."""
         self._store = store
@@ -58,7 +67,7 @@ class PgPolicySource:
         except StoredSettingsInvalid as invalid:
             logger.warning("settings_invalid rules=%s", ",".join(invalid.rules))
             return await self._fall_back("the saved settings are not valid")
-        except Exception as error:  # noqa: BLE001  # the agent must keep alerting whatever the database does
+        except Exception as error:  # the agent must keep alerting whatever the database does
             logger.warning("settings_unreadable error=%s", _describe(error))
             return await self._fall_back("the settings cannot be read")
         self._last_good = DEFAULT_POLICY if stored is None else stored.policy
