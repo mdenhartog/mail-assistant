@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import traceback
+from dataclasses import replace
 from datetime import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 import pytest
@@ -13,14 +16,20 @@ from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.db.pg_settings_store import PgSettingsStore
-from app.db.repos import NothingToUndo, PolicyRefused, StoredSettings, StoredSettingsInvalid, VersionConflict
+from app.db.repos import (
+    NothingToUndo,
+    PolicyRefused,
+    SettingsStoreFailure,
+    StoredSettings,
+    StoredSettingsInvalid,
+    VersionConflict,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Coroutine
 
     from schedule_policy.policy import TimePolicy
 
@@ -237,7 +246,7 @@ async def test_given_a_fault_after_validation_when_a_first_write_commits_then_no
 ) -> None:
     await _inject_commit_fault(engine)
 
-    with pytest.raises(DBAPIError):
+    with pytest.raises(SettingsStoreFailure):
         await store.write(make_policy(), 0, "telegram", "u1")
 
     assert await store.read() is None
@@ -251,13 +260,50 @@ async def test_given_a_fault_after_validation_when_an_update_commits_then_row_an
     second = await store.write(make_policy(quiet_start=time(22, 0)), first.version, "web", "u1")
     await _inject_commit_fault(engine)
 
-    with pytest.raises(DBAPIError):
+    with pytest.raises(SettingsStoreFailure):
         await store.write(make_policy(quiet_start=time(21, 0)), second.version, "telegram", "u1")
-    with pytest.raises(DBAPIError):
+    with pytest.raises(SettingsStoreFailure):
         await store.undo(second.version, "telegram", "u1")
 
     assert await store.read() == second
     assert await _audit_count(engine) == 2
+
+
+CANARY = "Pacific/Kiritimati"
+
+
+def _everything_said_about(error: BaseException) -> str:
+    """What any logger could print about an error: message, repr and the full traceback chain."""
+    return "\n".join([str(error), repr(error), "".join(traceback.format_exception(error))])
+
+
+async def test_given_the_canary_zone_when_every_failure_path_is_logged_then_no_record_holds_the_zone(
+    store: PgSettingsStore, engine: AsyncEngine, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    logger = logging.getLogger("test.settings")
+    canary = make_policy(zone=CANARY, quiet_start=time(22, 0))
+    first = await store.write(canary, 0, "telegram", "u1")
+    errors: list[BaseException] = []
+
+    async def attempt(call: Coroutine[Any, Any, object]) -> None:
+        try:
+            await call
+        except (VersionConflict, PolicyRefused, NothingToUndo, SettingsStoreFailure) as error:
+            errors.append(error)
+            logger.exception("settings write failed: %s", error)
+
+    await attempt(store.write(canary, 0, "telegram", "u1"))  # conflict: a row exists
+    await attempt(store.write(replace(canary, overview_at=time(23, 0)), first.version, "telegram", "u1"))  # refused
+    await attempt(store.undo(first.version, "telegram", "u1"))  # nothing to undo
+    async with engine.begin() as connection:  # a statement that fails: its error text carries the bound parameters
+        await connection.execute(text("alter table settings.schedule add constraint ck_fault check (version < 2) not valid"))
+    await attempt(store.write(replace(canary, quiet_start=time(21, 0)), first.version, "telegram", "u1"))  # fault
+
+    assert {type(error) for error in errors} == {VersionConflict, PolicyRefused, NothingToUndo, SettingsStoreFailure}
+    assert CANARY not in caplog.text
+    assert all(CANARY not in _everything_said_about(error) for error in errors)
+    assert all("Kiritimati" not in record.getMessage() for record in caplog.records)
 
 
 async def test_given_writes_when_they_commit_then_each_adds_exactly_one_audit_record(
