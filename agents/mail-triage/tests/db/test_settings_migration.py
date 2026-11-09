@@ -6,6 +6,7 @@ Covers ADR-0025 and ADR-0026, AC-30 and AC-34 of INT-002 against a real PostgreS
 from __future__ import annotations
 
 import asyncio
+import json
 
 import asyncpg
 import pytest
@@ -234,3 +235,29 @@ async def test_given_the_conversation_table_when_bad_rows_are_inserted_then_post
 
     assert second.value.constraint_name == "ck_conversation_single_row"
     assert kind.value.constraint_name == "ck_conversation_kind"
+
+
+async def test_given_an_insert_and_an_update_when_they_succeed_then_settings_change_records_both(
+    migrated_url: str,
+) -> None:
+    connection = await asyncpg.connect(_plain(migrated_url))
+    try:
+        await _insert_schedule(connection)
+        await connection.execute(
+            "update settings.schedule set quiet_start = 660, version = version + 1, "
+            "updated_via = 'telegram', updated_by = '42'"
+        )
+        records = await connection.fetch("select at, via, by, old, new from settings.settings_change order by at, via")
+    finally:
+        await connection.close()
+
+    by_via = {r["via"]: r for r in records}
+    assert len(records) == 2
+    created, changed = by_via["web"], by_via["telegram"]
+    assert created["by"] == "u1"
+    assert created["old"] is None
+    assert json.loads(created["new"])["quiet_start"] == 600
+    assert changed["by"] == "42"
+    assert json.loads(changed["old"])["quiet_start"] == 600
+    assert json.loads(changed["new"])["quiet_start"] == 660
+    assert changed["at"] is not None
