@@ -8,8 +8,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.core.alert_state import AlertState
-from app.core.time_policy import snooze_due
+from app.core.time_policy import remind_due
 from app.usecases.snooze import SnoozeService
+from schedule_policy.policy import DEFAULT_POLICY
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -81,7 +82,7 @@ async def test_given_tomorrow_when_snoozed_then_the_due_time_follows_the_time_po
 
     await service(store, say).snooze("1", "Tomorrow")
 
-    assert store.rows["1"].due_at == snooze_due(DAYTIME, "tomorrow")
+    assert store.rows["1"].due_at == remind_due(DAYTIME, "tomorrow", DEFAULT_POLICY)
 
 
 async def test_given_the_due_time_passes_when_released_then_the_alert_is_open_once_and_marked_for_resending() -> None:
