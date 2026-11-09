@@ -176,8 +176,14 @@ class SettingsDialog:
             yield
         except SettingsStoreFailure as failure:
             logger.warning("settings store failed cause=%s sqlstate=%s", failure.cause_class, failure.sqlstate)
-            await self._conversations.clear()
-            await self._chat.send(settings_text.with_start_button(settings_text.SAVE_FAILED))
+            await self._end_with_failure_note()
+        except OSError as failure:  # a refused connection can reach ``read`` unwrapped; log the class only
+            logger.warning("settings store unreachable cause=%s", type(failure).__name__)
+            await self._end_with_failure_note()
+
+    async def _end_with_failure_note(self) -> None:
+        await self._conversations.clear()
+        await self._chat.send(settings_text.with_start_button(settings_text.SAVE_FAILED))
 
     # ---- the card and the questions ------------------------------------------------------------------------------
 

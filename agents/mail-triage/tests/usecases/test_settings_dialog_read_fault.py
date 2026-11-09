@@ -45,3 +45,24 @@ async def test_given_a_read_fault_when_settings_is_sent_then_the_dialogue_ends_w
 
     assert [m.text for m in chat.sent] == ["I could not save that. Nothing was changed. Try again in a moment."]
     assert [b.label for b in chat.sent[-1].buttons] == ["Show settings"]
+
+
+class RefusedStore:
+    """A settings store whose connection is refused: the raw error can reach ``read`` unwrapped."""
+
+    async def read(self) -> StoredSettings | None:
+        raise ConnectionRefusedError("[Errno 111] Connect call failed ('10.0.0.5', 5432)")
+
+
+async def test_given_a_refused_connection_when_settings_is_sent_then_the_dialogue_ends_like_a_store_failure() -> None:
+    rig = Rig()
+    chat = SentChat()
+    rig.chat = chat
+    router = rig.router()
+    router.register(SettingsDialog(RefusedStore(), chat, rig.conversations, USER, rig.clock.now))  # type: ignore[arg-type]
+
+    await router.handle(text("/settings"))
+
+    assert [m.text for m in chat.sent] == ["I could not save that. Nothing was changed. Try again in a moment."]
+    assert [b.label for b in chat.sent[-1].buttons] == ["Show settings"]
+    assert await rig.conversations.current() is None

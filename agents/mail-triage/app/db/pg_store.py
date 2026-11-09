@@ -6,7 +6,7 @@ and anything that is not a number is simply an unknown alert. The store never wr
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, update
@@ -16,7 +16,7 @@ from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults, MailMeta
 from app.core.judgement import Judgement
 from app.db import repos
-from app.db.models import Alert, CatchupState, Draft, MailItem, OverviewLog, PollState
+from app.db.models import Alert, CatchupState, Draft, MailItem, PollState
 from app.db.pg_conversation import ConversationStore, Kind
 from app.usecases.catchup import CatchUpState
 from app.usecases.deliver_alerts import PendingAlert
@@ -362,17 +362,6 @@ class PgStore:
             FiledMail(i.label or "", i.confidence or 0.0, i.sender or REMOVED, i.subject or REMOVED, urgent=i.urgent)
             for i in items
         ]
-
-    async def overview_sent(self, day: date) -> bool:
-        """Whether the overview of this day was settled."""
-        async with self._sessions() as session:
-            return await session.get(OverviewLog, day) is not None
-
-    async def mark_overview_sent(self, day: date) -> None:
-        """Remember that the overview of this day was settled."""
-        statement = insert(OverviewLog).values(day=day, settled_at=datetime.now(UTC)).on_conflict_do_nothing()
-        async with self._sessions.begin() as session:
-            await session.execute(statement)
 
     async def purge_content(self, before: datetime) -> int:
         """Clear the mail-derived content of mail claimed before ``before``; ids and decisions stay."""
