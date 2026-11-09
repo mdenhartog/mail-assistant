@@ -51,6 +51,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class DefaultPolicySource:
+    """Interim ``PolicySource``: always the defaults. U-quiet-hours-14 replaces it with the stored settings."""
+
+    async def current(self) -> TimePolicy:
+        """The defaults, so the first release behaves exactly as before."""
+        return DEFAULT_POLICY
+
+
 HEARTBEAT = Path("/tmp/heartbeat")  # noqa: S108  # nosec B108 - the container's own tmpfs; the probe reads it
 GMAIL_TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105  # nosec B105 - a public endpoint
 GMAIL_SCOPES = (
@@ -129,12 +138,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     )
     budget = DailyBudget(settings.daily_model_budget, today)  # one budget: the catch-up only gets what new mail leaves
     judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
-    snooze = SnoozeService(store, outbox, now)
+    policy = DefaultPolicySource()
+    snooze = SnoozeService(store, outbox, now, policy)
     reply = ReplyService(store, mailbox, sender, outbox, own_address=own_address, now=now, new_id=new_id)  # type: ignore[arg-type]
     return Runner(
-        pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now),  # type: ignore[arg-type]
-        catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now),  # type: ignore[arg-type]
-        delivery=AlertDelivery(store, outbox, now, hourly_cap=settings.alerts_per_hour),
+        pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now, policy),  # type: ignore[arg-type]
+        catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now, policy),  # type: ignore[arg-type]
+        delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, DefaultPolicySource()),
         store=store,
