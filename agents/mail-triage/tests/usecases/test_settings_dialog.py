@@ -201,3 +201,33 @@ async def test_given_the_reminder_question_when_a_time_is_typed_then_only_the_re
     await bot.type("0815")
 
     assert bot.store.writes == [(make_policy(remind_at=time(8, 15)), 1, "telegram", str(USER))]
+
+
+# ---- criterion 8: every question names the value and the step and has a Cancel button (a11y) ------------------------
+
+
+async def test_given_each_question_when_shown_then_it_names_the_value_and_the_step_and_has_cancel() -> None:
+    bot = bot_with(make_policy())
+    questions: list[tuple[str, str]] = []
+
+    for label, answer in (
+        ("Change quiet hours", "22:00"),
+        ("Change daily overview", None),
+        ("Change remind-me-later default", None),
+    ):
+        await bot.settings()
+        await bot.tap(label)
+        questions.append((label, bot.last.text))
+        assert bot.labels() == ["Cancel"], label
+        if answer:
+            await bot.type(answer)
+            questions.append((label, bot.last.text))
+            assert bot.labels() == ["Cancel"], label
+
+    first_lines = [text.splitlines()[0] for _label, text in questions]
+    assert first_lines == [
+        "Quiet hours, step 1 of 2: start time",
+        "Quiet hours, step 2 of 2: end time",
+        "Daily overview: type a time, for example 18:00.",
+        "Remind-me-later default: type a time, for example 09:00.",
+    ]
