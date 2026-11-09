@@ -4,9 +4,7 @@ Times are wall-clock times in ``zone``. The quiet window starts inclusive and en
 does today, and its length is counted in clock minutes, never in elapsed time (so a 23 h or 25 h day does not matter).
 """
 
-from __future__ import annotations
-
-import re
+# No "from __future__ import annotations" on purpose: evaluated annotations keep mutation testing honest.
 from dataclasses import dataclass
 from datetime import time
 from functools import lru_cache
@@ -15,8 +13,7 @@ from zoneinfo import available_timezones
 MINUTES_PER_DAY = 24 * 60
 MIN_WINDOW_MINUTES = 60
 MAX_WINDOW_MINUTES = 12 * 60
-MAX_ZONE_LENGTH = 64
-_ZONE_NAME = re.compile(r"[A-Za-z0-9_+\-]+(?:/[A-Za-z0-9_+\-]+){0,2}")
+MAX_SHOWN_LENGTH = 64  # a refused zone text is echoed back at most this long
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,9 +32,9 @@ class TimePolicy:
         return (_minute_of_day(self.quiet_end) - _minute_of_day(self.quiet_start)) % MINUTES_PER_DAY
 
     def is_quiet(self, clock: time) -> bool:
-        """True from the quiet start up to, not including, the quiet end."""
+        """True from the quiet start up to, not including, the quiet end; never true for an empty window."""
         start, end, now = (_minute_of_day(t) for t in (self.quiet_start, self.quiet_end, clock))
-        if start < end:
+        if start <= end:
             return start <= now < end
         return now >= start or now < end
 
@@ -81,10 +78,10 @@ def _known_zones() -> frozenset[str]:
 
 
 def _zone_problems(zone: str) -> list[Problem]:
-    plausible = len(zone) <= MAX_ZONE_LENGTH and _ZONE_NAME.fullmatch(zone) is not None
-    if plausible and zone in _known_zones():
+    # Membership in the IANA list is the whole check: a path, an empty name or a stray character is simply not in it.
+    if zone in _known_zones():
         return []
-    return [Problem("zone_unknown", zone[:MAX_ZONE_LENGTH], f"Try {DEFAULT_POLICY.zone}")]
+    return [Problem("zone_unknown", zone[:MAX_SHOWN_LENGTH], f"Try {DEFAULT_POLICY.zone}")]
 
 
 def _time_problems(policy: TimePolicy) -> list[Problem]:

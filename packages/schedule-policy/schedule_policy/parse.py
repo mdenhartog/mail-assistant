@@ -5,8 +5,7 @@ spaces around the text). ``00:00`` and ``24:00`` both mean midnight. Everything 
 or other non-ASCII digits, control characters, empty text and text over 64 characters.
 """
 
-from __future__ import annotations
-
+# No "from __future__ import annotations" on purpose: evaluated annotations keep mutation testing honest.
 import re
 from datetime import time
 
