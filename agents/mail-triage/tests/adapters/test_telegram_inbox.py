@@ -78,8 +78,8 @@ async def test_given_an_update_from_the_owner_when_polled_then_a_command_is_prod
     commands = await inbox.poll_once()
 
     assert commands == [
-        Command(kind="text", data="3", chat_id=CHAT, message_id=7, callback_id=None),
-        Command(kind="button", data="reply:12", chat_id=CHAT, message_id=9, callback_id="cb1"),
+        Command(kind="text", data="3", chat_id=CHAT, message_id=7, callback_id=None, update_id=1),
+        Command(kind="button", data="reply:12", chat_id=CHAT, message_id=9, callback_id="cb1", update_id=2),
     ]
 
 

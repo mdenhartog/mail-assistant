@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass, field
 
 import pytest
@@ -12,12 +13,15 @@ from app.usecases.dispatch import CommandRouter
 from app.usecases.reply import StoredDraft
 
 
-def button(data: str) -> Command:
-    return Command("button", data, chat_id=1, message_id=9, callback_id="cb1")
+_UPDATE_IDS = itertools.count(1)
 
 
-def text(data: str) -> Command:
-    return Command("text", data, chat_id=1, message_id=10, callback_id=None)
+def button(data: str, update_id: int | None = None) -> Command:
+    return Command("button", data, 1, 9, "cb1", next(_UPDATE_IDS) if update_id is None else update_id)
+
+
+def text(data: str, update_id: int | None = None) -> Command:
+    return Command("text", data, 1, 10, None, next(_UPDATE_IDS) if update_id is None else update_id)
 
 
 @dataclass

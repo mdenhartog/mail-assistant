@@ -40,6 +40,7 @@ class Command:
     chat_id: int
     message_id: int
     callback_id: str | None
+    update_id: int
 
 
 _BOT_PATH = re.compile(r"/bot[^/\s\"]+/")
@@ -101,9 +102,10 @@ class TelegramInbox:
         commands: list[Command] = []
         for update in updates:
             update_id = update.get("update_id")
-            if isinstance(update_id, int):
-                self._offset = max(self._offset or 0, update_id + 1)
-            command = self._accept(update)
+            if not isinstance(update_id, int):
+                continue  # a real update always has an id; without one it cannot be tracked or deduplicated
+            self._offset = max(self._offset or 0, update_id + 1)
+            command = self._accept(update, update_id)
             if command is not None:
                 commands.append(command)
         return commands
@@ -131,31 +133,31 @@ class TelegramInbox:
         items = (_obj(item) for item in cast("list[object]", result))
         return [item for item in items if item is not None]
 
-    def _accept(self, update: dict[str, Any]) -> Command | None:
+    def _accept(self, update: dict[str, Any], update_id: int) -> Command | None:
         message, query = _obj(update.get("message")), _obj(update.get("callback_query"))
         if message is not None:
-            return self._text_command(message)
+            return self._text_command(message, update_id)
         if query is not None:
-            return self._button_command(query)
+            return self._button_command(query, update_id)
         return None  # edited messages, channel posts, inline queries and everything else
 
-    def _text_command(self, message: dict[str, Any]) -> Command | None:
+    def _text_command(self, message: dict[str, Any], update_id: int) -> Command | None:
         text = message.get("text")
         message_id = message.get("message_id")
         if not (isinstance(text, str) and isinstance(message_id, int)):
             return None
         if not self._is_owner(message.get("from"), message.get("chat")):
             return None
-        return Command("text", text[:MAX_TEXT_CHARS], self._chat, message_id, None)
+        return Command("text", text[:MAX_TEXT_CHARS], self._chat, message_id, None, update_id)
 
-    def _button_command(self, query: dict[str, Any]) -> Command | None:
+    def _button_command(self, query: dict[str, Any], update_id: int) -> Command | None:
         data, callback_id, origin = query.get("data"), query.get("id"), _obj(query.get("message"))
         if not (isinstance(data, str) and isinstance(callback_id, str) and origin is not None):
             return None
         message_id = origin.get("message_id")
         if not isinstance(message_id, int) or not self._is_owner(query.get("from"), origin.get("chat")):
             return None
-        return Command("button", data[:MAX_BUTTON_DATA_CHARS], self._chat, message_id, callback_id)
+        return Command("button", data[:MAX_BUTTON_DATA_CHARS], self._chat, message_id, callback_id, update_id)
 
     def _is_owner(self, sender_value: object, chat_value: object) -> bool:
         sender, chat = _obj(sender_value), _obj(chat_value)
