@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import Judgement
+    from app.usecases.policy_notice import PolicySource
     from app.usecases.triage import FailureNotifier, Outcome
 
 logger = logging.getLogger(__name__)
@@ -140,14 +141,16 @@ class CatchUp:
         notifier: FailureNotifier,
         budget: BudgetView,
         now: Callable[[], datetime],
+        policy: PolicySource,
     ) -> None:
-        """Wire the ports, the budget view and the clock."""
+        """Wire the ports, the budget view, the clock and the policy source."""
         self._mail = mailbox
         self._judge = judge
         self._store = store
         self._notifier = notifier
         self._budget = budget
         self._now = now
+        self._policy = policy
 
     async def run_once(self) -> RunSummary:
         """One run: start when needed, file up to ``RUN_LIMIT`` old mails, finish when none is left."""
@@ -212,9 +215,10 @@ class CatchUp:
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text))
         if isinstance(verdict, NeedsAttention) and verdict.reason == "budget":
             return _Step.STOP  # an old mail is never filed as "needs attention" only because the budget ended
-        outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now())
+        policy = await self._policy.current()  # one snapshot for this mail
+        outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now(), policy)
         if outcome.alert is not None and await self._store.backlog_alerts() >= BACKLOG_ALERT_LIMIT:
-            outcome = replace(outcome, alert=None)  # still urgent, so the overview lists it (spec C-B5)
+            outcome = replace(outcome, alert=None, release_at=None)  # still urgent, so the overview lists it (C-B5)
         label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete_backlog(mail.message_id, outcome)
