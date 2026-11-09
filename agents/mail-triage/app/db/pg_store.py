@@ -17,6 +17,7 @@ from app.core.alert_text import AuthResults, MailMeta
 from app.core.judgement import Judgement
 from app.db import repos
 from app.db.models import Alert, CatchupState, Draft, MailItem, OverviewLog, PollState
+from app.db.pg_conversation import ConversationStore, Kind
 from app.usecases.catchup import CatchUpState
 from app.usecases.deliver_alerts import PendingAlert
 from app.usecases.overview import FiledMail
@@ -27,6 +28,8 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 POLL_ROW = 1
+_QUESTIONS: dict[str, tuple[Kind, str]] = {"snooze_hours": ("snooze", "hours"), "reply_text": ("reply", "text")}
+_KINDS = {(kind, step): name for name, (kind, step) in _QUESTIONS.items()}
 REMOVED = "(removed after 30 days)"
 
 
@@ -68,8 +71,9 @@ class PgStore:
     """Triage, delivery, snooze, reply and overview storage in PostgreSQL."""
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
-        """Keep the session factory."""
+        """Keep the session factory; the pending question lives in the conversation row."""
         self._sessions = sessions
+        self._conversations = ConversationStore(sessions, lambda: datetime.now(UTC))
 
     # ---- triage pipeline -------------------------------------------------------------------------------------
 
@@ -304,19 +308,21 @@ class PgStore:
             await session.execute(update(Draft).where(Draft.alert_id == key).values(used=True))
 
     async def set_awaiting(self, alert_id: str, kind: str | None) -> None:
-        """Remember what Marco is asked to type next for this alert (``None`` clears it)."""
-        key = _id(alert_id)
-        if key is None:
+        """Remember what Marco is asked to type next for this alert; ``None`` clears it if it is this alert's."""
+        if _id(alert_id) is None:
             return
-        async with self._sessions.begin() as session:
-            await session.execute(update(Alert).where(Alert.id == key).values(awaiting_input=kind))
+        if kind is None:
+            await self._conversations.clear_for(alert_id)
+            return
+        dialogue, step = _QUESTIONS[kind]
+        await self._conversations.start(dialogue, alert_id, step, {}, None)
 
     async def awaiting(self) -> tuple[str, str] | None:
         """The alert Marco is expected to type something for, with the kind of input."""
-        statement = select(Alert.id, Alert.awaiting_input).where(Alert.awaiting_input.is_not(None))
-        async with self._sessions() as session:
-            row = (await session.execute(statement.order_by(Alert.updated_at.desc()).limit(1))).first()
-        return (str(row[0]), str(row[1])) if row else None
+        current = await self._conversations.current()
+        if current is None or current.target is None or (current.kind, current.step) not in _KINDS:
+            return None
+        return current.target, _KINDS[current.kind, current.step]
 
     # ---- daily overview and retention ------------------------------------------------------------------------
 
