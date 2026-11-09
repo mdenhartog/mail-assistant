@@ -40,3 +40,37 @@ def test_given_new_york_when_looked_up_then_hit_has_label_and_offset_at_now():
     assert winter.utc_offset_minutes == -300
     assert summer.label == "New York, United States (UTC-4)"
     assert summer.utc_offset_minutes == -240
+
+
+@pytest.mark.parametrize(
+    ("text", "zone"),
+    [
+        ("NYC", "America/New_York"),
+        ("nyc", "America/New_York"),
+        ("Wien", "Europe/Vienna"),
+        ("Den Haag", "Europe/Amsterdam"),
+        ("  Zürich  ", "Europe/Zurich"),
+        ("Zurich", "Europe/Zurich"),
+    ],
+)
+def test_given_alias_or_surrounding_spaces_when_looked_up_then_matched(text, zone):
+    assert zones(text) == [zone]
+
+
+@pytest.mark.parametrize(
+    ("text", "zone"),
+    [
+        ("Zürich", "Europe/Zurich"),  # NFD: u + combining diaeresis
+        ("Zürich", "Europe/Zurich"),  # NFC
+        ("ZÜRICH", "Europe/Zurich"),
+        ("Ｎｅｗ Ｙｏｒｋ", "America/New_York"),  # full-width "New York"
+        ("São Paulo", "America/Sao_Paulo"),
+        ("Sao Paulo", "America/Sao_Paulo"),
+        ("São Paulo", "America/Sao_Paulo"),  # NFD
+        ("ıstanbul", "Europe/Istanbul"),  # dotless i
+        ("İstanbul", "Europe/Istanbul"),  # dotted capital I
+        ("ISTANBUL", "Europe/Istanbul"),
+    ],
+)
+def test_given_unicode_variants_when_looked_up_then_each_matches(text, zone):
+    assert zones(text) == [zone]
