@@ -70,6 +70,28 @@ def upgrade() -> None:
         sa.Column("new", postgresql.JSONB, nullable=False),
         schema="settings",
     )
+    # SECURITY DEFINER: the runtime role has no INSERT on settings_change, only this trigger (run as the owner) writes
+    # it. The search_path is pinned so the function cannot be redirected to look-alike objects.
+    op.execute(
+        """
+        CREATE FUNCTION settings.settings_audit() RETURNS trigger
+        LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+        BEGIN
+            INSERT INTO settings.settings_change (at, via, by, old, new)
+            VALUES (
+                now(), NEW.updated_via, NEW.updated_by,
+                CASE WHEN TG_OP = 'UPDATE' THEN to_jsonb(OLD) END, to_jsonb(NEW)
+            );
+            RETURN NULL;
+        END
+        $$
+        """
+    )
+    op.execute("REVOKE ALL ON FUNCTION settings.settings_audit() FROM PUBLIC")
+    op.execute(
+        "CREATE TRIGGER schedule_audit AFTER INSERT OR UPDATE ON settings.schedule "
+        "FOR EACH ROW EXECUTE FUNCTION settings.settings_audit()"
+    )
     op.create_table(
         "conversation",
         sa.Column("id", sa.SmallInteger, primary_key=True),
