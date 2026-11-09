@@ -134,3 +134,15 @@ async def test_given_no_stored_row_when_settings_is_sent_then_the_card_shows_the
     assert "Daily overview: 18:00" in lines
     assert "Remind-me-later default: 09:00" in lines
     assert f"Time zone: {DEFAULT_POLICY.zone}" in lines
+
+
+async def test_given_the_card_when_shown_then_its_buttons_carry_the_nonce_of_the_stored_conversation() -> None:
+    bot = bot_with(None)
+
+    await bot.settings()
+
+    current = await bot.rig.conversations.current()
+    assert current is not None
+    assert (current.kind, current.step, current.partial) == ("settings", "card", {"version": 0})
+    keys = ("quiet", "overview", "remind", "zone")
+    assert [b.data for b in bot.last.buttons] == [f"set:{key}:{current.nonce}" for key in keys]
