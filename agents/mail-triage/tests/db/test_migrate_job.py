@@ -131,7 +131,7 @@ async def test_given_a_new_password_when_the_job_runs_then_the_runtime_role_uses
 async def test_given_a_password_with_quotes_and_semicolons_when_the_job_runs_then_it_is_set_literally(
     database_url: str,
 ) -> None:
-    awkward = "o'brien\";--drop role x;"  # noqa: S105
+    awkward = "o'brien\";--drop role x;"
 
     await migrate_database(database_url, awkward)
 
@@ -163,7 +163,7 @@ async def test_given_the_job_holds_the_agent_lock_free_when_an_agent_runs_then_t
 async def test_given_the_wrong_owner_password_when_the_job_runs_then_the_error_does_not_contain_a_password(
     database_url: str,
 ) -> None:
-    broken = make_url(database_url).set(password="wrong-owner-secret").render_as_string(hide_password=False)  # noqa: S106
+    broken = make_url(database_url).set(password="wrong-owner-secret").render_as_string(hide_password=False)
 
     with pytest.raises(Exception) as error:  # noqa: PT011 - any driver error
         await migrate_database(broken, PASSWORD)
