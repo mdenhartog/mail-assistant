@@ -6,10 +6,11 @@ from datetime import time
 from typing import TYPE_CHECKING
 
 from schedule_policy.policy import TimePolicy
+from sqlalchemy import func, update
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import Schedule
-from app.db.repos import StoredSettings
+from app.db.repos import StoredSettings, VersionConflict
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,6 +37,35 @@ def _stored(row: Schedule) -> StoredSettings:
     return StoredSettings(policy, row.version, row.updated_at, row.updated_via, row.updated_by)
 
 
+def _values(policy: TimePolicy, expected_version: int, via: str, by: str) -> dict[str, object]:
+    return {
+        "zone": policy.zone,
+        "quiet_start": _minutes(policy.quiet_start),
+        "quiet_end": _minutes(policy.quiet_end),
+        "overview_at": _minutes(policy.overview_at),
+        "remind_at": _minutes(policy.remind_at),
+        "version": expected_version + 1,
+        "updated_via": via,
+        "updated_by": by,
+    }
+
+
+async def _replace(session: AsyncSession, values: dict[str, object], expected_version: int) -> Schedule | None:
+    """One statement: the first INSERT when nothing is stored, else an UPDATE that only matches the expected version."""
+    if expected_version == 0:
+        statement = (
+            insert(Schedule).values(id=ROW, **values).on_conflict_do_nothing(index_elements=["id"]).returning(Schedule)
+        )
+    else:
+        statement = (
+            update(Schedule)
+            .where(Schedule.id == ROW, Schedule.version == expected_version)
+            .values(updated_at=func.now(), **values)
+            .returning(Schedule)
+        )
+    return (await session.execute(statement)).scalar_one_or_none()
+
+
 class PgSettingsStore:
     """Satisfies ``SettingsStore``; every method is one short transaction."""
 
@@ -50,18 +80,13 @@ class PgSettingsStore:
         return _stored(row) if row else None
 
     async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
-        """Insert the first row (``expected_version`` 0)."""
-        values = {
-            "id": ROW,
-            "zone": policy.zone,
-            "quiet_start": _minutes(policy.quiet_start),
-            "quiet_end": _minutes(policy.quiet_end),
-            "overview_at": _minutes(policy.overview_at),
-            "remind_at": _minutes(policy.remind_at),
-            "version": expected_version + 1,
-            "updated_via": via,
-            "updated_by": by,
-        }
+        """Replace the whole row if it is still at ``expected_version`` (0 = insert the first row).
+
+        Raises:
+            VersionConflict: the row is not at ``expected_version``; nothing was written.
+        """
         async with self._sessions.begin() as session:
-            row = (await session.execute(insert(Schedule).values(values).returning(Schedule))).scalar_one()
+            row = await _replace(session, _values(policy, expected_version, via, by), expected_version)
+        if row is None:
+            raise VersionConflict
         return _stored(row)
