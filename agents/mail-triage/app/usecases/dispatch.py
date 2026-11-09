@@ -40,6 +40,8 @@ USE_BUTTONS = "Use the buttons under an alert to reply, snooze or close it."
 FINISH_FIRST = "Finish or cancel the settings question first."
 OUT_OF_DATE = "That card is out of date."
 CANCELLED = "Cancelled. Nothing was changed."
+EXPIRED = "Expired"
+EXPIRED_NOTE = "That question expired. Nothing was changed."
 SETTINGS_TTL = timedelta(minutes=15)
 SEEN_UPDATES_MAX = 1024
 _ID = re.compile(r"[A-Za-z0-9-]{1,40}")
@@ -377,10 +379,14 @@ class CommandRouter:
         if handler is None:
             return
         current = await self._conversations.current()
-        if current is None:
+        if current is None:  # no live question: it expired (or was closed); the card loses its buttons
+            logger.info("dialogue button rejected reason=expired")
+            await self._chat.edit_message(command.message_id, EXPIRED)
+            await self._chat.offer(EXPIRED_NOTE, "Start again", f"start:{handler.kind}")
             return
         claimed = await self._claim(current) if current.kind == handler.kind and current.nonce == nonce else None
         if claimed is None:
+            logger.info("dialogue button rejected reason=stale")
             await self._chat.offer(OUT_OF_DATE, "Show settings", f"start:{handler.kind}")
         elif action == "cancel":
             await self._conversations.clear()
