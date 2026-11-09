@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar
@@ -37,6 +38,7 @@ class FakeConversations:
         return self._row
 
     async def current(self) -> OpenConversation | None:
+        await asyncio.sleep(0)  # a database round trip: another update can run while this one reads
         row = self._row
         if row is None or (row.expires_at is not None and row.expires_at <= self._clock.now()):
             return None

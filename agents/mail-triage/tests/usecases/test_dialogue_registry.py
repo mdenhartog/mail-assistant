@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 
 import pytest
@@ -240,3 +241,171 @@ async def test_given_malformed_settings_data_when_tapped_then_nothing_runs_and_t
     assert rig.settings.buttons == []
     assert rig.chat.acknowledged == ["cb1"]
     assert rig.chat.offered == rig.chat.edited == []
+
+
+# ---- criterion 2: stale and foreign nonces do nothing except offer a fresh card (AC-4) ----------------------------
+
+
+async def test_given_a_settings_button_with_an_old_nonce_when_tapped_then_nothing_changes_and_a_fresh_card_is_offered() -> (
+    None
+):
+    rig = Rig()
+    router = registered(rig)
+    old = await open_card(rig, router)
+    await router.handle(text("/settings"))
+    before = await rig.conversations.current()
+
+    await router.handle(button(button_data("set", old, "overview_time")))
+
+    assert rig.settings.buttons == []
+    assert await rig.conversations.current() == before  # not even the nonce moved
+    assert rig.chat.offered == [("That card is out of date.", "Show settings", "start:settings")]
+
+
+async def test_given_a_settings_button_while_a_snooze_question_is_pending_when_tapped_then_the_question_stays() -> None:
+    rig = Rig()
+    router = registered(rig)
+    await rig.conversations.start("snooze", "5", "hours", {}, None)
+    before = await rig.conversations.current()
+
+    await router.handle(button(button_data("set", "x" * 22, "zone")))
+
+    assert await rig.conversations.current() == before
+    assert rig.settings.buttons == []
+    assert rig.chat.offered == [("That card is out of date.", "Show settings", "start:settings")]
+
+
+async def test_given_the_offered_fresh_card_button_when_tapped_then_settings_starts_like_the_command() -> None:
+    rig = Rig()
+    router = registered(rig)
+    await rig.conversations.start("reply", "7", "text", {}, None)
+
+    await router.handle(button("start:settings"))
+
+    assert rig.chat.said == ["I dropped the question about alert 7."]
+    assert len(rig.settings.began) == 1
+    assert rig.chat.acknowledged == ["cb1"]
+
+
+async def test_given_a_start_button_for_an_unknown_dialogue_when_tapped_then_nothing_starts() -> None:
+    rig = Rig()
+    router = registered(rig)
+
+    await router.handle(button("start:unknown"))
+
+    assert rig.settings.began == []
+    assert rig.chat.acknowledged == ["cb1"]
+
+
+# ---- criterion 5: Cancel keeps the old value and writes nothing (AC-7) --------------------------------------------
+
+
+async def test_given_a_question_when_cancel_is_tapped_then_nothing_is_written_and_the_question_is_closed() -> None:
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+
+    await router.handle(button(button_data("cancel", nonce)))
+
+    assert rig.settings.writes == []
+    assert await rig.conversations.current() is None
+    assert rig.chat.edited == [(9, "Cancelled. Nothing was changed.")]
+    assert rig.chat.acknowledged == ["cb1"]
+
+
+async def test_given_a_cancelled_question_when_text_arrives_then_it_is_not_a_settings_answer() -> None:
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+    await router.handle(button(button_data("cancel", nonce)))
+
+    await router.handle(text("18:00"))
+
+    assert rig.settings.texts == []
+    assert rig.chat.said[-1] == USE_BUTTONS
+
+
+async def test_given_a_draft_cancel_button_when_tapped_then_it_still_reaches_the_reply_flow() -> None:
+    rig = Rig()
+    router = registered(rig)
+    await open_card(rig, router)
+
+    await router.handle(button("cancel:d1"))  # a draft id is not a nonce
+
+    assert rig.reply.calls == [("cancel", "d1")]
+    assert (await rig.conversations.current()) is not None  # the open settings question is untouched
+
+
+# ---- criterion 9: an old snooze or reply button leaves a pending settings question intact -------------------------
+
+
+@pytest.mark.parametrize("data", ["later:5", "reply:5", "edit:d1"])
+async def test_given_a_pending_settings_question_when_a_snooze_or_reply_question_button_is_tapped_then_it_stays(
+    data: str,
+) -> None:
+    rig = Rig()
+    router = registered(rig)
+    await open_card(rig, router)
+    before = await rig.conversations.current()
+
+    await router.handle(button(data))
+
+    assert await rig.conversations.current() == before
+    assert rig.reply.calls == []
+    assert rig.store.waiting is None
+    assert rig.chat.said == ["Finish or cancel the settings question first."]
+    assert rig.chat.acknowledged == ["cb1"]
+
+
+@pytest.mark.parametrize("data", ["stop:5", "send:d1:abcdef0123456789"])
+async def test_given_a_pending_settings_question_when_a_button_that_asks_nothing_is_tapped_then_it_still_works(
+    data: str,
+) -> None:
+    rig = Rig()
+    router = registered(rig)
+    await open_card(rig, router)
+    before = await rig.conversations.current()
+
+    await router.handle(button(data))
+
+    assert await rig.conversations.current() == before
+    assert rig.reply.calls or rig.snooze.calls
+
+
+# ---- criterion 10: a double tap, or a tap and a text at once, lead to one write -----------------------------------
+
+
+async def test_given_a_double_tap_when_handled_then_only_one_write_happens() -> None:
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+    data = button_data("set", nonce, "overview_time")
+
+    await router.handle(button(data))
+    await router.handle(button(data))  # a second update with the same nonce, as a double tap sends
+
+    assert rig.settings.writes == ["button:set:overview_time"]
+    assert rig.chat.offered == [("That card is out of date.", "Show settings", "start:settings")]
+
+
+async def test_given_a_tap_and_a_text_at_once_when_handled_then_only_one_write_happens() -> None:
+    rig = Rig()
+    router = registered(rig)
+    nonce = await open_card(rig, router)
+
+    await asyncio.gather(
+        router.handle(button(button_data("set", nonce, "overview_time"))),
+        router.handle(text("18:00")),
+    )
+
+    assert len(rig.settings.writes) == 1
+
+
+async def test_given_two_texts_at_once_when_handled_then_only_one_is_the_answer() -> None:
+    rig = Rig()
+    router = registered(rig)
+    await open_card(rig, router)
+
+    await asyncio.gather(router.handle(text("18:00")), router.handle(text("19:00")))
+
+    assert len(rig.settings.texts) == 1
