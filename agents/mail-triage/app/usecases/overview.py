@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
 
+    from app.usecases.policy_notice import PolicySource
     from schedule_policy.policy import TimePolicy
 
 LABEL_PREFIX = "Assistant/"
@@ -40,19 +41,27 @@ class FiledMail:
     urgent: bool = False  # judged urgent but no alert was sent (the one-time catch-up caps its alerts, INT-003)
 
 
-class OverviewStore(Protocol):
-    """Persistence for the overview."""
+class FiledMails(Protocol):
+    """The mails the overview counts."""
 
     async def filed_without_alert_since(self, since: datetime) -> list[FiledMail]:
         """Mails filed since ``since`` that did not raise an alert."""
         ...
 
+
+class OverviewLog(Protocol):
+    """Which local dates were settled, and the instant each was settled."""
+
     async def overview_sent(self, day: date) -> bool:
-        """Whether the overview for this day was settled."""
+        """Whether the overview for this local date was settled."""
         ...
 
-    async def mark_overview_sent(self, day: date) -> None:
-        """Remember that the overview for this day was settled."""
+    async def mark_overview_sent(self, day: date, settled_at: datetime) -> None:
+        """Remember that the overview for this local date was settled at ``settled_at``."""
+        ...
+
+    async def last_settled_at(self) -> datetime | None:
+        """The latest settled instant, or None when no overview was ever settled."""
         ...
 
 
@@ -108,30 +117,34 @@ def build_overview(mails: list[FiledMail]) -> AlertMessage:
 class OverviewService:
     """Sends the overview when it is due."""
 
-    def __init__(self, store: OverviewStore, outbox: Outbox, now: Callable[[], datetime], policy: TimePolicy) -> None:
-        """Wire the store, the Telegram outbox, the clock and the times to keep."""
-        self._store = store
+    def __init__(
+        self, mails: FiledMails, log: OverviewLog, outbox: Outbox, now: Callable[[], datetime], policies: PolicySource
+    ) -> None:
+        """Wire the mail store, the overview log, the Telegram outbox, the clock and the source of the times."""
+        self._mails = mails
+        self._log = log
         self._outbox = outbox
         self._now = now
-        self._policy = policy
+        self._policies = policies
 
     async def send_overview(self) -> None:
         """Send the overview for the latest overview time that has passed, once, outside quiet hours."""
+        policy = await self._policies.current()  # one snapshot for the whole run
         now = self._now()
-        if in_quiet_hours(now, self._policy):
+        if in_quiet_hours(now, policy):
             return
-        day = self._pending_day(now)
-        if day is None or await self._store.overview_sent(day):
+        day = self._pending_day(now, policy)
+        if day is None or await self._log.overview_sent(day):
             return
-        mails = await self._store.filed_without_alert_since(day_start(day, self._policy))
+        mails = await self._mails.filed_without_alert_since(day_start(day, policy))
         if mails:
             await self._outbox.send(build_overview(mails))
-        await self._store.mark_overview_sent(day)
+        await self._log.mark_overview_sent(day, now)
 
-    def _pending_day(self, now: datetime) -> date | None:
+    def _pending_day(self, now: datetime, policy: TimePolicy) -> date | None:
         """Today once its overview time has passed; yesterday only when quiet hours pushed it back."""
-        today = local_day(now, self._policy)
-        if now >= overview_on(today, self._policy):
+        today = local_day(now, policy)
+        if now >= overview_on(today, policy):
             return today
         yesterday = today - timedelta(days=1)
-        return yesterday if in_quiet_hours(overview_on(yesterday, self._policy), self._policy) else None
+        return yesterday if in_quiet_hours(overview_on(yesterday, policy), policy) else None
