@@ -20,6 +20,7 @@ from app.core.alert_state import AlertState, initial_state
 from app.core.auth_results import parse_auth_results
 from app.core.judgement import OTHER_LABEL, Filing, Judgement, NeedsAttention, resolve
 from app.core.time_policy import in_quiet_hours
+from schedule_policy.policy import DEFAULT_POLICY
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -177,7 +178,7 @@ def decide_outcome(
         summary=summary,
         auth=parse_auth_results(mail.headers.get("Authentication-Results")),
     )
-    alert = initial_state(in_quiet_hours=in_quiet_hours(now)) if urgent else None
+    alert = initial_state(in_quiet_hours=in_quiet_hours(now, DEFAULT_POLICY)) if urgent else None
     return Outcome(label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content)
 
 

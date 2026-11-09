@@ -29,8 +29,9 @@ def _utc(moment: datetime) -> datetime:
     return moment.astimezone(UTC)
 
 
-def _local_day(moment: datetime, policy: TimePolicy) -> date:
-    return moment.astimezone(ZoneInfo(policy.zone)).date()
+def local_day(moment: datetime, policy: TimePolicy) -> date:
+    """The calendar day of ``moment`` in the policy's zone."""
+    return _utc(moment).astimezone(ZoneInfo(policy.zone)).date()
 
 
 def _first_moment_after_gap(early: datetime, late: datetime, zone: ZoneInfo) -> datetime:
@@ -60,7 +61,7 @@ def _moment_on(day: date, clock: time, policy: TimePolicy) -> datetime:
 def _next_at(now: datetime, clock: time, policy: TimePolicy) -> datetime:
     """The next moment the local clock shows ``clock``, strictly after ``now``."""
     moment = _utc(now)
-    today = _local_day(moment, policy)
+    today = local_day(moment, policy)
     candidates = (_moment_on(today + step * _ONE_DAY, clock, policy) for step in (-1, 0, 1))
     return next(candidate for candidate in candidates if candidate > moment)
 
@@ -70,12 +71,17 @@ def day_start(day: date, policy: TimePolicy) -> datetime:
     return _moment_on(day, time(0, 0), policy)
 
 
+def overview_on(day: date, policy: TimePolicy) -> datetime:
+    """The moment the overview is due on a local day."""
+    return _moment_on(day, policy.overview_at, policy)
+
+
 def in_quiet_hours(now: datetime, policy: TimePolicy) -> bool:
     """True from the quiet start up to, not including, the quiet end, in the policy's zone."""
     moment = _utc(now)
     if policy.window_minutes == 0:
         return False
-    today = _local_day(moment, policy)
+    today = local_day(moment, policy)
     for day in (today - _ONE_DAY, today):  # the window that began yesterday evening, and today's
         end_day = day if policy.quiet_start < policy.quiet_end else day + _ONE_DAY
         if _moment_on(day, policy.quiet_start, policy) <= moment < _moment_on(end_day, policy.quiet_end, policy):
@@ -97,7 +103,7 @@ def remind_due(now: datetime, amount: int | Literal["tomorrow"], policy: TimePol
     """When a snoozed alert is due: in a number of hours, or the next day at the remind time."""
     moment = _utc(now)
     if amount == "tomorrow":
-        return _moment_on(_local_day(moment, policy) + _ONE_DAY, policy.remind_at, policy)
+        return _moment_on(local_day(moment, policy) + _ONE_DAY, policy.remind_at, policy)
     if isinstance(amount, bool) or not MIN_SNOOZE_HOURS <= amount <= MAX_SNOOZE_HOURS:
         raise InvalidSnoozeError(f"hours must be between {MIN_SNOOZE_HOURS} and {MAX_SNOOZE_HOURS}, or 'tomorrow'")
     return moment + timedelta(hours=amount)

@@ -1,6 +1,6 @@
 """The daily overview: counts per category and the mails the agent was unsure about (spec AC-31).
 
-The time comes from ``time_policy`` (a constant for the first release, INT-002 may make it adjustable). A day is
+The times come from the ``TimePolicy`` handed in (the default one until the settings arrive, INT-002). A day is
 settled when its overview time has passed and quiet hours are over: either one message goes out or, when nothing was
 filed, none. Either way the day is remembered, so a late mail never triggers a second look.
 """
@@ -13,13 +13,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
-from app.core import time_policy
 from app.core.alert_text import MAX_MESSAGE_CHARS, AlertMessage
 from app.core.judgement import LOW_CONFIDENCE
+from app.core.time_policy import day_start, in_quiet_hours, local_day, overview_on
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import date
+
+    from schedule_policy.policy import TimePolicy
 
 LABEL_PREFIX = "Assistant/"
 UNSURE_LISTED = 10
@@ -106,32 +108,30 @@ def build_overview(mails: list[FiledMail]) -> AlertMessage:
 class OverviewService:
     """Sends the overview when it is due."""
 
-    def __init__(self, store: OverviewStore, outbox: Outbox, now: Callable[[], datetime]) -> None:
-        """Wire the store, the Telegram outbox and the clock."""
+    def __init__(self, store: OverviewStore, outbox: Outbox, now: Callable[[], datetime], policy: TimePolicy) -> None:
+        """Wire the store, the Telegram outbox, the clock and the times to keep."""
         self._store = store
         self._outbox = outbox
         self._now = now
+        self._policy = policy
 
     async def send_overview(self) -> None:
         """Send the overview for the latest overview time that has passed, once, outside quiet hours."""
         now = self._now()
-        if time_policy.in_quiet_hours(now):
+        if in_quiet_hours(now, self._policy):
             return
-        due = self._pending_due(now)
-        if due is None or await self._store.overview_sent(due.date()):
+        day = self._pending_day(now)
+        if day is None or await self._store.overview_sent(day):
             return
-        start = datetime.combine(due.date(), datetime.min.time(), tzinfo=time_policy.TIME_ZONE)
-        mails = await self._store.filed_without_alert_since(start)
+        mails = await self._store.filed_without_alert_since(day_start(day, self._policy))
         if mails:
             await self._outbox.send(build_overview(mails))
-        await self._store.mark_overview_sent(due.date())
+        await self._store.mark_overview_sent(day)
 
-    @staticmethod
-    def _pending_due(now: datetime) -> datetime | None:
-        """Today's overview time once it has passed; yesterday's only when quiet hours pushed it back."""
-        local = now.astimezone(time_policy.TIME_ZONE)
-        today = datetime.combine(local.date(), time_policy.OVERVIEW_AT, tzinfo=time_policy.TIME_ZONE)
-        if local >= today:
+    def _pending_day(self, now: datetime) -> date | None:
+        """Today once its overview time has passed; yesterday only when quiet hours pushed it back."""
+        today = local_day(now, self._policy)
+        if now >= overview_on(today, self._policy):
             return today
         yesterday = today - timedelta(days=1)
-        return yesterday if time_policy.in_quiet_hours(yesterday) else None
+        return yesterday if in_quiet_hours(overview_on(yesterday, self._policy), self._policy) else None
