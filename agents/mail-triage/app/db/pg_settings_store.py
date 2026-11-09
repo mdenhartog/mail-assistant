@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 ROW = 1
+_VALUE_COLUMNS = ("zone", "quiet_start", "quiet_end", "overview_at", "remind_at")
 
 
 def _minutes(clock: time) -> int:
@@ -49,7 +50,7 @@ def _policy(columns: Mapping[str, Any]) -> TimePolicy:
 
 
 def _stored(row: Schedule) -> StoredSettings:
-    columns = {name: getattr(row, name) for name in ("zone", "quiet_start", "quiet_end", "overview_at", "remind_at")}
+    columns = {name: getattr(row, name) for name in _VALUE_COLUMNS}
     return StoredSettings(_policy(columns), row.version, row.updated_at, row.updated_via, row.updated_by)
 
 
@@ -141,6 +142,8 @@ class PgSettingsStore:
             row = await session.get(Schedule, ROW)
         if row is None:
             return None
+        if any(getattr(row, name) is None for name in _VALUE_COLUMNS):  # NOT NULL was lifted by an operator
+            raise StoredSettingsInvalid(("value_missing",))
         stored = _stored(row)
         if problems := validate(stored.policy):
             raise StoredSettingsInvalid(tuple(problem.rule for problem in problems))

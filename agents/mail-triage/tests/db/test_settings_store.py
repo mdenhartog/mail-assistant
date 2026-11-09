@@ -218,6 +218,20 @@ async def test_given_a_stored_row_that_fails_validation_when_read_then_a_clear_e
     assert "Olympus" not in str(invalid.value)
 
 
+async def test_given_a_stored_row_with_a_null_value_when_read_then_it_is_an_invalid_row_not_a_type_error(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    await store.write(make_policy(), 0, "web", "u1")
+    async with engine.begin() as connection:  # lift the NOT NULL as an operator with owner rights could
+        await connection.execute(text("alter table settings.schedule alter column remind_at drop not null"))
+        await connection.execute(text("update settings.schedule set remind_at = null"))
+
+    with pytest.raises(StoredSettingsInvalid) as invalid:
+        await store.read()
+
+    assert invalid.value.rules == ("value_missing",)
+
+
 @pytest.fixture
 async def runtime_store(migrated_url: str) -> AsyncIterator[PgSettingsStore]:
     """A store connected as the runtime role, with the rights of app/db/grants.sql and no others."""
