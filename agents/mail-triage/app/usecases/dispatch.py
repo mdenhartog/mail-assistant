@@ -183,7 +183,7 @@ class DialogueHandler(Protocol):
 
 
 def button_data(action: str, nonce: str, argument: str | None = None) -> str:
-    """Callback data of a settings button: ``set:<key>:<nonce>``, ``tz:<index>:<nonce>``, ``cancel:<nonce>``, ``undo:<nonce>``."""
+    """Callback data: ``set:<key>:<nonce>``, ``tz:<index>:<nonce>``, ``cancel:<nonce>`` or ``undo:<nonce>``."""
     if action not in _ARGUMENT:
         raise ValueError("unknown settings button")
     pattern = _ARGUMENT[action]
@@ -277,6 +277,11 @@ class QuestionFlows:
             await self._reply.start_reply(alert_id, text)
 
 
+def _slash_command(text: str) -> str:
+    """The command of ``/settings@MailBot extra words``: ``/settings``."""
+    return text.split(maxsplit=1)[0].split("@", maxsplit=1)[0].lower()
+
+
 def _dropped(conversation: OpenConversation) -> str:
     if conversation.target is not None:
         return f"I dropped the question about alert {conversation.target}."
@@ -286,7 +291,7 @@ def _dropped(conversation: OpenConversation) -> str:
 class CommandRouter:
     """Hands each update to the right dialogue."""
 
-    def __init__(  # noqa: PLR0913, PLR0917 - the use cases, store, chat and conversation are all injected
+    def __init__(
         self,
         reply: ReplyPort,
         snooze: SnoozePort,
@@ -338,7 +343,7 @@ class CommandRouter:
         return await self._conversations.advance(current.nonce, current.step, current.partial)
 
     async def _text(self, text: str) -> None:
-        handler = self._commands.get(text.split(maxsplit=1)[0].split("@")[0].lower()) if text.startswith("/") else None
+        handler = self._commands.get(_slash_command(text)) if text.startswith("/") else None
         if handler is not None:
             await self._start(handler)
             return
