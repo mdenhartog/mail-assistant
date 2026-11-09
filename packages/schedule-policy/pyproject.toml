@@ -37,6 +37,8 @@ ignore = ["D100", "D104"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D", "ANN", "PLR2004"]
+# Full-width and Arabic-Indic digits are deliberate hostile inputs (AC-9).
+"tests/test_parse.py" = ["RUF001"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 8
@@ -50,7 +52,8 @@ known-first-party = ["schedule_policy"]
 [tool.pyright]
 typeCheckingMode = "strict"
 pythonVersion = "3.12"
-include = ["schedule_policy", "tests"]
+# Strict checking applies to the package; tests are plain pytest functions (as in agents/mail-triage, which checks app/ only).
+include = ["schedule_policy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
