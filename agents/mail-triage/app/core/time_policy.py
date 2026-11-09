@@ -35,16 +35,17 @@ def local_day(moment: datetime, policy: TimePolicy) -> date:
 
 
 def _first_moment_after_gap(early: datetime, late: datetime, zone: ZoneInfo) -> datetime:
-    """Bisect to the clock change between ``early`` (old offset) and ``late`` (new offset), to the second."""
-    low, high = int(early.timestamp()), int(late.timestamp())
+    """Walk minute by minute from ``early`` (old offset) to the clock change that gives ``late`` its new offset.
+
+    The walk is bounded by the length of the gap; every clock change in the IANA data falls on a whole minute.
+    """
     new_offset = late.astimezone(zone).utcoffset()
-    while high - low > 1:
-        middle = (low + high) // 2
-        if datetime.fromtimestamp(middle, UTC).astimezone(zone).utcoffset() == new_offset:
-            high = middle
-        else:
-            low = middle
-    return datetime.fromtimestamp(high, UTC)
+    minutes = range(int((late - early).total_seconds() // 60) + 1)
+    return next(
+        probe
+        for probe in (early + timedelta(minutes=step) for step in minutes)
+        if probe.astimezone(zone).utcoffset() == new_offset
+    )
 
 
 def _moment_on(day: date, clock: time, policy: TimePolicy) -> datetime:
