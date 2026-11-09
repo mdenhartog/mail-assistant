@@ -17,6 +17,7 @@ from app.usecases.dispatch import CommandRouter, button_data
 from app.usecases.snooze import SnoozeService
 from tests.db.test_pg_store import add, outcome
 from tests.usecases.fakes_dialogue import FakeSettings
+from tests.usecases.fakes_policy import FakePolicySource
 from tests.usecases.test_dispatch import FakeChat, FakeReply, FakeSnooze
 from tests.usecases.test_dispatch import button as press
 from tests.usecases.test_dispatch import text as typed
@@ -201,7 +202,8 @@ async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
     chat = FakeChat()
-    router = CommandRouter(FakeReply(), SnoozeService(store, chat, lambda: NOW), store, chat, conversations)
+    snooze = SnoozeService(store, chat, lambda: NOW, FakePolicySource())
+    router = CommandRouter(FakeReply(), snooze, store, chat, conversations)
 
     await router.handle(press(f"later:{pending.alert_id}"))
     await router.handle(typed("3"))
@@ -218,7 +220,8 @@ async def test_given_the_real_store_when_reply_replaces_a_pending_snooze_then_th
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
     chat, reply = FakeChat(), FakeReply()
-    router = CommandRouter(reply, SnoozeService(store, chat, lambda: NOW), store, chat, conversations)
+    snooze = SnoozeService(store, chat, lambda: NOW, FakePolicySource())
+    router = CommandRouter(reply, snooze, store, chat, conversations)
 
     await router.handle(press(f"later:{pending.alert_id}"))
     await router.handle(press(f"reply:{pending.alert_id}"))

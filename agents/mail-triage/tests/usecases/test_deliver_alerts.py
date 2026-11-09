@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
@@ -11,6 +11,8 @@ from app.core.alert_state import AlertState
 from app.core.alert_text import AlertMessage, AuthResults, MailMeta
 from app.core.judgement import Judgement
 from app.usecases.deliver_alerts import AlertDelivery, PendingAlert
+from schedule_policy.policy import DEFAULT_POLICY
+from tests.usecases.fakes_policy import FakePolicySource
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -68,7 +70,7 @@ class FakeOutbox:
 
 
 def delivery(store: FakeStore, outbox: FakeOutbox, now: datetime = DAYTIME, cap: int = 5) -> AlertDelivery:
-    return AlertDelivery(store, outbox, now=lambda: now, hourly_cap=cap)
+    return AlertDelivery(store, outbox, now=lambda: now, policy=FakePolicySource(DEFAULT_POLICY), hourly_cap=cap)
 
 
 async def test_given_an_open_alert_when_delivered_then_one_message_is_sent_and_its_id_stored() -> None:
@@ -188,3 +190,70 @@ async def test_given_nothing_to_deliver_when_run_then_nothing_is_sent() -> None:
     await delivery(FakeStore(), outbox).deliver_open_alerts()
 
     assert outbox.messages == []
+
+
+# ---- U-quiet-hours-12: one policy snapshot per operation, release at the stored moment (AC-22, AC-25) ---------------
+
+RELEASE_AT = datetime(2026, 11, 9, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
+LATE_QUIET = replace(DEFAULT_POLICY, quiet_start=time(23, 0), quiet_end=time(9, 0))
+EARLY_END = replace(DEFAULT_POLICY, quiet_start=time(23, 0), quiet_end=time(5, 0))
+
+
+def held_until(alert_id: str, release_at: datetime | None) -> PendingAlert:
+    return replace(pending(alert_id, AlertState.HELD), release_at=release_at)
+
+
+def snapshot_delivery(store: FakeStore, outbox: FakeOutbox, source: FakePolicySource, now: datetime) -> AlertDelivery:
+    return AlertDelivery(store, outbox, now=lambda: now, policy=source)
+
+
+async def test_given_a_held_alert_and_quiet_hours_changed_when_before_its_release_then_it_waits() -> None:
+    store, outbox = FakeStore([held_until("1", RELEASE_AT)]), FakeOutbox()
+    source = FakePolicySource(EARLY_END)  # changed at 03:00 to 23:00-05:00: 06:59 is no longer quiet
+
+    await snapshot_delivery(store, outbox, source, RELEASE_AT - timedelta(minutes=1)).deliver_open_alerts()
+
+    assert store.released == []
+    assert outbox.messages == []
+
+
+async def test_given_a_held_alert_and_quiet_hours_changed_when_its_release_moment_comes_then_it_is_released() -> None:
+    store, outbox = FakeStore([held_until("1", RELEASE_AT)]), FakeOutbox()
+    source = FakePolicySource(EARLY_END)
+
+    await snapshot_delivery(store, outbox, source, RELEASE_AT).deliver_open_alerts()
+
+    assert store.released == ["1"]
+    assert len(outbox.messages) == 1
+
+
+async def test_given_a_change_puts_the_release_moment_in_quiet_hours_when_it_comes_then_it_is_still_released() -> None:
+    store, outbox = FakeStore([held_until("1", RELEASE_AT)]), FakeOutbox()
+    source = FakePolicySource(LATE_QUIET)  # 07:30 is inside the new 23:00-09:00 window
+
+    await snapshot_delivery(store, outbox, source, RELEASE_AT + timedelta(minutes=30)).deliver_open_alerts()
+
+    assert store.released == ["1"]
+
+
+async def test_given_two_held_alerts_when_only_one_release_moment_has_passed_then_only_that_one_is_released() -> None:
+    later = RELEASE_AT + timedelta(hours=2)
+    store, outbox = FakeStore([held_until("1", RELEASE_AT), held_until("2", later)]), FakeOutbox()
+    source = FakePolicySource(DEFAULT_POLICY)
+
+    await snapshot_delivery(store, outbox, source, RELEASE_AT + timedelta(minutes=1)).deliver_open_alerts()
+
+    assert store.released == ["1"]
+    assert len(outbox.messages) == 1  # one alert released: no digest
+
+
+async def test_given_a_policy_source_that_changes_on_its_second_call_when_one_run_then_it_is_asked_once() -> None:
+    legacy = held_until("1", None)  # held before release_at existed: judged with the snapshot
+    store, outbox = FakeStore([legacy, pending("2")]), FakeOutbox()
+    source = FakePolicySource(LATE_QUIET, DEFAULT_POLICY)  # first snapshot: 07:30 is still quiet; second: it is not
+
+    await snapshot_delivery(store, outbox, source, RELEASE_AT + timedelta(minutes=30)).deliver_open_alerts()
+
+    assert source.calls == 1
+    assert store.released == []  # the whole run used the first snapshot
+    assert set(store.sent) == {"2"}

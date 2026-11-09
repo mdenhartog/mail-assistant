@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime, time
 
 import pytest
 
@@ -13,6 +13,8 @@ from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
 from app.core.judgement import Judgement, NeedsAttention
 from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline, decide_outcome
+from schedule_policy.policy import DEFAULT_POLICY
+from tests.usecases.fakes_policy import FakePolicySource
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -138,14 +140,17 @@ class FakeNotifier:
         self.notices.append(message_id)
 
 
-def pipeline(
+def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
     mailbox: FakeMailbox,
     judge: FakeJudge,
     store: FakeStore,
     notifier: FakeNotifier | None = None,
     now: datetime = DAYTIME,
+    source: FakePolicySource | None = None,
 ) -> TriagePipeline:
-    return TriagePipeline(mailbox, judge, store, notifier or FakeNotifier(), now=lambda: now)
+    return TriagePipeline(
+        mailbox, judge, store, notifier or FakeNotifier(), now=lambda: now, policy=source or FakePolicySource()
+    )
 
 
 async def test_given_a_new_non_urgent_mail_when_run_then_it_is_filed_without_alert_or_deletion() -> None:
@@ -382,7 +387,7 @@ async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_
 def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent_with_an_open_alert() -> None:
     verdict = judgement("Finance", urgent=True, confidence=0.9)
 
-    outcome = decide_outcome(verdict, fetched("m1"), ["Assistant/Finance"], DAYTIME)
+    outcome = decide_outcome(verdict, fetched("m1"), ["Assistant/Finance"], DAYTIME, DEFAULT_POLICY)
 
     assert outcome.label == "Assistant/Finance"
     assert outcome.urgent is True
@@ -394,13 +399,14 @@ def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent
 
 
 def test_given_an_urgent_judgement_in_quiet_hours_when_decided_directly_then_the_alert_is_held() -> None:
-    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NIGHT)
+    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
 
     assert outcome.alert is AlertState.HELD
+    assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
 
 
 def test_given_a_needs_attention_verdict_when_decided_directly_then_it_is_other_urgent_with_a_note() -> None:
-    outcome = decide_outcome(NeedsAttention("invalid_output"), fetched("m1"), [], DAYTIME)
+    outcome = decide_outcome(NeedsAttention("invalid_output"), fetched("m1"), [], DAYTIME, DEFAULT_POLICY)
 
     assert outcome.label == "Assistant/Other"
     assert outcome.urgent is True
@@ -408,3 +414,56 @@ def test_given_a_needs_attention_verdict_when_decided_directly_then_it_is_other_
     assert outcome.note == "needs_attention:invalid_output"
     assert outcome.content.reason == "Needs attention: invalid_output"
     assert outcome.content.summary == ""
+    assert outcome.release_at is None
+
+
+# ---- U-quiet-hours-12: the alert is judged with the policy snapshot of that moment (AC-22, AC-23) -------------------
+
+NEW_YORK = replace(DEFAULT_POLICY, zone="America/New_York")
+NEW_YORK_NIGHT = datetime(2026, 11, 10, 4, 30, tzinfo=UTC)  # 23:30 on 9 November in New York (UTC-5)
+
+
+def test_given_new_york_when_an_urgent_mail_arrives_at_2330_there_then_the_alert_is_held_until_0700() -> None:
+    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NEW_YORK_NIGHT, NEW_YORK)
+
+    assert outcome.alert is AlertState.HELD
+    assert outcome.release_at == datetime(2026, 11, 10, 12, 0, tzinfo=UTC)  # 07:00 in New York
+
+
+def test_given_a_needs_attention_verdict_in_quiet_hours_when_decided_then_it_is_held_with_a_release_moment() -> None:
+    outcome = decide_outcome(NeedsAttention("budget"), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+
+    assert outcome.alert is AlertState.HELD
+    assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)
+
+
+def test_given_a_non_urgent_mail_in_quiet_hours_when_decided_then_there_is_no_alert_and_no_release_moment() -> None:
+    outcome = decide_outcome(judgement(urgent=False), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+
+    assert (outcome.alert, outcome.release_at) == (None, None)
+
+
+async def test_given_a_stored_change_when_the_next_alert_arises_then_it_is_judged_with_the_new_values() -> None:
+    source = FakePolicySource(DEFAULT_POLICY)  # 13:00 in Amsterdam: not quiet
+    first_store = FakeStore()
+    await pipeline(FakeMailbox(["m1"]), FakeJudge(judgement(urgent=True)), first_store, source=source).run_once()
+    source.set(replace(DEFAULT_POLICY, quiet_start=time(12, 0), quiet_end=time(14, 0)))  # 13:00 is now quiet
+    second_store = FakeStore()
+
+    await pipeline(FakeMailbox(["m2"]), FakeJudge(judgement(urgent=True)), second_store, source=source).run_once()
+
+    assert first_store.outcomes["m1"].alert is AlertState.OPEN
+    assert second_store.outcomes["m2"].alert is AlertState.HELD
+    assert second_store.outcomes["m2"].release_at == datetime(2026, 11, 9, 13, 0, tzinfo=UTC)  # 14:00 Amsterdam
+
+
+async def test_given_a_source_that_changes_on_its_second_call_when_one_mail_is_triaged_then_it_is_asked_once() -> None:
+    always_quiet = replace(DEFAULT_POLICY, quiet_start=time(12, 0), quiet_end=time(14, 0))
+    source = FakePolicySource(always_quiet, DEFAULT_POLICY)
+    store = FakeStore()
+
+    await pipeline(FakeMailbox(["m1"]), FakeJudge(judgement(urgent=True)), store, source=source).run_once()
+
+    assert source.calls == 1
+    assert store.outcomes["m1"].alert is AlertState.HELD
+    assert store.outcomes["m1"].release_at == datetime(2026, 11, 9, 13, 0, tzinfo=UTC)
