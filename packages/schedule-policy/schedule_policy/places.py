@@ -6,6 +6,7 @@ Pure and offline: the list is the bundled ``places.json``; the UTC offset is com
 from __future__ import annotations
 
 import json
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from functools import cache
@@ -44,8 +45,14 @@ class _Entry:
     zone: str
 
 
+_LETTER_FOLDS = str.maketrans({"ı": "i", "ø": "o", "ł": "l", "đ": "d", "æ": "ae", "œ": "oe", "ð": "d", "þ": "th"})
+
+
 def _normalize(text: str) -> str:
-    return " ".join(text.casefold().split())
+    """Fold a name to a comparable key: width, case, accents, Turkish dotless i and spacing."""
+    widened = unicodedata.normalize("NFKC", text).casefold().translate(_LETTER_FOLDS)
+    bare = "".join(ch for ch in unicodedata.normalize("NFD", widened) if not unicodedata.combining(ch))
+    return " ".join(bare.replace("-", " ").split())
 
 
 @cache

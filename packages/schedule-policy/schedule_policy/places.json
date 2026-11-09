@@ -1,6 +1,11 @@
 {
   "countries": [],
   "places": [
-    {"name": "New York", "country": "United States", "zone": "America/New_York", "aliases": []}
+    {"name": "New York", "country": "United States", "zone": "America/New_York", "aliases": ["NYC", "New York City"]},
+    {"name": "Vienna", "country": "Austria", "zone": "Europe/Vienna", "aliases": ["Wien"]},
+    {"name": "The Hague", "country": "Netherlands", "zone": "Europe/Amsterdam", "aliases": ["Den Haag"]},
+    {"name": "Zurich", "country": "Switzerland", "zone": "Europe/Zurich", "aliases": []},
+    {"name": "São Paulo", "country": "Brazil", "zone": "America/Sao_Paulo", "aliases": []},
+    {"name": "Istanbul", "country": "Turkey", "zone": "Europe/Istanbul", "aliases": []}
   ]
 }
