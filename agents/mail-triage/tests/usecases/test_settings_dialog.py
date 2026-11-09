@@ -639,7 +639,7 @@ async def test_given_a_store_that_refuses_the_policy_at_write_time_when_saving_t
 
 
 @pytest.mark.parametrize("entry", ["begin", "ask", "save"])
-async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_nothing_is_sent(
+async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_only_a_stored_write_is_confirmed(
     entry: str,
 ) -> None:
     bot = bot_with(make_policy())
@@ -657,10 +657,9 @@ async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_mov
     else:
         await bot.dialog.on_text(current, "19:00")
 
-    assert len(bot.chat.sent) == sent
-    assert len(bot.store.writes) == (
-        1 if entry == "save" else 0
-    )  # the write itself is version-checked, not nonce-checked
+    # The write itself is version-checked, not nonce-checked; once it happened Marco is told (U-quiet-hours-11).
+    assert len(bot.store.writes) == (1 if entry == "save" else 0)
+    assert len(bot.chat.sent) == sent + (1 if entry == "save" else 0)
 
 
 # ---- criterion 9: nothing leaks into the logs (AC-33) --------------------------------------------------------------
