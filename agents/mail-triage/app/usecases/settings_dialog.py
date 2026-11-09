@@ -26,8 +26,8 @@ from schedule_policy.parse import parse_time
 from schedule_policy.policy import DEFAULT_POLICY, validate
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
-    from datetime import timedelta
+    from collections.abc import AsyncGenerator, Callable
+    from datetime import datetime, timedelta
 
     from app.core.alert_text import AlertMessage
     from app.db.pg_conversation import Kind, OpenConversation
@@ -90,13 +90,19 @@ class SettingsDialog:
     ttl: ClassVar[timedelta | None] = SETTINGS_TTL
 
     def __init__(
-        self, store: SettingsStore, chat: DialogChat, conversations: ConversationPort, allowed_user_id: int
+        self,
+        store: SettingsStore,
+        chat: DialogChat,
+        conversations: ConversationPort,
+        allowed_user_id: int,
+        now: Callable[[], datetime],
     ) -> None:
-        """Wire the settings store, Telegram, the stored conversation and the one user who may change settings."""
+        """Wire the settings store, Telegram, the stored conversation, the one user who may change settings, a clock."""
         self._store = store
         self._chat = chat
         self._conversations = conversations
         self._by = str(allowed_user_id)
+        self._now = now
 
     async def begin(self, conversation: OpenConversation) -> None:
         """Show the card."""
