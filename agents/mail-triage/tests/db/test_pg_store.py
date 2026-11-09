@@ -168,6 +168,17 @@ async def test_given_a_held_alert_with_a_release_moment_when_completed_then_the_
     assert held.release_at == RELEASE_AT
 
 
+async def test_given_a_backlog_mail_with_a_held_alert_when_completed_then_its_release_moment_is_stored(
+    store: PgStore,
+) -> None:
+    assert await store.claim("m1", "t-m1") is Claim.NEW
+
+    await store.complete_backlog("m1", replace(outcome(alert=AlertState.HELD), release_at=RELEASE_AT))
+
+    [held] = await store.held()
+    assert held.release_at == RELEASE_AT
+
+
 async def test_given_an_open_alert_when_completed_then_it_has_no_release_moment(store: PgStore) -> None:
     await add(store, "m1", outcome(alert=AlertState.HELD))
 

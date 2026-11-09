@@ -52,7 +52,7 @@ def _pending(alert: Alert, item: MailItem) -> PendingAlert:
         has_attachment=item.has_attachment,
     )
     auth = AuthResults(item.auth_spf, item.auth_dkim, item.auth_dmarc)
-    return PendingAlert(str(alert.id), AlertState(alert.state), meta, judgement, auth)
+    return PendingAlert(str(alert.id), AlertState(alert.state), meta, judgement, auth, alert.release_at)
 
 
 def _stored(draft: Draft) -> StoredDraft:
@@ -138,7 +138,15 @@ class PgStore:
                 outcome.alert is not None
                 and await session.scalar(select(Alert.id).where(Alert.mail_item_id == item_id)) is None
             ):
-                session.add(Alert(mail_item_id=item_id, state=outcome.alert.value, created_at=now, updated_at=now))
+                session.add(
+                    Alert(
+                        mail_item_id=item_id,
+                        state=outcome.alert.value,
+                        release_at=outcome.release_at,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
 
     # ---- one-time catch-up of old unread mail (INT-003) -------------------------------------------------------
 
@@ -244,13 +252,27 @@ class PgStore:
         return AlertState(row.state) if row else None
 
     async def set_state(
-        self, alert_id: str, state: AlertState, *, due_at: datetime | None = None, resend: bool = False
+        self,
+        alert_id: str,
+        state: AlertState,
+        *,
+        due_at: datetime | None = None,
+        resend: bool = False,
+        release_at: datetime | None = None,
     ) -> None:
-        """Save the state; ``resend`` forgets the Telegram message so the alert is sent again."""
+        """Save the state; ``resend`` forgets the Telegram message so the alert is sent again.
+
+        ``due_at`` and ``release_at`` are stored as given, so a state without them clears them.
+        """
         key = _id(alert_id)
         if key is None:
             return
-        values: dict[str, object] = {"state": state.value, "due_at": due_at, "updated_at": datetime.now(UTC)}
+        values: dict[str, object] = {
+            "state": state.value,
+            "due_at": due_at,
+            "release_at": release_at,
+            "updated_at": datetime.now(UTC),
+        }
         if resend:
             values |= {"telegram_message_id": None, "sent_at": None}
         async with self._sessions.begin() as session:
