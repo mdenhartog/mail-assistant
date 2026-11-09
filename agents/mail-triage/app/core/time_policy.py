@@ -1,8 +1,13 @@
-"""Times the agent keeps (spec C7, INT-002). Pure logic: the caller hands in "now" and the policy."""
+"""Times the agent keeps (spec C7, C-5, ADR-0027). Pure logic: the caller hands in "now" and the policy.
+
+Every moment that leaves this module is in UTC and every comparison is between UTC moments. A wall time that does not
+exist on a day (clock moved forward) resolves to the first valid moment after the gap; a wall time that occurs twice
+(clock moved back) resolves to its first occurrence. A quiet window runs from its start to its end in clock time.
+"""
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
@@ -11,32 +16,71 @@ if TYPE_CHECKING:
 
 MIN_SNOOZE_HOURS = 1
 MAX_SNOOZE_HOURS = 168
+_ONE_DAY = timedelta(days=1)
 
 
 class InvalidSnoozeError(ValueError):
     """The requested snooze is not a number of hours between 1 and 168, or "tomorrow"."""
 
 
-def _local(moment: datetime, policy: TimePolicy) -> datetime:
+def _utc(moment: datetime) -> datetime:
     if moment.tzinfo is None:
         raise ValueError("a time zone is required")
-    return moment.astimezone(ZoneInfo(policy.zone))
+    return moment.astimezone(UTC)
 
 
-def _at(day: date, clock: time, policy: TimePolicy) -> datetime:
-    return datetime.combine(day, clock, tzinfo=ZoneInfo(policy.zone))
+def _local_day(moment: datetime, policy: TimePolicy) -> date:
+    return moment.astimezone(ZoneInfo(policy.zone)).date()
+
+
+def _first_moment_after_gap(early: datetime, late: datetime, zone: ZoneInfo) -> datetime:
+    """Bisect to the clock change between ``early`` (old offset) and ``late`` (new offset), to the second."""
+    low, high = int(early.timestamp()), int(late.timestamp())
+    new_offset = late.astimezone(zone).utcoffset()
+    while high - low > 1:
+        middle = (low + high) // 2
+        if datetime.fromtimestamp(middle, UTC).astimezone(zone).utcoffset() == new_offset:
+            high = middle
+        else:
+            low = middle
+    return datetime.fromtimestamp(high, UTC)
+
+
+def _moment_on(day: date, clock: time, policy: TimePolicy) -> datetime:
+    """The UTC moment the wall clock of ``policy.zone`` first shows ``clock`` on ``day`` (ADR-0027)."""
+    zone = ZoneInfo(policy.zone)
+    wall = datetime.combine(day, clock)
+    earlier = wall.replace(tzinfo=zone, fold=1).astimezone(UTC)  # in a gap: the reading with the new offset
+    moment = wall.replace(tzinfo=zone, fold=0).astimezone(UTC)  # a doubled hour: the first occurrence
+    if moment.astimezone(zone).replace(tzinfo=None) == wall:
+        return moment
+    return _first_moment_after_gap(earlier, moment, zone)
 
 
 def _next_at(now: datetime, clock: time, policy: TimePolicy) -> datetime:
     """The next moment the local clock shows ``clock``, strictly after ``now``."""
-    local = _local(now, policy)
-    candidate = _at(local.date(), clock, policy)
-    return candidate if candidate > local else _at(local.date() + timedelta(days=1), clock, policy)
+    moment = _utc(now)
+    today = _local_day(moment, policy)
+    candidates = (_moment_on(today + step * _ONE_DAY, clock, policy) for step in (-1, 0, 1))
+    return next(candidate for candidate in candidates if candidate > moment)
+
+
+def day_start(day: date, policy: TimePolicy) -> datetime:
+    """The first valid moment of a local day (01:00 when a clock change skips midnight)."""
+    return _moment_on(day, time(0, 0), policy)
 
 
 def in_quiet_hours(now: datetime, policy: TimePolicy) -> bool:
     """True from the quiet start up to, not including, the quiet end, in the policy's zone."""
-    return policy.is_quiet(_local(now, policy).time())
+    moment = _utc(now)
+    if policy.window_minutes == 0:
+        return False
+    today = _local_day(moment, policy)
+    for day in (today - _ONE_DAY, today):  # the window that began yesterday evening, and today's
+        end_day = day if policy.quiet_start < policy.quiet_end else day + _ONE_DAY
+        if _moment_on(day, policy.quiet_start, policy) <= moment < _moment_on(end_day, policy.quiet_end, policy):
+            return True
+    return False
 
 
 def next_quiet_end(now: datetime, policy: TimePolicy) -> datetime:
@@ -51,9 +95,9 @@ def next_overview(now: datetime, policy: TimePolicy) -> datetime:
 
 def remind_due(now: datetime, amount: int | Literal["tomorrow"], policy: TimePolicy) -> datetime:
     """When a snoozed alert is due: in a number of hours, or the next day at the remind time."""
-    local = _local(now, policy)
+    moment = _utc(now)
     if amount == "tomorrow":
-        return _at(local.date() + timedelta(days=1), policy.remind_at, policy)
+        return _moment_on(_local_day(moment, policy) + _ONE_DAY, policy.remind_at, policy)
     if isinstance(amount, bool) or not MIN_SNOOZE_HOURS <= amount <= MAX_SNOOZE_HOURS:
         raise InvalidSnoozeError(f"hours must be between {MIN_SNOOZE_HOURS} and {MAX_SNOOZE_HOURS}, or 'tomorrow'")
-    return now + timedelta(hours=amount)
+    return moment + timedelta(hours=amount)
