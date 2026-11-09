@@ -390,3 +390,160 @@ async def test_given_a_refused_form_when_typed_then_it_is_refused_and_nothing_re
     assert current is not None
     assert current.step == "quiet_start"
     assert "start" not in current.partial
+
+
+# ---- criterion 5: quiet hours that would trap the overview or the reminder: one-tap move (AC-11) -------------------
+
+
+async def _quiet_hours(bot: Bot, start: str, end: str) -> None:
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type(start)
+    await bot.type(end)
+
+
+async def test_given_overview_1800_when_the_window_17_to_03_is_answered_then_it_is_refused_with_a_one_tap_move() -> None:
+    bot = bot_with(make_policy(overview_at=time(18, 0), remind_at=time(9, 0)))
+
+    await _quiet_hours(bot, "17:00", "03:00")
+
+    lines = bot.last.text.splitlines()
+    assert lines[0] == "Quiet hours 17:00 to 03:00 are not saved yet: the daily overview at 18:00 would fall inside them."
+    assert lines[1] == "Move the daily overview to 03:00 and save both?"
+    assert bot.labels() == ["Move to 03:00 and save", "Cancel"]
+    assert bot.store.writes == []
+
+
+async def test_given_the_offered_move_when_taken_then_the_window_and_the_moved_overview_are_stored_in_one_write() -> (
+    None
+):
+    bot = bot_with(make_policy(overview_at=time(18, 0), remind_at=time(9, 0)))
+    await _quiet_hours(bot, "17:00", "03:00")
+
+    await bot.tap("Move to 03:00 and save")
+
+    expected = make_policy(quiet_start=time(17, 0), quiet_end=time(3, 0), overview_at=time(3, 0), remind_at=time(9, 0))
+    assert bot.store.writes == [(expected, 1, "telegram", str(USER))]
+    assert bot.last.text.splitlines()[0] == "Saved."
+
+
+async def test_given_overview_and_reminder_inside_the_new_window_when_the_move_is_taken_then_both_move_in_one_write() -> (
+    None
+):
+    bot = bot_with(make_policy(overview_at=time(6, 0), remind_at=time(5, 30)))
+
+    await _quiet_hours(bot, "23:00", "07:00")
+
+    lines = bot.last.text.splitlines()
+    assert "the daily overview at 06:00 and the remind-me-later default at 05:30 would fall inside them" in lines[0]
+    assert lines[1] == "Move the daily overview and the remind-me-later default to 07:00 and save all three?"
+    await bot.tap("Move to 07:00 and save")
+    assert [w[0] for w in bot.store.writes] == [
+        make_policy(quiet_start=time(23, 0), quiet_end=time(7, 0), overview_at=time(7, 0), remind_at=time(7, 0))
+    ]
+
+
+async def test_given_the_offered_move_when_marco_cancels_then_nothing_is_stored() -> None:
+    bot = bot_with(make_policy(overview_at=time(18, 0)))
+    await _quiet_hours(bot, "17:00", "03:00")
+
+    await bot.tap("Cancel")
+
+    assert bot.store.writes == []
+    assert await bot.rig.conversations.current() is None
+
+
+async def test_given_a_window_that_breaks_the_length_rule_and_traps_the_overview_then_no_move_is_offered() -> None:
+    bot = bot_with(make_policy(overview_at=time(23, 30), remind_at=time(9, 0)))
+
+    await _quiet_hours(bot, "22:00", "11:00")
+
+    assert "Quiet hours can be 1 to 12 hours. 22:00 to 11:00 is 13 hours. Try 22:00 to 10:00." in bot.last.text
+    assert bot.labels() == ["Cancel"]
+
+
+async def test_given_text_while_the_move_is_offered_then_the_offer_is_shown_again_with_working_buttons() -> None:
+    bot = bot_with(make_policy(overview_at=time(18, 0)))
+    await _quiet_hours(bot, "17:00", "03:00")
+
+    await bot.type("yes")
+    await bot.tap("Move to 03:00 and save")
+
+    assert len(bot.store.writes) == 1
+
+
+# ---- criterion 7: a change made elsewhere meanwhile (AC-29) -------------------------------------------------------
+
+
+async def test_given_the_row_changed_elsewhere_when_the_answer_comes_then_nothing_is_written_and_a_fresh_card_is_shown() -> (
+    None
+):
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap("Change daily overview")
+    bot.store.row = StoredSettings(make_policy(remind_at=time(8, 0)), 2, NOW, "web", "someone")
+
+    await bot.type("19:00")
+
+    assert bot.store.writes == []
+    lines = bot.last.text.splitlines()
+    assert lines[0] == "Your settings changed elsewhere. Nothing was saved. These are the current values."
+    assert "Remind-me-later default: 08:00" in lines
+    assert "Daily overview: 18:00" in lines
+    await bot.tap("Change daily overview")  # the fresh card works, at the new version
+    await bot.type("19:00")
+    assert [(w[1], w[0].overview_at) for w in bot.store.writes] == [(2, time(19, 0))]
+
+
+async def test_given_the_row_changes_between_the_check_and_the_write_when_saving_then_the_conflict_is_told() -> None:
+    class Racing(FakeSettingsStore):
+        async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
+            raise VersionConflict
+
+    bot = Bot(Racing(make_policy()))
+    await bot.settings()
+    await bot.tap("Change daily overview")
+
+    await bot.type("19:00")
+
+    assert bot.last.text.splitlines()[0] == "Your settings changed elsewhere. Nothing was saved. These are the current values."
+    assert bot.labels()[0] == "Change quiet hours"
+
+
+async def test_given_the_row_changed_elsewhere_when_the_move_is_taken_then_nothing_is_written() -> None:
+    bot = bot_with(make_policy(overview_at=time(18, 0)))
+    await _quiet_hours(bot, "17:00", "03:00")
+    bot.store.row = StoredSettings(make_policy(overview_at=time(18, 0)), 2, NOW, "web", "someone")
+
+    await bot.tap("Move to 03:00 and save")
+
+    assert bot.store.writes == []
+    assert bot.last.text.startswith("Your settings changed elsewhere.")
+
+
+# ---- the time zone question belongs to U-10: until then a marked 'not available yet' branch -----------------------
+
+
+async def test_given_the_time_zone_button_when_tapped_then_marco_is_told_it_is_not_available_yet_and_nothing_changes() -> (
+    None
+):
+    bot = bot_with(make_policy())
+    await bot.settings()
+
+    await bot.tap("Change time zone")
+
+    assert bot.last.text.splitlines()[0] == "Changing the time zone is not available yet."
+    assert bot.labels()[0] == "Change quiet hours"  # the card, with live buttons
+    assert bot.store.writes == []
+    await bot.tap("Change daily overview")
+    assert bot.last.text.startswith("Daily overview: type a time")
+
+
+async def test_given_text_on_the_card_when_typed_then_marco_is_pointed_to_the_buttons() -> None:
+    bot = bot_with(make_policy())
+    await bot.settings()
+
+    await bot.type("hello")
+
+    assert bot.last.text.splitlines()[0] == "Tap one of the Change buttons below."
+    assert bot.labels()[0] == "Change quiet hours"
