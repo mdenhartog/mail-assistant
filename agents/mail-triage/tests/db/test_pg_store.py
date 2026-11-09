@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -303,15 +303,9 @@ async def test_given_the_overview_when_asked_then_only_unalerted_mails_since_the
     ]
 
 
-async def test_given_the_overview_day_when_marked_then_it_is_remembered(store: PgStore) -> None:
-    day = date(2026, 11, 9)
-    assert await store.overview_sent(day) is False
-
-    await store.mark_overview_sent(day)
-    await store.mark_overview_sent(day)  # twice is fine
-
-    assert await store.overview_sent(day) is True
-    assert await store.overview_sent(date(2026, 11, 10)) is False
+def test_given_the_overview_log_lives_in_its_own_store_when_pg_store_is_listed_then_it_has_no_second_copy() -> None:
+    assert not hasattr(PgStore, "overview_sent")
+    assert not hasattr(PgStore, "mark_overview_sent")
 
 
 async def test_given_marco_is_asked_for_input_when_he_answers_then_the_waiting_alert_is_found_and_cleared(
