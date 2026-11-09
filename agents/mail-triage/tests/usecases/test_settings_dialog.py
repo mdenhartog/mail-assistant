@@ -5,8 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time
 
+import pytest
+
 from app.core.alert_text import AlertMessage, Button
-from app.db.repos import PolicyRefused, StoredSettings, VersionConflict
+from app.db.repos import PolicyRefused, SettingsStoreFailure, StoredSettings, VersionConflict
 from app.usecases.dispatch import CommandRouter
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy, validate
@@ -231,3 +233,160 @@ async def test_given_each_question_when_shown_then_it_names_the_value_and_the_st
         "Daily overview: type a time, for example 18:00.",
         "Remind-me-later default: type a time, for example 09:00.",
     ]
+
+
+# ---- criterion 3: nothing is stored unless both steps finish (AC-13) ------------------------------------------------
+
+
+async def test_given_a_valid_start_when_marco_cancels_then_nothing_is_stored_and_the_old_values_stay() -> None:
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type("22:00")
+
+    await bot.tap("Cancel")
+
+    assert bot.store.writes == []
+    assert bot.rig.chat.edited[-1][1] == "Cancelled. Nothing was changed."
+    assert await bot.rig.conversations.current() is None
+    assert bot.store.row is not None
+    assert bot.store.row.policy == make_policy()
+
+
+async def test_given_a_valid_start_when_the_end_is_not_a_time_then_nothing_is_stored_and_the_end_is_asked_again() -> (
+    None
+):
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type("22:00")
+
+    await bot.type("25:00")
+
+    assert bot.store.writes == []
+    assert bot.last.text.splitlines()[-2:] == [
+        "Quiet hours, step 2 of 2: end time",
+        "Start: 22:00. Type a time, for example 07:00.",
+    ]
+    assert "could not read" in bot.last.text.splitlines()[0]
+    assert bot.labels() == ["Cancel"]
+    await bot.type("06:00")  # the start is still kept
+    assert [w[0] for w in bot.store.writes] == [make_policy(quiet_start=time(22, 0), quiet_end=time(6, 0))]
+
+
+async def test_given_a_valid_start_when_the_database_fails_at_the_end_then_nothing_is_stored_and_marco_is_told() -> (
+    None
+):
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type("22:00")
+    bot.store.write_error = SettingsStoreFailure("OperationalError", "08006")
+
+    await bot.type("06:00")
+
+    assert bot.store.writes == []
+    assert bot.store.row is not None
+    assert bot.store.row.policy == make_policy()
+    assert bot.last.text == "I could not save that. Nothing was changed. Try again in a moment."
+    assert bot.labels() == ["Show settings"]
+    assert bot.button_labelled("Show settings").data == "start:settings"
+
+
+# ---- criterion 4: the refusal names the rule, the value and a working example (C-2, AC-10) -------------------------
+
+_SEEDED = make_policy(overview_at=time(20, 0), remind_at=time(21, 0))
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "sentence"),
+    [
+        ("22:00", "11:00", "Quiet hours can be 1 to 12 hours. 22:00 to 11:00 is 13 hours. Try 22:00 to 10:00."),
+        ("07:00", "19:01", "Quiet hours can be 1 to 12 hours. 07:00 to 19:01 is 12 hours 1 minute. Try 07:00 to 19:00."),
+        ("07:00", "07:30", "Quiet hours can be 1 to 12 hours. 07:00 to 07:30 is 30 minutes. Try 07:00 to 08:00."),
+        ("23:00", "23:00", "Quiet hours must start and end at different times. 23:00 to 23:00 is empty. Try 23:00 to 11:00."),
+    ],
+)
+async def test_given_a_window_outside_one_to_twelve_hours_when_answered_then_it_is_refused_with_rule_value_and_example(
+    start: str, end: str, sentence: str
+) -> None:
+    bot = bot_with(_SEEDED)
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type(start)
+
+    await bot.type(end)
+
+    assert bot.store.writes == []
+    assert bot.last.text.splitlines()[0] == sentence
+    assert "Quiet hours, step 2 of 2: end time" in bot.last.text  # asked again
+    assert bot.labels() == ["Cancel"]
+
+
+@pytest.mark.parametrize(
+    ("start", "end"), [("23:00", "07:00"), ("07:00", "19:00"), ("07:00", "08:00"), ("0:00", "12:00")]
+)
+async def test_given_windows_of_one_to_twelve_hours_when_answered_then_they_are_stored(start: str, end: str) -> None:
+    bot = bot_with(_SEEDED)
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type(start)
+
+    await bot.type(end)
+
+    assert len(bot.store.writes) == 1
+    assert bot.last.text.splitlines()[0] == "Saved."
+
+
+# ---- criterion 6: the typed forms of C-3 inside the dialogue (AC-8, AC-9) -----------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("typed", "shown"),
+    [
+        ("7", "07:00"),
+        ("7:00", "07:00"),
+        ("07:00", "07:00"),
+        ("0700", "07:00"),
+        ("19.30", "19:30"),
+        ("7am", "07:00"),
+        ("7:30pm", "19:30"),
+        ("24:00", "00:00"),
+    ],
+)
+async def test_given_the_accepted_time_forms_when_typed_as_a_start_then_each_is_read_as_the_right_time(
+    typed: str, shown: str
+) -> None:
+    bot = bot_with(_SEEDED)
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+
+    await bot.type(typed)
+
+    assert f"Start: {shown}." in bot.last.text
+    assert bot.store.writes == []
+
+
+@pytest.mark.parametrize(
+    "typed",
+    ["abc", "25:00", "07:00:30", "０７:００", "", "1" * 65, "../etc", "'; DROP TABLE x;--", "\x07", "\U0001f600"],
+    ids=["word", "hour25", "seconds", "fullwidth", "empty", "too-long", "path", "sql", "control", "emoji"],
+)
+async def test_given_a_refused_form_when_typed_then_it_is_refused_and_nothing_reaches_the_store(typed: str) -> None:
+    bot = bot_with(_SEEDED)
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    reads = bot.store.reads
+
+    await bot.type(typed)
+
+    assert bot.store.writes == []
+    assert bot.store.reads == reads
+    assert bot.last.text.splitlines()[-2:] == ["Quiet hours, step 1 of 2: start time", "Type a time, for example 23:00."]
+    assert "could not read" in bot.last.text.splitlines()[0]
+    assert "Try 23:00" in bot.last.text.splitlines()[0]
+    assert bot.labels() == ["Cancel"]
+    current = await bot.rig.conversations.current()
+    assert current is not None
+    assert current.step == "quiet_start"
+    assert "start" not in current.partial

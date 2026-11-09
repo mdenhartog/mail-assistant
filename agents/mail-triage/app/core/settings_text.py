@@ -13,7 +13,7 @@ from app.core.alert_text import AlertMessage, Button
 if TYPE_CHECKING:
     from datetime import time
 
-    from schedule_policy.policy import TimePolicy
+    from schedule_policy.policy import Problem, TimePolicy
 
 QUIET = "quiet"
 OVERVIEW = "overview"
@@ -66,6 +66,46 @@ def quiet_start_question() -> str:
 def quiet_end_question(start: time) -> str:
     """Step 2 of the quiet hours; shows the start that was taken."""
     return f"{VALUE_NAMES[QUIET]}, step 2 of 2: end time\nStart: {clock(start)}. Type a time, for example 07:00."
+
+
+SHOWN_ANSWER_CHARS = 20
+SAVE_FAILED = "I could not save that. Nothing was changed. Try again in a moment."
+START_AGAIN = "start:settings"
+
+
+def with_start_button(text: str) -> AlertMessage:
+    """A note with a 'Show settings' button that starts the dialogue again (callback ``start:settings``)."""
+    return AlertMessage(html.escape(text, quote=False), (Button("Show settings", START_AGAIN),))
+
+
+def unreadable(answer: str, example: str) -> str:
+    """The answer is not a time: say what was read, what a time looks like and a working example."""
+    shown = "".join(char for char in answer[:SHOWN_ANSWER_CHARS] if char.isprintable())
+    if len(answer) > SHOWN_ANSWER_CHARS:
+        shown += "..."
+    return f'I could not read "{shown}" as a time (hours and minutes, such as {example} or 7pm). Try {example}.'
+
+
+def duration(minutes: int) -> str:
+    """'13 hours', '1 hour', '30 minutes', '12 hours 1 minute'."""
+    hours, rest = divmod(minutes, 60)
+    parts = [f"{hours} hour{'s' if hours != 1 else ''}"] if hours else []
+    if rest or not hours:
+        parts.append(f"{rest} minute{'s' if rest != 1 else ''}")
+    return " ".join(parts)
+
+
+def refusal(problem: Problem, window_minutes: int) -> str:
+    """One broken rule in plain words: the rule, the value given and the working example from the policy check."""
+    shown, example = problem.value, problem.example
+    if problem.rule == "quiet_window_length":
+        return f"Quiet hours can be 1 to 12 hours. {shown} is {duration(window_minutes)}. {example}."
+    if problem.rule == "quiet_window_empty":
+        return f"Quiet hours must start and end at different times. {shown} is empty. {example}."
+    if problem.rule in {"overview_in_quiet_hours", "remind_in_quiet_hours"}:
+        name = VALUE_NAMES[OVERVIEW if problem.rule.startswith("overview") else REMIND].lower()
+        return f"The {name} at {shown} would fall inside quiet hours. {example}."
+    return f"That is not allowed ({problem.rule}). {example}."
 
 
 def card(policy: TimePolicy, change_data: dict[str, str], note: str | None = None) -> AlertMessage:
