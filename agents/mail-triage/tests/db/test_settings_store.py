@@ -180,6 +180,24 @@ async def test_given_only_the_first_write_when_undone_then_there_is_nothing_to_u
     assert await store.read() == first
 
 
+async def test_given_previous_values_that_no_longer_validate_when_undone_then_refused_and_nothing_changes(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    first = await store.write(make_policy(), 0, "web", "u1")
+    second = await store.write(make_policy(quiet_start=time(22, 0)), first.version, "web", "u1")
+    async with engine.begin() as connection:  # as if the tz database had dropped the old zone
+        await connection.execute(
+            text(
+                "update settings.settings_change set old = jsonb_set(old, '{zone}', '\"Mars/Olympus\"') where old is not null"
+            )
+        )
+
+    with pytest.raises(PolicyRefused):
+        await store.undo(second.version, "telegram", "u1")
+
+    assert await store.read() == second
+
+
 async def test_given_no_row_when_undone_then_version_conflict(store: PgSettingsStore) -> None:
     with pytest.raises(VersionConflict):
         await store.undo(1, "telegram", "u1")
