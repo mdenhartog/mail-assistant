@@ -12,8 +12,8 @@ The time zone question (spec C-6): Marco types a city or a country; ``places.loo
 ``tz:<index>:<nonce>`` whose index points into the candidates kept in the conversation's ``partial``, never a zone name.
 Text that cannot be a place name is refused before the lookup is called.
 
-Not in this unit: the full-picture confirmation with Undo (U-quiet-hours-11; after a save the card is shown again under
-a plain "Saved.").
+After every write ``Confirmation`` (settings_confirm.py) sends the full picture with an Undo button and keeps the Undo
+in a long-lived conversation of step ``undo``; the button "Show settings" brings the card back.
 """
 
 from __future__ import annotations
@@ -27,7 +27,8 @@ from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from app.core import settings_text
 from app.db.repos import PolicyRefused, SettingsStoreFailure, VersionConflict
-from app.usecases.dispatch import SETTINGS_TTL, button_data
+from app.usecases.dispatch import SETTINGS_TTL, UNDO_STEP, button_data
+from app.usecases.settings_confirm import Confirmation
 from schedule_policy.parse import parse_time
 from schedule_policy.places import MAX_TEXT_LENGTH, lookup
 from schedule_policy.policy import DEFAULT_POLICY, validate
@@ -54,7 +55,6 @@ PICK_ZONE = "zone_pick"
 OVERVIEW = settings_text.OVERVIEW
 REMIND = settings_text.REMIND
 MOVE = "move"
-SAVED = "Saved."
 _SINGLE_TIME_FIELD = {OVERVIEW: "overview_at", REMIND: "remind_at"}
 _MOVED_FIELD = {"overview_in_quiet_hours": "overview_at", "remind_in_quiet_hours": "remind_at"}
 _EXAMPLE = {ASK_START: "23:00", ASK_END: "07:00", OVERVIEW: "18:00", REMIND: "09:00"}
@@ -133,6 +133,7 @@ class SettingsDialog:
         self._conversations = conversations
         self._by = str(allowed_user_id)
         self._now = now
+        self._confirmation = Confirmation(store, chat, conversations, self._by, now)
 
     async def begin(self, conversation: OpenConversation) -> None:
         """Show the card."""
@@ -163,6 +164,8 @@ class SettingsDialog:
                 await self._move(conversation)
             elif action == "tz" and conversation.step == PICK_ZONE:
                 await self._zone_button(conversation, argument)
+            elif action == "undo" and conversation.step == UNDO_STEP:
+                await self._confirmation.undo(conversation)
             else:
                 await self._repeat(conversation)
 
@@ -212,6 +215,8 @@ class SettingsDialog:
         step = conversation.step
         if step == CONFLICT:
             await self._offer_again(conversation)
+        elif step == UNDO_STEP:
+            await self._confirmation.offer_again(conversation)
         elif step == PICK_ZONE and _choices(conversation)[0]:
             await self._send_choices(conversation.nonce, conversation, lead or settings_text.ZONE_TAP_ONE)
         elif step in _EXAMPLE or step in {ASK_ZONE, PICK_ZONE}:
@@ -309,10 +314,10 @@ class SettingsDialog:
         """Change some values of the stored policy as one whole new policy."""
         current = await self._current(conversation)
         if current is not None:
-            await self._commit(conversation, replace(current, **changes))
+            await self._commit(conversation, current, replace(current, **changes))
 
-    async def _commit(self, conversation: OpenConversation, proposed: TimePolicy) -> None:
-        """Validate the whole policy, store it at the card's version and show the card again."""
+    async def _commit(self, conversation: OpenConversation, previous: TimePolicy, proposed: TimePolicy) -> None:
+        """Validate the whole policy, store it at the card's version and confirm it with the full picture."""
         if problems := validate(proposed):
             await self._refuse(conversation, proposed, problems)
             return
@@ -323,9 +328,7 @@ class SettingsDialog:
         except PolicyRefused as refused:  # unreachable after validate; kept so a refusal is never an error page
             await self._refuse(conversation, proposed, refused.problems)
         else:
-            moved = await self._conversations.advance(conversation.nonce, CARD, {"version": written.version})
-            if moved is not None:
-                await self._show_card(moved.nonce, written.policy, SAVED)
+            await self._confirmation.confirm(settings_text.SAVED, previous, written)
 
     async def _refuse(self, conversation: OpenConversation, proposed: TimePolicy, problems: list[Problem]) -> None:
         """Say which rules the answer breaks and ask again (or offer the one-tap move); nothing is stored."""
@@ -346,25 +349,27 @@ class SettingsDialog:
         )
         await self._chat.send(offer)
 
-    async def _with_new_window(self, conversation: OpenConversation) -> TimePolicy | None:
-        """The stored policy with the quiet hours kept in the conversation; ``None`` if the row changed meanwhile."""
+    async def _with_new_window(self, conversation: OpenConversation) -> tuple[TimePolicy, TimePolicy] | None:
+        """The stored policy and the same with the quiet hours kept in the conversation; ``None`` if the row changed."""
         current = await self._current(conversation)
         if current is None:
             return None
         partial = conversation.partial
-        return replace(current, quiet_start=_hhmm(partial["start"]), quiet_end=_hhmm(partial["end"]))
+        return current, replace(current, quiet_start=_hhmm(partial["start"]), quiet_end=_hhmm(partial["end"]))
 
     async def _offer_again(self, conversation: OpenConversation) -> None:
-        proposed = await self._with_new_window(conversation)
-        if proposed is not None:
+        both = await self._with_new_window(conversation)
+        if both is not None:
+            proposed = both[1]
             await self._send_offer(
                 conversation.nonce, proposed, [p for p in validate(proposed) if p.rule in _MOVED_FIELD]
             )
 
     async def _move(self, conversation: OpenConversation) -> None:
         """Take the offer: move every trapped value to the quiet end and store everything in one write."""
-        proposed = await self._with_new_window(conversation)
-        if proposed is None:
+        both = await self._with_new_window(conversation)
+        if both is None:
             return
+        previous, proposed = both
         moves = {_MOVED_FIELD[p.rule]: proposed.quiet_end for p in validate(proposed) if p.rule in _MOVED_FIELD}
-        await self._commit(conversation, replace(proposed, **moves))
+        await self._commit(conversation, previous, replace(proposed, **moves))

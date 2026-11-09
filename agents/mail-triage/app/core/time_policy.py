@@ -92,6 +92,11 @@ def next_quiet_end(now: datetime, policy: TimePolicy) -> datetime:
     return _next_at(now, policy.quiet_end, policy)
 
 
+def next_quiet_start(now: datetime, policy: TimePolicy) -> datetime:
+    """The next quiet start after ``now``."""
+    return _next_at(now, policy.quiet_start, policy)
+
+
 def next_overview(now: datetime, policy: TimePolicy) -> datetime:
     """The next overview time strictly after ``now``."""
     return _next_at(now, policy.overview_at, policy)

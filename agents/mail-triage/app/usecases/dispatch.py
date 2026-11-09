@@ -25,6 +25,7 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol
 
 from app.core.alert_state import AlertState
+from app.core.settings_text import UNDO_CHANGED
 
 if TYPE_CHECKING:
     from app.adapters.telegram_inbox import Command
@@ -39,10 +40,14 @@ ASK_HOURS = "How many hours should I wait (1 to 168)? Or say 'tomorrow'."
 USE_BUTTONS = "Use the buttons under an alert to reply, snooze or close it."
 FINISH_FIRST = "Finish or cancel the settings question first."
 OUT_OF_DATE = "That card is out of date."
+UNDO_STALE = UNDO_CHANGED
 CANCELLED = "Cancelled. Nothing was changed."
 EXPIRED = "Expired"
 EXPIRED_NOTE = "That question expired. Nothing was changed."
 SETTINGS_TTL = timedelta(minutes=15)
+# The step of the long-lived conversation behind the Undo button of a confirmation. It asks Marco nothing: text is not
+# an answer to it, it does not block the snooze and reply questions, and replacing it is not "dropping a question".
+UNDO_STEP = "undo"
 SEEN_UPDATES_MAX = 1024
 _ID = re.compile(r"[A-Za-z0-9-]{1,40}")
 _TOKEN = re.compile(r"[0-9a-f]{16}")
@@ -333,7 +338,7 @@ class CommandRouter:
 
     async def _start(self, handler: DialogueHandler) -> None:
         previous = await self._conversations.current()
-        if previous is not None:
+        if previous is not None and previous.step != UNDO_STEP:
             await self._chat.say(_dropped(previous))
         started = await self._conversations.start(handler.kind, None, handler.first_step, {}, handler.ttl)
         await handler.begin(started)
@@ -348,7 +353,7 @@ class CommandRouter:
             await self._start(handler)
             return
         current = await self._conversations.current()
-        owner = self._handlers.get(current.kind) if current is not None else None
+        owner = self._handlers.get(current.kind) if current is not None and current.step != UNDO_STEP else None
         if current is None or owner is None:
             await self._flows.text(text)
             return
@@ -377,13 +382,17 @@ class CommandRouter:
 
     async def _settings_pending(self) -> bool:
         current = await self._conversations.current()
-        return current is not None and current.kind in self._handlers
+        return current is not None and current.kind in self._handlers and current.step != UNDO_STEP
 
     async def _settings_button(self, command: Command, action: str, argument: str, nonce: str) -> None:
         handler = self._handlers.get("settings")
         if handler is None:
             return
         current = await self._conversations.current()
+        if current is None and action == "undo":  # the 24 hours ran out, or the Undo was used or dropped
+            logger.info("dialogue button rejected reason=expired")
+            await self._chat.offer(UNDO_STALE, "Show settings", f"start:{handler.kind}")
+            return
         if current is None:  # no live question: it expired (or was closed); the card loses its buttons
             logger.info("dialogue button rejected reason=expired")
             await self._chat.edit_message(command.message_id, EXPIRED)
@@ -392,7 +401,8 @@ class CommandRouter:
         claimed = await self._claim(current) if current.kind == handler.kind and current.nonce == nonce else None
         if claimed is None:
             logger.info("dialogue button rejected reason=stale")
-            await self._chat.offer(OUT_OF_DATE, "Show settings", f"start:{handler.kind}")
+            note = UNDO_STALE if action == "undo" else OUT_OF_DATE
+            await self._chat.offer(note, "Show settings", f"start:{handler.kind}")
         elif action == "cancel":
             await self._conversations.clear()
             await self._chat.edit_message(command.message_id, CANCELLED)

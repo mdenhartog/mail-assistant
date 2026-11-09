@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from app.db.repos import PolicyRefused, SettingsStoreFailure, StoredSettings, VersionConflict
+from app.db.repos import NothingToUndo, PolicyRefused, SettingsStoreFailure, StoredSettings, VersionConflict
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy, validate
 from schedule_policy.testing import make_policy
@@ -42,6 +42,9 @@ class FakeSettingsStore:
     def __init__(self, policy: TimePolicy | None = None) -> None:
         self.row = StoredSettings(policy, 1, NOW, "seed", "seed") if policy else None
         self.writes: list[tuple[TimePolicy, int, str, str]] = []
+        self.undos: list[tuple[int, str, str]] = []
+        self.replaced: dict[int, TimePolicy | None] = {}  # version -> the policy the change to it replaced
+        self.undo_error: Exception | None = None
         self.write_error: Exception | None = None
         self.reads = 0
 
@@ -58,11 +61,22 @@ class FakeSettingsStore:
         if expected_version != current:
             raise VersionConflict
         self.writes.append((policy, expected_version, via, by))
+        self.replaced[current + 1] = self.row.policy if self.row else None
         self.row = StoredSettings(policy, current + 1, NOW, via, by)
         return self.row
 
     async def undo(self, expected_version: int, via: str, by: str) -> StoredSettings:
-        raise AssertionError("undo is not part of this unit")
+        if self.undo_error is not None:
+            raise self.undo_error
+        if self.row is None or self.row.version != expected_version:
+            raise VersionConflict
+        previous = self.replaced.get(expected_version)
+        if previous is None:
+            raise NothingToUndo
+        self.undos.append((expected_version, via, by))
+        self.replaced[expected_version + 1] = self.row.policy
+        self.row = StoredSettings(previous, expected_version + 1, NOW, via, by)
+        return self.row
 
 
 @dataclass
@@ -174,7 +188,7 @@ async def test_given_the_quiet_hours_question_when_a_valid_start_and_end_come_th
     assert bot.store.writes == [(expected, 1, "telegram", str(USER))]
     assert bot.last.text.splitlines()[0] == "Saved."
     assert "Quiet hours: 22:00 to 06:00" in bot.last.text.splitlines()
-    assert bot.labels()[0] == "Change quiet hours"  # the card is shown again
+    assert bot.labels() == ["Undo", "Show settings"]  # the confirmation, not the card (U-quiet-hours-11)
 
 
 async def test_given_no_stored_row_when_quiet_hours_are_saved_then_the_first_row_is_written_at_version_0() -> None:
@@ -625,7 +639,7 @@ async def test_given_a_store_that_refuses_the_policy_at_write_time_when_saving_t
 
 
 @pytest.mark.parametrize("entry", ["begin", "ask", "save"])
-async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_nothing_is_sent(
+async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_only_a_write_is_confirmed(
     entry: str,
 ) -> None:
     bot = bot_with(make_policy())
@@ -643,10 +657,9 @@ async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_mov
     else:
         await bot.dialog.on_text(current, "19:00")
 
-    assert len(bot.chat.sent) == sent
-    assert len(bot.store.writes) == (
-        1 if entry == "save" else 0
-    )  # the write itself is version-checked, not nonce-checked
+    # The write itself is version-checked, not nonce-checked; once it happened Marco is told (U-quiet-hours-11).
+    assert len(bot.store.writes) == (1 if entry == "save" else 0)
+    assert len(bot.chat.sent) == sent + (1 if entry == "save" else 0)
 
 
 # ---- criterion 9: nothing leaks into the logs (AC-33) --------------------------------------------------------------

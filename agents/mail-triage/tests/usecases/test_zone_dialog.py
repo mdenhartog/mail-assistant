@@ -72,7 +72,7 @@ async def test_given_a_single_place_when_answered_then_its_zone_is_written(answe
         (make_policy(overview_at=time(17, 0), zone="America/New_York"), 1, "telegram", str(USER))
     ]
     assert bot.last.text.splitlines()[0] == "Saved."
-    assert "Time zone: America/New_York" in bot.last.text.splitlines()
+    assert "Time zone: America/New_York (UTC-5)" in bot.last.text.splitlines()
 
 
 async def test_given_an_accented_place_when_answered_then_it_is_found_without_regard_to_accents() -> None:

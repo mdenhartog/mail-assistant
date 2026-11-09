@@ -39,7 +39,7 @@ async def test_given_a_read_fault_when_settings_is_sent_then_the_dialogue_ends_w
     chat = SentChat()
     rig.chat = chat
     router = rig.router()
-    router.register(SettingsDialog(UnreadableStore(), chat, rig.conversations, USER))  # type: ignore[arg-type]
+    router.register(SettingsDialog(UnreadableStore(), chat, rig.conversations, USER, rig.clock.now))  # type: ignore[arg-type]
 
     await router.handle(text("/settings"))
 

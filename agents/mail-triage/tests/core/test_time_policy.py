@@ -12,6 +12,7 @@ from app.core.time_policy import (
     in_quiet_hours,
     next_overview,
     next_quiet_end,
+    next_quiet_start,
     remind_due,
 )
 from schedule_policy.policy import DEFAULT_POLICY
@@ -194,3 +195,8 @@ def test_given_the_smallest_and_largest_number_of_hours_when_snoozing_then_they_
 def test_given_a_boolean_when_snoozing_then_it_is_rejected_although_it_is_a_number() -> None:
     with pytest.raises(InvalidSnoozeError):
         remind_due(datetime(2026, 11, 9, 12, 0, tzinfo=UTC), True, DEFAULT_POLICY)
+
+
+def test_given_the_evening_before_quiet_start_when_asked_then_it_is_23_00_today_and_after_it_tomorrow() -> None:
+    assert next_quiet_start(local(2026, 11, 9, 20), DEFAULT_POLICY) == local(2026, 11, 9, 23)
+    assert next_quiet_start(local(2026, 11, 9, 23), DEFAULT_POLICY) == local(2026, 11, 10, 23)

@@ -6,12 +6,13 @@ Every message is HTML for Telegram, so everything that is not written here is es
 from __future__ import annotations
 
 import html
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.core.alert_text import AlertMessage, Button
 
 if TYPE_CHECKING:
-    from datetime import time
+    from datetime import date, time
 
     from schedule_policy.policy import Problem, TimePolicy
 
@@ -160,3 +161,92 @@ def card(policy: TimePolicy, change_data: dict[str, str], note: str | None = Non
     """The settings card; ``change_data`` maps each value key to the callback data of its Change button."""
     buttons = tuple(Button(CHANGE_LABELS[key], change_data[key]) for key in VALUE_NAMES)
     return AlertMessage(card_text(policy, note), buttons)
+
+
+# ---- the confirmation and Undo (spec C-7; AC-20, AC-21) -------------------------------------------------------------
+
+SAVED = "Saved."
+UNDONE = "Undone. The previous values are back."
+UNDO_CHANGED = "The settings changed since then, so I did not undo anything. Nothing was changed."
+NOTHING_TO_UNDO = "There is nothing to undo: that was the first saved change. Nothing was changed."
+UNDO_REFUSED = "I could not put the previous values back because they are no longer allowed. Nothing was changed."
+UNDO_AGAIN = "Tap Undo to put the previous values back, or open the settings."
+UNDO_LABEL = "Undo"
+SHOW_SETTINGS = "Show settings"
+
+
+@dataclass(frozen=True, slots=True)
+class Elsewhere:
+    """The zone Marco left, for the comparison after a zone change: the time there now and the quiet hours there."""
+
+    city: str
+    now: time
+    quiet_start: time
+    quiet_end: time
+
+
+@dataclass(frozen=True, slots=True)
+class ClockChange:
+    """A clock change in the new zone: its local day and wall time (before the change) and the offsets around it."""
+
+    day: date
+    at: time
+    before_minutes: int
+    after_minutes: int
+
+
+@dataclass(frozen=True, slots=True)
+class Picture:
+    """Everything the confirmation says; ``left`` is set only when the time zone changed."""
+
+    headline: str
+    policy: TimePolicy
+    offset_minutes: int
+    here: time
+    overview_day: str
+    overview_clock: time
+    left: Elsewhere | None
+    clock_change: ClockChange | None
+
+
+def offset_label(minutes: int) -> str:
+    """``UTC-5``, ``UTC+1``, ``UTC+5:30``, ``UTC+5:45``, ``UTC+0``."""
+    hours, rest = divmod(abs(minutes), 60)
+    return f"UTC{'-' if minutes < 0 else '+'}{hours}" + (f":{rest:02d}" if rest else "")
+
+
+def city_of(zone: str) -> str:
+    """``America/New_York`` -> ``New York``: the last part of the zone name, for speaking."""
+    return zone.rsplit("/", maxsplit=1)[-1].replace("_", " ")
+
+
+def _picture_lines(picture: Picture) -> list[str]:
+    policy, left = picture.policy, picture.left
+    lines = [picture.headline, f"{VALUE_NAMES[ZONE]}: {policy.zone} ({offset_label(picture.offset_minutes)})"]
+    quiet = f"{VALUE_NAMES[QUIET]}: {clock(policy.quiet_start)} to {clock(policy.quiet_end)}"
+    if left is not None:
+        here = city_of(policy.zone)
+        lines.append(f"It is now {clock(picture.here)} there, {clock(left.now)} in {left.city}.")
+        quiet += f" {here} time ({clock(left.quiet_start)} to {clock(left.quiet_end)} {left.city} time)"
+    lines += [
+        quiet,
+        f"{VALUE_NAMES[OVERVIEW]}: {clock(policy.overview_at)}",
+        f"{VALUE_NAMES[REMIND]}: {clock(policy.remind_at)}",
+        f"Next overview: {picture.overview_day} {clock(picture.overview_clock)}",
+    ]
+    if (change := picture.clock_change) is not None:
+        span = f"{offset_label(change.before_minutes)} to {offset_label(change.after_minutes)}"
+        lines.append(f"Next clock change: {change.day.isoformat()} at {clock(change.at)} ({span})")
+    return lines
+
+
+def confirmation(picture: Picture, undo_data: str, start_data: str) -> AlertMessage:
+    """The full picture after a change, with Undo and a button that shows the settings again."""
+    buttons = (Button(UNDO_LABEL, undo_data), Button(SHOW_SETTINGS, start_data))
+    return AlertMessage(html.escape("\n".join(_picture_lines(picture)), quote=False), buttons)
+
+
+def undo_offer(undo_data: str, start_data: str) -> AlertMessage:
+    """The Undo button again, under a fresh nonce, when the confirmation was answered with something else."""
+    buttons = (Button(UNDO_LABEL, undo_data), Button(SHOW_SETTINGS, start_data))
+    return AlertMessage(html.escape(UNDO_AGAIN, quote=False), buttons)
