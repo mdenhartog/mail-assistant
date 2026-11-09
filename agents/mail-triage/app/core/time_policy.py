@@ -8,6 +8,7 @@ exist on a day (clock moved forward) resolves to the first valid moment after th
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
+from itertools import count
 from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
@@ -37,15 +38,11 @@ def local_day(moment: datetime, policy: TimePolicy) -> date:
 def _first_moment_after_gap(early: datetime, late: datetime, zone: ZoneInfo) -> datetime:
     """Walk minute by minute from ``early`` (old offset) to the clock change that gives ``late`` its new offset.
 
-    The walk is bounded by the length of the gap; every clock change in the IANA data falls on a whole minute.
+    The walk ends at the latest on ``late`` itself. Every clock change in the IANA data falls on a whole minute.
     """
     new_offset = late.astimezone(zone).utcoffset()
-    minutes = range(int((late - early).total_seconds() // 60) + 1)
-    return next(
-        probe
-        for probe in (early + timedelta(minutes=step) for step in minutes)
-        if probe.astimezone(zone).utcoffset() == new_offset
-    )
+    probes = (early + timedelta(minutes=minute) for minute in count())
+    return next(probe for probe in probes if probe.astimezone(zone).utcoffset() == new_offset)
 
 
 def _moment_on(day: date, clock: time, policy: TimePolicy) -> datetime:
@@ -63,8 +60,8 @@ def _next_at(now: datetime, clock: time, policy: TimePolicy) -> datetime:
     """The next moment the local clock shows ``clock``, strictly after ``now``."""
     moment = _utc(now)
     today = local_day(moment, policy)
-    candidates = (_moment_on(today + step * _ONE_DAY, clock, policy) for step in (-1, 0, 1))
-    return next(candidate for candidate in candidates if candidate > moment)
+    candidate = _moment_on(today, clock, policy)
+    return candidate if candidate > moment else _moment_on(today + _ONE_DAY, clock, policy)
 
 
 def day_start(day: date, policy: TimePolicy) -> datetime:
