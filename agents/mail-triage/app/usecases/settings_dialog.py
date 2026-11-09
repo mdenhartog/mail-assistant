@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 CARD = "card"
-QUIET_START = "quiet_start"
-QUIET_END = "quiet_end"
+ASK_START = "quiet_start"
+ASK_END = "quiet_end"
 CONFLICT = "conflict"
 OVERVIEW = settings_text.OVERVIEW
 REMIND = settings_text.REMIND
@@ -47,7 +47,7 @@ MOVE = "move"
 SAVED = "Saved."
 _SINGLE_TIME_FIELD = {OVERVIEW: "overview_at", REMIND: "remind_at"}
 _MOVED_FIELD = {"overview_in_quiet_hours": "overview_at", "remind_in_quiet_hours": "remind_at"}
-_EXAMPLE = {QUIET_START: "23:00", QUIET_END: "07:00", OVERVIEW: "18:00", REMIND: "09:00"}
+_EXAMPLE = {ASK_START: "23:00", ASK_END: "07:00", OVERVIEW: "18:00", REMIND: "09:00"}
 
 
 class DialogChat(Protocol):
@@ -66,9 +66,9 @@ def _hhmm(value: object) -> time:
 
 def _question_text(conversation: OpenConversation) -> str:
     """The question of the conversation's current step."""
-    if conversation.step == QUIET_START:
+    if conversation.step == ASK_START:
         return settings_text.quiet_start_question()
-    if conversation.step == QUIET_END:
+    if conversation.step == ASK_END:
         return settings_text.quiet_end_question(_hhmm(conversation.partial["start"]))
     return settings_text.time_question(conversation.step)
 
@@ -109,9 +109,9 @@ class SettingsDialog:
             step = conversation.step
             if step in _SINGLE_TIME_FIELD:
                 await self._single_time(conversation, text)
-            elif step == QUIET_START:
+            elif step == ASK_START:
                 await self._quiet_start(conversation, text)
-            elif step == QUIET_END:
+            elif step == ASK_END:
                 await self._quiet_end(conversation, text)
             else:
                 await self._repeat(conversation, settings_text.TAP_A_BUTTON if step == CARD else None)
@@ -151,7 +151,7 @@ class SettingsDialog:
 
     async def _ask(self, conversation: OpenConversation, key: str) -> None:
         if key == settings_text.QUIET:
-            await self._question(conversation, QUIET_START, conversation.partial, settings_text.quiet_start_question())
+            await self._question(conversation, ASK_START, conversation.partial, settings_text.quiet_start_question())
         elif key in _SINGLE_TIME_FIELD:
             await self._question(conversation, key, conversation.partial, settings_text.time_question(key))
         elif key == settings_text.ZONE:  # the question arrives with U-quiet-hours-10
@@ -191,15 +191,15 @@ class SettingsDialog:
     async def _quiet_start(self, conversation: OpenConversation, text: str) -> None:
         start = parse_time(text)
         if start is None:
-            await self._repeat(conversation, settings_text.unreadable(text, _EXAMPLE[QUIET_START]))
+            await self._repeat(conversation, settings_text.unreadable(text, _EXAMPLE[ASK_START]))
             return
         partial = {**conversation.partial, "start": settings_text.clock(start)}
-        await self._question(conversation, QUIET_END, partial, settings_text.quiet_end_question(start))
+        await self._question(conversation, ASK_END, partial, settings_text.quiet_end_question(start))
 
     async def _quiet_end(self, conversation: OpenConversation, text: str) -> None:
         end = parse_time(text)
         if end is None:
-            await self._repeat(conversation, settings_text.unreadable(text, _EXAMPLE[QUIET_END]))
+            await self._repeat(conversation, settings_text.unreadable(text, _EXAMPLE[ASK_END]))
             return
         start = _hhmm(conversation.partial["start"])
         await self._save(conversation, {"quiet_start": start, "quiet_end": end})
@@ -241,7 +241,7 @@ class SettingsDialog:
 
     async def _refuse(self, conversation: OpenConversation, proposed: TimePolicy, problems: list[Problem]) -> None:
         """Say which rules the answer breaks and ask again (or offer the one-tap move); nothing is stored."""
-        if conversation.step == QUIET_END and all(problem.rule in _MOVED_FIELD for problem in problems):
+        if conversation.step == ASK_END and all(problem.rule in _MOVED_FIELD for problem in problems):
             partial = {**conversation.partial, "end": settings_text.clock(proposed.quiet_end)}
             moved = await self._conversations.advance(conversation.nonce, CONFLICT, partial)
             if moved is not None:

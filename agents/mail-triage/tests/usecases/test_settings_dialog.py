@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING
 
@@ -78,7 +78,8 @@ class Bot:
         self.chat = RecordingChat()
         self.rig.chat = self.chat
         self.router = self.rig.router()
-        self.router.register(SettingsDialog(self.store, self.chat, self.rig.conversations, USER))
+        self.dialog = SettingsDialog(self.store, self.chat, self.rig.conversations, USER)
+        self.router.register(self.dialog)
 
     @property
     def last(self) -> AlertMessage:
@@ -566,6 +567,102 @@ async def test_given_text_on_the_card_when_typed_then_marco_is_pointed_to_the_bu
 
     assert bot.last.text.splitlines()[0] == "Tap one of the Change buttons below."
     assert bot.labels()[0] == "Change quiet hours"
+
+
+# ---- the single-time questions refuse like the quiet-hours ones; odd buttons never change anything -----------------
+
+
+@pytest.mark.parametrize("label", ["Change daily overview", "Change remind-me-later default"])
+async def test_given_a_single_time_question_when_the_answer_is_not_a_time_then_it_is_asked_again(label: str) -> None:
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap(label)
+    question = bot.last.text
+
+    await bot.type("later")
+
+    assert bot.last.text.splitlines()[0].startswith('I could not read "later" as a time')
+    assert bot.last.text.endswith(question)
+    assert bot.labels() == ["Cancel"]
+    assert bot.store.writes == []
+
+
+@pytest.mark.parametrize(
+    ("label", "answer", "sentence"),
+    [
+        ("Change daily overview", "23:30", "The daily overview at 23:30 would fall inside quiet hours. Try 07:00."),
+        (
+            "Change remind-me-later default",
+            "6am",
+            "The remind-me-later default at 06:00 would fall inside quiet hours. Try 07:00.",
+        ),
+    ],
+)
+async def test_given_an_answer_inside_quiet_hours_when_saved_then_it_is_refused_with_value_and_example(
+    label: str, answer: str, sentence: str
+) -> None:
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap(label)
+
+    await bot.type(answer)
+
+    assert bot.last.text.splitlines()[0] == sentence
+    assert bot.store.writes == []
+
+
+async def test_given_an_undo_button_or_an_unknown_key_when_tapped_on_the_card_then_the_card_is_shown_again() -> None:
+    bot = bot_with(make_policy())
+    await bot.settings()
+    nonce = bot.last.buttons[0].data.rsplit(":", 1)[1]
+    await bot.router.handle(button(f"undo:{nonce}"))
+    assert bot.last.text.splitlines()[0] == "Quiet hours: 23:00 to 07:00"
+    nonce = bot.last.buttons[0].data.rsplit(":", 1)[1]
+
+    await bot.router.handle(button(f"set:bogus:{nonce}"))
+
+    assert bot.last.text.splitlines()[0] == "Quiet hours: 23:00 to 07:00"
+    assert bot.store.writes == []
+
+
+async def test_given_a_store_that_refuses_the_policy_at_write_time_when_saving_then_the_refusal_is_worded() -> None:
+    class Skewed(FakeSettingsStore):
+        async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
+            raise PolicyRefused(validate(make_policy(quiet_end=time(23, 0))))
+
+    bot = Bot(Skewed(make_policy()))
+    await bot.settings()
+    await bot.tap("Change daily overview")
+
+    await bot.type("19:00")
+
+    assert bot.last.text.splitlines()[0].startswith("Quiet hours must start and end at different times.")
+    assert bot.labels() == ["Cancel"]
+
+
+@pytest.mark.parametrize("entry", ["begin", "ask", "save"])
+async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_nothing_is_sent(
+    entry: str,
+) -> None:
+    bot = bot_with(make_policy())
+    await bot.settings()
+    await bot.tap("Change daily overview")
+    current = await bot.rig.conversations.current()
+    assert current is not None
+    sent = len(bot.chat.sent)
+    await bot.rig.conversations.clear()  # the question expired or was replaced after the router claimed it
+
+    if entry == "begin":
+        await bot.dialog.begin(current)
+    elif entry == "ask":
+        await bot.dialog.on_button(replace(current, step="card"), "set", "quiet")
+    else:
+        await bot.dialog.on_text(current, "19:00")
+
+    assert len(bot.chat.sent) == sent
+    assert len(bot.store.writes) == (
+        1 if entry == "save" else 0
+    )  # the write itself is version-checked, not nonce-checked
 
 
 # ---- criterion 9: nothing leaks into the logs (AC-33) --------------------------------------------------------------

@@ -16,7 +16,8 @@ from app.db.pg_settings_store import PgSettingsStore
 from app.usecases.dispatch import CommandRouter
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.testing import FakeClock, make_policy
-from tests.usecases.test_dispatch import FakeReply, FakeSnooze, FakeStore, button, text as typed
+from tests.usecases.test_dispatch import FakeReply, FakeSnooze, FakeStore, button
+from tests.usecases.test_dispatch import text as typed
 from tests.usecases.test_settings_dialog import RecordingChat
 
 if TYPE_CHECKING:
