@@ -146,7 +146,7 @@ def test_given_the_image_when_built_then_it_runs_as_a_numeric_non_root_user() ->
 def test_given_the_image_when_built_then_it_carries_the_migrations_the_agent_applies_at_start() -> None:
     text = (COMPONENT / "Dockerfile").read_text(encoding="utf-8")
 
-    assert re.search(r"^COPY migrations \./migrations$", text, re.MULTILINE)
+    assert re.search(r"^COPY agents/mail-triage/migrations \./migrations$", text, re.MULTILINE)
 
 
 def test_given_the_dockerfile_when_scanned_then_it_has_no_secret_or_env_file() -> None:
@@ -181,3 +181,13 @@ def test_given_the_compose_file_when_read_then_it_holds_no_secret_value() -> Non
     for line in text.splitlines():
         if re.search(r"(KEY|TOKEN|PASSWORD|SECRET)\w*:", line):
             assert "${" in line, f"secret-looking setting without an environment reference: {line.strip()}"
+
+
+def test_given_the_image_when_built_from_the_repo_root_then_it_carries_the_shared_schedule_policy_package() -> None:
+    text = (COMPONENT / "Dockerfile").read_text(encoding="utf-8")
+    compose = yaml.safe_load((COMPONENT / "compose.yaml").read_text(encoding="utf-8"))
+    build = compose["services"]["mail-triage"]["build"]
+
+    assert re.search(r"^COPY packages/schedule-policy/schedule_policy ", text, re.MULTILINE)
+    assert (COMPONENT / build["context"]).resolve() == ROOT
+    assert build["dockerfile"] == "agents/mail-triage/Dockerfile"
