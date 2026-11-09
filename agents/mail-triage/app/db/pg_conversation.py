@@ -105,3 +105,9 @@ class ConversationStore:
         """Forget the pending dialogue."""
         async with self._sessions.begin() as session:
             await session.execute(delete(Conversation).where(Conversation.id == ROW))
+
+    async def clear_for(self, target: str) -> None:
+        """Forget the pending dialogue only if it is about ``target`` (one atomic statement)."""
+        statement = delete(Conversation).where(Conversation.id == ROW, Conversation.target == target)
+        async with self._sessions.begin() as session:
+            await session.execute(statement)
