@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
@@ -13,6 +14,8 @@ from app.db.models import AuditLog, Draft, MailItem
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+
+    from schedule_policy.policy import Problem, TimePolicy
 
 LOCK_KEY = 7_265_001  # arbitrary constant: one running agent per database
 
@@ -106,3 +109,73 @@ async def consume_draft(session: AsyncSession, draft_id: str, digest: str, *, no
     if (await session.execute(statement)).first() is None:
         return None
     return (await session.execute(select(Draft).where(Draft.id == draft_id))).scalar_one()
+
+
+# ---- settings port (ADR-0025) ---------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class StoredSettings:
+    """The stored schedule row: the policy plus the version and who changed it last."""
+
+    policy: TimePolicy
+    version: int
+    updated_at: datetime
+    updated_via: str
+    updated_by: str
+
+
+class VersionConflict(Exception):  # noqa: N818  # named by the contract (spec AC-29), not an "...Error"
+    """The row changed since the caller read it; nothing was written."""
+
+
+class PolicyRefused(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The policy broke a rule of ``schedule_policy.validate``; it was refused before the database was touched."""
+
+    def __init__(self, problems: list[Problem]) -> None:
+        """Keep the broken rules (rule id, value given, example) for the dialogue to word."""
+        super().__init__(", ".join(problem.rule for problem in problems))  # rule ids only: no values in messages
+        self.problems = problems
+
+
+class StoredSettingsInvalid(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The stored row exists but breaks a rule (for example a zone the tz database no longer has).
+
+    ``read()`` raises this instead of returning a policy nobody validated. U-08's PolicySource catches it and falls
+    back to the last good values or the defaults (C-9). Only rule ids are kept: the stored values never reach a log.
+    """
+
+    def __init__(self, rules: tuple[str, ...]) -> None:
+        """Keep the broken rule ids."""
+        super().__init__(", ".join(rules))
+        self.rules = rules
+
+
+class SettingsStoreFailure(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The database refused or lost a write. Carries the error class and SQLSTATE only, never statement parameters."""
+
+    def __init__(self, cause_class: str, sqlstate: str | None) -> None:
+        """Keep what is safe to log about the cause."""
+        super().__init__(f"{cause_class} sqlstate={sqlstate}")
+        self.cause_class = cause_class
+        self.sqlstate = sqlstate
+
+
+class NothingToUndo(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The version asked for is the first write: it replaced nothing, so there is nothing to put back."""
+
+
+class SettingsStore(Protocol):
+    """Read, replace and undo the one schedule row."""
+
+    async def read(self) -> StoredSettings | None:
+        """The stored row, or None when none was ever written."""
+        ...
+
+    async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
+        """Replace the whole row if it is still at ``expected_version`` (0 = no row yet)."""
+        ...
+
+    async def undo(self, expected_version: int, via: str, by: str) -> StoredSettings:
+        """Put back what the change to ``expected_version`` replaced, if the row is still at that version."""
+        ...

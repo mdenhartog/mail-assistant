@@ -17,8 +17,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
     TO mail_triage_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO mail_triage_runtime;
 
--- Settings: read, create and replace the single schedule row. No delete and no truncate. settings_change gets no
--- grant at all: the audit trigger writes it as the owner (SECURITY DEFINER), so the runtime role can only add records
--- through a schedule change and can never update, delete or truncate them.
+-- Settings: read, create and replace the single schedule row. No delete and no truncate. settings_change may only be
+-- read (Undo needs the previous values, U-quiet-hours-05): the audit trigger writes it as the owner (SECURITY
+-- DEFINER), so the runtime role can only add records through a schedule change and can never insert, update, delete
+-- or truncate them directly.
 GRANT USAGE ON SCHEMA settings TO mail_triage_runtime;
 GRANT SELECT, INSERT, UPDATE ON settings.schedule TO mail_triage_runtime;
+GRANT SELECT ON settings.settings_change TO mail_triage_runtime;
