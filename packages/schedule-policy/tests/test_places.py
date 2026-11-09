@@ -84,6 +84,11 @@ def test_given_australia_when_looked_up_then_zones_with_city_names():
     assert "Adelaide, Australia (UTC+9:30)" in [hit.label for hit in hits]
 
 
+@pytest.mark.parametrize("text", ["Singapore", "Monaco", "Luxembourg", "Hong Kong"])
+def test_given_a_city_state_when_looked_up_then_one_hit_not_a_duplicate_per_zone(text):
+    assert len(places.lookup(text, now=NOW).hits) == 1
+
+
 def test_given_a_one_zone_country_when_looked_up_then_one_city_named_hit():
     hits = places.lookup("Netherlands", now=NOW).hits
 
