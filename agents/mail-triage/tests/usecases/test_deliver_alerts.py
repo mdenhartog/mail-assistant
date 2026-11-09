@@ -227,9 +227,7 @@ async def test_given_a_held_alert_and_quiet_hours_changed_when_its_release_momen
     assert len(outbox.messages) == 1
 
 
-async def test_given_a_later_change_puts_the_release_moment_in_quiet_hours_when_it_comes_then_it_is_still_released() -> (
-    None
-):
+async def test_given_a_change_puts_the_release_moment_in_quiet_hours_when_it_comes_then_it_is_still_released() -> None:
     store, outbox = FakeStore([held_until("1", RELEASE_AT)]), FakeOutbox()
     source = FakePolicySource(LATE_QUIET)  # 07:30 is inside the new 23:00-09:00 window
 

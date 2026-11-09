@@ -81,7 +81,7 @@ class SnoozeService:
         self._policy = policy
 
     async def snooze(self, alert_id: str, answer: str) -> None:
-        """Snooze an open alert for the hours (or "tomorrow") Marco typed. One policy snapshot; the due moment is UTC."""
+        """Snooze an open alert for the hours (or "tomorrow") Marco typed, with one policy snapshot; due in UTC."""
         if not await self._allowed(alert_id, Event.REMIND_LATER):
             return
         amount = _parse(answer)

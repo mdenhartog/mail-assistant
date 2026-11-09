@@ -179,9 +179,8 @@ def catchup(
     *,
     budget: DailyBudget | Plenty | None = None,
 ) -> CatchUp:
-    return CatchUp(
-        mailbox, judge, store, notifier or FakeNotifier(), budget or Plenty(), now=lambda: NOW, policy=FakePolicySource()
-    )
+    notifier = notifier or FakeNotifier()
+    return CatchUp(mailbox, judge, store, notifier, budget or Plenty(), now=lambda: NOW, policy=FakePolicySource())
 
 
 def ids(count: int) -> list[str]:

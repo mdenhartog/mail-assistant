@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time, timedelta
 
 import pytest
@@ -211,7 +210,7 @@ async def test_given_a_snoozed_alert_when_the_settings_change_then_its_due_momen
     assert on_time == ["1"]
 
 
-async def test_given_a_snooze_due_inside_the_new_quiet_hours_when_released_then_it_is_held_until_that_quiet_end() -> None:
+async def test_given_a_snooze_due_in_the_new_quiet_hours_when_released_then_it_is_held_until_that_quiet_end() -> None:
     store, say = FakeStore({"1": Row(AlertState.OPEN)}), FakeSay()
     await service(store, say).snooze("1", "3")  # due 15:00 UTC, 16:00 in Amsterdam
     source = FakePolicySource(AFTERNOON_QUIET)  # then quiet hours become 16:00-20:00

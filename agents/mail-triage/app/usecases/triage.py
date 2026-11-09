@@ -188,14 +188,20 @@ def decide_outcome(
     alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy)) if urgent else None
     release_at = next_quiet_end(now, policy) if alert is AlertState.HELD else None
     return Outcome(
-        label=label, urgent=urgent, confidence=confidence, alert=alert, note=note, content=content, release_at=release_at
+        label=label,
+        urgent=urgent,
+        confidence=confidence,
+        alert=alert,
+        note=note,
+        content=content,
+        release_at=release_at,
     )
 
 
 class TriagePipeline:
     """One run of the poll loop."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - every part is injected for tests
         self,
         mailbox: Mailbox,
         judge: Judge,

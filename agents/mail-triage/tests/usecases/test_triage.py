@@ -140,7 +140,7 @@ class FakeNotifier:
         self.notices.append(message_id)
 
 
-def pipeline(
+def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
     mailbox: FakeMailbox,
     judge: FakeJudge,
     store: FakeStore,
@@ -423,7 +423,7 @@ NEW_YORK = replace(DEFAULT_POLICY, zone="America/New_York")
 NEW_YORK_NIGHT = datetime(2026, 11, 10, 4, 30, tzinfo=UTC)  # 23:30 on 9 November in New York (UTC-5)
 
 
-def test_given_new_york_quiet_hours_when_an_urgent_mail_arrives_at_2330_there_then_the_alert_is_held_until_0700() -> None:
+def test_given_new_york_when_an_urgent_mail_arrives_at_2330_there_then_the_alert_is_held_until_0700() -> None:
     outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NEW_YORK_NIGHT, NEW_YORK)
 
     assert outcome.alert is AlertState.HELD
@@ -457,9 +457,7 @@ async def test_given_a_stored_change_when_the_next_alert_arises_then_it_is_judge
     assert second_store.outcomes["m2"].release_at == datetime(2026, 11, 9, 13, 0, tzinfo=UTC)  # 14:00 Amsterdam
 
 
-async def test_given_a_policy_source_that_changes_on_its_second_call_when_one_mail_is_triaged_then_it_is_asked_once() -> (
-    None
-):
+async def test_given_a_source_that_changes_on_its_second_call_when_one_mail_is_triaged_then_it_is_asked_once() -> None:
     always_quiet = replace(DEFAULT_POLICY, quiet_start=time(12, 0), quiet_end=time(14, 0))
     source = FakePolicySource(always_quiet, DEFAULT_POLICY)
     store = FakeStore()
