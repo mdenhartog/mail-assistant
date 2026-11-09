@@ -42,6 +42,22 @@ def test_given_new_york_when_looked_up_then_hit_has_label_and_offset_at_now():
     assert summer.utc_offset_minutes == -240
 
 
+@pytest.mark.parametrize(
+    ("text", "suggestion"),
+    [("Nwe York", "New York"), ("Viena", "Vienna"), ("Zuirch", "Zurich"), ("Istanbl", "Istanbul")],
+)
+def test_given_a_near_miss_when_looked_up_then_a_suggestion_and_no_hits(text, suggestion):
+    result = places.lookup(text, now=NOW)
+
+    assert result.hits == ()
+    assert result.suggestion == suggestion
+
+
+@pytest.mark.parametrize("text", ["", "   ", "xyzzy", "qqqqqqqq", "'; DROP TABLE x;--", "../etc", "12345"])
+def test_given_text_matching_nothing_when_looked_up_then_an_empty_result(text):
+    assert places.lookup(text, now=NOW) == places.LookupResult()
+
+
 def test_given_a_listed_iana_name_when_looked_up_then_accepted():
     hits = places.lookup("Europe/Vienna", now=NOW).hits
 
@@ -50,7 +66,7 @@ def test_given_a_listed_iana_name_when_looked_up_then_accepted():
     assert zones("europe/vienna") == ["Europe/Vienna"]
 
 
-@pytest.mark.parametrize("text", ["Europe/Nowhere", "Pacific/Auckland", "UTC", "America/../etc"])
+@pytest.mark.parametrize("text", ["Europe/Nowhere", "Antarctica/Troll", "UTC", "America/../etc"])
 def test_given_an_unlisted_iana_name_when_looked_up_then_nothing(text):
     assert places.lookup(text, now=NOW) == places.LookupResult()
 
