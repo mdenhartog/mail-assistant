@@ -137,6 +137,10 @@ class PolicyRefused(Exception):  # noqa: N818  # named by the contract, not an "
         self.problems = problems
 
 
+class NothingToUndo(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The version asked for is the first write: it replaced nothing, so there is nothing to put back."""
+
+
 class SettingsStore(Protocol):
     """Read, replace and undo the one schedule row."""
 
@@ -146,4 +150,8 @@ class SettingsStore(Protocol):
 
     async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
         """Replace the whole row if it is still at ``expected_version`` (0 = no row yet)."""
+        ...
+
+    async def undo(self, expected_version: int, via: str, by: str) -> StoredSettings:
+        """Put back what the change to ``expected_version`` replaced, if the row is still at that version."""
         ...
