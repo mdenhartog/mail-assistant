@@ -489,6 +489,29 @@ async def test_given_a_database_fault_when_read_then_a_store_failure_names_class
     assert (failure.cause_class, failure.sqlstate) == _READ_FAULTS[kind]
 
 
+async def test_given_a_pooled_connection_the_server_has_closed_when_read_then_a_store_failure_without_the_text(
+    store: PgSettingsStore, engine: AsyncEngine, migrated_url: str
+) -> None:
+    await store.write(make_policy(zone=CANARY, quiet_start=time(22, 0)), 0, "telegram", "u1")
+    assert await store.read() is not None  # the connection is now in the pool
+    admin = await asyncpg.connect(migrated_url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        await admin.execute(
+            "select pg_terminate_backend(pid) from pg_stat_activity "
+            "where pid <> pg_backend_pid() and datname = current_database()"
+        )
+    finally:
+        await admin.close()
+
+    with pytest.raises(SettingsStoreFailure) as raised:
+        await store.read()
+
+    said = _everything_said_about(raised.value)
+    assert "Kiritimati" not in said
+    assert "SELECT" not in said
+    assert raised.value.cause_class
+
+
 @pytest.mark.parametrize("kind", list(_READ_FAULTS))
 async def test_given_a_database_fault_when_read_then_no_sql_parameter_or_zone_is_in_the_error_or_the_log(
     kind: str, store: PgSettingsStore, engine: AsyncEngine, migrated_url: str, caplog: pytest.LogCaptureFixture
