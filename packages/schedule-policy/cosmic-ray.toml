@@ -1,0 +1,11 @@
+# Mutation testing for U-quiet-hours-01 (criterion 10): policy.py and parse.py, score >= 85 %.
+# Run: uv run cosmic-ray init cosmic-ray.toml <session>.sqlite && uv run cosmic-ray exec cosmic-ray.toml <session>.sqlite
+# then: uv run cr-rate <session>.sqlite --fail-over 15   (percent of surviving mutants)
+[cosmic-ray]
+module-path = "schedule_policy"
+timeout = 60.0
+excluded-modules = ["schedule_policy/testing.py", "schedule_policy/__init__.py"]
+test-command = "uv run --no-sync python -m pytest -x -q --no-cov -p no:cacheprovider tests"
+
+[cosmic-ray.distributor]
+name = "local"
