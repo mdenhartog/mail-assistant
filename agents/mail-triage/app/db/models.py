@@ -18,9 +18,12 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     LargeBinary,
+    SmallInteger,
     String,
     Text,
+    text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -82,6 +85,8 @@ class Alert(Base):
     awaiting_input: Mapped[str | None] = mapped_column(String(16))  # what Marco is asked to type next
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # When a held alert may be delivered: the quiet end under the policy valid when it was held (INT-002).
+    release_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Draft(Base):
@@ -141,3 +146,76 @@ class CatchupState(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Schedule(Base):
+    """The one row of adjustable times: quiet hours, daily overview, reminder default, zone (ADR-0025)."""
+
+    __tablename__ = "schedule"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_schedule_single_row"),
+        CheckConstraint(
+            "quiet_start BETWEEN 0 AND 1439 AND quiet_end BETWEEN 0 AND 1439 "
+            "AND overview_at BETWEEN 0 AND 1439 AND remind_at BETWEEN 0 AND 1439",
+            name="ck_schedule_minutes_range",
+        ),
+        CheckConstraint("quiet_start <> quiet_end", name="ck_schedule_quiet_distinct"),
+        CheckConstraint(
+            "((quiet_end - quiet_start + 1440) % 1440) BETWEEN 60 AND 720", name="ck_schedule_window_length"
+        ),
+        CheckConstraint(
+            "((overview_at - quiet_start + 1440) % 1440) >= ((quiet_end - quiet_start + 1440) % 1440)",
+            name="ck_schedule_overview_outside",
+        ),
+        CheckConstraint(
+            "((remind_at - quiet_start + 1440) % 1440) >= ((quiet_end - quiet_start + 1440) % 1440)",
+            name="ck_schedule_remind_outside",
+        ),
+        CheckConstraint("zone ~ '^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$'", name="ck_schedule_zone_pattern"),
+        CheckConstraint("updated_via IN ('telegram', 'web')", name="ck_schedule_updated_via"),
+        {"schema": "settings"},
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    zone: Mapped[str] = mapped_column(Text)
+    quiet_start: Mapped[int] = mapped_column(SmallInteger)  # minutes after midnight
+    quiet_end: Mapped[int] = mapped_column(SmallInteger)
+    overview_at: Mapped[int] = mapped_column(SmallInteger)
+    remind_at: Mapped[int] = mapped_column(SmallInteger)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    updated_via: Mapped[str] = mapped_column(String(16))
+    updated_by: Mapped[str] = mapped_column(String(64))
+
+
+class SettingsChange(Base):
+    """Append-only record of every change to the schedule, written by a database trigger (AC-30). No free text."""
+
+    __tablename__ = "settings_change"
+    __table_args__ = ({"schema": "settings"},)
+    # The table has no key (rows are never addressed); the mapper only needs to be told which columns identify a row.
+    __mapper_args__ = {"primary_key": ["at", "via", "by"]}  # noqa: RUF012
+
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    via: Mapped[str] = mapped_column(String(16))
+    by: Mapped[str] = mapped_column(String(64))
+    old: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    new: Mapped[dict[str, object]] = mapped_column(JSONB)
+
+
+class Conversation(Base):
+    """The pending Telegram dialogue, if any (a single row, ADR-0026)."""
+
+    __tablename__ = "conversation"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_conversation_single_row"),
+        CheckConstraint("kind IN ('snooze', 'reply', 'settings')", name="ck_conversation_kind"),
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # snooze, reply or settings
+    target: Mapped[str | None] = mapped_column(String(64))
+    step: Mapped[str] = mapped_column(String(32))
+    partial: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    nonce: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

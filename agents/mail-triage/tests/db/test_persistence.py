@@ -41,7 +41,9 @@ async def test_given_the_migration_when_upgraded_downgraded_and_upgraded_then_ea
     engine = create_async_engine(database_url)
     async with engine.connect() as connection:
         differences = await connection.run_sync(
-            lambda sync: compare_metadata(MigrationContext.configure(sync), Base.metadata)
+            lambda sync: compare_metadata(
+                MigrationContext.configure(sync, opts={"include_schemas": True}), Base.metadata
+            )
         )
     await engine.dispose()
 
