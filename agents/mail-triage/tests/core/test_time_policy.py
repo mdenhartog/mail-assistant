@@ -182,3 +182,15 @@ def test_given_sydney_whose_clocks_change_in_october_and_april_when_asked_then_t
     assert in_quiet_hours(winter, policy)
     assert next_quiet_end(summer, policy) == datetime(2026, 11, 30, 20, 0, tzinfo=UTC)
     assert next_quiet_end(winter, policy) == datetime(2026, 6, 30, 21, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize("hours", [1, 168])
+def test_given_the_smallest_and_largest_number_of_hours_when_snoozing_then_they_are_accepted(hours: int) -> None:
+    now = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+
+    assert remind_due(now, hours, DEFAULT_POLICY) == now + timedelta(hours=hours)
+
+
+def test_given_a_boolean_when_snoozing_then_it_is_rejected_although_it_is_a_number() -> None:
+    with pytest.raises(InvalidSnoozeError):
+        remind_due(datetime(2026, 11, 9, 12, 0, tzinfo=UTC), True, DEFAULT_POLICY)
