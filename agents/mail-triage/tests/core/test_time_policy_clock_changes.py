@@ -11,7 +11,15 @@ from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 
-from app.core.time_policy import day_start, in_quiet_hours, next_overview, next_quiet_end, remind_due
+from app.core.time_policy import (
+    day_start,
+    in_quiet_hours,
+    local_day,
+    next_overview,
+    next_quiet_end,
+    overview_on,
+    remind_due,
+)
 from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
 
@@ -211,3 +219,17 @@ def test_given_an_empty_window_when_asked_then_it_is_never_quiet() -> None:
     empty = make_policy(quiet_start=time(7, 0), quiet_end=time(7, 0))
 
     assert not any(in_quiet_hours(utc("2026-11-09T00:00") + timedelta(hours=hour), empty) for hour in range(48))
+
+
+def test_given_a_moment_near_midnight_when_its_local_day_is_asked_then_the_policy_zone_decides() -> None:
+    moment = utc("2026-11-09T23:30")
+
+    assert local_day(moment, make_policy(zone="Europe/Amsterdam")) == date(2026, 11, 10)
+    assert local_day(moment, make_policy(zone="America/New_York")) == date(2026, 11, 9)
+
+
+def test_given_a_day_when_its_overview_moment_is_asked_then_the_clock_change_rule_applies() -> None:
+    policy = make_policy(zone="Europe/Amsterdam", overview_at=time(2, 30))
+
+    assert overview_on(date(2026, 3, 29), policy) == utc("2026-03-29T01:00")  # 02:30 does not exist: 03:00
+    assert overview_on(date(2026, 11, 9), make_policy()) == utc("2026-11-09T17:00")  # 18:00 in winter time
