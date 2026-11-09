@@ -13,6 +13,7 @@ from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.db.pg_settings_store import PgSettingsStore
@@ -215,6 +216,48 @@ async def test_given_the_runtime_role_when_it_writes_reads_and_undoes_then_its_g
 
     assert undone.policy == first.policy
     assert await runtime_store.read() == undone
+
+
+_FAIL_AT_COMMIT = """
+CREATE FUNCTION public.fail_at_commit() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'injected fault at commit'; END $$;
+CREATE CONSTRAINT TRIGGER fail_at_commit AFTER INSERT OR UPDATE ON settings.schedule
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.fail_at_commit();
+"""
+
+
+async def _inject_commit_fault(engine: AsyncEngine) -> None:
+    async with engine.connect() as connection:
+        raw = await connection.get_raw_connection()
+        await raw.driver_connection.execute(_FAIL_AT_COMMIT)  # type: ignore[union-attr]
+
+
+async def test_given_a_fault_after_validation_when_a_first_write_commits_then_nothing_is_stored(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    await _inject_commit_fault(engine)
+
+    with pytest.raises(DBAPIError):
+        await store.write(make_policy(), 0, "telegram", "u1")
+
+    assert await store.read() is None
+    assert await _audit_count(engine) == 0
+
+
+async def test_given_a_fault_after_validation_when_an_update_commits_then_row_and_audit_are_unchanged(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    first = await store.write(make_policy(), 0, "web", "u1")
+    second = await store.write(make_policy(quiet_start=time(22, 0)), first.version, "web", "u1")
+    await _inject_commit_fault(engine)
+
+    with pytest.raises(DBAPIError):
+        await store.write(make_policy(quiet_start=time(21, 0)), second.version, "telegram", "u1")
+    with pytest.raises(DBAPIError):
+        await store.undo(second.version, "telegram", "u1")
+
+    assert await store.read() == second
+    assert await _audit_count(engine) == 2
 
 
 async def test_given_writes_when_they_commit_then_each_adds_exactly_one_audit_record(
