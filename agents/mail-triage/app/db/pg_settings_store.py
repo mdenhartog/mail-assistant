@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import time
 from typing import TYPE_CHECKING, Any
 
 from schedule_policy.policy import TimePolicy, validate
 from sqlalchemy import Integer, func, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import DBAPIError
 
 from app.db.models import Schedule, SettingsChange
-from app.db.repos import NothingToUndo, PolicyRefused, StoredSettings, StoredSettingsInvalid, VersionConflict
+from app.db.repos import (
+    NothingToUndo,
+    PolicyRefused,
+    SettingsStoreFailure,
+    StoredSettings,
+    StoredSettingsInvalid,
+    VersionConflict,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -79,6 +88,42 @@ async def _replace_or_conflict(
     return _stored(row)
 
 
+async def _undo_in(session: AsyncSession, expected_version: int, via: str, by: str) -> StoredSettings:
+    """The undo inside one transaction: lock the row, check the version, replace with the previous values."""
+    current = (await session.execute(select(Schedule).where(Schedule.id == ROW).with_for_update())).scalar_one_or_none()
+    if current is None or current.version != expected_version:
+        raise VersionConflict
+    # The record of the change that made this version: matched by version, not by time, so a transaction that started
+    # early and committed late cannot be mistaken for the latest.
+    previous = (
+        await session.execute(
+            select(SettingsChange.old)
+            .where(SettingsChange.new["version"].astext.cast(Integer) == expected_version)
+            .order_by(SettingsChange.at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if previous is None:
+        raise NothingToUndo
+    policy = _policy(previous)
+    if problems := validate(policy):
+        raise PolicyRefused(problems)
+    return await _replace_or_conflict(session, policy, expected_version, via, by)
+
+
+@contextmanager
+def _without_row_values() -> Iterator[None]:
+    """Turn a database error into ``SettingsStoreFailure``.
+
+    SQLAlchemy and PostgreSQL put the bound parameters and the failing row (zone included) into the error text; the
+    original error is dropped (``from None``) so no logger or error report can print it (AC-33).
+    """
+    try:
+        yield
+    except DBAPIError as error:
+        raise SettingsStoreFailure(type(error.orig).__name__, getattr(error.orig, "sqlstate", None)) from None
+
+
 class PgSettingsStore:
     """Satisfies ``SettingsStore``; every method is one short transaction."""
 
@@ -110,8 +155,9 @@ class PgSettingsStore:
         """
         if problems := validate(policy):
             raise PolicyRefused(problems)
-        async with self._sessions.begin() as session:
-            return await _replace_or_conflict(session, policy, expected_version, via, by)
+        with _without_row_values():
+            async with self._sessions.begin() as session:
+                return await _replace_or_conflict(session, policy, expected_version, via, by)
 
     async def undo(self, expected_version: int, via: str, by: str) -> StoredSettings:
         """Put back the values the change to ``expected_version`` replaced, as a new audited write.
@@ -121,25 +167,6 @@ class PgSettingsStore:
             NothingToUndo: ``expected_version`` is the first write, which replaced nothing.
             PolicyRefused: the previous values no longer pass validation (for example a zone the tz database dropped).
         """
-        async with self._sessions.begin() as session:
-            current = (
-                await session.execute(select(Schedule).where(Schedule.id == ROW).with_for_update())
-            ).scalar_one_or_none()
-            if current is None or current.version != expected_version:
-                raise VersionConflict
-            # The record of the change that made this version: matched by version, not by time, so a transaction that
-            # started early and committed late cannot be mistaken for the latest.
-            previous = (
-                await session.execute(
-                    select(SettingsChange.old)
-                    .where(SettingsChange.new["version"].astext.cast(Integer) == expected_version)
-                    .order_by(SettingsChange.at.desc())
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if previous is None:
-                raise NothingToUndo
-            policy = _policy(previous)
-            if problems := validate(policy):
-                raise PolicyRefused(problems)
-            return await _replace_or_conflict(session, policy, expected_version, via, by)
+        with _without_row_values():
+            async with self._sessions.begin() as session:
+                return await _undo_in(session, expected_version, via, by)

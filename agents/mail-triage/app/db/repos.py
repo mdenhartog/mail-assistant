@@ -150,6 +150,16 @@ class StoredSettingsInvalid(Exception):  # noqa: N818  # named by the contract, 
         self.rules = rules
 
 
+class SettingsStoreFailure(Exception):  # noqa: N818  # named by the contract, not an "...Error"
+    """The database refused or lost a write. Carries the error class and SQLSTATE only, never statement parameters."""
+
+    def __init__(self, cause_class: str, sqlstate: str | None) -> None:
+        """Keep what is safe to log about the cause."""
+        super().__init__(f"{cause_class} sqlstate={sqlstate}")
+        self.cause_class = cause_class
+        self.sqlstate = sqlstate
+
+
 class NothingToUndo(Exception):  # noqa: N818  # named by the contract, not an "...Error"
     """The version asked for is the first write: it replaced nothing, so there is nothing to put back."""
 
