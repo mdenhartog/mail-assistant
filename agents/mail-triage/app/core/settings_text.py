@@ -108,6 +108,39 @@ def refusal(problem: Problem, window_minutes: int) -> str:
     return f"That is not allowed ({problem.rule}). {example}."
 
 
+CHANGED_ELSEWHERE = "Your settings changed elsewhere. Nothing was saved. These are the current values."
+ZONE_LATER = "Changing the time zone is not available yet."  # replaced by the zone question in U-quiet-hours-10
+TAP_A_BUTTON = "Tap one of the Change buttons below."
+_MOVABLE = {
+    "overview_in_quiet_hours": "the daily overview",
+    "remind_in_quiet_hours": "the remind-me-later default",
+}
+
+
+def is_movable(problem: Problem) -> bool:
+    """True when the rule is 'this value is inside quiet hours': the one a one-tap move can fix."""
+    return problem.rule in _MOVABLE
+
+
+def move_label(end: time) -> str:
+    """The label of the one-tap move."""
+    return f"Move to {clock(end)} and save"
+
+
+def move_offer(policy: TimePolicy, problems: list[Problem], move_data: str, cancel_data: str) -> AlertMessage:
+    """Say which values the new quiet hours would trap and offer to move them to the quiet end, in one save."""
+    trapped = [f"{_MOVABLE[p.rule]} at {p.value}" for p in problems]
+    names = [_MOVABLE[p.rule] for p in problems]
+    window = f"{clock(policy.quiet_start)} to {clock(policy.quiet_end)}"
+    both = "both" if len(names) == 1 else "all three"
+    lines = [
+        f"Quiet hours {window} are not saved yet: {' and '.join(trapped)} would fall inside them.",
+        f"Move {' and '.join(names)} to {clock(policy.quiet_end)} and save {both}?",
+    ]
+    buttons = (Button(move_label(policy.quiet_end), move_data), Button("Cancel", cancel_data))
+    return AlertMessage(html.escape("\n".join(lines), quote=False), buttons)
+
+
 def card(policy: TimePolicy, change_data: dict[str, str], note: str | None = None) -> AlertMessage:
     """The settings card; ``change_data`` maps each value key to the callback data of its Change button."""
     buttons = tuple(Button(CHANGE_LABELS[key], change_data[key]) for key in VALUE_NAMES)
