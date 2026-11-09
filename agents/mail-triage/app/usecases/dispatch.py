@@ -37,6 +37,9 @@ SNOOZE_HOURS = "snooze_hours"
 REPLY_TEXT = "reply_text"
 ASK_HOURS = "How many hours should I wait (1 to 168)? Or say 'tomorrow'."
 USE_BUTTONS = "Use the buttons under an alert to reply, snooze or close it."
+FINISH_FIRST = "Finish or cancel the settings question first."
+OUT_OF_DATE = "That card is out of date."
+CANCELLED = "Cancelled. Nothing was changed."
 SETTINGS_TTL = timedelta(minutes=15)
 SEEN_UPDATES_MAX = 1024
 _ID = re.compile(r"[A-Za-z0-9-]{1,40}")
@@ -47,6 +50,8 @@ _ARITY = {"reply": 1, "later": 1, "stop": 1, "edit": 1, "cancel": 1, "send": 2}
 MAX_BUTTON_BYTES = 64
 _NONCE = re.compile(r"[A-Za-z0-9_-]{22}")  # the 16-byte URL-safe token of the conversation store
 _ARGUMENT = {"set": re.compile(r"[a-z][a-z_]{0,23}"), "tz": re.compile(r"[0-9]{1,2}"), "cancel": None, "undo": None}
+_START = re.compile(r"start:([a-z]{1,16})")  # starts a dialogue like its slash command; carries no nonce and no value
+_ASKS_FOR_TEXT = frozenset({"reply", "later", "edit"})
 _SETTINGS_BUTTON = re.compile(r"(set|tz|cancel|undo):(?:([a-z0-9_]+):)?([A-Za-z0-9_-]+)")
 
 
@@ -223,13 +228,8 @@ class QuestionFlows:
         self._store = store
         self._chat = chat
 
-    async def button(self, data: str) -> None:
-        """Run one snooze or reply button; anything that does not parse does nothing."""
-        parsed = _parse(data)
-        if parsed is not None:
-            await self._button(*parsed)
-
-    async def _button(self, action: str, args: list[str]) -> None:
+    async def run(self, action: str, args: list[str]) -> None:
+        """Run one parsed snooze or reply button."""
         target = args[0]
         if action == "reply":
             await self._reply.begin(target)
@@ -350,15 +350,40 @@ class CommandRouter:
             await owner.on_text(claimed, text)
 
     async def _button(self, command: Command) -> None:
+        started = _START.fullmatch(command.data)
+        if started is not None:
+            handler = self._handlers.get(started.group(1))
+            if handler is not None:
+                await self._start(handler)
+            return
         parsed = _settings_button(command.data)
-        if parsed is None:
-            await self._flows.button(command.data)
+        if parsed is not None:
+            await self._settings_button(command, *parsed)
             return
-        action, argument, nonce = parsed
+        question = _parse(command.data)
+        if question is None:
+            return
+        if question[0] in _ASKS_FOR_TEXT and await self._settings_pending():
+            await self._chat.say(FINISH_FIRST)  # an older question must not replace the settings question
+            return
+        await self._flows.run(*question)
+
+    async def _settings_pending(self) -> bool:
         current = await self._conversations.current()
+        return current is not None and current.kind in self._handlers
+
+    async def _settings_button(self, command: Command, action: str, argument: str, nonce: str) -> None:
         handler = self._handlers.get("settings")
-        if handler is None or current is None or current.kind != handler.kind or current.nonce != nonce:
+        if handler is None:
             return
-        claimed = await self._claim(current)
-        if claimed is not None:
+        current = await self._conversations.current()
+        if current is None:
+            return
+        claimed = await self._claim(current) if current.kind == handler.kind and current.nonce == nonce else None
+        if claimed is None:
+            await self._chat.offer(OUT_OF_DATE, "Show settings", f"start:{handler.kind}")
+        elif action == "cancel":
+            await self._conversations.clear()
+            await self._chat.edit_message(command.message_id, CANCELLED)
+        else:
             await handler.on_button(claimed, action, argument)
