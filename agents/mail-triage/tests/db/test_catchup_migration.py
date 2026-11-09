@@ -92,7 +92,9 @@ async def test_given_all_migrations_when_compared_with_the_models_then_there_is_
     try:
         async with engine.connect() as connection:
             diff = await connection.run_sync(
-                lambda sync: compare_metadata(MigrationContext.configure(sync), Base.metadata)
+                lambda sync: compare_metadata(
+                    MigrationContext.configure(sync, opts={"include_schemas": True}), Base.metadata
+                )
             )
     finally:
         await engine.dispose()

@@ -160,7 +160,9 @@ class Schedule(Base):
             name="ck_schedule_minutes_range",
         ),
         CheckConstraint("quiet_start <> quiet_end", name="ck_schedule_quiet_distinct"),
-        CheckConstraint("((quiet_end - quiet_start + 1440) % 1440) BETWEEN 60 AND 720", name="ck_schedule_window_length"),
+        CheckConstraint(
+            "((quiet_end - quiet_start + 1440) % 1440) BETWEEN 60 AND 720", name="ck_schedule_window_length"
+        ),
         CheckConstraint(
             "((overview_at - quiet_start + 1440) % 1440) >= ((quiet_end - quiet_start + 1440) % 1440)",
             name="ck_schedule_overview_outside",
@@ -190,7 +192,7 @@ class SettingsChange(Base):
     """Append-only record of every change to the schedule, written by a database trigger (AC-30). No free text."""
 
     __tablename__ = "settings_change"
-    __table_args__ = {"schema": "settings"}
+    __table_args__ = ({"schema": "settings"},)
     # The table has no key (rows are never addressed); the mapper only needs to be told which columns identify a row.
     __mapper_args__ = {"primary_key": ["at", "via", "by"]}  # noqa: RUF012
 

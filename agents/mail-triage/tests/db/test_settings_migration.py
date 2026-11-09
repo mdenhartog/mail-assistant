@@ -156,9 +156,12 @@ _VALID_ROW = {
 
 async def _insert_schedule(connection: asyncpg.Connection, **overrides: object) -> None:
     row = _VALID_ROW | overrides
-    columns = ", ".join(row)
-    placeholders = ", ".join(f"${i}" for i in range(1, len(row) + 1))
-    await connection.execute(f"insert into settings.schedule ({columns}) values ({placeholders})", *row.values())
+    await connection.execute(
+        "insert into settings.schedule (id, zone, quiet_start, quiet_end, overview_at, remind_at, "
+        "updated_via, updated_by)"
+        " values ($1, $2, $3, $4, $5, $6, $7, $8)",
+        *(row[key] for key in _VALID_ROW),
+    )
 
 
 @pytest.mark.parametrize(
