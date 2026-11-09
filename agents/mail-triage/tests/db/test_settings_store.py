@@ -432,3 +432,96 @@ async def test_given_writes_when_they_commit_then_each_adds_exactly_one_audit_re
     assert rows[1].old["quiet_start"] == 23 * 60
     assert rows[1].new["version"] == second.version
     assert rows[1].new["quiet_start"] == 22 * 60
+
+
+# ---- U-quiet-hours-05b: a database fault on read is a SettingsStoreFailure, never the raw driver error --------------
+
+
+async def _no_grants_store(migrated_url: str) -> tuple[PgSettingsStore, AsyncEngine]:
+    """A store connected as a role that exists but has no rights on the settings schema."""
+    owner = await asyncpg.connect(migrated_url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        await owner.execute(
+            f"DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{RUNTIME_ROLE}') THEN "
+            f"CREATE ROLE {RUNTIME_ROLE} LOGIN PASSWORD '{RUNTIME_PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE; "
+            "END IF; END $$"
+        )
+        await owner.execute(f"REVOKE ALL ON SCHEMA settings FROM {RUNTIME_ROLE}")
+    finally:
+        await owner.close()
+    url = make_url(migrated_url).set(username=RUNTIME_ROLE, password=RUNTIME_PASSWORD)
+    no_grants_engine = create_async_engine(url)
+    return PgSettingsStore(async_sessionmaker(no_grants_engine, expire_on_commit=False)), no_grants_engine
+
+
+async def _read_fault(
+    kind: str, store: PgSettingsStore, engine: AsyncEngine, migrated_url: str
+) -> SettingsStoreFailure:
+    """Store a canary zone, break the database the way ``kind`` names, and read."""
+    await store.write(make_policy(zone=CANARY, quiet_start=time(22, 0)), 0, "telegram", "u1")
+    broken, to_dispose = store, None
+    if kind == "missing_table":
+        async with engine.begin() as connection:
+            await connection.execute(text("alter table settings.schedule rename to schedule_gone"))
+    else:
+        broken, to_dispose = await _no_grants_store(migrated_url)
+    try:
+        with pytest.raises(SettingsStoreFailure) as raised:
+            await broken.read()
+    finally:
+        if to_dispose is not None:
+            await to_dispose.dispose()
+    return raised.value
+
+
+_READ_FAULTS = {
+    "missing_table": ("UndefinedTableError", "42P01"),
+    "permission_denied": ("InsufficientPrivilegeError", "42501"),
+}
+
+
+@pytest.mark.parametrize("kind", list(_READ_FAULTS))
+async def test_given_a_database_fault_when_read_then_a_store_failure_names_class_and_sqlstate_only(
+    kind: str, store: PgSettingsStore, engine: AsyncEngine, migrated_url: str
+) -> None:
+    failure = await _read_fault(kind, store, engine, migrated_url)
+
+    assert (failure.cause_class, failure.sqlstate) == _READ_FAULTS[kind]
+
+
+async def test_given_a_pooled_connection_the_server_has_closed_when_read_then_a_store_failure_without_the_text(
+    store: PgSettingsStore, engine: AsyncEngine, migrated_url: str
+) -> None:
+    await store.write(make_policy(zone=CANARY, quiet_start=time(22, 0)), 0, "telegram", "u1")
+    assert await store.read() is not None  # the connection is now in the pool
+    admin = await asyncpg.connect(migrated_url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        await admin.execute(
+            "select pg_terminate_backend(pid) from pg_stat_activity "
+            "where pid <> pg_backend_pid() and datname = current_database()"
+        )
+    finally:
+        await admin.close()
+
+    with pytest.raises(SettingsStoreFailure) as raised:
+        await store.read()
+
+    said = _everything_said_about(raised.value)
+    assert "Kiritimati" not in said
+    assert "SELECT" not in said
+    assert raised.value.cause_class
+
+
+@pytest.mark.parametrize("kind", list(_READ_FAULTS))
+async def test_given_a_database_fault_when_read_then_no_sql_parameter_or_zone_is_in_the_error_or_the_log(
+    kind: str, store: PgSettingsStore, engine: AsyncEngine, migrated_url: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    failure = await _read_fault(kind, store, engine, migrated_url)
+    logging.getLogger("test.settings").error("settings read failed: %s", failure, exc_info=failure)
+
+    said = _everything_said_about(failure) + caplog.text
+    for forbidden in (CANARY, "Kiritimati", "SELECT", "FROM settings", "parameters", "schedule"):
+        assert forbidden not in said, forbidden
+    assert failure.__cause__ is None
+    assert failure.__suppress_context__

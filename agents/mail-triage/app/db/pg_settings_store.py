@@ -117,12 +117,14 @@ def _without_row_values() -> Generator[None]:
     """Turn a database error into ``SettingsStoreFailure``.
 
     SQLAlchemy and PostgreSQL put the bound parameters and the failing row (zone included) into the error text; the
-    original error is dropped (``from None``) so no logger or error report can print it (AC-33).
+    original error is dropped (``from None``) so no logger or error report can print it (AC-33). The class named is
+    the driver's (``UndefinedTableError``); SQLAlchemy's own wrapper class only says ``ProgrammingError``.
     """
     try:
         yield
     except DBAPIError as error:
-        raise SettingsStoreFailure(type(error.orig).__name__, getattr(error.orig, "sqlstate", None)) from None
+        driver_error = (error.orig.__cause__ or error.orig) if error.orig is not None else error
+        raise SettingsStoreFailure(type(driver_error).__name__, getattr(error.orig, "sqlstate", None)) from None
 
 
 class PgSettingsStore:
@@ -137,9 +139,11 @@ class PgSettingsStore:
 
         Raises:
             StoredSettingsInvalid: the row exists but fails ``validate``; it is never returned as a policy.
+            SettingsStoreFailure: the database could not answer (class and SQLSTATE only, never the SQL).
         """
-        async with self._sessions() as session:
-            row = await session.get(Schedule, ROW)
+        with _without_row_values():
+            async with self._sessions() as session:
+                row = await session.get(Schedule, ROW)
         if row is None:
             return None
         if any(getattr(row, name) is None for name in _VALUE_COLUMNS):  # NOT NULL was lifted by an operator
