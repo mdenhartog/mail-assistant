@@ -146,3 +146,58 @@ async def test_given_the_card_when_shown_then_its_buttons_carry_the_nonce_of_the
     assert (current.kind, current.step, current.partial) == ("settings", "card", {"version": 0})
     keys = ("quiet", "overview", "remind", "zone")
     assert [b.data for b in bot.last.buttons] == [f"set:{key}:{current.nonce}" for key in keys]
+
+
+# ---- criterion 2: quiet hours, two steps, one write (AC-13); the single-time questions (AC-8) -----------------------
+
+
+async def test_given_the_quiet_hours_question_when_a_valid_start_and_end_come_then_both_are_stored_together() -> None:
+    bot = bot_with(make_policy())
+
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    assert bot.last.text.startswith("Quiet hours, step 1 of 2: start time")
+    await bot.type("22:00")
+    assert bot.last.text.startswith("Quiet hours, step 2 of 2: end time")
+    assert bot.store.writes == []  # nothing is stored after the start alone
+    await bot.type("06:00")
+
+    expected = make_policy(quiet_start=time(22, 0), quiet_end=time(6, 0))
+    assert bot.store.writes == [(expected, 1, "telegram", str(USER))]
+    assert bot.last.text.splitlines()[0] == "Saved."
+    assert "Quiet hours: 22:00 to 06:00" in bot.last.text.splitlines()
+    assert bot.labels()[0] == "Change quiet hours"  # the card is shown again
+
+
+async def test_given_no_stored_row_when_quiet_hours_are_saved_then_the_first_row_is_written_at_version_0() -> None:
+    bot = bot_with(None)
+
+    await bot.settings()
+    await bot.tap("Change quiet hours")
+    await bot.type("22:00")
+    await bot.type("06:00")
+
+    assert [(version, via) for _policy, version, via, _by in bot.store.writes] == [(0, "telegram")]
+    assert bot.store.writes[0][0] == make_policy(quiet_start=time(22, 0), quiet_end=time(6, 0))
+
+
+async def test_given_the_overview_question_when_a_time_is_typed_then_only_the_overview_changes() -> None:
+    bot = bot_with(make_policy())
+
+    await bot.settings()
+    await bot.tap("Change daily overview")
+    assert bot.last.text.startswith("Daily overview: type a time, for example 18:00")
+    await bot.type("7:30pm")
+
+    assert bot.store.writes == [(make_policy(overview_at=time(19, 30)), 1, "telegram", str(USER))]
+
+
+async def test_given_the_reminder_question_when_a_time_is_typed_then_only_the_reminder_default_changes() -> None:
+    bot = bot_with(make_policy())
+
+    await bot.settings()
+    await bot.tap("Change remind-me-later default")
+    assert bot.last.text.startswith("Remind-me-later default: type a time, for example 09:00")
+    await bot.type("0815")
+
+    assert bot.store.writes == [(make_policy(remind_at=time(8, 15)), 1, "telegram", str(USER))]
