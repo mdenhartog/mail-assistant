@@ -205,3 +205,9 @@ def test_given_a_day_when_its_start_is_asked_then_it_is_the_first_valid_midnight
     zone: str, day: date, midnight: datetime
 ) -> None:
     assert day_start(day, make_policy(zone=zone)) == midnight
+
+
+def test_given_an_empty_window_when_asked_then_it_is_never_quiet() -> None:
+    empty = make_policy(quiet_start=time(7, 0), quiet_end=time(7, 0))
+
+    assert not any(in_quiet_hours(utc("2026-11-09T00:00") + timedelta(hours=hour), empty) for hour in range(48))
