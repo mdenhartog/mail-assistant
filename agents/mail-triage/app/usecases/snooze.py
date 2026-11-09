@@ -11,12 +11,13 @@ import re
 from typing import TYPE_CHECKING, Literal, Protocol
 
 from app.core.alert_state import AlertState, Event, InvalidTransitionError, transition
-from app.core.time_policy import InvalidSnoozeError, in_quiet_hours, remind_due
-from schedule_policy.policy import DEFAULT_POLICY
+from app.core.time_policy import InvalidSnoozeError, in_quiet_hours, next_quiet_end, remind_due
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
+
+    from app.usecases.policy_notice import PolicySource
 
 NOT_OPEN = "That alert is no longer open."
 ASK_AGAIN = "Please send a whole number of hours (1 to 168) or the word 'tomorrow'."
@@ -31,9 +32,18 @@ class SnoozeStore(Protocol):
         ...
 
     async def set_state(
-        self, alert_id: str, state: AlertState, *, due_at: datetime | None = None, resend: bool = False
+        self,
+        alert_id: str,
+        state: AlertState,
+        *,
+        due_at: datetime | None = None,
+        resend: bool = False,
+        release_at: datetime | None = None,
     ) -> None:
-        """Save the state; ``resend`` clears the stored Telegram message so the alert is sent again."""
+        """Save the state; ``resend`` clears the stored Telegram message so the alert is sent again.
+
+        ``release_at`` is the moment a held alert is released; both it and ``due_at`` are cleared when not given.
+        """
         ...
 
     async def due_snoozed(self, now: datetime) -> list[str]:
@@ -63,21 +73,22 @@ def _parse(text: str) -> int | Literal["tomorrow"] | None:
 class SnoozeService:
     """The snooze, close and release-when-due commands."""
 
-    def __init__(self, store: SnoozeStore, say: Say, now: Callable[[], datetime]) -> None:
-        """Wire the store, the chat and the clock."""
+    def __init__(self, store: SnoozeStore, say: Say, now: Callable[[], datetime], policy: PolicySource) -> None:
+        """Wire the store, the chat, the clock and the policy source."""
         self._store = store
         self._say = say
         self._now = now
+        self._policy = policy
 
     async def snooze(self, alert_id: str, answer: str) -> None:
-        """Snooze an open alert for the hours (or "tomorrow") Marco typed."""
+        """Snooze an open alert for the hours (or "tomorrow") Marco typed. One policy snapshot; the due moment is UTC."""
         if not await self._allowed(alert_id, Event.REMIND_LATER):
             return
         amount = _parse(answer)
         try:
             if amount is None:
                 raise InvalidSnoozeError
-            due = remind_due(self._now(), amount, DEFAULT_POLICY)
+            due = remind_due(self._now(), amount, await self._policy.current())
         except InvalidSnoozeError:
             await self._say.say(ASK_AGAIN)
             return
@@ -92,12 +103,19 @@ class SnoozeService:
         await self._store.record_audit("alert_closed", alert_id)
 
     async def release_due(self) -> list[str]:
-        """Reopen snoozed alerts that are due (held when it is quiet hours); each one only once."""
+        """Reopen snoozed alerts that are due; each one only once.
+
+        Judged with one policy snapshot taken now: inside quiet hours an alert is held until the quiet end valid now.
+        """
         now = self._now()
-        event = Event.DUE_IN_QUIET_HOURS if in_quiet_hours(now, DEFAULT_POLICY) else Event.DUE
+        policy = await self._policy.current()
+        quiet = in_quiet_hours(now, policy)
+        event = Event.DUE_IN_QUIET_HOURS if quiet else Event.DUE
+        release_at = next_quiet_end(now, policy) if quiet else None
         released: list[str] = []
         for alert_id in await self._store.due_snoozed(now):
-            await self._store.set_state(alert_id, transition(AlertState.SNOOZED, event), resend=True)
+            state = transition(AlertState.SNOOZED, event)
+            await self._store.set_state(alert_id, state, resend=True, release_at=release_at)
             released.append(alert_id)
         return released
 

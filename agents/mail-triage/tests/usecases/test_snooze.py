@@ -231,6 +231,15 @@ async def test_given_a_snooze_due_outside_quiet_hours_when_released_then_it_is_o
     assert store.rows["1"] == Row(AlertState.OPEN, None, True, None)
 
 
+async def test_given_no_quiet_hours_configured_when_a_snooze_falls_due_at_night_then_it_is_open() -> None:
+    no_quiet = replace(DEFAULT_POLICY, quiet_start=time(7, 0), quiet_end=time(7, 0))
+    store, say = FakeStore({"1": Row(AlertState.SNOOZED, due_at=NIGHT)}), FakeSay()
+
+    await service(store, say, now=NIGHT, source=FakePolicySource(no_quiet)).release_due()
+
+    assert store.rows["1"] == Row(AlertState.OPEN, None, True, None)
+
+
 async def test_given_a_policy_source_that_changes_on_its_second_call_when_releasing_then_it_is_asked_once() -> None:
     rows = {"1": Row(AlertState.SNOOZED, due_at=NIGHT), "2": Row(AlertState.SNOOZED, due_at=NIGHT)}
     store, say = FakeStore(rows), FakeSay()
