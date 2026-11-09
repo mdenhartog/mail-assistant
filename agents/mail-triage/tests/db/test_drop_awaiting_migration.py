@@ -48,7 +48,7 @@ async def _execute(url: str, sql: str) -> None:
 def _mail_and_alert(n: int, awaiting: str | None, updated: str) -> str:
     value = "null" if awaiting is None else f"'{awaiting}'"
     return (
-        f"insert into mail_item (id, gmail_message_id, thread_id, urgent, created_at) "
+        f"insert into mail_item (id, gmail_message_id, thread_id, urgent, created_at) "  # noqa: S608 - test seed, ints only
         f"values ({n}, 'm{n}', 't{n}', true, now()); "
         f"insert into alert (id, mail_item_id, state, due_at, awaiting_input, created_at, updated_at) "
         f"values ({n}, {n}, 'held', now(), {value}, now(), '{updated}')"
@@ -71,7 +71,7 @@ async def test_given_revision_0004_with_a_pending_snooze_question_when_migrated_
     [row] = await _fetch(database_url, "select id, kind, target, step, partial, nonce, expires_at from conversation")
     assert (row["id"], row["kind"], row["target"], row["step"]) == (1, "snooze", "7", "hours")
     assert row["expires_at"] == NO_EXPIRY
-    assert len(row["nonce"]) >= 16  # noqa: PLR2004 - a random nonce, as ConversationStore makes it
+    assert len(row["nonce"]) >= 16
     assert "awaiting_input" not in await _alert_columns(database_url)
     alerts = await _fetch(database_url, "select id, state from alert")
     assert [(a["id"], a["state"]) for a in alerts] == [(7, "held")]
@@ -113,7 +113,7 @@ async def test_given_no_pending_question_or_an_unknown_value_when_migrated_then_
     await _migrate(database_url, "head")
 
     assert await _fetch(database_url, "select 1 from conversation") == []
-    assert len(await _fetch(database_url, "select 1 from alert")) == 2  # noqa: PLR2004
+    assert len(await _fetch(database_url, "select 1 from alert")) == 2
 
 
 async def test_given_a_conversation_already_pending_when_migrated_then_it_is_not_overwritten(
@@ -123,7 +123,8 @@ async def test_given_a_conversation_already_pending_when_migrated_then_it_is_not
     await _execute(database_url, _mail_and_alert(1, "snooze_hours", "2026-11-09 09:00+00"))
     await _execute(
         database_url,
-        "insert into conversation (id, kind, step, nonce, expires_at) values (1, 'settings', 'start', 'keep-me', now())",
+        "insert into conversation (id, kind, step, nonce, expires_at) "
+        "values (1, 'settings', 'start', 'keep-me', now())",
     )
 
     await _migrate(database_url, "head")

@@ -2,7 +2,8 @@
 
 Upgrade: the most recently updated alert with a known open question is copied to the ``conversation`` row (unless a
 dialogue is already pending there, which is newer and wins), then the column is dropped. Open questions have no expiry,
-so the row stores the far-future ``NO_EXPIRY`` moment; the nonce is random (two UUIDs as hex, 64 characters, no extension needed), as unguessable as ConversationStore's.
+so the row stores the far-future ``NO_EXPIRY`` moment; the nonce is random
+(two UUIDs as hex, 64 characters).
 
 Downgrade (best effort): the column returns, nullable. A pending snooze or reply question is copied back to its alert;
 the conversation row is left as it is, so upgrading again changes nothing. Settings dialogues have no alert and are not
