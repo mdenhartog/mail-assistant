@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import time
 from typing import TYPE_CHECKING
 
 import pytest
+from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.db.pg_settings_store import PgSettingsStore
+from app.db.repos import StoredSettings, VersionConflict
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -39,3 +43,35 @@ async def test_given_no_row_when_read_then_none_and_when_written_with_version_0_
     assert (written.updated_via, written.updated_by) == ("telegram", "u1")
     assert await store.read() == written
     assert written.policy == policy
+
+
+async def _audit_count(engine: AsyncEngine) -> int:
+    async with engine.connect() as connection:
+        return (await connection.execute(text("select count(*) from settings.settings_change"))).scalar_one()
+
+
+async def test_given_two_sessions_that_read_the_same_version_when_both_write_then_one_wins_and_one_audit_is_added(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    await store.write(make_policy(), 0, "web", "seed")
+    barrier = asyncio.Barrier(2)
+
+    async def writer(quiet_start: time, by: str) -> object:
+        seen = await store.read()
+        assert seen is not None
+        await barrier.wait()  # both have read version 1; neither has written yet
+        try:
+            return await store.write(make_policy(quiet_start=quiet_start), seen.version, "telegram", by)
+        except VersionConflict as conflict:
+            return conflict
+
+    outcomes = await asyncio.gather(writer(time(22, 0), "a"), writer(time(21, 0), "b"))
+
+    winners = [o for o in outcomes if isinstance(o, StoredSettings)]
+    losers = [o for o in outcomes if isinstance(o, VersionConflict)]
+    assert (len(winners), len(losers)) == (1, 1)
+    stored = await store.read()
+    assert stored == winners[0]
+    assert stored.version == 2
+    assert validate(stored.policy) == []
+    assert await _audit_count(engine) == 2  # the seed and the winner; the loser left nothing
