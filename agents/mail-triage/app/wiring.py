@@ -28,36 +28,35 @@ from app.db import repos
 from app.db.migrate import upgrade
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
+from app.db.pg_policy_source import PgPolicySource
+from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
 from app.usecases.overview import OverviewService
+from app.usecases.policy_notice import PolicyNotice
 from app.usecases.reply import ReplyService
+from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.snooze import SnoozeService
 from app.usecases.triage import TriagePipeline
-from schedule_policy.policy import DEFAULT_POLICY
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
     from app.settings import Settings
-    from schedule_policy.policy import TimePolicy
 
 logger = logging.getLogger(__name__)
 
 
-class DefaultPolicySource:
-    """Interim ``PolicySource``: always the defaults. U-quiet-hours-14 replaces it with the stored settings."""
-
-    async def current(self) -> TimePolicy:
-        """The defaults, so the first release behaves exactly as before."""
-        return DEFAULT_POLICY
+def make_engine(url: str) -> AsyncEngine:
+    """The one database engine; bound parameters (a stored time zone, a typed answer) never reach an error or a log."""
+    return create_async_engine(url, hide_parameters=True)
 
 
 HEARTBEAT = Path("/tmp/heartbeat")  # noqa: S108  # nosec B108 - the container's own tmpfs; the probe reads it
@@ -130,18 +129,22 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     )
     budget = DailyBudget(settings.daily_model_budget, today)  # one budget: the catch-up only gets what new mail leaves
     judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
-    policy = DefaultPolicySource()
+    settings_store = PgSettingsStore(sessions)
+    policy = PgPolicySource(settings_store, PolicyNotice(outbox))  # one per process: it holds the last good values
+    conversations = ConversationStore(sessions, now)
     snooze = SnoozeService(store, outbox, now, policy)
     reply = ReplyService(store, mailbox, sender, outbox, own_address=own_address, now=now, new_id=new_id)  # type: ignore[arg-type]
+    router = CommandRouter(reply, snooze, store, outbox, conversations)
+    router.register(SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now))
     return Runner(
         pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now, policy),  # type: ignore[arg-type]
         catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now, policy),  # type: ignore[arg-type]
         delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
-        overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, DefaultPolicySource()),
+        overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),
         store=store,
         inbox=inbox,
-        router=CommandRouter(reply, snooze, store, outbox, ConversationStore(sessions, now)),
+        router=router,
         heartbeat=heartbeat,
         interval_seconds=settings.poll_interval_seconds,
         now=now,
@@ -157,7 +160,7 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
     from google.oauth2.credentials import Credentials  # noqa: PLC0415
     from googleapiclient.discovery import build  # noqa: PLC0415
 
-    engine = create_async_engine(settings.database_url.get_secret_value())
+    engine = make_engine(settings.database_url.get_secret_value())
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.connect() as lock_connection:
         if not await repos.try_lock(lock_connection):

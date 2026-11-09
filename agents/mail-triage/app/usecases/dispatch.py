@@ -22,7 +22,7 @@ import logging
 import re
 from collections import OrderedDict
 from datetime import timedelta
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from app.core.alert_state import AlertState
 from app.core.settings_text import UNDO_CHANGED
@@ -169,10 +169,10 @@ class DialogueHandler(Protocol):
     dialogue with ``clear``. Cancel is handled by the router and never reaches the handler.
     """
 
-    kind: Kind
-    commands: frozenset[str]
-    first_step: str
-    ttl: timedelta | None
+    kind: ClassVar[Kind]
+    commands: ClassVar[frozenset[str]]
+    first_step: ClassVar[str]
+    ttl: ClassVar[timedelta | None]
 
     async def begin(self, conversation: OpenConversation) -> None:
         """Show the first question."""

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.pg_policy_source import PgPolicySource
 from app.settings import load_settings
 from app.usecases.settings_dialog import SettingsDialog
-from app.wiring import build_runner
+from app.wiring import build_runner, make_engine
 from tests.test_settings import VALID
 
 
@@ -51,3 +51,9 @@ def test_given_the_wiring_when_built_then_the_settings_dialogue_is_registered_wi
 
 def runner_handlers(router: Any) -> Any:
     return vars(router).get("_handlers", {}).values()
+
+
+def test_given_the_engine_factory_when_an_engine_is_made_then_bound_parameters_are_hidden() -> None:
+    engine = make_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")
+
+    assert engine.sync_engine.hide_parameters is True
