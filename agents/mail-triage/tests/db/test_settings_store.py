@@ -1,4 +1,4 @@
-"""U-quiet-hours-05: the settings store against a real PostgreSQL (ADR-0025; AC-13, AC-21, AC-29, AC-30, AC-33, AC-36)."""
+"""U-quiet-hours-05: the settings store on a real PostgreSQL (ADR-0025; AC-13, AC-21, AC-29, AC-30, AC-33, AC-36)."""
 
 from __future__ import annotations
 
@@ -14,10 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import asyncpg
 import pytest
-from schedule_policy.policy import validate
-from schedule_policy.testing import make_policy
 from sqlalchemy import text
-from schedule_policy.policy import TimePolicy
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
@@ -31,11 +28,11 @@ from app.db.repos import (
     StoredSettingsInvalid,
     VersionConflict,
 )
+from schedule_policy.policy import TimePolicy, validate
+from schedule_policy.testing import make_policy
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Coroutine
-
-    from schedule_policy.policy import TimePolicy
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 RUNTIME_ROLE = "mail_triage_runtime"
@@ -146,7 +143,9 @@ async def test_given_an_undo_with_the_current_version_when_run_then_the_previous
 ) -> None:
     before = make_policy()
     first = await store.write(before, 0, "web", "u1")
-    second = await store.write(make_policy(zone="America/New_York", quiet_start=time(22, 0)), first.version, "telegram", "u2")
+    second = await store.write(
+        make_policy(zone="America/New_York", quiet_start=time(22, 0)), first.version, "telegram", "u2"
+    )
 
     undone = await store.undo(second.version, "telegram", "u2")
 
@@ -371,7 +370,9 @@ async def test_given_the_canary_zone_when_every_failure_path_is_logged_then_no_r
     await attempt(store.write(replace(canary, overview_at=time(23, 0)), first.version, "telegram", "u1"))  # refused
     await attempt(store.undo(first.version, "telegram", "u1"))  # nothing to undo
     async with engine.begin() as connection:  # a statement that fails: its error text carries the bound parameters
-        await connection.execute(text("alter table settings.schedule add constraint ck_fault check (version < 2) not valid"))
+        await connection.execute(
+            text("alter table settings.schedule add constraint ck_fault check (version < 2) not valid")
+        )
     await attempt(store.write(replace(canary, quiet_start=time(21, 0)), first.version, "telegram", "u1"))  # fault
 
     assert {type(error) for error in errors} == {VersionConflict, PolicyRefused, NothingToUndo, SettingsStoreFailure}
@@ -388,7 +389,9 @@ async def test_given_writes_when_they_commit_then_each_adds_exactly_one_audit_re
 
     async with engine.connect() as connection:
         rows = (
-            await connection.execute(text('select via, by, old, new from settings.settings_change order by (new->>\'version\')::int'))
+            await connection.execute(
+                text("select via, by, old, new from settings.settings_change order by (new->>'version')::int")
+            )
         ).all()
     assert [(row.via, row.by) for row in rows] == [("web", "u1"), ("telegram", "u2")]
     assert rows[0].old is None

@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from datetime import time
 from typing import TYPE_CHECKING, Any
 
-from schedule_policy.policy import TimePolicy, validate
 from sqlalchemy import Integer, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError
@@ -20,9 +19,10 @@ from app.db.repos import (
     StoredSettingsInvalid,
     VersionConflict,
 )
+from schedule_policy.policy import TimePolicy, validate
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Generator, Mapping
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -112,7 +112,7 @@ async def _undo_in(session: AsyncSession, expected_version: int, via: str, by: s
 
 
 @contextmanager
-def _without_row_values() -> Iterator[None]:
+def _without_row_values() -> Generator[None]:
     """Turn a database error into ``SettingsStoreFailure``.
 
     SQLAlchemy and PostgreSQL put the bound parameters and the failing row (zone included) into the error text; the

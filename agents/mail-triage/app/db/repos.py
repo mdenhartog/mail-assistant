@@ -13,8 +13,9 @@ from sqlalchemy.dialects.postgresql import insert
 from app.db.models import AuditLog, Draft, MailItem
 
 if TYPE_CHECKING:
-    from schedule_policy.policy import Problem, TimePolicy
     from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
+
+    from schedule_policy.policy import Problem, TimePolicy
 
 LOCK_KEY = 7_265_001  # arbitrary constant: one running agent per database
 
