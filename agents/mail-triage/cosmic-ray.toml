@@ -1,0 +1,15 @@
+# Mutation testing for U-quiet-hours-03 (criterion 11): app/core/time_policy.py, score >= 85 %.
+# Keep the session file outside the repo. From agents/mail-triage:
+#   uv run cosmic-ray init cosmic-ray.toml $TMP/time_policy.sqlite
+#   uv run cosmic-ray exec cosmic-ray.toml $TMP/time_policy.sqlite
+#   uv run cr-rate $TMP/time_policy.sqlite --fail-over 15      (percent of surviving mutants)
+# On Windows the tool cannot stop a hung test run (its timeout leaves the grandchild process spinning), so the test
+# command ends itself after 30 s with faulthandler; a mutant that hangs counts as killed.
+[cosmic-ray]
+module-path = "app/core/time_policy.py"
+timeout = 90.0
+excluded-modules = []
+test-command = 'uv run --no-sync python -c "import faulthandler, sys, pytest; faulthandler.dump_traceback_later(30, exit=True); sys.exit(pytest.main([\"-x\", \"-q\", \"--no-cov\", \"-p\", \"no:cacheprovider\", \"tests/core/test_time_policy.py\", \"tests/core/test_time_policy_clock_changes.py\"]))"'
+
+[cosmic-ray.distributor]
+name = "local"
