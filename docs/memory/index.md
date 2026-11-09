@@ -29,4 +29,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0025 · Settings contract: own schema, agent-owned migrations, shared policy package · area:architecture · tags:mail-triage,settings,postgresql,contract · decisions/ADR-0025-settings-contract.md
 - ADR-0026 · Mail triage: one conversation state for all Telegram dialogues · area:architecture · tags:mail-triage,telegram,state · decisions/ADR-0026-single-conversation-state.md
 - ADR-0027 · Wall-clock times: resolution of non-existent and ambiguous local times · area:architecture · tags:mail-triage,time,dst · decisions/ADR-0027-wall-clock-resolution.md
+- ADR-0028 · Time-zone lookup: a hand-curated list of cities, countries and aliases · area:architecture · tags:mail-triage,time-zone,data · decisions/ADR-0028-place-list.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
