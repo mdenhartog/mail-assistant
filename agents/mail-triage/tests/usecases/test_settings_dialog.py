@@ -639,7 +639,7 @@ async def test_given_a_store_that_refuses_the_policy_at_write_time_when_saving_t
 
 
 @pytest.mark.parametrize("entry", ["begin", "ask", "save"])
-async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_only_a_stored_write_is_confirmed(
+async def test_given_a_conversation_that_expired_meanwhile_when_the_dialogue_moves_on_then_only_a_write_is_confirmed(
     entry: str,
 ) -> None:
     bot = bot_with(make_policy())

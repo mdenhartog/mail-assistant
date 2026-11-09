@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from app.db.repos import PolicyRefused, SettingsStoreFailure
+from app.db.repos import PolicyRefused, SettingsStoreFailure, StoredSettings, StoredSettingsInvalid
 from app.usecases.dispatch import button_data
 from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
@@ -52,9 +52,7 @@ async def change_quiet_hours(bot: Bot, start: str, end: str, now: datetime = EVE
 # ---- criterion 1: the full picture after a zone change (AC-20) ------------------------------------------------------
 
 
-async def test_given_a_zone_change_to_new_york_when_confirmed_then_offset_both_times_both_quiet_hours_and_overview() -> (
-    None
-):
+async def test_given_a_zone_change_to_new_york_when_confirmed_then_the_full_picture_is_sent() -> None:
     bot = bot_with(make_policy())
 
     await change_zone(bot, "New York")
@@ -78,7 +76,7 @@ async def test_given_the_overview_time_has_passed_there_when_confirmed_then_the_
     assert "Next overview: tomorrow 16:00" in lines(bot.last)
 
 
-async def test_given_a_zone_change_when_confirmed_then_one_undo_button_bound_to_a_long_lived_undo_conversation() -> None:
+async def test_given_a_zone_change_when_confirmed_then_undo_is_bound_to_a_24_hour_undo_conversation() -> None:
     bot = bot_with(make_policy())
 
     await change_zone(bot, "New York")
@@ -253,9 +251,7 @@ async def test_given_asia_kathmandu_when_confirmed_then_the_offset_is_labelled_u
 # ---- criterion 3: Undo with an unchanged row (AC-21) -----------------------------------------------------------------
 
 
-async def test_given_undo_and_an_unchanged_row_when_tapped_then_the_previous_values_return_with_a_new_confirmation() -> (
-    None
-):
+async def test_given_undo_and_an_unchanged_row_when_tapped_then_the_previous_values_return_and_are_confirmed() -> None:
     before = make_policy()
     bot = bot_with(before)
     await change_zone(bot, "New York")
@@ -367,7 +363,9 @@ async def test_given_previous_values_that_no_longer_pass_when_undo_is_tapped_the
 
     await bot.tap("Undo")
 
-    assert bot.last.text == "I could not put the previous values back because they are no longer allowed. Nothing was changed."
+    assert bot.last.text == (
+        "I could not put the previous values back because they are no longer allowed. Nothing was changed."
+    )
 
 
 # ---- criterion 7: Undo after 15 minutes or a restart (AC-21) ---------------------------------------------------------
@@ -512,3 +510,24 @@ async def test_given_the_canary_zone_when_confirmed_undone_and_failing_then_no_z
     assert "Kiritimati" not in caplog.text
     for nonce in nonces:
         assert nonce not in caplog.text
+
+
+async def test_given_a_stored_row_that_fails_validation_when_undo_is_tapped_then_it_is_undone_without_comparison() -> (
+    None
+):
+    bot = bot_with(make_policy())
+    await change_zone(bot, "New York")
+    good_read = bot.store.read
+
+    async def read_invalid() -> StoredSettings | None:
+        raise StoredSettingsInvalid(("value_missing",))
+
+    bot.store.read = read_invalid  # type: ignore[method-assign]
+    await bot.router.handle(button(bot.button_labelled("Undo").data))
+    bot.store.read = good_read  # type: ignore[method-assign]
+
+    assert len(bot.store.undos) == 1
+    assert bot.store.row is not None
+    assert bot.store.row.policy == make_policy()
+    assert bot.last.text.splitlines()[0] == "Undone. The previous values are back."
+    assert "there" not in bot.last.text
