@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 
 import asyncpg
+import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
@@ -138,3 +139,98 @@ async def test_given_settings_change_when_its_columns_are_inspected_then_via_and
         "character varying",
         "jsonb",
     }
+
+
+_VALID_ROW = {
+    "id": 1,
+    "zone": "Europe/Amsterdam",
+    "quiet_start": 600,
+    "quiet_end": 900,
+    "overview_at": 1080,
+    "remind_at": 540,
+    "updated_via": "web",
+    "updated_by": "u1",
+}
+
+
+async def _insert_schedule(connection: asyncpg.Connection, **overrides: object) -> None:
+    row = _VALID_ROW | overrides
+    columns = ", ".join(row)
+    placeholders = ", ".join(f"${i}" for i in range(1, len(row) + 1))
+    await connection.execute(f"insert into settings.schedule ({columns}) values ({placeholders})", *row.values())
+
+
+@pytest.mark.parametrize(
+    ("constraint", "overrides"),
+    [
+        ("ck_schedule_minutes_range", {"remind_at": 1440}),
+        ("ck_schedule_minutes_range", {"quiet_start": -1}),
+        ("ck_schedule_quiet_distinct", {"quiet_start": 600, "quiet_end": 600}),
+        ("ck_schedule_window_length", {"quiet_start": 600, "quiet_end": 630}),
+        ("ck_schedule_window_length", {"quiet_start": 0, "quiet_end": 781}),
+        ("ck_schedule_overview_outside", {"overview_at": 700}),
+        ("ck_schedule_overview_outside", {"overview_at": 600}),
+        ("ck_schedule_remind_outside", {"remind_at": 899}),
+        ("ck_schedule_zone_pattern", {"zone": "Europe/Amsterdam; drop table alert"}),
+        ("ck_schedule_zone_pattern", {"zone": "a/b/c/d"}),
+        ("ck_schedule_updated_via", {"updated_via": "email"}),
+        ("ck_schedule_single_row", {"id": 2}),
+    ],
+)
+async def test_given_a_row_breaking_one_rule_when_inserted_directly_then_postgres_refuses_it(
+    migrated_url: str, constraint: str, overrides: dict[str, object]
+) -> None:
+    connection = await asyncpg.connect(_plain(migrated_url))
+    try:
+        with pytest.raises(asyncpg.CheckViolationError) as refused:
+            await _insert_schedule(connection, **overrides)
+    finally:
+        await connection.close()
+
+    assert refused.value.constraint_name == constraint
+
+
+async def test_given_a_window_over_midnight_and_a_time_at_its_end_when_inserted_then_it_is_accepted(
+    migrated_url: str,
+) -> None:
+    connection = await asyncpg.connect(_plain(migrated_url))
+    try:
+        # 22:00-07:00 crosses midnight; 07:00 is outside (end exclusive).
+        await _insert_schedule(connection, quiet_start=1320, quiet_end=420, overview_at=420, remind_at=1319)
+        count = await connection.fetchval("select count(*) from settings.schedule")
+    finally:
+        await connection.close()
+
+    assert count == 1
+
+
+async def test_given_a_window_over_midnight_and_a_time_at_its_start_when_inserted_then_postgres_refuses_it(
+    migrated_url: str,
+) -> None:
+    connection = await asyncpg.connect(_plain(migrated_url))
+    try:
+        with pytest.raises(asyncpg.CheckViolationError) as refused:
+            await _insert_schedule(connection, quiet_start=1320, quiet_end=420, overview_at=1320)
+    finally:
+        await connection.close()
+
+    assert refused.value.constraint_name == "ck_schedule_overview_outside"
+
+
+async def test_given_the_conversation_table_when_bad_rows_are_inserted_then_postgres_refuses_them(
+    migrated_url: str,
+) -> None:
+    sql = "insert into conversation (id, kind, step, nonce, expires_at) values ($1, $2, 's', 'n', now())"
+    connection = await asyncpg.connect(_plain(migrated_url))
+    try:
+        await connection.execute(sql, 1, "settings")
+        with pytest.raises(asyncpg.CheckViolationError) as second:
+            await connection.execute(sql, 2, "snooze")
+        await connection.execute("delete from conversation")
+        with pytest.raises(asyncpg.CheckViolationError) as kind:
+            await connection.execute(sql, 1, "other")
+    finally:
+        await connection.close()
+
+    assert second.value.constraint_name == "ck_conversation_single_row"
+    assert kind.value.constraint_name == "ck_conversation_kind"
