@@ -1,8 +1,9 @@
 """The daily overview: counts per category and the mails the agent was unsure about (spec AC-31).
 
-The times come from the ``TimePolicy`` handed in (the default one until the settings arrive, INT-002). A day is
+The times come from the ``TimePolicy`` handed in (the default one until the settings arrive, INT-002). A local date is
 settled when its overview time has passed and quiet hours are over: either one message goes out or, when nothing was
-filed, none. Either way the day is remembered, so a late mail never triggers a second look.
+filed, none. Either way the date is remembered, so a late mail never triggers a second look. The mail of an overview
+is everything filed since the previous one was settled (AC-27).
 """
 
 from __future__ import annotations
@@ -10,7 +11,6 @@ from __future__ import annotations
 import html
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
 from app.core.alert_text import MAX_MESSAGE_CHARS, AlertMessage
@@ -19,10 +19,9 @@ from app.core.time_policy import day_start, in_quiet_hours, local_day, overview_
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from datetime import date
+    from datetime import date, datetime
 
     from app.usecases.policy_notice import PolicySource
-    from schedule_policy.policy import TimePolicy
 
 LABEL_PREFIX = "Assistant/"
 UNSURE_LISTED = 10
@@ -128,23 +127,18 @@ class OverviewService:
         self._policies = policies
 
     async def send_overview(self) -> None:
-        """Send the overview for the latest overview time that has passed, once, outside quiet hours."""
+        """Send the overview once per local date, once its time has passed and outside quiet hours.
+
+        The window of mail runs from the instant the previous overview was settled, so a change of zone can neither
+        skip nor repeat a mail. Without a previous overview it starts at the beginning of the local day.
+        """
         policy = await self._policies.current()  # one snapshot for the whole run
         now = self._now()
-        if in_quiet_hours(now, policy):
+        today = local_day(now, policy)
+        if now < overview_on(today, policy) or in_quiet_hours(now, policy) or await self._log.overview_sent(today):
             return
-        day = self._pending_day(now, policy)
-        if day is None or await self._log.overview_sent(day):
-            return
-        mails = await self._mails.filed_without_alert_since(day_start(day, policy))
+        since = await self._log.last_settled_at() or day_start(today, policy)
+        mails = await self._mails.filed_without_alert_since(since)
         if mails:
             await self._outbox.send(build_overview(mails))
-        await self._log.mark_overview_sent(day, now)
-
-    def _pending_day(self, now: datetime, policy: TimePolicy) -> date | None:
-        """Today once its overview time has passed; yesterday only when quiet hours pushed it back."""
-        today = local_day(now, policy)
-        if now >= overview_on(today, policy):
-            return today
-        yesterday = today - timedelta(days=1)
-        return yesterday if in_quiet_hours(overview_on(yesterday, policy), policy) else None
+        await self._log.mark_overview_sent(today, now)

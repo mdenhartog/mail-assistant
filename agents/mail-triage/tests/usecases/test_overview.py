@@ -35,10 +35,11 @@ class FakeStore:
     sent_days: dict[date, datetime] = field(default_factory=dict)
     asked_since: list[datetime] = field(default_factory=list)
     timed: list[tuple[datetime, FiledMail]] = field(default_factory=list)
+    now: datetime = datetime.max.replace(tzinfo=UTC)  # a mail filed after this moment does not exist yet
 
     async def filed_without_alert_since(self, since: datetime) -> list[FiledMail]:
         self.asked_since.append(since)
-        return [*self.mails, *(mail for filed_at, mail in self.timed if filed_at >= since)]
+        return [*self.mails, *(mail for filed_at, mail in self.timed if since <= filed_at <= self.now)]
 
     async def overview_sent(self, day: date) -> bool:
         return day in self.sent_days
@@ -278,7 +279,7 @@ class Rig:
         self.store.timed.append((at, filed("Assistant/Finance", subject=subject)))
 
     async def run(self, at: datetime) -> None:
-        self.now = at
+        self.now = self.store.now = at
         await self.service.send_overview()
 
 
