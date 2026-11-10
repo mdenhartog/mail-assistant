@@ -27,13 +27,22 @@ that holds no real mail.
 
 ## Start
 
+Set `MAIL_TRIAGE_RUNTIME_PASSWORD` in `.env` as well (the password of the database role the agent runs with). Since
+unit 16b `app.consent` no longer creates tables, so the schema must be migrated first.
+
 1. `docker compose --profile dev up -d db` and wait until it is healthy.
-2. In `agents/mail-triage`, with `DATABASE_URL` pointing at the compose database and the other variables from `.env`
-   exported: `uv run python -m app.consent`. It creates the tables when they are missing, opens your browser, and
-   asks for the three Gmail permissions: sign in with the **test** Gmail account and accept them.
-3. Check the database now holds one row in `oauth_token` and that its `ciphertext` is unreadable.
-4. `docker compose --profile dev up -d --build mail-triage` and open the logs: `docker compose logs -f mail-triage`.
-5. Send the Telegram bot a message once (Start) so it may write to you.
+2. Run the migrate service once: `docker compose --profile dev run --rm --build mail-triage-migrate`. It migrates the
+   schema as the database owner, creates the role `mail_triage_runtime` and applies its grants, and ends with exit
+   code 0. It can be run again safely.
+3. In `agents/mail-triage`, with `DATABASE_URL` pointing at the compose database as the role `mail_triage_runtime`
+   and the other variables from `.env` exported: `uv run python -m app.consent`. If it stops and names the migrate
+   job, step 2 was not done. It opens your browser and asks for the three Gmail permissions: sign in with the **test**
+   Gmail account and accept them.
+4. Check the database now holds one row in `oauth_token` and that its `ciphertext` is unreadable.
+5. `docker compose --profile dev up -d --build mail-triage` and open the logs: `docker compose logs -f mail-triage`.
+   Compose also starts `mail-triage-migrate` first and the agent only after it has completed successfully; an agent
+   that exits with code 5 found a schema that is not at its head, so run step 2 again.
+6. Send the Telegram bot a message once (Start) so it may write to you.
 
 ## Seed
 

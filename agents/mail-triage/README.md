@@ -2,7 +2,7 @@
 
 Reads Marco's incoming Gmail, files each mail under a category, warns him through Telegram when a mail needs immediate attention, and sends a confirmed reply. Spec: `docs/specs/mail-triage.md`; design: `docs/design/mail-triage-design.md`; plan: `docs/plans/mail-triage.md`.
 
-Status: skeleton and configuration (unit U-01). The polling loop and the adapters arrive in later units.
+Status: in use. Adjustable quiet hours (INT-002, spec `docs/specs/adjustable-quiet-hours.md`) are built; the web settings page is the separate, later feature `web-settings`.
 
 ## Configuration
 
@@ -17,13 +17,58 @@ All values come from the environment (`.env` locally, a Kubernetes secret in pro
 | `DATABASE_URL` | PostgreSQL connection string of the **runtime role** `mail_triage_runtime` (contains the password) |
 | `POLL_INTERVAL_SECONDS` | Optional; default 60 |
 
-### Two commands, two database roles (ADR-0025)
+These are the names the process reads. In `.env` and `.env.example` the same values carry the prefix `MAIL_TRIAGE_` where compose maps them (see the table below).
 
-- `python -m app` (= `serve`) runs the agent as the runtime role, which owns nothing. It does not migrate: at start it checks that the schema is at the Alembic head of its image and otherwise exits with code 5 ("run the migrate job").
-- `python -m app migrate` is the one-shot job (compose service `mail-triage-migrate`, Helm PreSync Job). It reads only `DATABASE_OWNER_URL` (owner role, secret) and `RUNTIME_ROLE_PASSWORD` (secret), migrates under an advisory lock, creates or updates the role `mail_triage_runtime` and applies `app/db/grants.sql`. A missing key stops it with exit code 2 naming the key; any other failure exits with 6. It can be run again safely. The agent never receives the owner URL.
-- Locally the owner is the database's bootstrap user (`POSTGRES_PASSWORD`); set `MAIL_TRIAGE_RUNTIME_PASSWORD` in `.env` for the runtime role.
+### Two commands, two database roles (ADR-0025, ADR-0030)
 
-Quiet hours, the daily overview time, the snooze default and the time zone are constants in code (spec C7); making them adjustable is INT-002.
+The agent starts in two steps. The first runs once as the database owner, the second runs for as long as the agent lives.
+
+1. `python -m app migrate` is the one-shot job (compose service `mail-triage-migrate`, Helm PreSync Job; see [the worker chart](../../deploy/charts/worker/README.md)). It connects as the owner role and, under a PostgreSQL advisory lock so that two jobs never migrate at the same time:
+   - applies the Alembic migrations;
+   - creates or updates the login role `mail_triage_runtime` with a SCRAM-SHA-256 verifier that the job computes itself, so the clear password never reaches the server or its log. The job also sets `NOREPLICATION NOBYPASSRLS` and fails if the role is a member of another role;
+   - applies `app/db/grants.sql`.
+
+   It can be run again safely. It reads only `DATABASE_OWNER_URL` and `RUNTIME_ROLE_PASSWORD` (both secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6. The `?ssl=` setting of the owner URL is honoured (`verify-full`, and so on).
+2. `python -m app` (= `serve`) runs the agent as the runtime role, which owns nothing and cannot run DDL. It does not migrate: at start it only checks that the schema is at the Alembic head of its image, and otherwise exits with code 5 ("run the migrate job"). The agent never receives the owner URL.
+
+`python -m app.consent` (the one-time Gmail consent) no longer creates tables either. It stops and names the migrate job when the schema is not current, so run the migrate job first.
+
+| Exit code | Meaning |
+|---|---|
+| 2 | Missing or invalid configuration (names the key, never the value) |
+| 3 | No Gmail consent stored yet |
+| 4 | Another copy of the agent holds the lock |
+| 5 | `serve`: the schema is not at the expected head, run the migrate job |
+| 6 | `migrate`: the migration failed |
+
+| Where | Variable | Meaning |
+|---|---|---|
+| `.env` (compose) | `MAIL_TRIAGE_DATABASE_URL` | Optional. Leave empty locally; compose then builds the runtime URL from `MAIL_TRIAGE_RUNTIME_PASSWORD`. In production, a full URL of the runtime role |
+| `.env` (compose) | `MAIL_TRIAGE_RUNTIME_PASSWORD` | Password of `mail_triage_runtime`; the migrate job passes it to the job as `RUNTIME_ROLE_PASSWORD` |
+| `.env` (compose) | `MAIL_TRIAGE_DATABASE_OWNER_URL` | Optional override of the owner URL; compose otherwise connects as the database's bootstrap user with `POSTGRES_PASSWORD` |
+| migrate job | `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` | What the job reads (secrets; in Kubernetes the migration Secret) |
+| agent | `DATABASE_URL` | What the agent reads (runtime role) |
+
+Locally, `docker compose --profile dev up` (or `--profile components`) starts `mail-triage-migrate` first; `mail-triage` starts when it has completed successfully. The migrate service is not in `prod-like`, because `up --wait` counts a container that has exited as failed.
+
+### What the runtime role may do
+
+`app/db/grants.sql` is the single list of rights, one grant per table by what the code does (ADR-0030):
+
+- the mail audit trail (`audit_log`, `overview_log`) is append-only: select and insert, never update or delete;
+- mail, alert, draft, token, poll and catch-up tables: select, insert and update, never delete;
+- `conversation` (the one pending dialogue): the only table with delete;
+- `settings.schedule`: select, insert and update of the single settings row. The change history `settings.settings_change` can only be read.
+
+Two triggers on `settings.schedule` make the database, not the application, decide what a change is. The guard refuses a write that does not raise `version` by exactly one and a write whose channel does not match the login role. The audit trigger writes one record per change (time, channel, actor, old and new values, and the login role taken from `session_user`), so the runtime role means the channel `telegram` and cannot claim another one. The runtime role cannot insert into the history directly.
+
+## Settings that Marco changes
+
+Quiet hours, the daily overview time, the remind-me-later default and the time zone are stored in the database (schema `settings`, ADR-0025) and changed with `/settings` in Telegram; the user guide is [Quiet hours and other settings in Telegram](../../docs/user-guide/quiet-hours.md). Validation and the place list (ADR-0028) live in the shared package `packages/schedule-policy`, and the dialogue keeps its state in one `conversation` table (ADR-0026). Wall-clock rules for gaps and repeated hours are in ADR-0027. With no stored row the agent uses the first-release values. If the stored row cannot be read or is invalid, the agent uses the last good values (or the defaults) and sends Marco one Telegram notice per incident.
+
+### Telegram update id
+
+`poll_state.telegram_update_id` holds the id of the last Telegram update that was handled. The id is stored after the update has been handled, and it only moves forward. Telegram redelivers an update that was not acknowledged, for example after a restart; typed text is read as the answer to whatever question is open, so a redelivered answer could otherwise be taken as the answer to the next question. On start the agent skips every update at or below the stored id. If handling fails, the id is not stored and the update is handled again.
 
 ## Catch-up of old unread mail
 
