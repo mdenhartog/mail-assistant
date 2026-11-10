@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_store import PgStore
 from app.usecases.overview import OverviewService
@@ -86,7 +87,11 @@ class Policies:
 async def test_given_the_overview_sent_in_amsterdam_when_the_zone_becomes_new_york_then_the_next_loses_no_mail(
     engine: AsyncEngine, sessions: async_sessionmaker, log: PgOverviewLog
 ) -> None:
-    store, outbox, policies = PgStore(sessions), Outbox(), Policies(DEFAULT_POLICY)
+    store, outbox, policies = (
+        PgStore(sessions, ConversationStore(sessions, lambda: SENT)),
+        Outbox(),
+        Policies(DEFAULT_POLICY),
+    )
     clock = [SENT]
     service = OverviewService(store, log, outbox, now=lambda: clock[0], policies=policies)
 

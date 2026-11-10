@@ -96,13 +96,12 @@ async def test_given_the_invalid_card_when_text_is_typed_then_the_card_comes_bac
 
     await bot.type("hello")
 
-    assert bot.last.text.startswith(NOTE)
+    assert bot.last.text.startswith("Tap one of the Change buttons below.")
+    assert NOTE in bot.last.text
     assert bot.labels()[0] == "Change quiet hours"
 
 
-async def test_given_the_row_was_repaired_elsewhere_when_an_answer_comes_then_the_changed_elsewhere_card_has_no_note() -> (
-    None
-):
+async def test_given_the_row_was_repaired_elsewhere_when_answered_then_changed_elsewhere_without_the_note() -> None:
     bot = _bot()
     await bot.settings()
     await bot.tap("Change daily overview")
