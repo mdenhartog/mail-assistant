@@ -71,7 +71,14 @@ class PgPolicySource:
         self._notice.recovered()
         return self._last_good
 
+    def in_use(self) -> TimePolicy:
+        """The values the agent works with right now: the last good ones of this process, else the defaults.
+
+        No read and no notice: the settings dialogue shows these next to its own note about an invalid row.
+        """
+        return self._last_good or DEFAULT_POLICY
+
     async def _fall_back(self, reason: str) -> TimePolicy:
-        in_use = self._last_good or DEFAULT_POLICY
+        in_use = self.in_use()
         await self._notice.incident(in_use, reason)
         return in_use
