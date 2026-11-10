@@ -41,7 +41,14 @@ def test_given_a_start_equal_to_the_end_when_asked_if_quiet_then_nothing_is_quie
     # A broken row must never silence the agent (spec goal 4), so an empty window covers no minute.
     policy = make_policy(quiet_start=time(7, 0), quiet_end=time(7, 0))
 
-    assert not any(policy.is_quiet(time(h, 0)) for h in range(24))
+    assert not any(policy.is_quiet(time(h, m)) for h in range(24) for m in range(60))
+
+
+def test_given_an_empty_window_with_times_at_its_start_when_validated_then_only_the_empty_window_is_reported():
+    # `is_quiet` is never true for an empty window, so no per-time rule can fire next to `quiet_window_empty`.
+    policy = make_policy(quiet_start=time(7, 0), quiet_end=time(7, 0), overview_at=time(7, 0), remind_at=time(7, 0))
+
+    assert [p.rule for p in validate(policy)] == ["quiet_window_empty"]
 
 
 def test_given_a_window_when_asked_at_its_edges_then_the_start_is_quiet_and_the_end_is_not():
