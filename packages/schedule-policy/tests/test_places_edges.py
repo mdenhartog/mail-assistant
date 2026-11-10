@@ -32,7 +32,7 @@ def test_given_a_local_mean_time_offset_with_seconds_when_looked_up_then_minutes
     assert hit.label == "Sao Paulo, Brazil (UTC-3:07)"
 
 
-@pytest.mark.parametrize("quote", ["‘", "’", "`", "'"])
+@pytest.mark.parametrize("quote", [chr(0x2018), chr(0x2019), "`", "'"])
 def test_given_any_apostrophe_or_typographic_quote_when_looked_up_then_it_is_ignored(quote):
     hits = places.lookup(f"Cote d{quote}Ivoire", now=WINTER).hits
 
