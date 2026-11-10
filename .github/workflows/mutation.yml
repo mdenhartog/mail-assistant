@@ -1,0 +1,37 @@
+# Mutation testing (ADR-0030 item 4): cosmic-ray is slow, so it runs nightly and on manual start, not on every pull request.
+# A score below 85 % fails the job: cr-rate --fail-over 15 fails when more than 15 % of the mutants survive.
+name: mutation
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mail-triage:
+    # app/core/time_policy.py (U-quiet-hours-03)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults: { run: { working-directory: agents/mail-triage } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run cosmic-ray init cosmic-ray.toml "$RUNNER_TEMP/mail-triage.sqlite"
+      - run: uv run cosmic-ray exec cosmic-ray.toml "$RUNNER_TEMP/mail-triage.sqlite"
+      - run: uv run cr-rate "$RUNNER_TEMP/mail-triage.sqlite" --fail-over 15
+
+  schedule-policy:
+    # packages/schedule-policy: policy.py, parse.py and places.py (U-quiet-hours-01)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults: { run: { working-directory: packages/schedule-policy } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run cosmic-ray init cosmic-ray.toml "$RUNNER_TEMP/schedule-policy.sqlite"
+      - run: uv run cosmic-ray exec cosmic-ray.toml "$RUNNER_TEMP/schedule-policy.sqlite"
+      - run: uv run cr-rate "$RUNNER_TEMP/schedule-policy.sqlite" --fail-over 15
