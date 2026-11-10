@@ -7,7 +7,8 @@ design: docs/design/web-settings-design.md
 screens: docs/design/web-settings-screens.md
 handoff: docs/design/web-settings-handoff.md
 threat-model: docs/security/web-settings-threat-model.md
-status: draft
+status: approved
+approver: Marco
 date: 2026-11-10
 revision: 2 (ADR-0036 e-mailed code, ADR-0037 local-only, QA review of revision 1)
 ---
@@ -166,7 +167,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 ### U-web-settings-06: Migration 0008: web_auth, web guard line, contract version, notice record (R1)
 
 - Layer: backend (database; agent migration chain)
-- Contract: migration `0008` in `agents/mail-triage/migrations`: schema `web_auth` with `login_request` (id, username key, code hash, `expires_at`, attempts, `created_at`, `dead_at`; rows are marked dead when replaced or used and kept for one hour so the hourly cap can be counted), `session` (hashed id, hashed username, `last_seen_at`, `absolute_expires_at`), `security_event` (kind from a CHECK-constrained set, result, hashed username or null, request id, client key, window; no free text) and `web_lock` (single row); the web line in the guard of 0006 (`session_user = 'web_settings_runtime'` gives channel `web`, `updated_by` must match `^web:[0-9a-f]{32}$`, `version = old + 1`); the cursor for web notices in `poll_state`; the notice token record table; `settings.contract_version()`; every new function revoked from `PUBLIC`. Grants are not here (U-07).
+- Contract: migration `0008` in `agents/mail-triage/migrations`: schema `web_auth` with `login_request` (id, username key, code hash, `expires_at`, attempts, `created_at` (the request time, which starts the cooldown), `sent_at` (empty when the send failed; only sent codes count towards the hourly cap), `dead_at`; rows are marked dead when replaced or used and kept for one hour so the hourly cap can be counted), `session` (hashed id, hashed username, `last_seen_at`, `absolute_expires_at`), `security_event` (kind from a CHECK-constrained set, result, hashed username or null, request id, client key, window; no free text) and `web_lock` (single row); the web line in the guard of 0006 (`session_user = 'web_settings_runtime'` gives channel `web`, `updated_by` must match `^web:[0-9a-f]{32}$`, `version = old + 1`); the cursor for web notices in `poll_state`; the notice token record table; `settings.contract_version()`; every new function revoked from `PUBLIC`. Grants are not here (U-07).
 - Files: `agents/mail-triage/migrations/versions/0008_web_auth.py`, `agents/mail-triage/app/db/models.py`, `agents/mail-triage/tests/db/test_web_auth_migration.py`, `agents/mail-triage/tests/db/test_settings_migration.py`
 - Depends on: —
 - Parallel: yes
@@ -259,7 +260,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 ### U-web-settings-11: Pure rules for time: code life, attempts, cooldown, hourly cap, session expiry (R1)
 
 - Layer: backend (pure module; mutation-gated)
-- Contract: `app/auth/code_rules.py` (`code_expired(created_at, now, ttl)`, `attempts_exhausted(attempts, max)`, `register_wrong(attempts, max) -> (attempts, dead)`, `cooldown_remaining(last_sent_at, now, cooldown) -> int`, `hourly_cap_reached(sent_times, now, cap)`) and `app/auth/expiry.py` (`idle_expired`, `absolute_expired`, `next_idle_expiry`). Standard library only, marker as in U-10.
+- Contract: `app/auth/code_rules.py` (`code_expired(created_at, now, ttl)`, `attempts_exhausted(attempts, max)`, `register_wrong(attempts, max) -> (attempts, dead)`, `cooldown_remaining(last_requested_at, now, cooldown) -> int` over every request, `hourly_cap_reached(sent_times, now, cap)` over sent codes only) and `app/auth/expiry.py` (`idle_expired`, `absolute_expired`, `next_idle_expiry`). Standard library only, marker as in U-10.
 - Files: `backend/app/auth/code_rules.py`, `backend/app/auth/expiry.py`, `backend/tests/auth/test_time_rules.py`, `backend/mutation/code_rules.exclusions`
 - Depends on: U-web-settings-02
 - Parallel: yes (with U-10)
@@ -267,8 +268,8 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 - Criteria:
   1. Given a code created at 14:00:00 with a 600 s life, When asked at 14:09:59 and 14:10:00, Then not expired, then expired (AC-3) (type: edge; level: unit).
   2. Given a code with 4 and 5 wrong attempts, When one more wrong code is registered, Then the fifth wrong attempt kills the code (attempt 5 dead, attempt 4 alive) and a sixth is refused without a comparison (AC-3, AC-5) (type: edge; level: unit).
-  3. Given the last send at 14:00:00 and a 60 s cooldown, When asked at 14:00:59 and 14:01:00, Then 1 second remains, then 0 (AC-5, AC-31) (type: edge; level: unit).
-  4. Given sends at 13:00:01 and later, When asked at 14:00:00 and 14:00:01, Then the first send still counts, then it falls out of the hour; with 4 sends in the hour the cap is not reached, with 5 it is (AC-5, AC-31) (type: edge; level: unit).
+  3. Given the last request at 14:00:00 (sent or not) and a 60 s cooldown, When asked at 14:00:59 and 14:01:00, Then 1 second remains, then 0 (AC-5, AC-31) (type: edge; level: unit).
+  4. Given sent codes at 13:00:01 and later (failed sends are not in the list), When asked at 14:00:00 and 14:00:01, Then the first send still counts, then it falls out of the hour; with 4 sent codes in the hour the cap is not reached, with 5 it is (AC-5, AC-31) (type: edge; level: unit).
   5. Given a session last seen at 14:00:00, When asked at 14:29:59 and 14:30:00, Then valid, then idle-expired (AC-7) (type: edge; level: unit).
   6. Given a session created at 08:00:00 with activity every 20 minutes, When asked at 19:59:59 and 20:00:00, Then valid, then absolute-expired (AC-7) (type: edge; level: unit).
   7. Given naive datetimes, When passed in, Then an error (type: error; level: unit).
@@ -348,7 +349,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 ### U-web-settings-16: Login request store (R1)
 
 - Layer: backend (database)
-- Contract: `LoginRequests.create(username_key, code, now, cap) -> LoginRequest` marks any live request of that username dead and inserts a new row with the code hash (U-10) and expiry; `check(request_id, code, now) -> Verdict` in one transaction (`SELECT ... FOR UPDATE`): `Ok` (row marked dead, single use), `Wrong(attempts_left)`, `Dead`; `last_sent_at(username_key)`, `sent_in_last_hour(username_key, now)`; open rows capped; rows older than one hour are removed on insert.
+- Contract: `LoginRequests.create(username_key, code, now, cap) -> LoginRequest` marks any live request of that username dead and inserts a new row with the code hash (U-10) and expiry; `check(request_id, code, now) -> Verdict` in one transaction (`SELECT ... FOR UPDATE`): `Ok` (row marked dead, single use), `Wrong(attempts_left)`, `Dead`; `mark_sent(request_id, now)` (called only after a successful send), `last_requested_at(username_key)` (every request), `sent_in_last_hour(username_key, now)` (only rows with `sent_at`); open rows capped; rows older than one hour are removed on insert.
 - Files: `backend/app/auth/login_requests.py`, `backend/tests/auth/test_login_requests.py`
 - Depends on: U-web-settings-07, U-web-settings-09, U-web-settings-10, U-web-settings-11
 - Parallel: yes (with U-12 to U-15)
@@ -360,9 +361,10 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   4. Given an old code and a newer code for the same username, When the old one is checked, Then `Dead` (replaced) (AC-3) (type: security; level: db).
   5. Given a request id of another browser, an unknown id and `None`, When checked, Then `Dead` for each, with no attempt counted on any other row (AC-3, W-1) (type: security; level: db).
   6. Given two checks of the right code at the same time with a barrier, When both run, Then exactly one is `Ok` (single use) (AC-3) (type: security; level: db).
-  7. Given six codes created within one hour, When `sent_in_last_hour` is read, Then 6 and the cap logic of U-11 refuses the sixth; sends older than 60 minutes are no longer counted (AC-31) (type: edge; level: db).
-  8. Given the cap of open requests, When one more is created, Then it is refused and no row is written (AC-16, W-7) (type: security; level: db).
-  9. Given the table read as the owner, When inspected, Then no clear code is stored, only the hash (W-15) (type: security; level: db).
+  7. Given five codes created and marked sent within one hour, When `sent_in_last_hour` is read, Then 5 and the cap logic of U-11 refuses the sixth; a send 60 min 1 s old is no longer counted, one 59 min 59 s old is (AC-31) (type: edge; level: db).
+  8. Given five requests whose send failed (never marked sent), When `sent_in_last_hour` and `last_requested_at` are read, Then 0 sent and the last request time is the newest creation time, so the cooldown applies and the cap does not (AC-29, AC-31) (type: edge; level: db).
+  9. Given the cap of open requests, When one more is created, Then it is refused and no row is written (AC-16, W-7) (type: security; level: db).
+  10. Given the table read as the owner, When inspected, Then no clear code is stored, only the hash (W-15) (type: security; level: db).
 
 ### U-web-settings-17: Request-code endpoint (R1)
 
@@ -376,9 +378,9 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   1. Given the configured username, When a code is requested, Then 200 with the masked address, `expiresAt` 10 minutes ahead, `resendAfterSeconds` 60, the cookie, and exactly one message in the fake mailer with the code of `FakeCodes` (AC-29) (type: happy; level: api).
   2. Given the configured and an unknown username, When requested, Then status, body shape and values (except per-request fields), header names, cookie attributes and cookie length are identical, and the mailer got no message for the unknown one (AC-30, W-2) (type: security; level: api).
   3. Given both cases, When the work done is counted (calls to hash and store, with the fake clock advancing a fixed step per call), Then the same number of steps run, so the timing class is the same (AC-30, W-2) (type: security; level: api).
-  4. Given the mailer fails, When a code is requested, Then the answer equals the success answer, a `mail_failed` event exists, a second request within 60 s gets 429, and nothing about the cause or the address is in the response or log (AC-29, AC-31, W-15) (type: security; level: api).
-  5. Given a second request at 59 s and at 60 s after the first, When requested, Then 429 with `Retry-After: 1`, then 200 and the earlier code no longer works (AC-5, AC-31) (type: edge; level: api).
-  6. Given five requests in an hour (spaced 60 s) and a sixth, When requested, Then the sixth gets 429 with `Retry-After` until the oldest falls out of the hour, and no message is sent (AC-5, AC-31, W-7) (type: edge; level: api).
+  4. Given the mailer fails, When a code is requested, Then the answer equals the success answer, a `mail_failed` event exists, the failed send starts the cooldown (a second request within 60 s gets 429) and does not count towards the hourly cap, and nothing about the cause or the address is in the response or log (AC-29, AC-31, W-15) (type: security; level: api).
+  5. Given a second request at 59 s and at 60 s after the first, whether the first send succeeded or failed, When requested, Then 429 with `Retry-After: 1`, then 200 and the earlier code no longer works (AC-5, AC-31) (type: edge; level: api).
+  6. Given five sent codes in an hour (spaced 60 s) and a sixth request, When requested, Then the sixth gets 429 with `Retry-After` until the oldest sent code falls out of the hour (59 min 59 s still 429, 60 min 1 s 200) and no message is sent; Given instead five failed sends spaced 60 s, Then the sixth request is answered 200 and its message is sent, because the cap counts only sent codes (AC-5, AC-31, W-7) (type: edge; level: api).
   7. Given a wrong or missing `Origin`, When requested, Then 403 and no login request row (AC-8, W-4) (type: security; level: api).
   8. Given a username of 65 characters, a control character or a non-string, When requested, Then 422 before any work and no log line contains it (W-15) (type: security; level: api).
   9. Given a refused request (429), When it happens, Then a `code_request_refused` event is recorded once per window (AC-20, AC-31) (type: security; level: db).
@@ -395,14 +397,13 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 - Criteria:
   1. Given a requested code, When the right code is posted with the cookie, Then 204, a new `__Host-session`, `__Host-login` cleared, a `session_start` event, and `returnTo` is `/settings` (AC-7) (type: happy; level: api).
   2. Given a wrong code, an expired code (10:00), a used code, a code after 5 wrong attempts, a code from another browser's cookie, an old code after a new one, an unknown username's cookie and no cookie, When posted, Then each gets the same 400 body shape, no session exists, one test each (AC-3, AC-5, W-1) (type: security; level: api).
-  3. Given a wrong code with a live request, When refused, Then the body has `attemptsLeft` 4, 3, 2, 1 in turn; with no cookie or a dead request the field is absent (AC-3) (type: edge; level: api).
-  4. Given the fifth wrong code, When refused, Then `__Host-login` is cleared and a sixth attempt with the right code gets the generic 400 (AC-5) (type: edge; level: api).
-  5. Given two concurrent verify requests with the same right code and the same cookie, When both run, Then exactly one 204 and one 400, and exactly one session row exists (AC-3, W-1) (type: security; level: db).
-  6. Given `returnTo` values `https://evil.example`, `//x`, `javascript:1`, When posted with the right code, Then the answer says `/settings` (AC-6, W-2) (type: security; level: api).
-  7. Given `web_lock` set, When the right code is posted, Then the same generic 400 as a wrong code, no session, a `lock_refused` event (AC-27) (type: security; level: db).
-  8. Given a wrong or missing `Origin`, When posted, Then 403 and no attempt is counted (AC-8) (type: security; level: api).
-  9. Given a refused code, When events are read, Then one `code_refused` event per client and window, with no code and no cookie value, and the canary code `424242` is in no log (AC-20, W-15) (type: security; level: db).
-  10. Given a malformed body (`code` of 7 digits, letters, empty, an object), When posted, Then the same generic 400 and the attempt is not counted for a format error but the response is not distinguishable (AC-3, AC-15) (type: security; level: api).
+  3. Given wrong codes with a live request, When refused, Then the body has `attemptsLeft` 4, 3, 2, 1 in turn; with no cookie or a dead request the field is absent; the fifth wrong code clears `__Host-login` and a sixth attempt with the right code gets the generic 400 (AC-3, AC-5) (type: edge; level: api).
+  4. Given two concurrent verify requests with the same right code and the same cookie, When both run, Then exactly one 204 and one 400, and exactly one session row exists (AC-3, W-1) (type: security; level: db).
+  5. Given `returnTo` values `https://evil.example`, `//x`, `javascript:1`, When posted with the right code, Then the answer says `/settings` (AC-6, W-2) (type: security; level: api).
+  6. Given `web_lock` set, When the right code is posted, Then no session and a `lock_refused` event, and the response status, body and headers are identical to the generic 400 of a wrong code with the request id as the only difference, with no explanation of the lock (AC-27, W-1) (type: security; level: db).
+  7. Given a wrong or missing `Origin`, When posted, Then 403 and no attempt is counted (AC-8) (type: security; level: api).
+  8. Given a refused code, When events are read, Then one `code_refused` event per client and window, with no code and no cookie value, and the canary code `424242` is in no log (AC-20, W-15) (type: security; level: db).
+  9. Given a malformed body (`code` of 7 digits, letters, empty, an object), When posted, Then the same generic 400 and the attempt is not counted for a format error but the response is not distinguishable (AC-3, AC-15) (type: security; level: api).
 
 ### U-web-settings-19: CSRF, Origin, /api/session and logout (R1)
 
@@ -648,7 +649,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   4. Given a 429 with a long `Retry-After` from the hourly cap, When shown, Then the `role="alert"` banner "You have asked for too many codes this hour. Try again in about N minutes." with N rounded up, and the button stays disabled until then (AC-31, W-7) (type: error; level: component).
   5. Given the expired-code case (a 400 after more than 10 minutes by the injected clock), When shown, Then "This code has expired. Send yourself a new one." with focus on "Send a new code" and the code field cleared (AC-3) (type: error; level: component).
   6. Given `attemptsLeft: 0` or a dead request, When shown, Then "Too many wrong tries. This code no longer works. Send a new code." and the code field disabled until a new code is sent (AC-5) (type: error; level: component).
-  7. Given the verify answer for a locked web is the generic 400 (U-18, pending D-12), When the page shows it, Then it shows only the generic refusal and no "Web sign-in is locked" banner; if D-12 is decided otherwise this criterion and U-18 criterion 7 are rebuilt together (AC-27, W-1) (type: security; level: component).
+  7. Given the verify answer for a locked web (identical to the generic 400, U-18), When the page shows it, Then it shows exactly the generic refusal text and no mention of a lock; the page has no locked state (AC-27, W-1) (type: security; level: component).
   8. Given `prefers-reduced-motion`, When the countdown runs, Then the countdown is text only (AC-23) (type: a11y; level: component).
   9. Given axe on each state, When run, Then no violation (AC-22) (type: a11y; level: component).
 
@@ -867,7 +868,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   7. Given `/docs`, `/redoc`, `/openapi.json`, `/healthz`, `/readyz`, `/metrics`, `/api/docs`, `/api/openapi.json`, `/api/readyz` and `/api/settings/reset` through the edge, When requested, Then 404 each; plain HTTP redirects with HSTS (AC-18, AC-19, R1 has no R2 surface) (type: security; level: playwright).
   8. Given a zone change, When saved, Then the preview, the saved banner with the real notice interval and the last-change line show (AC-28) (type: happy; level: playwright).
   9. Given the sign-in and settings pages at 375 and 1280 px over HTTPS with the real backend, When axe runs, Then no violation (AC-22) (type: a11y; level: playwright).
-  10. Given a locked web (the lock row inserted by owner SQL), When the signed-in user calls the API and when a new code is requested and verified, Then 401, and the verify answer is the generic 400 (AC-27) (type: security; level: playwright).
+  10. Given a locked web (the lock row inserted by owner SQL), When the signed-in user calls the API and when a new code is requested and verified, Then 401, and the verify answer is identical in status and body (request id aside) to the answer for a wrong code (AC-27) (type: security; level: playwright).
 
 ### U-web-settings-44: Mutation workflow wiring for the pure security modules (R1; release gate)
 
@@ -1004,7 +1005,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 | AC-26 | 20, 21, 25 |
 | AC-27 | 15, 18, 20, 22, 27, 31, 43 |
 | AC-28 | 33, 34, 35, 43, 47 |
-| AC-29 | 12, 13, 17, 38 |
+| AC-29 | 12, 13, 16, 17, 38 |
 | AC-30 | 17, 30 |
 | AC-31 | 11, 16, 17, 31 |
 
@@ -1083,17 +1084,27 @@ Rule: if two units of one row are built in parallel, the second to finish rebase
 
 ## Decisions needed
 
-Fixed inside the units (no longer open): D-1 `noticeIntervalMinutes` in `GET /api/session` (U-19, U-34); D-2 fonts self-hosted (U-01); D-3 the unlock command is `/web_unlock` (U-27); D-6 the R2 draft in `sessionStorage` (U-47); D-8 `updatedAt` and `updatedVia` are null at version 0 (U-20); D-4 and D-5 are gone with the identity provider; cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`) and `attemptsLeft` in the generic verify failure body only for a live login request cookie (spec AC-3, design and screens updated in this branch).
-
-Still open:
+Needed before staging; none of them blocks the build, the tests or the prod-like stack.
 
 | # | Question | Why it matters | Units |
 | --- | --- | --- | --- |
 | D-7 | Where the certificate expiry alert (at least 14 days ahead, W-9) is delivered. U-41 ships an optional `PrometheusRule`, off by default; whether the cluster has a Prometheus (ADR-0013 does not decide) and who is notified is open. | Expiry is a W-9 control and a gate for production, not for the build. | 41 |
 | D-9 | The private certificate authority for production: a CA Marco runs by hand, or a cert-manager CA issuer in the cluster; how Marco's devices trust it. | The chart takes the issuer from values; the choice sets the rotation and the expiry alert. | 40, 41 |
 | D-10 | The send-only SMTP account and relay for production (provider, port, whether the relay supports STARTTLS with a public certificate or needs a private CA). | The start-up check and the NetworkPolicy need the real host and port; a relay with a private CA would need a CA setting in the api that the design excludes. | 04, 12, 41 |
-| D-12 | Does a locked web show "Web sign-in is locked. You can lift the lock in Telegram." (screens document), or the generic refusal (design: one generic 400 for every failure)? The units follow the design; the screens banner would need a distinct answer after a correct code. | UX against not telling anyone the lock state; a distinct answer after a right code leaks nothing to a code guesser. | 18, 31, 43 |
-| D-11 | Hourly cap accounting when sends fail: the plan counts a failed send like a sent one (ADR-0036: the cooldown and the cap still count). Confirm that a mail outage may therefore lock Marco out for up to an hour. | AC-31 and the uniform answer. | 16, 17 |
+
+## Decided
+
+Approved by Marco on 2026-11-10 (phase 4 gate):
+
+- D-1 `noticeIntervalMinutes` in `GET /api/session` (U-19, U-34).
+- D-2 fonts are self-hosted, because the CSP blocks Google Fonts (U-01, note in ADR-0035).
+- D-3 the unlock command is `/web_unlock` (U-27).
+- D-4 and D-5 are gone with the identity provider; failures are inline on the login page.
+- D-6 the R2 draft lives in `sessionStorage` (U-47).
+- D-8 `updatedAt` and `updatedVia` are null at version 0 (U-20).
+- D-11 a failed send starts the 60 second cooldown but does not count towards the 5-codes-per-hour cap, so a mail outage cannot lock Marco out (ADR-0036, spec AC-29 and AC-31; U-06, U-11, U-16, U-17).
+- D-12 a locked web gives the same generic refusal as any other refused request, with no explanation of the lock; the screens document has no locked state (U-18, U-31, U-43).
+- Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body only for a live login request cookie.
 
 ## Open points
 
