@@ -10,7 +10,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from app.db.repos import NothingToUndo, PolicyRefused, SettingsStoreFailure, StoredSettings, VersionConflict
+from app.db.repos import (
+    NothingToUndo,
+    PolicyRefused,
+    SettingsStoreFailure,
+    SettingsView,
+    StoredSettings,
+    VersionConflict,
+)
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy, validate
 from schedule_policy.testing import make_policy
@@ -52,6 +59,10 @@ class FakeSettingsStore:
         self.reads += 1
         return self.row
 
+    async def read_for_dialogue(self) -> SettingsView:
+        self.reads += 1
+        return SettingsView(self.row.version, self.row.policy) if self.row else SettingsView(0, None)
+
     async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
         if self.write_error is not None:
             raise self.write_error
@@ -87,12 +98,15 @@ class Bot:
     rig: Rig = field(default_factory=Rig)
     chat: RecordingChat = field(init=False)
     router: CommandRouter = field(init=False)
+    in_use: TimePolicy = DEFAULT_POLICY
 
     def __post_init__(self) -> None:
         self.chat = RecordingChat()
         self.rig.chat = self.chat
         self.router = self.rig.router()
-        self.dialog = SettingsDialog(self.store, self.chat, self.rig.conversations, USER, self.rig.clock.now)
+        self.dialog = SettingsDialog(
+            self.store, self.chat, self.rig.conversations, USER, self.rig.clock.now, lambda: self.in_use
+        )
         self.router.register(self.dialog)
 
     @property
