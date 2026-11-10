@@ -12,10 +12,10 @@ from app.db.scram import ITERATIONS, scram_verifier, verifier_for
 # RFC 7677 section 3: user "user", password "pencil", 4096 iterations.
 RFC_SALT = base64.b64decode("W22ZaJ0SNY7soEsUEjb6gQ==")
 RFC_AUTH_MESSAGE = (
-    "n=user,r=rOprNGfwEbeRWgbNEkqO,"
-    "r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,"
-    "c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0"
-).encode()
+    b"n=user,r=rOprNGfwEbeRWgbNEkqO,"
+    b"r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,"
+    b"c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0"
+)
 RFC_CLIENT_PROOF = base64.b64decode("dHzbZapWIk4jUhN+Ute9ytag9zjfMHgsqmmiz7AndVQ=")
 RFC_SERVER_SIGNATURE = base64.b64decode("6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4=")
 
