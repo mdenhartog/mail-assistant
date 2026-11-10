@@ -110,8 +110,7 @@ def _window_problems(policy: TimePolicy) -> list[Problem]:
 
 
 def _outside_problems(policy: TimePolicy) -> list[Problem]:
-    if policy.window_minutes == 0:
-        return []
+    # An empty window is never quiet (``is_quiet``), so it needs no special case here.
     move_to = f"Try {_hhmm(_minute_of_day(policy.quiet_end))}"
     return [
         Problem(rule, _show(clock), move_to)
