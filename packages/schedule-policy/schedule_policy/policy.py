@@ -8,7 +8,7 @@ does today, and its length is counted in clock minutes, never in elapsed time (s
 from dataclasses import dataclass
 from datetime import time
 from functools import lru_cache
-from zoneinfo import available_timezones
+from importlib import resources
 
 MINUTES_PER_DAY = 24 * 60
 MIN_WINDOW_MINUTES = 60
@@ -74,7 +74,9 @@ def _show(clock: time) -> str:
 
 @lru_cache(maxsize=1)
 def _known_zones() -> frozenset[str]:
-    return frozenset(available_timezones())
+    # The list of the pinned ``tzdata`` package, not ``zoneinfo.available_timezones()``: that one also lists whatever
+    # files the host keeps in /usr/share/zoneinfo (``localtime``, ``posixrules``), which are no IANA zones.
+    return frozenset(resources.files("tzdata").joinpath("zones").read_text(encoding="utf-8").split())
 
 
 def _zone_problems(zone: str) -> list[Problem]:
