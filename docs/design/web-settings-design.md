@@ -3,14 +3,15 @@ feature: web-settings
 intent: INT-002
 spec: docs/specs/web-settings.md
 threat_model: docs/security/web-settings-threat-model.md
-status: draft
+status: approved
+approver: Marco
 date: 2026-11-10
 revision: 2 (after the round table of 2026-11-10)
 ---
 
 # Web settings: design (phase 3)
 
-Screens and states: `web-settings-screens.md`. Visual direction: ADR-0031 (Paper Trail). Exposure: ADR-0032. Web notices and the lock: ADR-0033. One api replica: ADR-0034. The settings contract and the audit are those of `adjustable-quiet-hours` (ADR-0025, ADR-0030).
+Screens and states: `web-settings-screens.md`. Visual direction: ADR-0035 (Pebble, which supersedes the Paper Trail choice of ADR-0031). Exposure: ADR-0032. Web notices and the lock: ADR-0033. One api replica: ADR-0034. The settings contract and the audit are those of `adjustable-quiet-hours` (ADR-0025, ADR-0030).
 
 Revision 2 follows the round table (security, UX, QA, product owner) and the decisions of Marco: two releases, the stronger web notice, one api replica, and the hosting target chosen before staging.
 
@@ -113,7 +114,7 @@ Prod-like sequence in CI, in one job (replacing the separate `e2e` and `runtime-
 
 ## Clickable prototype (ADR-0009)
 
-Decision of Marco: yes. Scope reduced after the round table: the settings form with the zone combobox and live local time, the preview of a zone change, and the conflict banner; the login page and the other states are covered by the screens document. It is built as an artifact in the Paper Trail direction, runs in parallel with the backend units and does not gate them. The tokens unit runs in parallel too.
+Decision of Marco: yes. Scope reduced after the round table: the settings form with the zone combobox and live local time, the preview of a zone change, and the conflict banner; the login page and the other states are covered by the screens document. It is built as an artifact in the Pebble direction, runs in parallel with the backend units and does not gate them. The tokens unit runs in parallel too.
 
 ## Corrections to the spec and the threat model
 

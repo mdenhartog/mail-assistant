@@ -1,10 +1,11 @@
 ---
 id: ADR-0031
 title: "Web design system: the Paper Trail direction"
-status: accepted
+status: superseded
 area: design-system
 tags: [design, tokens, web, paper-trail]
 date: 2026-11-10
+superseded_by: ADR-0035
 guardrails: [guardrail-tailwind, guardrail-a11y]
 ---
 
