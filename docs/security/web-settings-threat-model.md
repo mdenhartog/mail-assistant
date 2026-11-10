@@ -5,6 +5,7 @@ spec: docs/specs/web-settings.md
 extends: adjustable-quiet-hours-threat-model
 status: approved
 date: 2026-11-09
+revised: 2026-11-10
 approver: Marco
 asvs: "5.0"
 ---
@@ -62,10 +63,21 @@ All six STRIDE types are covered: S (W-1 to W-3, W-11), T (W-4, W-5, W-11, W-12)
 
 | # | Risk | Reason |
 | --- | --- | --- |
-| R-1 | Anyone who controls Marco's account at the provider can sign in. | Marco chose a generic OIDC login without a second factor of our own; the provider's own protection applies. The out-of-band Telegram notice (W-11) limits the damage and Undo reverses it. |
+| R-1 | Anyone who controls Marco's account at the provider can sign in. | Marco chose a generic OIDC login without a second factor of our own. The out-of-band Telegram notice (W-11) limits the damage, Undo reverses it back to before the burst and the lock stops further web sign-in (ADR-0033). Condition for production: two-step verification or a passkey on the provider account. Reviewed on 2027-05-10. |
 
 ## Open questions
 
-1. Is the page reachable from the internet (W4 in the spec)? Marco travels, so this is assumed.
-2. Where CSRF and rate limits live (middleware or ingress), the session table design and the public ingress: phase 3.
+1. W4 is decided: the page is reachable from the internet (ADR-0032).
+2. Phase 3 decided: CSRF and limits live in the backend, with one api replica (ADR-0034); the session design is in `docs/design/web-settings-design.md`.
 3. ASVS references are to chapters of ASVS 5.0; exact requirement ids are added when the plan is made.
+
+## Delta 2026-11-10 (phase 3 round table)
+
+| id | change |
+| --- | --- |
+| W-4 | The CSRF token is derived (`HMAC(csrf_key, session_id)`) and served only to a same-origin `GET /api/session`; two tabs on one session both work. |
+| W-7 | One api replica with in-process limits (ADR-0034). The client address is the one the last trusted proxy appended, so a spoofed leftmost `X-Forwarded-For` does not give a fresh bucket; the limit is checked before any `login_flow` row is written; open sign-in flows are capped; one security event per client and window. |
+| W-8 | The web role's column grant includes `version`, `updated_via` and `updated_by` (without them every save fails); the guard checks that `updated_by` matches `web:` and 32 hex characters; every new function is revoked from `PUBLIC`; the database URL uses `sslmode=verify-full`. |
+| W-9 | TLS 1.2 minimum at the ingress, a certificate expiry alert at least 14 days ahead, and a single peer (namespace and pod selector) in the ingress NetworkPolicy. |
+| W-11 | Own token record for web notices, Undo back to before the burst, "Undo and lock web sign-in" with `web_auth.web_lock`, and quiet hours never hold the notice (ADR-0033). The notice is selected by `db_role` and ordered by the version as an integer. |
+| W-13 | Logs never contain the query string: api access log off, request logging without queries, ingress and edge formats without them, `httpx`, `httpcore` and `authlib` loggers at WARNING; a grep test in the prod-like job. The alert counts refused sign-ins only (R2). Retention (R2) runs under the owner role as a migrate job step; no standing job holds owner credentials. |
