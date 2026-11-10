@@ -248,11 +248,11 @@ async def test_given_an_invalid_row_when_read_for_the_dialogue_then_its_version_
 ) -> None:
     await store.write(make_policy(), 0, "web", "u1")
     async with engine.begin() as connection:
-        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus'"))
+        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus', version = version + 1"))
 
     view = await store.read_for_dialogue()
 
-    assert view == SettingsView(1, None, ("zone_unknown",))
+    assert view == SettingsView(2, None, ("zone_unknown",))
     assert "Olympus" not in repr(view)
 
 
@@ -261,7 +261,7 @@ async def test_given_an_invalid_row_when_written_over_at_its_version_then_a_whol
 ) -> None:
     await store.write(make_policy(), 0, "web", "u1")
     async with engine.begin() as connection:
-        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus'"))
+        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus', version = version + 1"))
     version = (await store.read_for_dialogue()).version
 
     written = await store.write(make_policy(zone="Europe/Paris"), version, "telegram", "u1")
