@@ -41,6 +41,39 @@ def test_given_a_13_hour_window_when_refused_then_the_example_is_a_valid_12_hour
     assert problem.example == "Try 22:00 to 10:00"
 
 
+@pytest.mark.parametrize(
+    ("start", "example"),
+    [
+        (time(1, 0), "Try 01:00 to 13:00"),
+        (time(7, 0), "Try 07:00 to 19:00"),
+        (time(10, 30), "Try 10:30 to 22:30"),
+        (time(23, 0), "Try 23:00 to 11:00"),
+    ],
+)
+def test_given_an_empty_window_when_refused_then_the_example_is_a_12_hour_window_from_the_same_start(start, example):
+    (problem,) = _window(start, start)
+
+    assert problem.rule == "quiet_window_empty"
+    assert problem.example == example
+
+
+def test_given_a_one_minute_window_with_the_overview_inside_when_validated_then_both_problems_are_reported():
+    problems = validate(
+        make_policy(quiet_start=time(7, 0), quiet_end=time(7, 1), overview_at=time(7, 0), remind_at=time(20, 0))
+    )
+
+    assert [p.rule for p in problems] == ["quiet_window_length", "overview_in_quiet_hours"]
+    assert problems[1].example == "Try 07:01"
+
+
+def test_given_an_empty_window_with_times_at_the_start_when_validated_then_only_the_empty_window_is_reported():
+    problems = validate(
+        make_policy(quiet_start=time(7, 0), quiet_end=time(7, 0), overview_at=time(7, 0), remind_at=time(7, 0))
+    )
+
+    assert [p.rule for p in problems] == ["quiet_window_empty"]
+
+
 def test_given_a_too_short_window_when_refused_then_the_example_is_a_valid_1_hour_window():
     (problem,) = _window(time(7, 0), time(7, 30))
 
