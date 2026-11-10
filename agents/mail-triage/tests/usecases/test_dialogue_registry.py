@@ -9,7 +9,6 @@ from datetime import timedelta
 import pytest
 
 from app.usecases.dispatch import (
-    SEEN_UPDATES_MAX,
     SETTINGS_TTL,
     USE_BUTTONS,
     CommandRouter,
@@ -117,22 +116,6 @@ async def test_given_a_replayed_button_when_it_arrives_twice_then_it_is_handled_
 
     assert len(rig.settings.buttons) == 1
     assert rig.chat.acknowledged == ["cb1"]
-
-
-async def test_given_more_updates_than_the_memory_holds_when_an_old_one_is_replayed_then_memory_stayed_bounded() -> (
-    None
-):
-    rig = Rig()
-    router = registered(rig)
-    for update_id in range(1, SEEN_UPDATES_MAX + 11):
-        await router.handle(text("hello", update_id=update_id))
-    said = len(rig.chat.said)
-
-    await router.handle(text("hello", update_id=SEEN_UPDATES_MAX + 10))  # recent: still remembered
-    assert len(rig.chat.said) == said
-    await router.handle(text("hello", update_id=1))  # the oldest were forgotten to keep the memory bounded
-
-    assert len(rig.chat.said) == said + 1
 
 
 # ---- criterion 6: every tap is answered --------------------------------------------------------------------------

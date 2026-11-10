@@ -31,6 +31,7 @@ from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
+from app.db.pg_update_cursor import PgUpdateCursor
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
 from app.usecases.deliver_alerts import AlertDelivery
@@ -127,8 +128,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     conversations = ConversationStore(sessions, now)  # the one: PgStore and the router judge expiry with this clock
     store = PgStore(sessions, conversations)
     outbox = TelegramOutbox(client, settings.telegram_bot_token, settings.telegram_allowed_chat_id)
+    cursor = PgUpdateCursor(sessions)  # the last handled Telegram update; it survives a restart
     inbox = TelegramInbox(
-        client, settings.telegram_bot_token, settings.telegram_allowed_user_id, settings.telegram_allowed_chat_id
+        client,
+        settings.telegram_bot_token,
+        settings.telegram_allowed_user_id,
+        settings.telegram_allowed_chat_id,
+        cursor,
     )
     budget = DailyBudget(settings.daily_model_budget, today)  # one budget: the catch-up only gets what new mail leaves
     judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
@@ -136,7 +142,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     policy = PgPolicySource(settings_store, PolicyNotice(outbox))  # one per process: it holds the last good values
     snooze = SnoozeService(store, outbox, now, policy)
     reply = ReplyService(store, mailbox, sender, outbox, own_address=own_address, now=now, new_id=new_id)  # type: ignore[arg-type]
-    router = CommandRouter(reply, snooze, store, outbox, conversations)
+    router = CommandRouter(reply, snooze, store, outbox, conversations, cursor)
     router.register(
         SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now, policy.in_use)
     )

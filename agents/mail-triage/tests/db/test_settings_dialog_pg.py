@@ -17,6 +17,7 @@ from app.usecases.dispatch import CommandRouter
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.policy import DEFAULT_POLICY
 from schedule_policy.testing import FakeClock, make_policy
+from tests.usecases.fakes_dialogue import FakeUpdateCursor
 from tests.usecases.test_dispatch import FakeReply, FakeSnooze, FakeStore, button
 from tests.usecases.test_dispatch import text as typed
 from tests.usecases.test_settings_dialog import RecordingChat
@@ -62,7 +63,7 @@ def rig(engine: AsyncEngine) -> Rig:
     store = PgSettingsStore(sessions)
     clock = FakeClock()
     conversations = ConversationStore(sessions, clock.now)
-    router = CommandRouter(FakeReply(), FakeSnooze(), FakeStore(), chat, conversations)
+    router = CommandRouter(FakeReply(), FakeSnooze(), FakeStore(), chat, conversations, FakeUpdateCursor())
     router.register(SettingsDialog(store, chat, conversations, USER, clock.now, lambda: DEFAULT_POLICY))
     return Rig(store, chat, router)
 

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 RETENTION = timedelta(days=30)  # ADR-0020
+MAX_COMMAND_ATTEMPTS = 3  # a command that fails this often is given up, so one bad update cannot block the rest
 
 
 class PipelinePort(Protocol):
@@ -78,6 +79,10 @@ class InboxPort(Protocol):
 
     async def poll_once(self) -> list[Command]:
         """One long-poll."""
+        ...
+
+    def rewind(self, update_id: int) -> None:
+        """Ask for this update again on the next poll."""
         ...
 
 
@@ -142,6 +147,7 @@ class Runner:
         self._interval = interval_seconds
         self._now = now
         self._purged_on: date | None = None
+        self._failed: dict[int, int] = {}
 
     async def mail_cycle(self) -> None:
         """Release due alerts, read new mail, catch up on old mail, send alerts, send the overview, purge, heartbeat."""
@@ -167,9 +173,21 @@ class Runner:
             logger.warning("step %s failed kind=%s", name, type(error).__name__)
 
     async def telegram_cycle(self) -> None:
-        """Wait for Marco's commands and route each one."""
+        """Wait for Marco's commands and route each one, in order.
+
+        A command that fails stops the batch and is asked for again: its id was not stored, and a later command must not
+        move the stored id past it. After ``MAX_COMMAND_ATTEMPTS`` failures it is given up and the cycle goes on.
+        """
         for command in await self._inbox.poll_once():
-            await self._guard("command", self._router.handle(command))
+            try:
+                await self._router.handle(command)
+            except Exception as error:
+                attempts = self._failed.get(command.update_id, 0) + 1
+                self._failed = {command.update_id: attempts}  # only the latest failing update is remembered
+                logger.warning("step command failed kind=%s attempt=%d", type(error).__name__, attempts)
+                if attempts < MAX_COMMAND_ATTEMPTS:
+                    self._inbox.rewind(command.update_id)
+                    return
 
     async def run(self, stop: asyncio.Event) -> None:
         """Run both loops until ``stop`` is set."""

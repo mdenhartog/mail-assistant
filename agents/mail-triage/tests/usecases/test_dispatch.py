@@ -12,7 +12,7 @@ from app.core.alert_state import AlertState
 from app.usecases.dispatch import CommandRouter
 from app.usecases.reply import StoredDraft
 from schedule_policy.testing import FakeClock
-from tests.usecases.fakes_dialogue import FakeConversations, FakeSettings
+from tests.usecases.fakes_dialogue import FakeConversations, FakeSettings, FakeUpdateCursor
 
 _UPDATE_IDS = itertools.count(1)
 
@@ -107,13 +107,14 @@ class Rig:
     clock: FakeClock = field(default_factory=FakeClock)
     conversations: FakeConversations = field(init=False)
     settings: FakeSettings = field(default_factory=FakeSettings)
+    cursor: FakeUpdateCursor = field(default_factory=FakeUpdateCursor)
 
     def __post_init__(self) -> None:
         self.conversations = FakeConversations(self.clock)
 
     def router(self) -> CommandRouter:
         self.snooze.store = self.store
-        return CommandRouter(self.reply, self.snooze, self.store, self.chat, self.conversations)
+        return CommandRouter(self.reply, self.snooze, self.store, self.chat, self.conversations, self.cursor)
 
 
 async def test_given_the_reply_button_when_pressed_then_the_reply_starts_and_the_next_text_is_the_reply() -> None:
