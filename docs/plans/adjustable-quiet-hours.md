@@ -432,7 +432,7 @@ Built differently from the plan:
 - 16a: migration `0006_settings_guard` (not 0005); refusals of the guard raise SQLSTATE 42501; the owner and other unmapped roles keep the channel they claim.
 - 16d: migration `0007_telegram_update_id`. The id is stored after handling, not in the same transaction as the handling (handling spans several ports and the Telegram API), so a crash between the two replays one update once. A command that fails is retried and given up after 3 attempts, so one poison update cannot block the rest.
 - 16f: the package job also found that `validate` accepted the zone `localtime` on a Linux host; the valid zones now come from the pinned `tzdata` package, not from `zoneinfo.available_timezones()`.
-- Mutation scores of the first manual run of `mutation.yml` (run 42865370873, main at e11c48d): `schedule_policy` 86.93 % killed, `time_policy.py` 89.83 % killed; both meet the 85 % criteria.
+- Mutation scores (CI, Linux, CPython 3.14.4): first manual run 42865370873 gave `schedule_policy` 86.93 % and `time_policy.py` 89.83 % killed; after units 16g and 16h (tests only) `schedule_policy` is at 90.15 % and `time_policy.py` at 90.40 % (run 42883754433 on main), a margin of at least 5 points over the 85 % criteria. Most remaining survivors are equivalent, notably `|` in type annotations, which CPython 3.14 does not evaluate.
 
 Accepted without a unit: pinning CI tool images by digest (SEC-6) goes to a Renovate follow-up; moving the `ZoneInfo` zone CHECK to a reference table (RT-1 fix item) is not needed once 16c lets the owner repair an invalid row.
 

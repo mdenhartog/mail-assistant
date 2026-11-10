@@ -22,6 +22,8 @@ jobs:
       - run: uv run cosmic-ray init cosmic-ray.toml "$RUNNER_TEMP/mail-triage.sqlite"
       - run: uv run cosmic-ray exec cosmic-ray.toml "$RUNNER_TEMP/mail-triage.sqlite"
       - run: uv run cr-rate "$RUNNER_TEMP/mail-triage.sqlite" --fail-over 15
+      - if: always()  # a failing rating must not hide which mutants survived
+        run: uv run cr-report "$RUNNER_TEMP/mail-triage.sqlite" --show-pending --surviving-only --show-diff
 
   schedule-policy:
     # packages/schedule-policy: policy.py, parse.py and places.py (U-quiet-hours-01)
@@ -35,3 +37,5 @@ jobs:
       - run: uv run cosmic-ray init cosmic-ray.toml "$RUNNER_TEMP/schedule-policy.sqlite"
       - run: uv run cosmic-ray exec cosmic-ray.toml "$RUNNER_TEMP/schedule-policy.sqlite"
       - run: uv run cr-rate "$RUNNER_TEMP/schedule-policy.sqlite" --fail-over 15
+      - if: always()  # a failing rating must not hide which mutants survived
+        run: uv run cr-report "$RUNNER_TEMP/schedule-policy.sqlite" --show-pending --surviving-only --show-diff

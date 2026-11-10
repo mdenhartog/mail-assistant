@@ -565,6 +565,18 @@ def test_given_the_mutation_workflow_when_read_then_each_module_is_mutated_and_r
     assert (ROOT / directory / "cosmic-ray.toml").is_file()
 
 
+def test_given_the_mutation_workflow_when_a_job_fails_then_the_surviving_mutants_are_still_listed() -> None:
+    for name, job in load_workflow(MUTATION_WORKFLOW)["jobs"].items():
+        steps = job["steps"]
+        rate = next(i for i, step in enumerate(steps) if "cr-rate" in step.get("run", ""))
+        report = next(i for i, step in enumerate(steps) if "cr-report" in step.get("run", ""))
+
+        assert report > rate, name  # after the rating, so a failing rating does not hide the list
+        assert steps[report].get("if") == "always()", name
+        assert "--surviving-only" in steps[report]["run"], name
+        assert "--show-diff" in steps[report]["run"], name
+
+
 def test_given_the_workflows_when_read_then_every_action_is_pinned_by_commit_sha() -> None:
     for path in (CI_WORKFLOW, MUTATION_WORKFLOW):
         workflow = load_workflow(path)
