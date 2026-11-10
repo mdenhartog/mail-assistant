@@ -338,6 +338,97 @@ U-01, U-02 and U-04 share no files and run in parallel. U-12 runs after U-06a (b
   1. Given the runtime role in the running stack, When it tries DDL or deleting audit rows, Then refused (AC-30) (type: security).
   2. Given a Trivy scan of the new image, When run, Then no new High or Critical finding (type: security).
 
+## Fixes from the challenge round (phase 6, ADR-0030)
+
+Order: 16a, 16b, 16c, 16e and 16f are independent (different files) and run in parallel; 16d follows 16a. Source of each finding: RT = red-team, CR = code review, SEC = security review.
+
+### U-quiet-hours-16a: Least-privilege grants and a server-derived audit actor
+
+- Layer: backend
+- Contract: new migration 0005 and `grants.sql`: per-table grants; a trigger that enforces `version = old.version + 1`, derives `updated_via` from `session_user` and stores `session_user` in `settings_change` (ADR-0030 items 1 and 2).
+- Files: `app/db/grants.sql`, `migrations/versions/0005_*.py`, `tests/db/test_settings_grants.py`, `tests/db/test_settings_migration.py`, `tests/e2e/test_runtime_role.py`
+- Depends on: —
+- Parallel: yes
+- Guardrails: guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given the runtime role, When it runs `update audit_log …` or `delete from audit_log`, `oauth_token`, `mail_item`, `alert`, `draft`, `poll_state`, `catchup_state` or `overview_log`, Then PostgreSQL refuses with 42501 (SEC-1, RT-3) (type: security).
+  2. Given the runtime role, When it inserts into `audit_log`, upserts `oauth_token`/`poll_state`/`catchup_state`, updates `mail_item`/`alert`/`draft` and deletes from `conversation`, Then each works (type: happy).
+  3. Given the runtime role, When it updates `settings.schedule` without raising the version by exactly one, Then the update is refused (RT-3) (type: security).
+  4. Given the runtime role, When it writes `updated_via = 'web'`, Then the write is refused, and a `telegram` write records `session_user = 'mail_triage_runtime'` (SEC-4, RT-3) (type: security).
+  5. Given settings written before the migration, When 0005 runs, Then existing rows and audit records stay valid and the upgrade and downgrade round-trip (type: edge).
+
+### U-quiet-hours-16b: Hardened runtime-role setup in the migration job
+
+- Layer: backend
+- Contract: `migrate._connect` passes the TLS parameters of the owner URL; `_ensure_runtime_role` sends a client-computed SCRAM-SHA-256 verifier, `NOREPLICATION NOBYPASSRLS`, and the job fails (exit 6) when the runtime role has any role membership; `app.consent` no longer migrates (ADR-0030 item 3, SEC-2, SEC-5, RT-2).
+- Files: `app/db/migrate.py`, `app/db/scram.py`, `app/consent.py`, `app/wiring.py` (message only), `tests/db/`, `tests/unit/`
+- Depends on: —
+- Parallel: yes
+- Guardrails: guardrail-python, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given the SCRAM helper and the RFC 7677 test vector, When the verifier is computed, Then it equals the expected value (type: happy).
+  2. Given a real PostgreSQL, When the job sets the password, Then the agent logs in with the clear password over SCRAM and no statement the server received contains it (RT-2, SEC-2) (type: security).
+  3. Given `DATABASE_OWNER_URL=…?ssl=verify-full`, When the job connects, Then `asyncpg.connect` receives the TLS setting (RT-2) (type: security).
+  4. Given a runtime role that has REPLICATION or a role membership, When the job runs, Then it resets REPLICATION and fails with exit 6 on the membership, naming the role, not the password (SEC-2) (type: error).
+  5. Given a schema behind head, When `app.consent` runs, Then it exits naming the migrate job and runs no DDL (SEC-5) (type: error).
+
+### U-quiet-hours-16c: `/settings` repairs an invalid stored row; one clock; cleanup
+
+- Layer: backend
+- Contract: the settings dialogue shows the values in use with a note when the stored row is invalid and lets a valid answer overwrite it (RT-1); `PgStore` receives the one `ConversationStore` (CR-2); stale docstring, dead `is_movable`, duplicate `_hhmm`, unreachable `except PolicyRefused` removed or covered (CR-3, CR-4, CR-5).
+- Files: `app/usecases/settings_dialog.py`, `app/db/pg_settings_store.py`, `app/db/pg_store.py`, `app/wiring.py`, `app/settings.py`, `app/core/settings_text.py`, `app/usecases/policy_notice.py`, `pyproject.toml` (drop `httpx2`), tests
+- Depends on: —
+- Parallel: yes
+- Guardrails: guardrail-python, guardrail-sqlalchemy-alembic, guardrail-telegram, guardrail-pytest
+- Criteria:
+  1. Given a store whose `read()` raises `StoredSettingsInvalid`, When the allowed user sends `/settings`, Then no exception escapes and a card with the values in use and a note that the saved settings are invalid is sent (RT-1) (type: error).
+  2. Given that card, When the user gives a valid answer and confirms, Then a whole new row is written over the invalid one at its version (RT-1) (type: happy).
+  3. Given `build_runner` with a fake clock, When a snooze question is stored through `PgStore` and the router reads it, Then both judge expiry with the same clock (CR-2) (type: edge).
+  4. Given the repository, When vulture runs on `app`, Then it reports no `is_movable` and `_hhmm` has one meaning (CR-4, CR-5) (type: happy).
+  5. Given `httpx2`, When the dependency check runs, Then it is not in the dev dependencies (type: happy).
+
+### U-quiet-hours-16d: Replayed Telegram updates are ignored after a restart
+
+- Layer: backend
+- Contract: the last handled `update_id` is stored in the database (in `poll_state` if that fits, otherwise a new table with a grant in `grants.sql`) in the same step as handling, and updates at or below it are skipped at start-up (RT-5).
+- Files: `app/usecases/dispatch.py`, `app/adapters/telegram_inbox.py`, `app/runner.py`, `app/db/`, tests
+- Depends on: U-quiet-hours-16a (migration order and grants)
+- Parallel: no
+- Guardrails: guardrail-telegram, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given a start time answered by update 777 and a restart, When update 777 is delivered again, Then the router ignores it and sends nothing (RT-5) (type: security).
+  2. Given a stored update id, When the agent starts, Then polling continues at that id plus one (type: happy).
+  3. Given a failed handling step, When the agent restarts, Then the update is handled again, not lost (type: edge).
+
+### U-quiet-hours-16e: Migrate Job: policy before the Job, own ServiceAccount, sealing by stdin, tzdata
+
+- Layer: infra
+- Contract: the migrate NetworkPolicy carries the same hook annotations as the Job with a lower weight and sync-wave; the Job has its own ServiceAccount with `automountServiceAccountToken: false`; the README seals by standard input (no `--from-literal` for secret keys); the runtime image uses the pinned `tzdata` package and not a system copy (RT-4, SEC-7, RT lead on tzdata).
+- Files: `deploy/charts/worker/templates/migration.yaml`, `deploy/charts/worker/README.md`, `agents/mail-triage/Dockerfile`, `agents/mail-triage/tests/infra/test_deploy.py`
+- Depends on: —
+- Parallel: yes
+- Guardrails: guardrail-helm, guardrail-kubernetes, guardrail-docker
+- Criteria:
+  1. Given the rendered chart, When the migrate NetworkPolicy is read, Then it has the hook annotations of the Job and a lower weight and sync-wave (RT-4) (type: security).
+  2. Given the rendered Job, When read, Then `serviceAccountName` is the chart's own and the token is not mounted (SEC-7) (type: security).
+  3. Given the README, When checked, Then no `--from-literal=` is used for secret keys (SEC-7) (type: security).
+  4. Given the image build, When `zoneinfo` resolves a zone, Then the data comes from the pinned `tzdata` wheel, checked by a test that fails when `/usr/share/zoneinfo` would win (type: edge).
+
+### U-quiet-hours-16f: CI for the shared package and the mutation gate
+
+- Layer: infra
+- Contract: a CI job runs lint, type check, tests and `pip-audit` in `packages/schedule-policy`; a scheduled and manually startable workflow runs cosmic-ray for the agent and the package and fails below 85 % (ADR-0030 item 4, SEC-3, CR-1).
+- Files: `.github/workflows/ci.yml`, `.github/workflows/mutation.yml`, `agents/mail-triage/tests/infra/test_deploy.py`
+- Depends on: —
+- Parallel: yes
+- Guardrails: guardrail-python, guardrail-pytest
+- Criteria:
+  1. Given `ci.yml`, When read, Then a job runs the package's tests and `pip-audit` (SEC-3) (type: security).
+  2. Given `mutation.yml`, When read, Then it triggers on `schedule` and `workflow_dispatch`, runs both cosmic-ray configs and fails when the score is below 85 % (CR-1) (type: happy).
+  3. Given a package change that breaks the 65-character time input limit, When CI runs, Then the package job fails (SEC-3) (type: security).
+
+Accepted without a unit: pinning CI tool images by digest (SEC-6) goes to a Renovate follow-up; moving the `ZoneInfo` zone CHECK to a reference table (RT-1 fix item) is not needed once 16c lets the owner repair an invalid row.
+
 ## Coverage of the acceptance criteria
 
 | AC | Unit |
