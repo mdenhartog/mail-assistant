@@ -362,6 +362,13 @@ U-01, U-02 and U-04 share no files and run in parallel. U-12 runs after U-06a (b
 | AC-34 | 04 |
 | AC-35, AC-36 | 05, 14 |
 
+## Changes made during the build
+
+- **U-quiet-hours-05b** (PR #31): `SettingsStore.read` wraps database errors in `SettingsStoreFailure`, found by the first challenge round.
+- **U-quiet-hours-15a** (PR #34): delivered as `python -m app migrate` (a one-shot compose service and a Helm pre-install/PreSync Job) in the agent's own `compose.yaml` and `deploy/charts/worker`, not in a root `docker-compose.yml`. `serve` only checks that the schema is at the expected head (exit 5 when not, 6 when the migration failed). New setting: `MAIL_TRIAGE_RUNTIME_PASSWORD`.
+- **U-quiet-hours-15b** (PR #37): the migrate service is **not** in the `prod-like` profile, because `docker compose up --wait` counts an exited container as failed, even with exit code 0 (found in CI). The `runtime-role` CI job starts the stack, runs `docker compose run --rm --build mail-triage-migrate`, then runs `tests/e2e/test_runtime_role.py`: 19 forbidden statements must fail with SQLSTATE 42501. The agent stays out of `prod-like` (it needs real Gmail, Telegram and Anthropic credentials). The Trivy scan of the `components` job covers the image with no ignores.
+- **Secrets in the cluster** (PR #36): ADR-0029 chooses Sealed Secrets; the operator step is in `deploy/charts/worker/README.md`.
+
 ## Open points for the build
 
 - Coverage at least 90 % on changed code; a mutation score of 85 % is a criterion of U-01 and U-03, and a CI step runs the mutation check.
