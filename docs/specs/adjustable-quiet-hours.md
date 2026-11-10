@@ -2,10 +2,11 @@
 feature: adjustable-quiet-hours
 intent: INT-002
 extends: mail-triage
-status: approved
+status: done
 date: 2026-11-09
 approver: Marco
 sibling: web-settings
+docs: docs/user-guide/quiet-hours.md
 ---
 
 # Adjustable quiet hours (Telegram)
