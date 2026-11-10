@@ -10,11 +10,17 @@ REVOKE ALL ON SCHEMA settings FROM mail_triage_runtime;
 REVOKE ALL ON ALL TABLES IN SCHEMA settings FROM mail_triage_runtime;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA settings FROM mail_triage_runtime;
 
--- Mail, alerts and dialogue state: plain data access, no DDL (no CREATE on the schema, no ownership).
+-- Mail, alerts and dialogue state: per table, exactly what the code does (ADR-0030 item 1). No DDL (no CREATE on the
+-- schema, no ownership), no TRUNCATE, and a delete only where the code deletes.
 GRANT USAGE ON SCHEMA public TO mail_triage_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON
-    mail_item, alert, draft, audit_log, oauth_token, poll_state, catchup_state, overview_log, conversation
+-- The mail trail is append-only: the runtime role can add audit records and the overview log, never change or remove them.
+GRANT SELECT, INSERT ON audit_log, overview_log TO mail_triage_runtime;
+-- Created and updated, never deleted (state moves forward; the token, poll and catch-up rows are upserted).
+GRANT SELECT, INSERT, UPDATE ON
+    mail_item, alert, draft, oauth_token, poll_state, catchup_state
     TO mail_triage_runtime;
+-- The one pending dialogue is replaced and removed.
+GRANT SELECT, INSERT, UPDATE, DELETE ON conversation TO mail_triage_runtime;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO mail_triage_runtime;
 
 -- The start-up readiness check reads the Alembic revision (ADR-0025); the runtime role can never change it.
