@@ -55,7 +55,7 @@ Marco, the single owner, on phone, tablet and desktop. Mostly at a desk, sometim
 | W5 | The feature is built in two releases: R1 first, R2 later (see Releases). | design round table, 2026-11-10 |
 | W6 | A web change is announced with its own Undo token; Undo goes back to before the burst, and a lock button blocks web sign-in until Marco lifts it in Telegram (ADR-0033). | design round table, 2026-11-10 |
 | W7 | The web api runs as one replica with in-process rate limits (ADR-0034). | design round table, 2026-11-10 |
-| W8 | Visual direction: Paper Trail (ADR-0031). Clickable prototype first (ADR-0009), limited to the settings form and the conflict banner. | 2026-11-10 |
+| W8 | Visual direction: Pebble (ADR-0035). Clickable prototype first (ADR-0009), limited to the settings form and the conflict banner. | 2026-11-10 |
 
 ## My calls (Marco may change these)
 

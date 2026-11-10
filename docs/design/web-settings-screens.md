@@ -2,13 +2,14 @@
 feature: web-settings
 intent: INT-002
 spec: docs/specs/web-settings.md
-status: draft
+status: approved
+approver: Marco
 date: 2026-11-10
 ---
 
 # Web settings: screens, states and components
 
-Direction: Paper Trail (ADR-0031). Words per C-11 and AC-24. Mobile first; checked at 320, 375, 768, 1280 px and 200 % text size, no horizontal scroll (AC-22).
+Direction: Pebble (ADR-0035): one soft card per setting (2 by 2 on desktop, stacked on a phone), pill buttons, one short greeting bubble at the top of the settings page that carries no control. Words per C-11 and AC-24. Mobile first; checked at 320, 375, 768, 1280 px and 200 % text size, no horizontal scroll (AC-22).
 
 ## Screen 1: Login page (`/login`, public)
 

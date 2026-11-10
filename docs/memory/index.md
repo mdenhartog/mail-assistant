@@ -32,8 +32,8 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0028 · Time-zone lookup: a hand-curated list of cities, countries and aliases · area:architecture · tags:mail-triage,time-zone,data · decisions/ADR-0028-place-list.md
 - ADR-0029 · Cluster secrets: Sealed Secrets, committed encrypted through GitOps · area:security · tags:kubernetes,argocd,secrets,sealed-secrets,mail-triage · decisions/ADR-0029-secrets-sealed-secrets.md
 - ADR-0030 · Runtime role hardening: least-privilege grants, server-derived audit actor, SCRAM set by the client · area:security · tags:mail-triage,postgresql,settings,audit,scram,mutation-testing · decisions/ADR-0030-runtime-role-hardening.md
-- ADR-0031 · Web design system: the Paper Trail direction · area:design-system · tags:design,tokens,web,paper-trail · decisions/ADR-0031-web-design-paper-trail.md
 - ADR-0032 · The web settings page is reachable from the internet · area:hosting · tags:web,ingress,tls,exposure,mail-triage · decisions/ADR-0032-web-public-exposure.md
 - ADR-0033 · Web changes are announced with their own Undo token and a lock for web sign-in · area:security · tags:web,telegram,undo,audit,mail-triage · decisions/ADR-0033-web-change-notice-and-lock.md
 - ADR-0034 · The web api runs as one replica with in-process rate limits · area:architecture · tags:web,rate-limit,kubernetes,availability · decisions/ADR-0034-web-api-single-replica.md
+- ADR-0035 · Web design system: the Pebble direction (supersedes ADR-0031) · area:design-system · tags:design,tokens,web,pebble · decisions/ADR-0035-web-design-pebble.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
