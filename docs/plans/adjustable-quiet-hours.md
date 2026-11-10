@@ -345,8 +345,8 @@ Order: 16a, 16b, 16c, 16e and 16f are independent (different files) and run in p
 ### U-quiet-hours-16a: Least-privilege grants and a server-derived audit actor
 
 - Layer: backend
-- Contract: new migration 0005 and `grants.sql`: per-table grants; a trigger that enforces `version = old.version + 1`, derives `updated_via` from `session_user` and stores `session_user` in `settings_change` (ADR-0030 items 1 and 2).
-- Files: `app/db/grants.sql`, `migrations/versions/0005_*.py`, `tests/db/test_settings_grants.py`, `tests/db/test_settings_migration.py`, `tests/e2e/test_runtime_role.py`
+- Contract: new migration 0006 (0005 was taken by U-06b) and `grants.sql`: per-table grants; a trigger that enforces `version = old.version + 1`, derives `updated_via` from `session_user` and stores `session_user` in `settings_change` (ADR-0030 items 1 and 2).
+- Files: `app/db/grants.sql`, `migrations/versions/0006_settings_guard.py`, `tests/db/test_settings_grants.py`, `tests/db/test_settings_migration.py`, `tests/e2e/test_runtime_role.py`
 - Depends on: —
 - Parallel: yes
 - Guardrails: guardrail-sqlalchemy-alembic, guardrail-pytest
@@ -355,7 +355,7 @@ Order: 16a, 16b, 16c, 16e and 16f are independent (different files) and run in p
   2. Given the runtime role, When it inserts into `audit_log`, upserts `oauth_token`/`poll_state`/`catchup_state`, updates `mail_item`/`alert`/`draft` and deletes from `conversation`, Then each works (type: happy).
   3. Given the runtime role, When it updates `settings.schedule` without raising the version by exactly one, Then the update is refused (RT-3) (type: security).
   4. Given the runtime role, When it writes `updated_via = 'web'`, Then the write is refused, and a `telegram` write records `session_user = 'mail_triage_runtime'` (SEC-4, RT-3) (type: security).
-  5. Given settings written before the migration, When 0005 runs, Then existing rows and audit records stay valid and the upgrade and downgrade round-trip (type: edge).
+  5. Given settings written before the migration, When 0006 runs, Then existing rows and audit records stay valid and the upgrade and downgrade round-trip (type: edge).
 
 ### U-quiet-hours-16b: Hardened runtime-role setup in the migration job
 
@@ -390,7 +390,7 @@ Order: 16a, 16b, 16c, 16e and 16f are independent (different files) and run in p
 ### U-quiet-hours-16d: Replayed Telegram updates are ignored after a restart
 
 - Layer: backend
-- Contract: the last handled `update_id` is stored in the database (in `poll_state` if that fits, otherwise a new table with a grant in `grants.sql`) in the same step as handling, and updates at or below it are skipped at start-up (RT-5).
+- Contract: the last handled `update_id` is stored in the database in a new column `poll_state.telegram_update_id` (migration 0007; the existing grant on `poll_state` is enough), right after a successful handling in its own transaction, and updates at or below it are skipped at start-up (RT-5).
 - Files: `app/usecases/dispatch.py`, `app/adapters/telegram_inbox.py`, `app/runner.py`, `app/db/`, tests
 - Depends on: U-quiet-hours-16a (migration order and grants)
 - Parallel: no
@@ -426,6 +426,13 @@ Order: 16a, 16b, 16c, 16e and 16f are independent (different files) and run in p
   1. Given `ci.yml`, When read, Then a job runs the package's tests and `pip-audit` (SEC-3) (type: security).
   2. Given `mutation.yml`, When read, Then it triggers on `schedule` and `workflow_dispatch`, runs both cosmic-ray configs and fails when the score is below 85 % (CR-1) (type: happy).
   3. Given a package change that breaks the 65-character time input limit, When CI runs, Then the package job fails (SEC-3) (type: security).
+
+Built differently from the plan:
+
+- 16a: migration `0006_settings_guard` (not 0005); refusals of the guard raise SQLSTATE 42501; the owner and other unmapped roles keep the channel they claim.
+- 16d: migration `0007_telegram_update_id`. The id is stored after handling, not in the same transaction as the handling (handling spans several ports and the Telegram API), so a crash between the two replays one update once. A command that fails is retried and given up after 3 attempts, so one poison update cannot block the rest.
+- 16f: the package job also found that `validate` accepted the zone `localtime` on a Linux host; the valid zones now come from the pinned `tzdata` package, not from `zoneinfo.available_timezones()`.
+- Mutation scores of the first manual run of `mutation.yml` (run 42865370873, main at e11c48d): `schedule_policy` 86.93 % killed, `time_policy.py` 89.83 % killed; both meet the 85 % criteria.
 
 Accepted without a unit: pinning CI tool images by digest (SEC-6) goes to a Renovate follow-up; moving the `ZoneInfo` zone CHECK to a reference table (RT-1 fix item) is not needed once 16c lets the owner repair an invalid row.
 
