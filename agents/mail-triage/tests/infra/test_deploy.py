@@ -413,3 +413,72 @@ def test_given_the_image_when_built_then_it_carries_the_grants_the_migration_app
     assert "!agents/mail-triage/app" in ignore
     assert re.search(r"^COPY agents/mail-triage/app \./app$", dockerfile, re.MULTILINE)
     assert (COMPONENT / "app" / "db" / "grants.sql").is_file()
+
+
+# --- U-quiet-hours-15b: CI migrates apart from `up --wait`, checks the runtime role and scans the image (AC-30) ---
+
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+
+
+def ci_jobs() -> dict[str, Any]:
+    return yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+
+def run_steps(job: dict[str, Any]) -> str:
+    return "\n".join(str(step.get("run", "")) for step in job["steps"])
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is needed to render the compose file")
+def test_given_the_prod_like_profile_when_compose_renders_then_it_holds_no_one_shot_service() -> None:
+    # `up --wait` treats a container that exited (even with 0) as a failure, so the one-shot migrate stays out of it
+    env = {**os.environ, "POSTGRES_PASSWORD": "pg-render-test"}
+    result = subprocess.run(
+        ["docker", "compose", "--profile", "prod-like", "config", "--format", "json"],  # noqa: S607
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        env=env,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    services = json.loads(result.stdout)["services"]
+    assert "mail-triage-migrate" not in services
+    assert "mail-triage" not in services  # the agent needs real Gmail, Telegram and Anthropic credentials
+
+
+def test_given_the_ci_workflow_when_read_then_a_job_migrates_and_runs_the_role_checks_against_the_stack() -> None:
+    commands = run_steps(ci_jobs()["runtime-role"])
+
+    assert "docker compose --profile prod-like up -d --build --wait" in commands
+    assert "docker compose run --rm --build mail-triage-migrate" in commands
+    assert commands.index("up -d --build --wait") < commands.index("mail-triage-migrate")  # the stack first
+    assert commands.index("mail-triage-migrate") < commands.index("tests/e2e")  # the role exists before it is checked
+    assert "MAIL_TRIAGE_RUNTIME_PASSWORD=" in commands  # the migrate job stops without it (exit code 2)
+
+
+@pytest.mark.parametrize("job_name", ["e2e", "gxp"])
+def test_given_a_job_that_starts_the_prod_like_stack_when_read_then_it_does_not_run_the_migration(
+    job_name: str,
+) -> None:
+    assert "mail-triage-migrate" not in run_steps(ci_jobs()[job_name])
+
+
+def test_given_the_ci_workflow_when_read_then_the_mail_triage_image_is_scanned_for_high_and_critical() -> None:
+    commands = run_steps(ci_jobs()["components"])
+
+    assert "agents/mail-triage" in commands
+    assert "aquasec/trivy" in commands
+    assert "--exit-code 1" in commands
+    assert "--severity HIGH,CRITICAL" in commands
+
+
+def test_given_the_repository_when_searched_then_no_scan_ignores_findings() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+
+    assert "--skip-" not in workflow
+    assert "--ignorefile" not in workflow
+    assert "trivyignore" not in workflow
+    assert not list(ROOT.glob(".trivyignore*"))
+    assert not (ROOT / "trivy.yaml").exists()
