@@ -16,7 +16,9 @@ COPY agents/mail-triage/app ./app
 COPY agents/mail-triage/migrations ./migrations
 
 FROM python:3.13-slim-bookworm AS runtime
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PATH="/srv/agents/mail-triage/.venv/bin:$PATH"
+# python:slim-bookworm is Debian and may carry a system /usr/share/zoneinfo, which zoneinfo reads before the `tzdata` wheel.
+# PYTHONTZPATH points at a directory that does not exist, so the pinned wheel (uv.lock, ADR-0028) is the only source.
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONTZPATH=/nonexistent-zoneinfo PATH="/srv/agents/mail-triage/.venv/bin:$PATH"
 # The agent never installs packages at run time: pip carries its own copies of msgpack, urllib3 and setuptools, and the
 # scanner flags them, so pip goes out of the runtime image.
 RUN python -m pip uninstall --yes pip \

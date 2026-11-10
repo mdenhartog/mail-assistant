@@ -22,6 +22,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
+from app.db.scram import verifier_for
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -30,6 +32,10 @@ GRANTS = Path(__file__).resolve().parent / "grants.sql"
 RUNTIME_ROLE = "mail_triage_runtime"  # fixed: grants.sql names it
 # Not the agent's single-replica lock: the old agent, still running while the job of a new release migrates, holds that.
 MIGRATION_LOCK_KEY = 7_265_002
+
+
+class RuntimeRoleNotSafe(RuntimeError):  # noqa: N818 - reads as a state, not as an error class
+    """The runtime role is wider than ADR-0030 allows. The message names the role only, never a password or a URL."""
 
 
 class SchemaNotReady(RuntimeError):  # noqa: N818 - reads as a state, not as an error class
@@ -45,11 +51,6 @@ def _config(url: str) -> Config:
 
 def _upgrade(url: str) -> None:
     command.upgrade(_config(url), "head")
-
-
-async def upgrade(url: str) -> None:
-    """Apply every migration that has not run yet."""
-    await asyncio.to_thread(_upgrade, url)
 
 
 def expected_head() -> str:
@@ -74,28 +75,51 @@ async def check_schema(engine: AsyncEngine) -> None:
         )
 
 
+_SSL_MODES = frozenset({"disable", "allow", "prefer", "require", "verify-ca", "verify-full"})
+
+
 async def _connect(url: str) -> asyncpg.Connection:
+    """Connect as the URL says, including its TLS setting (``?ssl=``), which SQLAlchemy would otherwise have handled."""
     parsed = make_url(url)
+    options: dict[str, object] = {}
+    ssl = parsed.query.get("ssl")
+    if ssl is not None:
+        if not isinstance(ssl, str) or ssl not in _SSL_MODES:
+            raise ValueError(f"the ssl setting of the owner URL must be one of: {', '.join(sorted(_SSL_MODES))}")
+        options["ssl"] = ssl
     return await asyncpg.connect(
-        host=parsed.host, port=parsed.port, user=parsed.username, password=parsed.password, database=parsed.database
+        host=parsed.host,
+        port=parsed.port,
+        user=parsed.username,
+        password=parsed.password,
+        database=parsed.database,
+        **options,  # type: ignore[arg-type]
     )
 
 
 async def _ensure_runtime_role(connection: asyncpg.Connection, password: str) -> None:
     """Create the runtime role, or set its password again, so the secret store stays the single source of it.
 
-    The statement is built by the server (``format`` with ``%I`` and ``%L``), so the password is quoted as a literal
-    whatever it contains.
+    Only the SCRAM-SHA-256 verifier is sent (ADR-0030): the clear password never reaches the server, so it cannot end
+    up in the statement log or in ``pg_stat_activity``. The statement is built by the server (``format`` with ``%I``
+    and ``%L``), so the verifier is quoted as a literal. The role must not hold any membership; that is checked here.
     """
     exists = await connection.fetchval("select 1 from pg_roles where rolname = $1", RUNTIME_ROLE)
     statement = await connection.fetchval(
-        "select format('%s ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT', "
-        "$1::text, $2::text, $3::text)",
+        "select format('%s ROLE %I LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT "
+        "NOREPLICATION NOBYPASSRLS', $1::text, $2::text, $3::text)",
         "ALTER" if exists else "CREATE",
         RUNTIME_ROLE,
-        password,
+        verifier_for(password),
     )
     await connection.execute(str(statement))
+    memberships = await connection.fetchval(
+        "select count(*) from pg_auth_members m join pg_roles r on r.oid = m.member where r.rolname = $1", RUNTIME_ROLE
+    )
+    if memberships:
+        raise RuntimeRoleNotSafe(
+            f"role {RUNTIME_ROLE} is a member of another role; revoke the membership and run again"
+        )
 
 
 async def migrate_database(owner_url: str, runtime_password: str) -> None:
@@ -103,7 +127,7 @@ async def migrate_database(owner_url: str, runtime_password: str) -> None:
     lock = await _connect(owner_url)
     try:
         await lock.execute("select pg_advisory_lock($1)", MIGRATION_LOCK_KEY)  # waits for a job that is still running
-        await upgrade(owner_url)
+        await asyncio.to_thread(_upgrade, owner_url)
         async with lock.transaction():
             await _ensure_runtime_role(lock, runtime_password)
             await lock.execute(GRANTS.read_text(encoding="utf-8"))

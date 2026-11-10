@@ -1,5 +1,50 @@
 {{- if .Values.migration.enabled }}
 {{- $secret := required "migration.secretName is required when migration.enabled is true (name of the Secret with DATABASE_OWNER_URL and RUNTIME_ROLE_PASSWORD)" .Values.migration.secretName }}
+# The ServiceAccount and the NetworkPolicy are hooks too, with a lower weight and sync-wave than the Job (default 0): in a
+# PreSync phase they are created first, so the Job pod never starts without its policy. before-hook-creation keeps them
+# in place after the sync (they are replaced at the next one), so the policy still guards a Job that is retried.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "worker.migrationName" . }}
+  labels: {{- include "worker.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-5"
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "-5"
+automountServiceAccountToken: false
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "worker.migrationName" . }}
+  labels: {{- include "worker.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-5"
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "-5"
+spec:
+  podSelector:
+    matchLabels: {{- include "worker.migrationSelector" . | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
+    - to:
+        - podSelector: {}
+      ports:
+        {{- range .Values.migration.networkPolicy.databasePorts }}
+        - { port: {{ . }} }
+        {{- end }}
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -8,8 +53,10 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
     helm.sh/hook: pre-install,pre-upgrade
     helm.sh/hook-delete-policy: before-hook-creation
+    helm.sh/hook-weight: "0"
 spec:
   backoffLimit: {{ .Values.migration.backoffLimit }}
   activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
@@ -19,6 +66,7 @@ spec:
       labels: {{- include "worker.migrationSelector" . | nindent 8 }}
     spec:
       restartPolicy: Never
+      serviceAccountName: {{ include "worker.migrationName" . }}
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -44,25 +92,4 @@ spec:
             - { name: tmp, mountPath: /tmp }
       volumes:
         - { name: tmp, emptyDir: {} }
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: {{ include "worker.migrationName" . }}
-  labels: {{- include "worker.labels" . | nindent 4 }}
-spec:
-  podSelector:
-    matchLabels: {{- include "worker.migrationSelector" . | nindent 6 }}
-  policyTypes: [Ingress, Egress]
-  ingress: []
-  egress:
-    - to:
-        - namespaceSelector: {}
-      ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
-    - to:
-        - podSelector: {}
-      ports:
-        {{- range .Values.migration.networkPolicy.databasePorts }}
-        - { port: {{ . }} }
-        {{- end }}
 {{- end }}

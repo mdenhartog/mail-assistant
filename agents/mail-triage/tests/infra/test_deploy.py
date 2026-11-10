@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -576,3 +577,101 @@ def test_given_the_workflows_when_read_then_every_action_is_pinned_by_commit_sha
 def test_given_the_mutation_workflow_when_read_then_every_job_has_a_timeout() -> None:
     for job in load_workflow(MUTATION_WORKFLOW)["jobs"].values():
         assert isinstance(job.get("timeout-minutes"), int)
+
+
+# --- U-quiet-hours-16e: policy and ServiceAccount exist before the Job, sealing by stdin, tzdata from the wheel ---
+
+README = CHART / "README.md"
+HOOK_KEYS = ("argocd.argoproj.io/hook", "helm.sh/hook")
+
+
+def migration_policy(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(doc for doc in docs if doc["kind"] == "NetworkPolicy" and doc["metadata"]["name"].endswith("-migrate"))
+
+
+def migration_account(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    return next(doc for doc in docs if doc["kind"] == "ServiceAccount" and doc["metadata"]["name"].endswith("-migrate"))
+
+
+@needs_helm
+@pytest.mark.parametrize("resource", [migration_policy, migration_account])
+def test_given_the_migration_when_rendered_then_the_policy_and_account_are_hooks_created_before_the_job(
+    resource: Any,
+) -> None:
+    docs = render(*MIGRATION)
+    job = migration_job(docs)["metadata"]["annotations"]
+    annotations = resource(docs)["metadata"]["annotations"]
+
+    for key in HOOK_KEYS:
+        assert annotations[key] == job[key]
+    assert int(annotations["helm.sh/hook-weight"]) < int(job.get("helm.sh/hook-weight", "0"))
+    assert int(annotations["argocd.argoproj.io/sync-wave"]) < int(job.get("argocd.argoproj.io/sync-wave", "0"))
+    assert annotations["argocd.argoproj.io/hook-delete-policy"] == "BeforeHookCreation"
+    assert annotations["helm.sh/hook-delete-policy"] == "before-hook-creation"
+
+
+@needs_helm
+def test_given_the_migration_when_rendered_then_the_job_has_its_own_account_without_a_token() -> None:
+    docs = render(*MIGRATION)
+    spec = migration_job(docs)["spec"]["template"]["spec"]
+    account = migration_account(docs)
+    worker_account = kind(docs, "Deployment")["spec"]["template"]["spec"]["serviceAccountName"]
+
+    assert spec["serviceAccountName"] == account["metadata"]["name"]
+    assert spec["serviceAccountName"] != worker_account
+    assert account["automountServiceAccountToken"] is False
+    assert spec["automountServiceAccountToken"] is False
+
+
+@needs_helm
+def test_given_the_migration_is_off_when_rendered_then_there_is_no_migrate_account_or_policy() -> None:
+    docs = render()
+
+    assert not [doc for doc in docs if doc["metadata"]["name"].endswith("-migrate")]
+
+
+def test_given_the_readme_when_read_then_secret_keys_are_never_passed_with_from_literal() -> None:
+    text = README.read_text(encoding="utf-8")
+
+    assert "--from-literal=" not in text  # a value on the command line lands in shell history and the process list
+    assert "--from-env-file=/dev/stdin" in text
+    assert "kubeseal" in text
+
+
+def dockerfile_runtime_env() -> dict[str, str]:
+    lines = (COMPONENT / "Dockerfile").read_text(encoding="utf-8").splitlines()
+    stage = lines[max(i for i, line in enumerate(lines) if line.startswith("FROM ")) :]
+    env: dict[str, str] = {}
+    for line in stage:
+        if line.startswith("ENV "):
+            for name, value in re.findall(r'(\w+)=("[^"]*"|\S*)', line[4:]):
+                env[name] = value.strip('"')
+    return env
+
+
+def test_given_the_runtime_image_when_zoneinfo_resolves_then_no_system_zoneinfo_directory_can_win() -> None:
+    # python:*-slim-bookworm is Debian and may ship /usr/share/zoneinfo; zoneinfo reads TZPATH before the tzdata wheel.
+    env = dockerfile_runtime_env()
+
+    assert "PYTHONTZPATH" in env, "set PYTHONTZPATH so that the pinned tzdata wheel is the only source (ADR-0028)"
+    probe = (
+        "import zoneinfo, pathlib, tzdata;"
+        "assert all(not pathlib.Path(p).is_dir() for p in zoneinfo.TZPATH), zoneinfo.TZPATH;"
+        "zoneinfo.ZoneInfo('Europe/Amsterdam')"
+    )
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PYTHONTZPATH": env["PYTHONTZPATH"]},
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_given_the_runtime_image_when_read_then_tzdata_is_a_locked_dependency_of_the_agent() -> None:
+    lock = (COMPONENT / "uv.lock").read_text(encoding="utf-8")
+
+    assert re.search(r'^name = "tzdata"$', lock, re.MULTILINE)
