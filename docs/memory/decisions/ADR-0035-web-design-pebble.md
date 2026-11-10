@@ -28,7 +28,7 @@ Direction **C, Pebble**, chosen by Marco: a friendly companion with soft edges. 
 - More vertical space than a single column of rows: four cards plus banners need more scrolling on a phone. The prototype checks 320 px and 200 % text size; if a card layout fails AC-22 the layout changes, not the checks.
 - The pill buttons in the confirmation dialog (R2) need an extra check that the destructive button is visibly different from the safe one without colour alone.
 - More tokens (two radii, shadow, spring motion) to maintain than a hairline design.
-- Fonts come from Google Fonts with a system fallback stack; self-hosting is a follow-up if the content security policy or privacy asks for it.
+- Fonts come from Google Fonts with a system fallback stack; self-hosting is a follow-up if the content security policy or privacy asks for it. Update 2026-11-10: the fonts are self-hosted (the content security policy blocks Google Fonts and every visit would tell Google).
 
 ## Alternatives
 
