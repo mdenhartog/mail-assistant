@@ -21,8 +21,12 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
+from app.db.migrate import SchemaNotReady, check_schema
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"  # noqa: S105  # nosec B105 - a public endpoint, not a secret
@@ -41,6 +45,14 @@ _PAGE = b"<html><body>Consent received. You can close this tab and return to the
 
 class ConsentError(RuntimeError):
     """Consent failed. The message never contains a code, a secret or a token."""
+
+
+async def require_schema(engine: AsyncEngine) -> None:
+    """Stop unless the migrate job has brought the schema to this build's head; consent itself never migrates."""
+    try:
+        await check_schema(engine)
+    except SchemaNotReady as error:
+        raise ConsentError(f"{error}; this command does not migrate (ADR-0025)") from None
 
 
 class TokenSink(Protocol):
@@ -167,10 +179,12 @@ async def main() -> None:  # pragma: no cover - thin shell around the tested pie
     from app.adapters.token_store import TokenCipher, TokenStore  # noqa: PLC0415
 
     redirect_uri = f"http://{LOOPBACK}:{REDIRECT_PORT}{CALLBACK_PATH}"
-    from app.db.migrate import upgrade  # noqa: PLC0415
-
-    await upgrade(os.environ["DATABASE_URL"])  # the token table must exist before the agent has ever started
     engine = create_async_engine(os.environ["DATABASE_URL"])
+    try:
+        await require_schema(engine)  # the migrate job creates the token table; consent only checks it
+    except ConsentError as error:
+        await engine.dispose()
+        raise SystemExit(str(error)) from None
     store = TokenStore(
         async_sessionmaker(engine, expire_on_commit=False), TokenCipher(SecretStr(os.environ["TOKEN_ENCRYPTION_KEY"]))
     )
