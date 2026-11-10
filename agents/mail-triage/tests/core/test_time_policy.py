@@ -200,3 +200,10 @@ def test_given_a_boolean_when_snoozing_then_it_is_rejected_although_it_is_a_numb
 def test_given_the_evening_before_quiet_start_when_asked_then_it_is_23_00_today_and_after_it_tomorrow() -> None:
     assert next_quiet_start(local(2026, 11, 9, 20), DEFAULT_POLICY) == local(2026, 11, 9, 23)
     assert next_quiet_start(local(2026, 11, 9, 23), DEFAULT_POLICY) == local(2026, 11, 10, 23)
+
+
+def test_given_tomorrow_built_at_runtime_when_snoozing_then_it_means_tomorrow_like_the_literal() -> None:
+    # e.g. a word read from a button's callback data: equal to "tomorrow" but not the same string object
+    parsed = "TOMORROW".lower()
+
+    assert remind_due(local(2026, 11, 9, 15), parsed, DEFAULT_POLICY) == local(2026, 11, 10, 9)  # type: ignore[arg-type]
