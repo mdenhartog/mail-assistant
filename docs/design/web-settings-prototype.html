@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings - Mail Assistant (prototype)</title>
+<script>document.documentElement.dataset.theme=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';</script>
+<!-- Optional fonts. Without a network the page falls back to system fonts. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+<style>
+/* ===== Pebble tokens (ADR-0035; values from the contrast-checked direction mock) ===== */
+:root{
+  color-scheme:light;
+  --surface:#FAF1EE;--surface-raised:#FFFFFF;--text:#2A1823;--text-muted:#6A4F5E;--border:#967A89;--divider:#EAD3DC;
+  --primary:#8A2F63;--primary-contrast:#FFFFFF;--danger:#B42318;--danger-soft:#FDE4E0;--success:#23683D;--success-soft:#E0F1E3;--focus:#0B5FC2;
+  --display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+  --body:"Figtree",system-ui,"Segoe UI",sans-serif;
+  --r-btn:999px;--r-inp:14px;--r-card:24px;
+  --shadow:0 6px 24px -8px rgba(60,20,45,.28);
+  --sp-1:.25rem;--sp-2:.5rem;--sp-3:.75rem;--sp-4:1rem;--sp-5:1.25rem;--sp-6:1.5rem;--sp-8:2rem;
+  --fs-sm:.875rem;--fs-md:1rem;--fs-lg:1.25rem;--fs-xl:1.5625rem;--fs-2xl:2rem;
+  --dur-press:200ms;--dur-enter:250ms;--spring:cubic-bezier(.34,1.56,.64,1);
+}
+:root[data-theme=dark]{
+  color-scheme:dark;
+  --surface:#1C1219;--surface-raised:#281A24;--text:#F6E9F0;--text-muted:#C4A9B8;--border:#8E7282;--divider:#402E3A;
+  --primary:#F0A0CB;--primary-contrast:#3A0F27;--danger:#FFA399;--danger-soft:#4B1F1B;--success:#92D8A6;--success-soft:#1D3A26;--focus:#9CC4FF;
+}
+
+/* ===== base ===== */
+*{box-sizing:border-box}
+html{font-size:100%;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--surface);color:var(--text);font-family:var(--body);font-size:1.0625rem;line-height:1.5;overflow-wrap:anywhere}
+h1,h2{font-family:var(--display);margin:0;color:var(--text)}
+p{margin:0}
+button,input{font:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.skip{position:absolute;left:var(--sp-2);top:-4rem;z-index:5;background:var(--surface-raised);color:var(--text);padding:var(--sp-3) var(--sp-4);border-radius:var(--r-inp);border:2px solid var(--primary);min-height:44px;display:inline-flex;align-items:center}
+.skip:focus{top:var(--sp-2)}
+[hidden]{display:none!important}
+
+/* prototype chrome (not part of the product) */
+.proto-bar{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);align-items:center;justify-content:space-between;padding:var(--sp-2) var(--sp-4);background:var(--surface-raised);border-bottom:2px dashed var(--border);font-size:var(--fs-sm)}
+.proto-bar p{flex:1 1 16rem;color:var(--text-muted)}
+.proto-bar p b{color:var(--text)}
+.proto{max-width:60rem;margin:var(--sp-8) auto 0;padding:0 var(--sp-4) var(--sp-8)}
+.pbox{border:2px dashed var(--border);border-radius:var(--r-card);padding:var(--sp-5);margin-top:var(--sp-4)}
+.pbox h2{font-size:var(--fs-lg)}
+.pbox p{color:var(--text-muted);margin-top:var(--sp-2);font-size:var(--fs-sm)}
+.pbox .btns{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-3)}
+.pbox output{display:block;color:var(--text);margin-top:var(--sp-3);font-size:var(--fs-sm)}
+.proto details{margin-top:var(--sp-3)}
+.proto summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:600}
+.proto ol{margin:var(--sp-2) 0 0;padding-left:var(--sp-6);font-size:var(--fs-sm)}
+.proto li{margin-bottom:var(--sp-1)}
+
+/* ===== components ===== */
+.btn{min-height:44px;min-width:44px;padding:0 var(--sp-5);border-radius:var(--r-btn);font-weight:600;border:2px solid transparent;cursor:pointer;color:var(--text);background:transparent;display:inline-flex;align-items:center;justify-content:center;text-align:center;transition:transform var(--dur-press) var(--spring),box-shadow var(--dur-press)}
+.btn:hover{box-shadow:0 2px 10px -3px rgba(60,20,45,.35)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--primary);color:var(--primary-contrast);padding:0 var(--sp-6)}
+.btn.secondary{border-color:var(--border);background:var(--surface-raised)}
+.btn.ghost{padding:0 var(--sp-3)}
+.btn.wide{width:100%}
+.btn[disabled],.btn[aria-disabled=true]{opacity:.55;cursor:not-allowed;box-shadow:none;transform:none}
+
+.top{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4);max-width:60rem;margin:0 auto}
+.top .sp{flex:1}
+.brand{display:inline-flex;align-items:center;gap:var(--sp-2);font-family:var(--display);font-weight:600;font-size:1.05rem}
+.mark{display:inline-block;width:1.1rem;height:1.1rem;border-radius:50%;background:var(--primary)}
+main{max-width:60rem;margin:0 auto;padding:0 var(--sp-4) var(--sp-6)}
+main:focus{outline:none}
+h1{font-size:var(--fs-2xl);font-weight:700;letter-spacing:-.02em;line-height:1.2}
+.who{color:var(--text-muted);font-size:var(--fs-sm);margin-top:var(--sp-1)}
+.who b{color:var(--text);font-weight:600}
+
+.bubble{display:flex;gap:var(--sp-3);align-items:flex-end;margin:var(--sp-4) 0 var(--sp-5)}
+.avatar{flex:none;width:2.5rem;height:2.5rem;border-radius:50%;background:var(--primary);display:grid;place-items:center}
+.avatar i{width:.9rem;height:.9rem;border-radius:50%;background:var(--primary-contrast)}
+.avatar.big{width:3.5rem;height:3.5rem;margin:0 auto var(--sp-4)}
+.avatar.big i{width:1.2rem;height:1.2rem}
+.bubble p{background:var(--surface-raised);border-radius:var(--r-card) var(--r-card) var(--r-card) 6px;padding:.9rem 1.1rem;box-shadow:var(--shadow);max-width:34rem}
+
+.cards{display:grid;gap:var(--sp-4);align-items:start}
+@media (min-width:48rem){.cards{grid-template-columns:1fr 1fr}}
+.card{background:var(--surface-raised);border-radius:var(--r-card);box-shadow:var(--shadow);margin:0;padding:0;border:0;min-width:0}
+.card .in{padding:var(--sp-5)}
+.card legend{float:left;width:100%;padding:var(--sp-5) var(--sp-5) 0}
+.card legend+.in{clear:both;padding-top:var(--sp-1)}
+.fl{font-weight:600;font-size:var(--fs-md);display:block}
+.hint{color:var(--text-muted);font-size:.9rem;margin-top:var(--sp-1)}
+.fctl{margin-top:var(--sp-2)}
+.inp{width:100%;min-height:44px;background:var(--surface-raised);color:var(--text);border:1px solid var(--border);border-radius:var(--r-inp);padding:0 var(--sp-3);font-variant-numeric:tabular-nums}
+.inp[aria-invalid=true]{border:2px solid var(--danger)}
+.inp[readonly]{opacity:.8}
+.sub{display:block;font-size:.85rem;color:var(--text-muted);margin-bottom:.15rem}
+.timerow{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-3);align-items:flex-start;margin-top:var(--sp-2)}
+.tg{flex:1 1 7rem;min-width:0}
+.until{flex:0 0 auto;min-height:44px;margin-top:1.45rem;display:flex;align-items:center;color:var(--text);font-weight:600}
+.echo{color:var(--text-muted);font-size:.9rem;margin-top:var(--sp-1);font-variant-numeric:tabular-nums}
+.single{max-width:12rem}
+
+.lb{list-style:none;margin:var(--sp-1) 0 0;padding:var(--sp-1);background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--r-inp);max-height:17rem;overflow-y:auto}
+.lb li{min-height:44px;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0 var(--sp-3);padding:var(--sp-1) var(--sp-3);border-radius:calc(var(--r-inp) - 2px);cursor:pointer}
+.lb li:hover{background:var(--divider)}
+.lb li[aria-selected=true]{background:var(--primary);color:var(--primary-contrast)}
+.lb .t{font-variant-numeric:tabular-nums}
+.cur{color:var(--text-muted);font-size:.9rem;margin-top:var(--sp-2)}
+.cur span{color:var(--text);font-weight:600}
+.live{color:var(--text-muted);font-size:.9rem}
+.live:not(:empty){margin-top:var(--sp-1)}
+.dyn{color:var(--text-muted);font-size:.9rem}
+.dyn:not(:empty){margin-top:var(--sp-2)}
+.preview:not(:empty){margin-top:var(--sp-3);padding:var(--sp-3) var(--sp-4);background:var(--surface);color:var(--text);border-left:6px solid var(--primary);border-radius:var(--r-inp)}
+
+.err{display:flex;gap:var(--sp-2);align-items:flex-start;color:var(--danger);font-weight:500;font-size:.95rem;margin-top:var(--sp-2)}
+.errmark{flex:none;display:inline-grid;place-items:center;width:1.2rem;height:1.2rem;border-radius:50%;background:var(--danger);color:var(--surface-raised);font-size:.8rem;font-weight:700;margin-top:.1rem}
+.conflict{margin-top:var(--sp-3);padding:var(--sp-3) var(--sp-4);background:var(--surface);color:var(--text);border-left:6px solid var(--primary);border-radius:var(--r-inp)}
+.conflict .using{display:block;color:var(--text-muted);font-size:.9rem;margin-top:var(--sp-1)}
+.conflict .btns{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
+.conflict .btn{min-height:44px;border-color:var(--border);background:var(--surface-raised);padding:0 var(--sp-4)}
+.conflict .btn[aria-pressed=true]{border-color:var(--primary);border-width:3px}
+
+.perm{color:var(--text-muted);font-size:.95rem;margin:var(--sp-5) 0 var(--sp-3)}
+#banner-area:not(:empty){margin:var(--sp-3) 0}
+.banner{display:flex;gap:var(--sp-3);align-items:flex-start;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-inp);border-left:6px solid currentColor;background:var(--danger-soft);color:var(--danger);--bb:var(--danger-soft);--bf:var(--danger);animation:rise var(--dur-enter) ease-out}
+.banner.ok{background:var(--success-soft);color:var(--success);--bb:var(--success-soft);--bf:var(--success)}
+.banner.info{background:var(--surface-raised);color:var(--text);border:1px solid var(--border);border-left:6px solid var(--primary)}
+.banner:focus{outline:none}
+.banner:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.bicon{flex:none;display:inline-grid;place-items:center;width:1.5rem;height:1.5rem;border-radius:50%;background:var(--bf);color:var(--bb);font-weight:700;font-size:.9rem;margin-top:.1rem}
+.banner.info .bicon{background:var(--primary);color:var(--primary-contrast)}
+.banner b{font-weight:700}
+.banner .btns{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
+.banner .btn{border-color:currentColor;color:inherit;background:transparent}
+.banner .btn.primary{background:var(--primary);color:var(--primary-contrast);border-color:var(--primary)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+
+.last{color:var(--text-muted);font-size:.9rem;margin:var(--sp-4) 0 var(--sp-3)}
+.acts{display:flex;flex-direction:column;gap:var(--sp-5);align-items:stretch}
+.acts .btn{width:100%}
+.acts .reset{display:flex;flex-direction:column;gap:var(--sp-1)}
+@media (min-width:30rem){
+  .acts{flex-direction:row;align-items:flex-start;justify-content:space-between}
+  .acts .btn{width:auto}
+  .acts .reset{align-items:flex-end}
+}
+.status{color:var(--text-muted);font-size:.9rem;margin-top:var(--sp-3)}
+
+.sk{height:1rem;border-radius:var(--r-inp);background:var(--divider);margin:var(--sp-3) 0;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.5}}
+.skcard{background:var(--surface-raised);border-radius:var(--r-card);box-shadow:var(--shadow);padding:var(--sp-5);margin-top:var(--sp-4)}
+
+.login{display:grid;place-items:center;padding:var(--sp-8) var(--sp-4);min-height:70vh}
+.lcard{width:100%;max-width:26rem;background:var(--surface-raised);border-radius:var(--r-card);padding:var(--sp-8) var(--sp-5);box-shadow:var(--shadow);text-align:center}
+.lcard .brand{justify-content:center;margin-bottom:var(--sp-4)}
+.lcard h1{margin:var(--sp-2) 0}
+.lcard .banner{text-align:left;margin-top:var(--sp-4)}
+.lcard .btn{margin-top:var(--sp-5)}
+.fine{color:var(--text-muted);font-size:.9rem;margin-top:var(--sp-4)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<a class="skip" id="skip" href="#main-settings">Skip to main content</a>
+
+<div class="proto-bar">
+  <p><b>Prototype</b> of the Pebble design for the web settings page. Sample data only; nothing is sent anywhere. Not the product.</p>
+  <button class="btn secondary" id="theme" type="button" aria-pressed="false">Dark mode</button>
+</div>
+
+<!-- ============ Settings view ============ -->
+<div id="view-settings">
+  <header class="top">
+    <span class="brand"><i class="mark" aria-hidden="true"></i>Mail Assistant</span>
+    <span class="sp"></span>
+    <button class="btn ghost" id="signout" type="button">Sign out</button>
+  </header>
+  <main id="main-settings" tabindex="-1" aria-busy="false">
+    <h1 id="h1-settings">Settings</h1>
+    <p class="who">Signed in as <b>marco@example.com</b></p>
+
+    <div id="loading" hidden>
+      <p class="fl" style="margin-top:1rem">Loading your settings</p>
+      <div class="skcard" aria-hidden="true"><div class="sk" style="width:55%"></div><div class="sk"></div><div class="sk" style="width:80%"></div></div>
+      <div class="skcard" aria-hidden="true"><div class="sk" style="width:40%"></div><div class="sk"></div><div class="sk" style="width:65%"></div></div>
+    </div>
+
+    <div id="content">
+      <div class="bubble">
+        <span class="avatar" aria-hidden="true"><i></i></span>
+        <p>Hi Marco. These are the four things I follow. Change any of them and I will confirm it on Telegram.</p>
+      </div>
+
+      <form id="form" novalidate>
+        <div class="cards">
+
+          <!-- Time zone (first) -->
+          <div class="card" id="card-tz"><div class="in">
+            <label class="fl" for="tz">Time zone</label>
+            <p class="hint" id="tz-hint">The times below are local times in this zone.</p>
+            <p class="hint" id="tz-hint2">Type a city or a country, for example Bangkok. An offset such as UTC+7 works too. Escape closes the list; Escape again puts the saved zone back.</p>
+            <div class="fctl">
+              <input class="inp" id="tz" type="text" role="combobox" aria-expanded="false" aria-controls="tz-list" aria-autocomplete="list" aria-describedby="tz-hint tz-hint2 tz-current" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <ul class="lb" id="tz-list" role="listbox" aria-label="Matching places" hidden></ul>
+            </div>
+            <p class="dyn" id="tz-nohit" role="status"></p>
+            <p class="sr" id="tz-count" role="status" aria-live="polite"></p>
+            <p class="cur" id="tz-current">Currently: <span id="tz-current-v"></span></p>
+            <p class="live" id="tz-live" aria-live="polite"></p>
+            <p class="preview" id="tz-preview" role="status"></p>
+          </div></div>
+
+          <!-- Quiet hours -->
+          <fieldset class="card" id="card-q">
+            <legend class="fl">Quiet hours</legend>
+            <div class="in">
+              <p class="hint" id="q-hint">Alerts that arrive in this window wait until it ends.</p>
+              <div class="timerow">
+                <div class="tg">
+                  <label class="sub" for="qs">From</label>
+                  <input class="inp" id="qs" type="time" step="60" aria-describedby="q-hint">
+                  <div class="echo" id="qs-echo" aria-hidden="true"></div>
+                </div>
+                <span class="until" aria-hidden="true">until</span>
+                <div class="tg">
+                  <label class="sub" for="qe">Until</label>
+                  <input class="inp" id="qe" type="time" step="60" aria-describedby="q-hint">
+                  <div class="echo" id="qe-echo" aria-hidden="true"></div>
+                </div>
+              </div>
+              <p class="err" id="err-q" role="alert" hidden><span class="errmark" aria-hidden="true">!</span><span class="errtext"></span></p>
+              <div class="conflict" id="cf-qs" hidden></div>
+              <div class="conflict" id="cf-qe" hidden></div>
+            </div>
+          </fieldset>
+
+          <!-- Daily overview -->
+          <div class="card"><div class="in">
+            <label class="fl" for="ov">Daily overview</label>
+            <p class="hint" id="ov-hint">When I send you the summary of your mail.</p>
+            <div class="fctl single">
+              <input class="inp" id="ov" type="time" step="60" aria-describedby="ov-hint">
+              <div class="echo" id="ov-echo" aria-hidden="true"></div>
+            </div>
+            <p class="err" id="err-ov" role="alert" hidden><span class="errmark" aria-hidden="true">!</span><span class="errtext"></span></p>
+            <div class="conflict" id="cf-ov" hidden></div>
+          </div></div>
+
+          <!-- Remind-me-later default -->
+          <div class="card"><div class="in">
+            <label class="fl" for="rm">Remind-me-later default</label>
+            <p class="hint" id="rm-hint">When a snoozed alert comes back if you do not name a time.</p>
+            <div class="fctl single">
+              <input class="inp" id="rm" type="time" step="60" aria-describedby="rm-hint">
+              <div class="echo" id="rm-echo" aria-hidden="true"></div>
+            </div>
+            <p class="err" id="err-rm" role="alert" hidden><span class="errmark" aria-hidden="true">!</span><span class="errtext"></span></p>
+            <div class="conflict" id="cf-rm" hidden></div>
+          </div></div>
+
+        </div>
+
+        <p class="perm" id="perm">Quiet hours, the overview and reminders follow this time zone.</p>
+        <div id="banner-area"></div>
+        <p class="last" id="last"></p>
+
+        <div class="acts">
+          <button class="btn primary" id="save" type="submit">Save changes</button>
+          <div class="reset">
+            <button class="btn secondary" id="reset" type="button" disabled aria-describedby="reset-note">Reset to defaults</button>
+            <span class="hint" id="reset-note" style="margin:0">Not in this version.</span>
+          </div>
+        </div>
+        <p class="status" id="status" role="status"></p>
+      </form>
+    </div>
+  </main>
+</div>
+
+<!-- ============ Login view (static, per screens.md) ============ -->
+<div id="view-login" hidden>
+  <main id="main-login" tabindex="-1">
+    <div class="login">
+      <div class="lcard">
+        <div class="avatar big" aria-hidden="true"><i></i></div>
+        <span class="brand"><i class="mark" aria-hidden="true"></i>Mail Assistant</span>
+        <h1 id="h1-login">Sign in</h1>
+        <p>Use the Google account <b>marco@example.com</b>. It is the only account that can open this app.</p>
+        <div id="login-banner"></div>
+        <button class="btn primary wide" id="login-btn" type="button">Continue with Google</button>
+        <p class="sr" id="login-status" role="status"></p>
+        <p class="fine">This page only asks who you are (your name and e-mail). It never asks for access to your mail or calendar.</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ Prototype controls (not part of the product) ============ -->
+<aside class="proto" aria-label="Prototype controls, not part of the product">
+  <details>
+    <summary>How to try this prototype</summary>
+    <ol>
+      <li>Time zone: click the Time zone field and type "Bang", "Portugal", "UTC+7" or "Phuket" (nothing found). Use the arrow keys, Enter, Escape (twice to put the saved zone back).</li>
+      <li>Pick Bangkok, then look at the preview line. Press Save changes to see Saving and Saved.</li>
+      <li>Validation: set the Daily overview to 23:00 (inside quiet hours 22:00 to 07:00) and press Save changes.</li>
+      <li>Conflict: change From to 22:30, press the Telegram simulation button below, then press Save changes. Choose Use mine or Keep Telegram's and save again.</li>
+      <li>Sign out leads to the sign-in page; Continue with Google returns to the settings.</li>
+    </ol>
+  </details>
+
+  <div class="pbox">
+    <h2>Prototype: simulate a change made in Telegram</h2>
+    <p>Changes the stored values behind the page, as if Marco had changed them in Telegram. The page does not notice until you press Save changes.</p>
+    <div class="btns"><button class="btn secondary" id="sim" type="button">Simulate a Telegram change</button></div>
+    <output id="sim-out" aria-live="polite"></output>
+    <p id="srv"></p>
+  </div>
+
+  <div class="pbox">
+    <h2>Prototype: states</h2>
+    <p>Shows states that are hard to reach by hand. Not part of the product.</p>
+    <div class="btns">
+      <button class="btn secondary" id="st-loading" type="button">Show loading</button>
+      <button class="btn secondary" id="st-fail" type="button">Show save failed</button>
+      <button class="btn secondary" id="st-expired" type="button">Show session expired</button>
+      <button class="btn secondary" id="st-refused" type="button">Show sign-in refused</button>
+      <button class="btn secondary" id="st-lerror" type="button">Show sign-in error</button>
+    </div>
+  </div>
+</aside>
+
+<script>
+/*PURE-START*/
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim();
+const pad=n=>String(n).padStart(2,'0');
+const PLACES=[
+ {n:'Amsterdam',c:'Netherlands',z:'Europe/Amsterdam',a:['holland','nederland','the netherlands']},
+ {n:'London',c:'United Kingdom',z:'Europe/London',a:['uk','england','britain','great britain','gmt']},
+ {n:'Lisbon',c:'Portugal',z:'Europe/Lisbon',a:['lisboa']},
+ {n:'Azores',c:'Portugal',z:'Atlantic/Azores',a:['acores','ponta delgada','sao miguel']},
+ {n:'Paris',c:'France',z:'Europe/Paris',a:[]},
+ {n:'Berlin',c:'Germany',z:'Europe/Berlin',a:['deutschland']},
+ {n:'Madrid',c:'Spain',z:'Europe/Madrid',a:['espana']},
+ {n:'Athens',c:'Greece',z:'Europe/Athens',a:[]},
+ {n:'Istanbul',c:'Turkey',z:'Europe/Istanbul',a:['turkiye']},
+ {n:'Reykjavik',c:'Iceland',z:'Atlantic/Reykjavik',a:[]},
+ {n:'Cairo',c:'Egypt',z:'Africa/Cairo',a:[]},
+ {n:'Nairobi',c:'Kenya',z:'Africa/Nairobi',a:[]},
+ {n:'Johannesburg',c:'South Africa',z:'Africa/Johannesburg',a:[]},
+ {n:'Dubai',c:'United Arab Emirates',z:'Asia/Dubai',a:['uae','emirates']},
+ {n:'Mumbai',c:'India',z:'Asia/Kolkata',a:['bombay','delhi','kolkata','calcutta']},
+ {n:'Bangkok',c:'Thailand',z:'Asia/Bangkok',a:['krung thep']},
+ {n:'Jakarta',c:'Indonesia',z:'Asia/Jakarta',a:[]},
+ {n:'Ho Chi Minh City',c:'Vietnam',z:'Asia/Ho_Chi_Minh',a:['saigon']},
+ {n:'Singapore',c:'Singapore',z:'Asia/Singapore',a:[]},
+ {n:'Hong Kong',c:'China',z:'Asia/Hong_Kong',a:[]},
+ {n:'Tokyo',c:'Japan',z:'Asia/Tokyo',a:[]},
+ {n:'Seoul',c:'South Korea',z:'Asia/Seoul',a:['korea']},
+ {n:'Sydney',c:'Australia',z:'Australia/Sydney',a:['nsw','new south wales']},
+ {n:'Auckland',c:'New Zealand',z:'Pacific/Auckland',a:['nz']},
+ {n:'Kiritimati',c:'Kiribati',z:'Pacific/Kiritimati',a:['christmas island']},
+ {n:'Honolulu',c:'United States',z:'Pacific/Honolulu',a:['hawaii','us','usa']},
+ {n:'Los Angeles',c:'United States',z:'America/Los_Angeles',a:['la','california','us','usa']},
+ {n:'Denver',c:'United States',z:'America/Denver',a:['colorado','us','usa']},
+ {n:'Chicago',c:'United States',z:'America/Chicago',a:['illinois','us','usa']},
+ {n:'New York',c:'United States',z:'America/New_York',a:['nyc','america','us','usa']},
+ {n:'Toronto',c:'Canada',z:'America/Toronto',a:[]},
+ {n:'Mexico City',c:'Mexico',z:'America/Mexico_City',a:[]},
+ {n:'Sao Paulo',c:'Brazil',z:'America/Sao_Paulo',a:['brasil']},
+ {n:'Buenos Aires',c:'Argentina',z:'America/Argentina/Buenos_Aires',a:[]}
+];
+const byTz=Object.fromEntries(PLACES.map(p=>[p.z,p]));
+const shortName=tz=>byTz[tz]?byTz[tz].n:tz.split('/').pop().replace(/_/g,' ');
+const label=tz=>byTz[tz]?`${byTz[tz].n}, ${byTz[tz].c}`:tz;
+const placeOf=tz=>byTz[tz]||{n:shortName(tz),c:'',z:tz,a:[]};
+
+const fmtCache={};
+function dtf(tz,key,opts){const k=tz+'|'+key;return fmtCache[k]||(fmtCache[k]=new Intl.DateTimeFormat('en-GB',Object.assign({timeZone:tz},opts)));}
+const hhmm=(tz,d)=>dtf(tz,'t',{hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(d);
+function parts(tz,d){const o={};for(const x of dtf(tz,'p',{year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric',hourCycle:'h23'}).formatToParts(d))o[x.type]=+x.value;return o;}
+function offsetMin(tz,d=new Date()){const o=parts(tz,d);const asUtc=Date.UTC(o.year,o.month-1,o.day,o.hour%24,o.minute,o.second);return Math.round((asUtc-(d.getTime()-d.getMilliseconds()))/60000);}
+const dayNum=(tz,d)=>{const o=parts(tz,d);return o.year*10000+o.month*100+o.day;};
+function atClock(tz,h,m,ref=new Date()){const o=parts(tz,ref);const wall=Date.UTC(o.year,o.month-1,o.day,h,m);let off=offsetMin(tz,new Date(wall));off=offsetMin(tz,new Date(wall-off*60000));return new Date(wall-off*60000);}
+function offLabel(min){const a=Math.abs(min),h=Math.floor(a/60),m=a%60;return 'UTC'+(min<0?'-':'+')+h+(m?':'+pad(m):'');}
+
+const words=s=>s.split(/[\s,()\/-]+/).filter(Boolean);
+function rank(p,q){
+  const n=norm(p.n),c=norm(p.c);let best=99;const upd=v=>{if(v<best)best=v;};
+  if(n===q)upd(0);else if(n.startsWith(q))upd(1);else if(words(n).some(w=>w.startsWith(q)))upd(2);
+  for(const a of p.a){const x=norm(a);if(x===q)upd(1);else if(x.startsWith(q)||words(x).some(w=>w.startsWith(q)))upd(3);}
+  if(c.startsWith(q)||words(c).some(w=>w.startsWith(q)))upd(4);
+  if(q.length>=3&&(n.includes(q)||c.includes(q)||p.a.some(a=>norm(a).includes(q))))upd(6);
+  return best;
+}
+const byName=(a,b)=>a.n<b.n?-1:a.n>b.n?1:0;
+function search(raw,now=new Date()){
+  let q=norm(raw).replace(/\s+/g,' ');
+  if(q==='')return PLACES.slice().sort(byName);
+  const m=q.match(/^(?:utc|gmt)\s*(?:([+-])\s*(?:(\d{1,2})(?::?(\d{2}))?)?)?$/);
+  if(m){
+    if(m[2]===undefined)return PLACES.slice().sort((a,b)=>offsetMin(a.z,now)-offsetMin(b.z,now)||byName(a,b)); // "utc", "gmt", "utc+"
+    const target=(m[1]==='-'?-1:1)*(+m[2]*60+(m[3]?+m[3]:0));
+    return PLACES.filter(p=>offsetMin(p.z,now)===target).sort(byName);
+  }
+  q=q.split(',')[0].trim();
+  return PLACES.map(p=>({p,r:rank(p,q)})).filter(x=>x.r<99).sort((a,b)=>a.r-b.r||byName(a.p,b.p)).slice(0,12).map(x=>x.p);
+}
+const toMin=hm=>{const [h,m]=hm.split(':').map(Number);return h*60+m;};
+function shiftClock(hm,delta){const t=((toMin(hm)+delta)%1440+1440)%1440;return pad(Math.floor(t/60))+':'+pad(t%60);}
+function inside(t,qs,qe){const x=toMin(t),a=toMin(qs),b=toMin(qe);return a>b?(x>=a||x<b):(x>=a&&x<b);}
+function suggest(qs,qe){return ['18:00','12:00','20:00','09:00','15:00'].find(t=>!inside(t,qs,qe))||'12:00';}
+function previewText(oldTz,newTz,qs,qe,now=new Date()){
+  if(oldTz===newTz||!qs||!qe)return '';
+  const d=offsetMin(oldTz,now)-offsetMin(newTz,now);
+  return `Quiet hours will now be ${qs} to ${qe} ${shortName(newTz)} time (${shiftClock(qs,d)} to ${shiftClock(qe,d)} ${shortName(oldTz)} time).`;
+}
+/*PURE-END*/
+
+/* ======================= DOM layer ======================= */
+const $=id=>document.getElementById(id);
+const FIELDS=['qs','qe','ov','rm'];
+const LABEL={qs:'From',qe:'Until',ov:'Daily overview',rm:'Remind-me-later default'};
+const HINT={qs:'q-hint',qe:'q-hint',ov:'ov-hint',rm:'rm-hint'};
+const ERRBOX={qs:'err-q',qe:'err-q',ov:'err-ov',rm:'err-rm'};
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+let stored={v:1,tz:'Europe/Amsterdam',qs:'22:00',qe:'07:00',ov:'18:00',rm:'09:00',by:'Telegram',at:atClock('Europe/Amsterdam',14,2)};
+let base=null,draft=null,conflicts={},saving=false,telegramN=0;
+let fresh=true,welcome=false,loginMode='normal',firstRoute=true,loadToken=0;
+
+/* ---- theme ---- */
+(function(){
+  const root=document.documentElement,btn=$('theme'),mq=matchMedia('(prefers-color-scheme: dark)');let chosen=false;
+  const apply=t=>{root.dataset.theme=t;btn.setAttribute('aria-pressed',String(t==='dark'));};
+  apply(root.dataset.theme||'light');
+  btn.addEventListener('click',()=>{chosen=true;apply(root.dataset.theme==='dark'?'light':'dark');});
+  mq.addEventListener&&mq.addEventListener('change',e=>{if(!chosen)apply(e.matches?'dark':'light');});
+})();
+
+/* ---- banners ---- */
+let bannerKind=null;
+function makeBanner(o){
+  const b=document.createElement('div');
+  b.className='banner '+o.kind;b.setAttribute('role',o.role);if(o.focus)b.tabIndex=-1;
+  const ic=document.createElement('span');ic.className='bicon';ic.setAttribute('aria-hidden','true');ic.textContent=o.kind==='ok'?'✓':o.kind==='info'?'i':'!';
+  const body=document.createElement('div');
+  if(o.title){const t=document.createElement('b');t.textContent=o.title;body.append(t,document.createTextNode(' '));}
+  body.append(document.createTextNode(o.text));
+  if(o.actions&&o.actions.length){
+    const w=document.createElement('div');w.className='btns';
+    for(const a of o.actions){const x=document.createElement('button');x.type='button';x.className='btn'+(a.primary?' primary':'');x.textContent=a.label;x.addEventListener('click',a.fn);w.append(x);}
+    body.append(w);
+  }
+  b.append(ic,body);return b;
+}
+function showBanner(o,target=$('banner-area')){
+  const b=makeBanner(o);target.replaceChildren(b);
+  if(target===$('banner-area'))bannerKind=o.kind;
+  if(o.focus)b.focus();else b.scrollIntoView({block:'nearest'});
+  return b;
+}
+function clearBanner(){$('banner-area').replaceChildren();bannerKind=null;}
+
+/* ---- field helpers ---- */
+function updDesc(k){
+  const ids=[HINT[k]];const el=$(k);
+  if(el.getAttribute('aria-invalid')==='true')ids.push(ERRBOX[k]);
+  if(conflicts[k])ids.push('cf-'+k+'-t');
+  el.setAttribute('aria-describedby',ids.join(' '));
+}
+function setInvalid(k,on){const el=$(k);if(on)el.setAttribute('aria-invalid','true');else el.removeAttribute('aria-invalid');updDesc(k);}
+function clearErrors(){
+  for(const b of ['err-q','err-ov','err-rm']){$(b).hidden=true;$(b).querySelector('.errtext').textContent='';}
+  for(const k of FIELDS)setInvalid(k,false);
+}
+function clearErrorsFor(k){
+  const box=$(ERRBOX[k]);box.hidden=true;box.querySelector('.errtext').textContent='';
+  for(const f of FIELDS)if(ERRBOX[f]===ERRBOX[k])setInvalid(f,false);
+}
+const echo=k=>{$(k+'-echo').textContent=draft[k]?'= '+draft[k]:'No time set';};
+function syncInputs(){
+  for(const k of FIELDS){$(k).value=draft[k];echo(k);}
+  $('tz').value=label(draft.tz);
+}
+
+/* ---- last change, zone parts ---- */
+function renderLast(){
+  const p=$('last');p.replaceChildren();
+  p.append(document.createTextNode('Last changed from '+(base.by==='web'?'the web':'Telegram')+' at '));
+  const t=document.createElement('time');t.dateTime=base.at.toISOString();t.textContent=hhmm(base.tz,base.at);p.append(t);
+}
+function setLive(p){$('tz-live').textContent=p?`In ${p.n} it is ${hhmm(p.z,new Date())} right now.`:'';}
+function updateCurrent(){$('tz-current-v').textContent=base.tz;}
+function updatePreview(){$('tz-preview').textContent=previewText(base.tz,draft.tz,draft.qs,draft.qe);}
+function updateServerReadout(){
+  $('srv').textContent=`Server copy (what is really stored): version ${stored.v}, ${stored.tz}, quiet hours ${stored.qs} to ${stored.qe}, overview ${stored.ov}, reminders ${stored.rm}, last change from ${stored.by==='web'?'the web':'Telegram'}.`;
+}
+
+function loadFromStored(){
+  base=Object.assign({},stored);
+  draft={tz:stored.tz,qs:stored.qs,qe:stored.qe,ov:stored.ov,rm:stored.rm};
+  conflicts={};clearErrors();clearBanner();syncInputs();renderConflicts();renderLast();updateCurrent();updatePreview();
+  setLive(placeOf(draft.tz));$('tz-nohit').textContent='';$('tz-count').textContent='';closeList();
+}
+
+/* ---- edits ---- */
+function onEdit(){if(bannerKind==='ok')clearBanner();updatePreview();}
+for(const k of FIELDS){
+  $(k).addEventListener('input',()=>{
+    draft[k]=$(k).value;echo(k);
+    clearErrorsFor(k);
+    if(k==='qs'||k==='qe')clearErrorsFor('ov');
+    if(conflicts[k]){delete conflicts[k];renderConflicts();}
+    onEdit();
+  });
+}
+
+/* ---- conflicts ---- */
+function renderConflicts(){
+  for(const k of FIELDS){
+    const box=$('cf-'+k),c=conflicts[k];
+    box.replaceChildren();
+    if(!c){box.hidden=true;updDesc(k);continue;}
+    const prefix=(k==='qs'||k==='qe')?LABEL[k]+': ':'';
+    const p=document.createElement('p');p.id='cf-'+k+'-t';p.textContent=`${prefix}You typed ${c.mine}, Telegram now has ${c.theirs}`;
+    const using=document.createElement('span');using.className='using';
+    const w=document.createElement('div');w.className='btns';
+    const mine=document.createElement('button'),theirs=document.createElement('button');
+    for(const b of [mine,theirs]){b.type='button';b.className='btn';}
+    mine.textContent='Use mine';mine.setAttribute('aria-label',`Use mine for ${LABEL[k]}, ${c.mine}`);
+    theirs.textContent="Keep Telegram's";theirs.setAttribute('aria-label',`Keep Telegram's value for ${LABEL[k]}, ${c.theirs}`);
+    const refresh=()=>{
+      mine.setAttribute('aria-pressed',String(c.use==='mine'));theirs.setAttribute('aria-pressed',String(c.use==='theirs'));
+      using.textContent=c.use==='mine'?'Using your value.':"Using Telegram's value.";
+    };
+    mine.addEventListener('click',()=>{c.use='mine';draft[k]=c.mine;$(k).value=c.mine;echo(k);refresh();updatePreview();});
+    theirs.addEventListener('click',()=>{c.use='theirs';draft[k]=c.theirs;$(k).value=c.theirs;echo(k);refresh();updatePreview();});
+    refresh();w.append(mine,theirs);box.append(p,using,w);box.hidden=false;updDesc(k);
+  }
+}
+
+/* ---- validation ---- */
+function validate(){
+  const errs=[];
+  for(const k of ['qs','qe'])if(!draft[k])errs.push({fields:[k],box:'err-q',msg:`${LABEL[k]} needs a time, for example ${k==='qs'?'22:00':'07:00'}.`});
+  if(!draft.ov)errs.push({fields:['ov'],box:'err-ov',msg:'Daily overview needs a time, for example 18:00.'});
+  if(!draft.rm)errs.push({fields:['rm'],box:'err-rm',msg:'Remind-me-later default needs a time, for example 09:00.'});
+  if(draft.qs&&draft.qe){
+    if(draft.qs===draft.qe)errs.push({fields:['qs','qe'],box:'err-q',msg:'Quiet hours need different From and Until times, for example 22:00 to 07:00.'});
+    else if(draft.ov&&inside(draft.ov,draft.qs,draft.qe))errs.push({fields:['ov'],box:'err-ov',msg:`The overview at ${draft.ov} would fall inside quiet hours (${draft.qs} to ${draft.qe}). Pick a time outside them, for example ${suggest(draft.qs,draft.qe)}.`});
+  }
+  return errs;
+}
+function applyErrors(errs){
+  const text={};
+  for(const e of errs){text[e.box]=(text[e.box]?text[e.box]+' ':'')+e.msg;for(const f of e.fields)setInvalid(f,true);}
+  for(const [box,msg] of Object.entries(text)){const el=$(box);el.querySelector('.errtext').textContent=msg;el.hidden=false;}
+  const first=FIELDS.find(k=>$(k).getAttribute('aria-invalid')==='true');
+  if(first)$(first).focus();
+}
+
+/* ---- saving ---- */
+function setSaving(on){
+  saving=on;const s=$('save');
+  if(on)s.setAttribute('aria-disabled','true');else s.removeAttribute('aria-disabled');
+  s.textContent=on?'Saving...':'Save changes';
+  $('status').textContent=on?'Saving your settings.':'';
+  for(const k of FIELDS)$(k).readOnly=on;$('tz').readOnly=on;
+  for(const b of document.querySelectorAll('.conflict .btn'))b.disabled=on;
+}
+async function doSave(){
+  if(saving)return;
+  clearBanner();clearErrors();
+  const errs=validate();
+  if(errs.length){applyErrors(errs);return;}
+  setSaving(true);await sleep(900);setSaving(false);
+  if(stored.v!==base.v){handleConflict();return;}
+  commit();
+}
+function commit(){
+  stored=Object.assign({},stored,{v:stored.v+1,tz:draft.tz,qs:draft.qs,qe:draft.qe,ov:draft.ov,rm:draft.rm,by:'web',at:new Date()});
+  base=Object.assign({},stored);conflicts={};renderConflicts();renderLast();updateCurrent();updatePreview();updateServerReadout();
+  showBanner({kind:'ok',role:'status',title:`Saved at ${hhmm(stored.tz,stored.at)}.`,text:`Quiet hours are ${stored.qs} to ${stored.qe} (${shortName(stored.tz)} time). A message with an Undo button follows on Telegram within about 5 minutes.`});
+}
+function handleConflict(){
+  const old=base,mine=Object.assign({},draft),found={};
+  for(const k of FIELDS){
+    const theirs=stored[k],edited=mine[k]!==old[k];
+    if(!edited)draft[k]=theirs;
+    else if(theirs!==old[k]&&theirs!==mine[k]){draft[k]=theirs;found[k]={mine:mine[k],theirs,use:'theirs'};}
+  }
+  if(mine.tz===old.tz)draft.tz=stored.tz;
+  base=Object.assign({},stored);conflicts=found;
+  syncInputs();renderConflicts();renderLast();updateCurrent();updatePreview();setLive(placeOf(draft.tz));
+  showBanner({kind:'info',role:'alert',focus:true,title:`Settings changed in Telegram at ${hhmm(stored.tz,stored.at)} (${shortName(stored.tz)} time).`,text:'I loaded the new values. Nothing is saved until you press Save again.'});
+}
+$('form').addEventListener('submit',e=>{e.preventDefault();doSave();});
+
+/* ---- ZoneCombobox ---- */
+const tzIn=$('tz'),tzList=$('tz-list');
+const cb={open:false,res:[],active:-1,timer:null};
+function optParts(p,now){
+  const z=p.z,dn=dayNum(z,now),dr=dayNum(base.tz,now);
+  const left=`${p.n}, ${p.c}`;
+  const right=`${offLabel(offsetMin(z,now))}, ${hhmm(z,now)} now${dn>dr?' (tomorrow)':dn<dr?' (yesterday)':''}`;
+  return [left,right];
+}
+function renderList(){
+  tzList.replaceChildren();const now=new Date();
+  cb.res.forEach((p,i)=>{
+    const [l,r]=optParts(p,now);
+    const li=document.createElement('li');li.id='tz-o'+i;li.setAttribute('role','option');li.setAttribute('aria-selected',String(i===cb.active));li.setAttribute('aria-label',l+', '+r);
+    const a=document.createElement('span');a.textContent=l;const b=document.createElement('span');b.className='t';b.textContent=r;
+    li.append(a,b);
+    li.addEventListener('click',()=>selectPlace(p));
+    tzList.append(li);
+  });
+  syncOpen();
+}
+function syncOpen(){
+  tzList.hidden=!cb.open;tzIn.setAttribute('aria-expanded',String(cb.open));
+  if(cb.open&&cb.active>=0)tzIn.setAttribute('aria-activedescendant','tz-o'+cb.active);else tzIn.removeAttribute('aria-activedescendant');
+}
+function closeList(){cb.open=false;cb.active=-1;for(const li of tzList.children)li.setAttribute('aria-selected','false');syncOpen();}
+function setActive(i){
+  cb.active=i;[...tzList.children].forEach((li,j)=>li.setAttribute('aria-selected',String(j===i)));
+  syncOpen();const li=tzList.children[i];if(li)li.scrollIntoView({block:'nearest'});
+  scheduleLive();
+}
+function scheduleLive(){
+  clearTimeout(cb.timer);
+  cb.timer=setTimeout(()=>{
+    if(!cb.open||!cb.res.length){return;}
+    if(tzIn.value.trim()==='')return;
+    setLive(cb.res[cb.active>=0?cb.active:0]);
+  },300);
+}
+function showResults(q){
+  const res=search(q);cb.res=res;cb.active=-1;cb.open=res.length>0;renderList();
+  const nohit=$('tz-nohit');
+  if(!res.length&&q.trim()){nohit.textContent=`Nothing found for '${q.trim()}'. Try the nearest bigger city, or the country.`;$('tz-count').textContent='';$('tz-live').textContent='';}
+  else{nohit.textContent='';$('tz-count').textContent=res.length===1?'1 place found':`${res.length} places found`;scheduleLive();}
+}
+function selectPlace(p){
+  clearTimeout(cb.timer);draft.tz=p.z;tzIn.value=label(p.z);closeList();
+  $('tz-nohit').textContent='';$('tz-count').textContent=`Time zone set to ${label(p.z)}.`;setLive(p);onEdit();
+}
+function openFromKey(last){
+  const q=tzIn.value;const showAll=q.trim()===''||q===label(draft.tz);
+  showResults(showAll?'':q);
+  if(cb.res.length)setActive(last?cb.res.length-1:0);
+}
+tzIn.addEventListener('input',()=>showResults(tzIn.value));
+tzIn.addEventListener('focus',()=>tzIn.select());
+tzIn.addEventListener('keydown',e=>{
+  if(tzIn.readOnly)return;
+  if(e.key==='ArrowDown'){
+    e.preventDefault();
+    if(!cb.open)openFromKey(false);else setActive((cb.active+1)%cb.res.length);
+  }else if(e.key==='ArrowUp'){
+    e.preventDefault();
+    if(!cb.open)openFromKey(true);else setActive(cb.active<=0?cb.res.length-1:cb.active-1);
+  }else if(e.key==='Enter'){
+    e.preventDefault();
+    if(cb.open){if(cb.active>=0)selectPlace(cb.res[cb.active]);else if(cb.res.length===1)selectPlace(cb.res[0]);}
+  }else if(e.key==='Escape'){
+    e.preventDefault();
+    if(cb.open){closeList();}
+    else{
+      draft.tz=base.tz;tzIn.value=label(base.tz);$('tz-nohit').textContent='';
+      $('tz-count').textContent=`Saved time zone put back: ${label(base.tz)}.`;setLive(placeOf(base.tz));onEdit();
+    }
+  }
+});
+tzIn.addEventListener('blur',()=>{
+  closeList();clearTimeout(cb.timer);
+  const want=label(draft.tz);
+  if(tzIn.value!==want){tzIn.value=want;$('tz-nohit').textContent='';$('tz-count').textContent=`Time zone stays ${want}.`;setLive(placeOf(draft.tz));}
+});
+const keepFocus=e=>e.preventDefault();
+tzList.addEventListener('mousedown',keepFocus);
+tzList.addEventListener('pointerdown',keepFocus);
+
+/* ---- loading ---- */
+function showLoading(ms){
+  const t=++loadToken;
+  $('loading').hidden=false;$('content').hidden=true;$('main-settings').setAttribute('aria-busy','true');
+  setTimeout(()=>{
+    if(t!==loadToken)return;
+    $('loading').hidden=true;$('content').hidden=false;$('main-settings').setAttribute('aria-busy','false');
+    if(welcome){
+      welcome=false;
+      showBanner({kind:'info',role:'status',title:'Welcome back.',text:'Your unsaved changes are restored. Check them and save.'});
+    }
+  },ms);
+}
+
+/* ---- login ---- */
+function renderLogin(){
+  const slot=$('login-banner');slot.replaceChildren();
+  const b=$('login-btn');b.disabled=false;b.removeAttribute('aria-busy');b.textContent='Continue with Google';$('login-status').textContent='';
+  if(loginMode==='refused')showBanner({kind:'danger',role:'alert',text:'This account is not allowed for this app. Try the account named above.'},slot);
+  else if(loginMode==='error')showBanner({kind:'danger',role:'alert',text:'Sign-in did not work. Try again. If it keeps happening, check your connection and the clock on your phone.'},slot);
+  else if(loginMode==='expired')showBanner({kind:'info',role:'status',text:'Your session ended. Sign in again; what you typed is kept.'},slot);
+}
+$('login-btn').addEventListener('click',()=>{
+  const b=$('login-btn');b.disabled=true;b.setAttribute('aria-busy','true');b.textContent='Opening Google...';$('login-status').textContent='Opening Google...';
+  setTimeout(()=>{
+    if(loginMode==='expired'){fresh=false;welcome=true;}else{fresh=true;welcome=false;}
+    loginMode='normal';location.hash='#/settings';
+  },1000);
+});
+function goLogin(mode){
+  loginMode=mode;
+  if(location.hash==='#/login'){renderLogin();}else location.hash='#/login';
+}
+$('signout').addEventListener('click',()=>goLogin('normal'));
+
+/* ---- router ---- */
+function route(){
+  const login=location.hash==='#/login';
+  $('view-login').hidden=!login;$('view-settings').hidden=login;
+  document.title=(login?'Sign in':'Settings')+' - Mail Assistant (prototype)';
+  $('skip').setAttribute('href',login?'#main-login':'#main-settings');
+  if(login){renderLogin();}
+  else if(fresh||!base){fresh=false;loadFromStored();updateServerReadout();showLoading(700);}
+  else if(welcome){showLoading(400);}
+  if(!firstRoute)(login?$('h1-login'):$('h1-settings')).focus();
+  firstRoute=false;
+}
+$('h1-login').tabIndex=-1;$('h1-settings').tabIndex=-1;
+window.addEventListener('hashchange',route);
+$('skip').addEventListener('click',e=>{e.preventDefault();($('view-login').hidden?$('main-settings'):$('main-login')).focus();});
+
+/* ---- prototype controls ---- */
+$('sim').addEventListener('click',()=>{
+  telegramN++;
+  const pair=stored.qs==='23:00'?['23:30','08:00']:['23:00','08:30'];
+  stored=Object.assign({},stored,{v:stored.v+1,qs:pair[0],rm:pair[1],by:'Telegram',at:new Date()});
+  $('sim-out').textContent=`Done (change ${telegramN}). In Telegram, quiet hours now start at ${stored.qs} and the Remind-me-later default is ${stored.rm}. The page still shows the old values. Edit a field, then press Save changes to see the conflict.`;
+  updateServerReadout();
+});
+$('st-loading').addEventListener('click',()=>{
+  const go=()=>{if(base)showLoading(2500);};
+  if(location.hash==='#/login'){fresh=false;loginMode='normal';location.hash='#/settings';setTimeout(go,50);}else go();
+});
+$('st-fail').addEventListener('click',()=>{
+  const show=()=>showBanner({kind:'danger',role:'alert',title:'Could not save.',text:'Nothing was changed. Check your connection and try again.',actions:[{label:'Try again',fn:()=>doSave()}]});
+  if(location.hash==='#/login'){fresh=false;location.hash='#/settings';setTimeout(show,900);}else show();
+});
+$('st-expired').addEventListener('click',()=>{
+  if(location.hash==='#/login'){goLogin('expired');return;}
+  showBanner({kind:'info',role:'status',title:'Your session ended.',text:'Sign in again; what you typed is kept.',actions:[{label:'Sign in again',primary:true,fn:()=>goLogin('expired')}]});
+});
+$('st-refused').addEventListener('click',()=>goLogin('refused'));
+$('st-lerror').addEventListener('click',()=>goLogin('error'));
+
+route();
+</script>
+</body>
+</html>
