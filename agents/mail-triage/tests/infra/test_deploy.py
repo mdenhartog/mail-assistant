@@ -482,3 +482,97 @@ def test_given_the_repository_when_searched_then_no_scan_ignores_findings() -> N
     assert "trivyignore" not in workflow
     assert not list(ROOT.glob(".trivyignore*"))
     assert not (ROOT / "trivy.yaml").exists()
+
+
+# --- U-quiet-hours-16f: CI for the shared package and the nightly mutation gate (ADR-0030 item 4) ---
+
+PACKAGE_DIR = "packages/schedule-policy"
+MUTATION_WORKFLOW = ROOT / ".github" / "workflows" / "mutation.yml"
+PINNED_ACTION = re.compile(r"^[\w.-]+/[\w./-]+@[0-9a-f]{40}$")
+
+
+def load_workflow(path: Path) -> dict[str, Any]:
+    workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+    workflow["on"] = workflow.pop(True, workflow.get("on"))  # YAML 1.1 reads the key `on` as True
+    return workflow
+
+
+def package_job() -> dict[str, Any]:
+    jobs = ci_jobs()
+    assert "schedule-policy" in jobs
+    return jobs["schedule-policy"]
+
+
+def test_given_the_ci_workflow_when_read_then_a_job_checks_the_shared_package_in_its_own_directory() -> None:
+    job = package_job()
+    commands = run_steps(job).splitlines()
+
+    assert job["defaults"]["run"]["working-directory"] == PACKAGE_DIR
+    for command in (
+        "uv sync --frozen",
+        "uv run ruff check .",
+        "uv run ruff format --check .",
+        "uv run pyright",
+        "uv run pytest",
+        "uv run pip-audit",
+    ):
+        assert command in commands
+
+
+def test_given_the_shared_package_when_configured_then_pyright_and_pip_audit_are_available_to_the_ci_job() -> None:
+    pyproject = (ROOT / PACKAGE_DIR / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "[tool.pyright]" in pyproject  # the job runs pyright because the package configures it
+    assert re.search(r'"pip-audit>=', pyproject)
+    assert "pip-audit" in (ROOT / PACKAGE_DIR / "uv.lock").read_text(encoding="utf-8")
+
+
+def test_given_the_ci_workflow_when_read_then_the_package_job_sets_up_uv_like_the_other_jobs() -> None:
+    uses = [step["uses"] for step in package_job()["steps"] if "uses" in step]
+
+    assert any(use.startswith("actions/checkout@") for use in uses)
+    assert any(use.startswith("astral-sh/setup-uv@") for use in uses)
+
+
+def test_given_the_mutation_workflow_when_read_then_it_runs_only_nightly_and_by_hand() -> None:
+    workflow = load_workflow(MUTATION_WORKFLOW)
+
+    assert set(workflow["on"]) == {"schedule", "workflow_dispatch"}
+    assert workflow["on"]["schedule"][0]["cron"]
+    assert workflow["permissions"] == {"contents": "read"}
+    for job in workflow["jobs"].values():
+        assert "permissions" not in job or job["permissions"] == {"contents": "read"}
+
+
+@pytest.mark.parametrize("directory", ["agents/mail-triage", PACKAGE_DIR])
+def test_given_the_mutation_workflow_when_read_then_each_module_is_mutated_and_rated_at_85_percent(
+    directory: str,
+) -> None:
+    jobs = [
+        job
+        for job in load_workflow(MUTATION_WORKFLOW)["jobs"].values()
+        if job.get("defaults", {}).get("run", {}).get("working-directory") == directory
+    ]
+
+    assert len(jobs) == 1
+    commands = run_steps(jobs[0])
+    assert "uv sync --frozen" in commands
+    assert re.search(r"uv run cosmic-ray init cosmic-ray\.toml \S+", commands)
+    assert re.search(r"uv run cosmic-ray exec cosmic-ray\.toml \S+", commands)
+    assert re.search(r"uv run cr-rate \S+ --fail-over 15\b", commands)  # at most 15 % survivors = score >= 85 %
+    assert commands.index("cosmic-ray init") < commands.index("cosmic-ray exec") < commands.index("cr-rate")
+    assert (ROOT / directory / "cosmic-ray.toml").is_file()
+
+
+def test_given_the_workflows_when_read_then_every_action_is_pinned_by_commit_sha() -> None:
+    for path in (CI_WORKFLOW, MUTATION_WORKFLOW):
+        workflow = load_workflow(path)
+        uses = [step["uses"] for job in workflow["jobs"].values() for step in job["steps"] if "uses" in step]
+
+        assert uses, path.name
+        assert all(PINNED_ACTION.match(use) for use in uses), (path.name, uses)
+
+
+def test_given_the_mutation_workflow_when_read_then_every_job_has_a_timeout() -> None:
+    for job in load_workflow(MUTATION_WORKFLOW)["jobs"].values():
+        assert isinstance(job.get("timeout-minutes"), int)
