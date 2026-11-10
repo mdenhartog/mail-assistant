@@ -5,9 +5,9 @@
 # The agent runs with that runtime role, which owns nothing, and starts only after the migration has completed.
 services:
   mail-triage-migrate:
-    # Also in prod-like: that stack then holds the schema and the runtime role (the role checks of CI run against it).
-    # The agent stays out of prod-like: it needs real Gmail, Telegram and Anthropic credentials.
-    profiles: ["components", "dev", "prod-like"]
+    # Not in prod-like: `up --wait` counts a container that has exited, even with 0, as failed. CI runs it by itself
+    # (`docker compose run --rm --build mail-triage-migrate`) against the prod-like database to check the runtime role.
+    profiles: ["components", "dev"]
     build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
     command: ["python", "-m", "app", "migrate"]
     restart: "no"
