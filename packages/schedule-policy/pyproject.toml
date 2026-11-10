@@ -19,6 +19,7 @@ module-name = "schedule_policy"
 dev = [
     "cosmic-ray>=8.7.0",
     "hypothesis>=6.150.0",
+    "pip-audit>=2.10.1",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",

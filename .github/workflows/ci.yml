@@ -72,6 +72,20 @@ jobs:
             fi
           done
 
+  schedule-policy:
+    # The shared schedule policy (INT-002, ADR-0030 item 4): the agent image and the backend both rely on its limits.
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: packages/schedule-policy } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+      - run: uv run pytest
+      - run: uv run pip-audit
+
   web:
     runs-on: ubuntu-latest
     steps:
