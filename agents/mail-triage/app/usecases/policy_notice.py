@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Protocol
 
+from app.core import settings_text
+
 if TYPE_CHECKING:
     from schedule_policy.policy import TimePolicy
 
@@ -27,17 +29,13 @@ class Notifier(Protocol):
         ...
 
 
-def _hhmm(policy_time: object) -> str:
-    return policy_time.strftime("%H:%M")  # type: ignore[attr-defined]
-
-
 def notice_text(in_use: TimePolicy, reason: str) -> str:
     """Plain text naming the values the agent works with now: Marco needs to know what they are."""
     return (
         f"I cannot use your saved settings ({reason}). Until that is fixed I am using:\n"
-        f"- Quiet hours: {_hhmm(in_use.quiet_start)} to {_hhmm(in_use.quiet_end)}\n"
-        f"- Daily overview: {_hhmm(in_use.overview_at)}\n"
-        f"- Remind-me-later default: {_hhmm(in_use.remind_at)}\n"
+        f"- Quiet hours: {settings_text.clock(in_use.quiet_start)} to {settings_text.clock(in_use.quiet_end)}\n"
+        f"- Daily overview: {settings_text.clock(in_use.overview_at)}\n"
+        f"- Remind-me-later default: {settings_text.clock(in_use.remind_at)}\n"
         f"- Time zone: {in_use.zone}"
     )
 

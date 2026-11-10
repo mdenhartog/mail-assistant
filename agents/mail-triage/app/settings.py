@@ -1,8 +1,9 @@
 """Runtime settings, read once from the environment (fail closed).
 
 Secrets come from the environment (``.env`` locally, a Kubernetes secret in production), never from code. They are
-``SecretStr`` so they print masked. Quiet hours, the overview time, the snooze default and the time zone are constants
-in code on purpose (spec C7); making them adjustable is a later intent (INT-002).
+``SecretStr`` so they print masked. Quiet hours, the overview time, the remind-me-later default and the time zone are
+not settings of the environment: they are stored in the database and changed through ``/settings`` (INT-002, ADR-0025);
+the defaults live in ``schedule_policy.policy``.
 """
 
 from __future__ import annotations

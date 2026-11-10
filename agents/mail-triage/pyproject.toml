@@ -21,7 +21,6 @@ dependencies = [
 dev = [
     "bandit>=1.9.4",
     "cosmic-ray>=8.7.0",
-    "httpx2>=2.16.0",
     "pip-audit>=2.10.1",
     "pyright>=1.1.414",
     "pytest>=9.2.0",

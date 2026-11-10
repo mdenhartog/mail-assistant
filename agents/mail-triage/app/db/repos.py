@@ -125,6 +125,24 @@ class StoredSettings:
     updated_by: str
 
 
+@dataclass(frozen=True, slots=True)
+class SettingsView:
+    """What the settings dialogue needs from the row: its version and whether it can be used.
+
+    ``version`` is 0 when no row exists. ``policy`` is the stored policy, or ``None`` when there is no row or the row is
+    invalid (``invalid_rules`` then names the broken rules; stored values are never kept).
+    """
+
+    version: int
+    policy: TimePolicy | None
+    invalid_rules: tuple[str, ...] = ()
+
+    @property
+    def invalid(self) -> bool:
+        """True when a row exists but fails validation."""
+        return bool(self.invalid_rules)
+
+
 class VersionConflict(Exception):  # noqa: N818  # named by the contract (spec AC-29), not an "...Error"
     """The row changed since the caller read it; nothing was written."""
 
@@ -141,7 +159,7 @@ class PolicyRefused(Exception):  # noqa: N818  # named by the contract, not an "
 class StoredSettingsInvalid(Exception):  # noqa: N818  # named by the contract, not an "...Error"
     """The stored row exists but breaks a rule (for example a zone the tz database no longer has).
 
-    ``read()`` raises this instead of returning a policy nobody validated. U-08's PolicySource catches it and falls
+    ``read()`` raises this instead of returning a policy nobody validated. PolicySource catches it and falls
     back to the last good values or the defaults (C-9). Only rule ids are kept: the stored values never reach a log.
     """
 
@@ -169,7 +187,11 @@ class SettingsStore(Protocol):
     """Read, replace and undo the one schedule row."""
 
     async def read(self) -> StoredSettings | None:
-        """The stored row, or None when none was ever written."""
+        """The stored row, or None when none was ever written. Raises ``StoredSettingsInvalid`` for an invalid row."""
+        ...
+
+    async def read_for_dialogue(self) -> SettingsView:
+        """The row's version and policy for the settings dialogue; an invalid row is reported, not raised."""
         ...
 
     async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
