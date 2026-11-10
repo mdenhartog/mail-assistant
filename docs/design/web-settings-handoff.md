@@ -49,6 +49,10 @@ The source of the tokens is the `:root` and `:root[data-theme=dark]` blocks at t
 | The draft lives in memory only | R1 has no draft across a session expiry; R2 stores it (see the spec) |
 | No fallback for browsers without `type="time"` | A stepped select with a stored value that is not on the grid shown as is, as in `web-settings-screens.md` |
 
+## Login page of the prototype is superseded
+
+The login page of the prototype (the "Continue with Google" screen and its states: redirecting, refused, provider error) is superseded by ADR-0036 and by Screen 1 of `web-settings-screens.md`, which describes the two-step sign-in with a username and an e-mailed code. Do not build or test against that screen. The settings page of the prototype stays the reference for the look and behaviour of `/settings`.
+
 ## Prototype only (not built)
 
 The "Prototype: simulate a change made in Telegram" box and its read-out of the stored copy, the "Prototype: states" buttons, the "How to try this prototype" list, the fake server delay (0.7 s loading, 0.9 s saving) and the theme button (production follows the system setting and the tokens).
