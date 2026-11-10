@@ -128,12 +128,13 @@ class OAuthToken(Base):
 
 
 class PollState(Base):
-    """Where the last Gmail poll stopped (a single row)."""
+    """Where the last Gmail poll stopped and the last Telegram update that was handled (a single row)."""
 
     __tablename__ = "poll_state"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     history_id: Mapped[str | None] = mapped_column(String(32))
+    telegram_update_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class CatchupState(Base):

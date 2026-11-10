@@ -265,9 +265,7 @@ async def test_given_a_stored_update_id_when_the_agent_starts_then_polling_resum
     assert fake.offsets() == [778]
 
 
-async def test_given_telegram_redelivers_handled_updates_when_polled_then_those_at_or_below_the_stored_id_are_dropped() -> (
-    None
-):
+async def test_given_redelivered_updates_when_polled_then_those_at_or_below_the_stored_id_are_dropped() -> None:
     fake = FakeTelegram([message(776, "a"), message(777, "b"), message(778, "c")])
     inbox = make_inbox(fake, cursor=FakeUpdateCursor(777))
 

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import asyncpg
+import pytest
 from alembic import command
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -15,15 +16,23 @@ from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
 from app.usecases.dispatch import CommandRouter
 from tests.db.conftest import alembic_config
-from tests.db.test_settings_dialog_pg import engine  # noqa: F401  # the migrated engine
 from tests.usecases.fakes_dialogue import FakeSettings
 from tests.usecases.test_dispatch import FakeChat, FakeReply, FakeSnooze, FakeStore
 from tests.usecases.test_dispatch import text as typed
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+async def engine(migrated_url: str) -> AsyncIterator[AsyncEngine]:
+    engine = create_async_engine(migrated_url)
+    yield engine
+    await engine.dispose()
 
 
 def _sessions(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
@@ -118,3 +127,23 @@ async def test_given_revision_0006_with_a_poll_row_when_upgraded_then_the_row_is
         assert await PgUpdateCursor(_sessions(engine)).last() is None
     finally:
         await engine.dispose()
+
+
+async def test_given_revision_0007_when_downgraded_then_the_column_is_gone_and_the_gmail_position_stays(
+    database_url: str,
+) -> None:
+    config = alembic_config(database_url)
+    await asyncio.to_thread(command.upgrade, config, "head")
+    connection = await asyncpg.connect(database_url.replace("postgresql+asyncpg://", "postgresql://"))
+    try:
+        await connection.execute("insert into poll_state (id, history_id, telegram_update_id) values (1, '55', 9)")
+
+        await asyncio.to_thread(command.downgrade, config, "0006")
+
+        columns = await connection.fetch(
+            "select column_name from information_schema.columns where table_name = 'poll_state'"
+        )
+        assert {r["column_name"] for r in columns} == {"id", "history_id"}
+        assert await connection.fetchval("select history_id from poll_state") == "55"
+    finally:
+        await connection.close()

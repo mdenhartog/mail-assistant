@@ -35,7 +35,9 @@ class Agent:
         self.chat = RecordingChat()
         self.store = PgSettingsStore(sessions)
         conversations = ConversationStore(sessions, clock.now)
-        self.router = CommandRouter(FakeReply(), FakeSnooze(), FakeStore(), self.chat, conversations, PgUpdateCursor(sessions))
+        self.router = CommandRouter(
+            FakeReply(), FakeSnooze(), FakeStore(), self.chat, conversations, PgUpdateCursor(sessions)
+        )
         self.router.register(SettingsDialog(self.store, self.chat, conversations, USER, clock.now))
 
     async def press(self, label: str) -> None:

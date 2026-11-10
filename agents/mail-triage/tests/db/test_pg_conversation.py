@@ -253,7 +253,11 @@ async def _settings_rig(
 ) -> tuple[CommandRouter, FakeSettings, FakeChat]:
     chat, settings = FakeChat(), FakeSettings()
     router = CommandRouter(
-        FakeReply(), FakeSnooze(), PgStore(async_sessionmaker(engine, expire_on_commit=False)), chat, conversations,
+        FakeReply(),
+        FakeSnooze(),
+        PgStore(async_sessionmaker(engine, expire_on_commit=False)),
+        chat,
+        conversations,
         FakeUpdateCursor(),
     )
     router.register(settings)

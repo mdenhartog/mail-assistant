@@ -11,9 +11,7 @@ from tests.usecases.test_dispatch import button, text
 from tests.usecases.test_settings_dialog import Bot, FakeSettingsStore
 
 
-async def test_given_a_start_time_answered_when_the_agent_restarts_and_the_update_comes_again_then_nothing_is_sent() -> (
-    None
-):
+async def test_given_a_start_time_answered_when_the_agent_restarts_and_it_is_redelivered_then_nothing_is_sent() -> None:
     bot = Bot(FakeSettingsStore(make_policy()))
     await bot.settings()
     await bot.tap("Change quiet hours")
@@ -55,9 +53,7 @@ async def test_given_an_update_when_it_is_handled_then_its_id_is_stored() -> Non
     assert bot.rig.cursor.advances == [41]
 
 
-async def test_given_a_handling_step_that_fails_when_it_raises_then_the_stored_id_does_not_move_and_a_retry_is_handled() -> (
-    None
-):
+async def test_given_a_handling_step_that_fails_then_the_stored_id_stays_and_a_retry_is_handled() -> None:
     bot = Bot(FakeSettingsStore(make_policy()))
     bot.rig.cursor.value = 40
     broken = bot.chat.answer_callback

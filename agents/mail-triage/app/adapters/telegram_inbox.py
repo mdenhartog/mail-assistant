@@ -10,7 +10,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 import httpx
 
@@ -68,8 +68,20 @@ def _obj(value: object) -> dict[str, Any] | None:
     return cast("dict[str, Any]", value) if isinstance(value, dict) else None
 
 
+class LastHandledPort(Protocol):
+    """The stored id of the last handled update (``PgUpdateCursor``); the router writes it, the inbox only reads it."""
+
+    async def last(self) -> int | None:
+        """The id, or ``None`` when no update was handled yet."""
+        ...
+
+
 class TelegramInbox:
-    """Reads updates with ``getUpdates`` and keeps the offset so no update is lost or repeated."""
+    """Reads updates with ``getUpdates`` and keeps the offset so no update is lost or repeated.
+
+    After a restart polling resumes just after the stored id of the last handled update, and a redelivered update at or
+    below it is dropped (RT-5). ``rewind`` asks for an update again when its handling failed.
+    """
 
     def __init__(  # noqa: PLR0913, PLR0917 - every dependency is injected for tests
         self,
@@ -77,6 +89,7 @@ class TelegramInbox:
         token: SecretStr,
         allowed_user_id: int,
         allowed_chat_id: int,
+        cursor: LastHandledPort,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         poll_timeout: int = POLL_TIMEOUT_SECONDS,
     ) -> None:
@@ -86,13 +99,21 @@ class TelegramInbox:
         self._token = token
         self._user = allowed_user_id
         self._chat = allowed_chat_id
+        self._cursor = cursor
         self._sleep = sleep
         self._timeout = poll_timeout
         self._offset: int | None = None
         self._backoff = BACKOFF_START_SECONDS
 
+    def rewind(self, update_id: int) -> None:
+        """Ask for ``update_id`` (and what follows) again on the next poll: its handling failed."""
+        self._offset = update_id
+
     async def poll_once(self) -> list[Command]:
         """Fetch one batch; return the owner's commands. On failure wait with backoff and return nothing."""
+        handled = await self._cursor.last()
+        if self._offset is None and handled is not None:
+            self._offset = handled + 1  # the first poll after a start resumes after the last handled update
         updates = await self._fetch()
         if updates is None:
             await self._sleep(self._backoff)
@@ -104,6 +125,8 @@ class TelegramInbox:
             update_id = update.get("update_id")
             if not isinstance(update_id, int):
                 continue  # a real update always has an id; without one it cannot be tracked or deduplicated
+            if handled is not None and update_id <= handled:
+                continue  # handled before the last stop: Telegram redelivered it
             self._offset = max(self._offset or 0, update_id + 1)
             command = self._accept(update, update_id)
             if command is not None:

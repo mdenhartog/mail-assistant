@@ -4,7 +4,8 @@
 the buttons and answers of its own conversation; the older snooze and reply questions keep their behaviour in
 ``QuestionFlows``. The router decides only who gets an update:
 
-- A replayed Telegram update (same ``update_id``) is ignored; the memory of seen ids is bounded.
+- An update at or below the stored id of the last handled update is ignored (a redelivery after a restart); the id is
+  stored after the update was handled, so an update whose handling failed is handled again, not lost (RT-5).
 - Slash commands are handled before awaited text. Starting a dialogue replaces the stored conversation and says what
   was dropped.
 - Text means something only while a question is pending; with none (or an expired one) Marco is pointed to the buttons.
@@ -20,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import OrderedDict
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
@@ -48,7 +48,6 @@ SETTINGS_TTL = timedelta(minutes=15)
 # The step of the long-lived conversation behind the Undo button of a confirmation. It asks Marco nothing: text is not
 # an answer to it, it does not block the snooze and reply questions, and replacing it is not "dropping a question".
 UNDO_STEP = "undo"
-SEEN_UPDATES_MAX = 1024
 _ID = re.compile(r"[A-Za-z0-9-]{1,40}")
 _TOKEN = re.compile(r"[0-9a-f]{16}")
 _ARITY = {"reply": 1, "later": 1, "stop": 1, "edit": 1, "cancel": 1, "send": 2}
@@ -157,6 +156,18 @@ class ConversationPort(Protocol):
 
     async def clear(self) -> None:
         """Forget the pending dialogue."""
+        ...
+
+
+class UpdateCursorPort(Protocol):
+    """The stored id of the last handled Telegram update (``PgUpdateCursor``)."""
+
+    async def last(self) -> int | None:
+        """The id, or ``None`` when no update was handled yet."""
+        ...
+
+    async def advance(self, update_id: int) -> None:
+        """Store ``update_id``; the stored id never goes down."""
         ...
 
 
@@ -296,21 +307,22 @@ def _dropped(conversation: OpenConversation) -> str:
 class CommandRouter:
     """Hands each update to the right dialogue."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - every dependency is injected for tests
         self,
         reply: ReplyPort,
         snooze: SnoozePort,
         store: RouterStore,
         chat: ChatPort,
         conversations: ConversationPort,
+        cursor: UpdateCursorPort,
     ) -> None:
-        """Wire the snooze and reply flows, the chat and the stored conversation."""
+        """Wire the snooze and reply flows, the chat, the stored conversation and the stored update id."""
         self._flows = QuestionFlows(reply, snooze, store, chat)
         self._chat = chat
         self._conversations = conversations
         self._handlers: dict[str, DialogueHandler] = {}
         self._commands: dict[str, DialogueHandler] = {}
-        self._seen: OrderedDict[int, None] = OrderedDict()
+        self._cursor = cursor
 
     def register(self, handler: DialogueHandler) -> None:
         """Add a dialogue: its slash commands start it, and its conversation kind routes buttons and text to it."""
@@ -318,23 +330,21 @@ class CommandRouter:
         self._commands.update(dict.fromkeys(handler.commands, handler))
 
     async def handle(self, command: Command) -> None:
-        """Run one update, once."""
-        if not self._first_time(command.update_id):
+        """Run one update, once: skip a redelivered one; store its id only after it was handled (a failure raises)."""
+        last = await self._cursor.last()
+        if last is not None and command.update_id <= last:
+            logger.info("update ignored reason=already_handled")
             return
+        await self._run(command)
+        await self._cursor.advance(command.update_id)
+
+    async def _run(self, command: Command) -> None:
         if command.kind == "text":
             await self._text(command.data)
             return
         if command.callback_id:
             await self._chat.answer_callback(command.callback_id)
         await self._button(command)
-
-    def _first_time(self, update_id: int) -> bool:
-        if update_id in self._seen:
-            return False
-        self._seen[update_id] = None
-        if len(self._seen) > SEEN_UPDATES_MAX:
-            self._seen.popitem(last=False)
-        return True
 
     async def _start(self, handler: DialogueHandler) -> None:
         previous = await self._conversations.current()
