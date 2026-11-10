@@ -68,6 +68,17 @@ FORBIDDEN = [
     "truncate settings.settings_change",
     "truncate settings.schedule cascade",
     "insert into settings.settings_change (via, by, new) values ('web', 'x', '{}')",
+    # Least privilege per table (ADR-0030): append-only audit, no deletes outside the dialogue
+    "update audit_log set kind = 'x'",
+    "delete from audit_log",
+    "delete from oauth_token",
+    "delete from mail_item",
+    "delete from alert",
+    "delete from draft",
+    "delete from poll_state",
+    "delete from catchup_state",
+    "delete from overview_log",
+    "update overview_log set settled_at = now()",
     # Privilege escalation
     "create role evil login",
     "alter role mail_triage_runtime superuser",
@@ -130,21 +141,59 @@ async def test_given_the_runtime_role_when_it_writes_settings_then_the_audit_row
     try:
         before = await runtime.fetchval("select count(*) from settings.settings_change")
         if await runtime.fetchval("select count(*) from settings.schedule"):
-            await runtime.execute("update settings.schedule set version = version + 1, updated_by = 'e2e-role-check'")
+            await runtime.execute(
+                "update settings.schedule set version = version + 1, updated_via = 'telegram', "
+                "updated_by = 'e2e-role-check'"
+            )
         else:
             await runtime.execute(
                 "insert into settings.schedule (id, zone, quiet_start, quiet_end, overview_at, remind_at, "
-                "updated_via, updated_by) values (1, 'Europe/Amsterdam', 600, 900, 1080, 540, 'web', 'e2e-role-check')"
+                "updated_via, updated_by) values "
+                "(1, 'Europe/Amsterdam', 600, 900, 1080, 540, 'telegram', 'e2e-role-check')"
             )
         after = await runtime.fetchval("select count(*) from settings.settings_change")
+        recorded = await runtime.fetchrow(
+            "select via, db_role from settings.settings_change where by = 'e2e-role-check' order by at desc limit 1"
+        )
         mail = await runtime.fetchval("select count(*) from mail_item")
         revision = await runtime.fetchval("select version_num from alembic_version")
     finally:
         await transaction.rollback()
 
     assert after == before + 1  # the trigger wrote it; the role could not have inserted it itself
+    assert recorded is not None
+    assert (recorded["via"], recorded["db_role"]) == ("telegram", ROLE)  # derived by the server, not claimed
     assert mail >= 0
     assert revision  # the readiness check the agent runs at start-up works
+
+
+_FORGED_WRITES = [
+    "update settings.schedule set version = version + 2, updated_via = 'telegram'",
+    "update settings.schedule set version = version, updated_via = 'telegram'",
+    "update settings.schedule set version = version + 1, updated_via = 'web'",
+    "update settings.schedule set version = version + 1",
+]
+
+
+@pytest.mark.parametrize("statement", _FORGED_WRITES)
+async def test_given_a_stored_schedule_when_the_runtime_role_forges_the_channel_or_the_version_then_it_is_refused(
+    runtime: asyncpg.Connection, statement: str
+) -> None:
+    transaction = runtime.transaction()
+    await transaction.start()
+    try:
+        if not await runtime.fetchval("select count(*) from settings.schedule"):
+            await runtime.execute(
+                "insert into settings.schedule (id, zone, quiet_start, quiet_end, overview_at, remind_at, "
+                "updated_via, updated_by) values "
+                "(1, 'Europe/Amsterdam', 600, 900, 1080, 540, 'telegram', 'e2e-role-check')"
+            )
+        with pytest.raises(asyncpg.PostgresError) as refused:
+            await runtime.execute(statement)
+    finally:
+        await transaction.rollback()
+
+    assert refused.value.sqlstate == INSUFFICIENT_PRIVILEGE, f"{statement!r} was not refused with 42501"
 
 
 async def test_given_the_runtime_role_when_it_works_on_mail_and_conversation_then_it_may(
@@ -157,9 +206,13 @@ async def test_given_the_runtime_role_when_it_works_on_mail_and_conversation_the
             "insert into mail_item (gmail_message_id, thread_id, urgent, created_at) "
             "values ('e2e-role-check', 't', false, now())"
         )
-        await runtime.execute("delete from mail_item where gmail_message_id = 'e2e-role-check'")
-        count = await runtime.fetchval("select count(*) from mail_item where gmail_message_id = 'e2e-role-check'")
+        await runtime.execute("update mail_item set urgent = true where gmail_message_id = 'e2e-role-check'")
+        urgent = await runtime.fetchval("select urgent from mail_item where gmail_message_id = 'e2e-role-check'")
+        await runtime.execute(
+            "insert into conversation (id, kind, step, nonce, expires_at) values (1, 'settings', 's', 'n', now())"
+        )
+        await runtime.execute("delete from conversation")
     finally:
         await transaction.rollback()
 
-    assert count == 0
+    assert urgent is True

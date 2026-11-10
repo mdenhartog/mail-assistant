@@ -24,10 +24,18 @@ DO $$ BEGIN
 END $$
 """
 
-_SCHEDULE = (
-    "insert into settings.schedule (id, zone, quiet_start, quiet_end, overview_at, remind_at, updated_via, updated_by) "
-    "values (1, 'Europe/Amsterdam', 600, 900, 1080, 540, 'web', 'u1')"
-)
+
+def _schedule(via: str) -> str:
+    return (
+        "insert into settings.schedule "
+        "(id, zone, quiet_start, quiet_end, overview_at, remind_at, updated_via, updated_by) "
+        f"values (1, 'Europe/Amsterdam', 600, 900, 1080, 540, '{via}', 'u1')"
+    )
+
+
+# The owner seeds the row; its session_user is not a mapped role, so the channel it claims is kept.
+_SCHEDULE = _schedule("web")
+_TELEGRAM_UPDATE = "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'telegram'"
 
 
 @pytest.fixture
@@ -70,6 +78,26 @@ async def runtime(owner: asyncpg.Connection, migrated_url: str) -> AsyncIterator
         "alter table settings.schedule disable trigger schedule_audit",
         "set session_replication_role = replica",
         "set role test",
+        # Least privilege per table (ADR-0030 item 1): the audit trail is append-only, nothing is deleted but the dialogue.
+        "update audit_log set kind = 'x'",
+        "delete from audit_log",
+        "delete from oauth_token",
+        "delete from mail_item",
+        "delete from alert",
+        "delete from draft",
+        "delete from poll_state",
+        "delete from catchup_state",
+        "delete from overview_log",
+        "update overview_log set settled_at = now()",
+        "truncate audit_log",
+        "truncate mail_item cascade",
+        # The version rises by exactly one (ADR-0030 item 2).
+        "update settings.schedule set quiet_start = 660, version = 1, updated_via = 'telegram'",
+        "update settings.schedule set quiet_start = 660, version = 3, updated_via = 'telegram'",
+        "update settings.schedule set quiet_start = 660, version = 0, updated_via = 'telegram'",
+        # The channel is the role's, not the writer's choice.
+        "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'web'",
+        "update settings.schedule set quiet_start = 660, version = 2",
     ],
 )
 async def test_given_the_runtime_role_when_it_tries_a_forbidden_statement_then_postgres_refuses_it(
@@ -86,11 +114,49 @@ async def test_given_the_runtime_role_when_it_tries_a_forbidden_statement_then_p
 async def test_given_the_runtime_role_when_it_inserts_and_updates_the_schedule_then_the_trigger_records_it(
     runtime: asyncpg.Connection, owner: asyncpg.Connection
 ) -> None:
-    await runtime.execute(_SCHEDULE)
-    await runtime.execute("update settings.schedule set quiet_start = 660, version = 2, updated_via = 'telegram'")
+    await runtime.execute(_schedule("telegram"))
+    await runtime.execute(_TELEGRAM_UPDATE)
 
     assert await runtime.fetchval("select quiet_start from settings.schedule") == 660
     assert await owner.fetchval("select count(*) from settings.settings_change") == 2
+
+
+async def test_given_the_runtime_role_when_it_inserts_the_first_row_as_web_then_postgres_refuses_it(
+    runtime: asyncpg.Connection,
+) -> None:
+    with pytest.raises(asyncpg.PostgresError) as refused:
+        await runtime.execute(_schedule("web"))
+
+    assert refused.value.sqlstate == "42501"
+
+
+async def test_given_the_runtime_role_when_it_inserts_a_first_row_above_version_one_then_postgres_refuses_it(
+    runtime: asyncpg.Connection,
+) -> None:
+    statement = _schedule("telegram").replace("updated_by)", "updated_by, version)").replace("'u1')", "'u1', 7)")
+
+    with pytest.raises(asyncpg.PostgresError) as refused:
+        await runtime.execute(statement)
+
+    assert refused.value.sqlstate == "42501"
+
+
+async def test_given_a_telegram_write_when_it_is_recorded_then_the_server_stores_the_session_user_and_the_time(
+    runtime: asyncpg.Connection, owner: asyncpg.Connection
+) -> None:
+    await runtime.execute(_schedule("telegram"))
+    stamp = await owner.fetchval("select updated_at from settings.schedule")
+    await runtime.execute(
+        "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'telegram', "
+        "updated_at = '2001-01-01 00:00:00+00'"
+    )
+
+    row = await owner.fetchrow("select updated_at from settings.schedule")
+    records = await owner.fetch("select via, db_role from settings.settings_change order by new -> 'version'")
+
+    assert row is not None
+    assert row["updated_at"] > stamp  # the client's updated_at is overwritten by the server
+    assert [(r["via"], r["db_role"]) for r in records] == [("telegram", ROLE), ("telegram", ROLE)]
 
 
 async def test_given_the_runtime_role_when_it_works_on_mail_and_conversation_then_it_may(
@@ -107,6 +173,16 @@ async def test_given_the_runtime_role_when_it_works_on_mail_and_conversation_the
         "insert into conversation (id, kind, step, nonce, expires_at) values (1, 'settings', 's', 'n', now())"
     )
     await runtime.execute("delete from conversation")
+    await runtime.execute("update mail_item set urgent = false")
+    await runtime.execute("update alert set state = 'sent'")
+    await runtime.execute("insert into audit_log (kind, ref, at) values ('k', 'r', now())")
+    await runtime.execute("insert into overview_log (day, settled_at) values (current_date, now())")
+    await runtime.execute("insert into oauth_token (id, ciphertext, updated_at) values (1, 'x', now())")
+    await runtime.execute("update oauth_token set updated_at = now()")
+    await runtime.execute("insert into poll_state (id, history_id) values (1, '1')")
+    await runtime.execute("update poll_state set history_id = '2'")
+    await runtime.execute("insert into catchup_state (id, started_at) values (1, now())")
+    await runtime.execute("update catchup_state set finished_at = now()")
 
     assert await runtime.fetchval("select count(*) from alert") == 1
 
