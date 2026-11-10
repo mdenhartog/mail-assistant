@@ -25,7 +25,7 @@ from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
-from app.db.migrate import SchemaNotReady, check_schema, migrate_database
+from app.db.migrate import RuntimeRoleNotSafe, SchemaNotReady, check_schema, migrate_database
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
@@ -173,6 +173,9 @@ async def migrate(settings: MigrateSettings) -> int:
         await migrate_database(
             settings.database_owner_url.get_secret_value(), settings.runtime_role_password.get_secret_value()
         )
+    except RuntimeRoleNotSafe as error:
+        logger.error("migration failed: %s", error)  # names the role only, never a password or a URL
+        return EXIT_MIGRATION_FAILED
     except Exception as error:  # whatever failed, the job must end non-zero without echoing a value
         logger.error("migration failed: %s", type(error).__name__)  # no traceback: it may carry the URL
         return EXIT_MIGRATION_FAILED
@@ -196,7 +199,7 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
             return not_ready
         refresh_token = await TokenStore(sessions, TokenCipher(settings.token_encryption_key)).load()
         if refresh_token is None:
-            logger.error("no Google consent stored; run: python -m app.consent")
+            logger.error("no Google consent stored; after the migrate job has run, run: python -m app.consent")
             return EXIT_NO_CONSENT
         credentials = Credentials(  # type: ignore[no-untyped-call]
             None,
