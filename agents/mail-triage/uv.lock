@@ -2312,6 +2312,7 @@ requires-dist = [{ name = "tzdata", specifier = ">=2026.6" }]
 dev = [
     { name = "cosmic-ray", specifier = ">=8.7.0" },
     { name = "hypothesis", specifier = ">=6.150.0" },
+    { name = "pip-audit", specifier = ">=2.10.1" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
