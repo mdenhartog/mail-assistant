@@ -12,6 +12,10 @@ The time zone question (spec C-6): Marco types a city or a country; ``places.loo
 ``tz:<index>:<nonce>`` whose index points into the candidates kept in the conversation's ``partial``, never a zone name.
 Text that cannot be a place name is refused before the lookup is called.
 
+When the stored row is invalid (a zone the tz database dropped, a value an operator emptied), ``/settings`` still opens:
+the card shows the values in use (the policy source's last good values or the defaults) under a note, and the first
+valid answer writes a whole new row over the invalid one at the version the card was shown at (RT-1).
+
 After every write ``Confirmation`` (settings_confirm.py) sends the full picture with an Undo button and keeps the Undo
 in a long-lived conversation of step ``undo``; the button "Show settings" brings the card back.
 """
@@ -39,7 +43,7 @@ if TYPE_CHECKING:
 
     from app.core.alert_text import AlertMessage
     from app.db.pg_conversation import Kind, OpenConversation
-    from app.db.repos import SettingsStore, StoredSettings
+    from app.db.repos import SettingsStore, SettingsView
     from app.usecases.dispatch import ConversationPort
     from schedule_policy.places import PlaceHit
     from schedule_policy.policy import Problem, TimePolicy
@@ -70,7 +74,7 @@ class DialogChat(Protocol):
         ...
 
 
-def _hhmm(value: object) -> time:
+def _parse_clock(value: object) -> time:
     """A clock time kept in a conversation's ``partial`` as ``HH:MM`` text."""
     hour, minute = str(value).split(":")
     return time(int(hour), int(minute))
@@ -81,7 +85,7 @@ def _question_text(conversation: OpenConversation) -> str:
     if conversation.step == ASK_START:
         return settings_text.quiet_start_question()
     if conversation.step == ASK_END:
-        return settings_text.quiet_end_question(_hhmm(conversation.partial["start"]))
+        return settings_text.quiet_end_question(_parse_clock(conversation.partial["start"]))
     if conversation.step == ASK_ZONE:
         return settings_text.ZONE_QUESTION
     return settings_text.time_question(conversation.step)
@@ -103,12 +107,11 @@ def _choices(conversation: OpenConversation) -> tuple[list[str], list[str]]:
     return [str(zone) for zone in zones], [str(label) for label in labels]
 
 
-def _version(stored: StoredSettings | None) -> int:
-    return stored.version if stored else 0
-
-
-def _policy(stored: StoredSettings | None) -> TimePolicy:
-    return stored.policy if stored else DEFAULT_POLICY
+def _note(view: SettingsView, note: str | None) -> str | None:
+    """``note`` plus the line that says the saved settings are invalid, when they are."""
+    if not view.invalid:
+        return note
+    return f"{note} {settings_text.INVALID_SAVED}" if note else settings_text.INVALID_SAVED
 
 
 class SettingsDialog:
@@ -119,20 +122,26 @@ class SettingsDialog:
     first_step: ClassVar[str] = CARD
     ttl: ClassVar[timedelta | None] = SETTINGS_TTL
 
-    def __init__(
+    def __init__(  # noqa: PLR0913, PLR0917 - every collaborator is injected, nothing is read from the environment
         self,
         store: SettingsStore,
         chat: DialogChat,
         conversations: ConversationPort,
         allowed_user_id: int,
         now: Callable[[], datetime],
+        in_use: Callable[[], TimePolicy],
     ) -> None:
-        """Wire the settings store, Telegram, the stored conversation, the one user who may change settings, a clock."""
+        """Wire the settings store, Telegram, the stored conversation, the one user, a clock and the values in use.
+
+        ``in_use`` gives the policy the agent works with while the stored row is invalid (the policy source's last good
+        values or the defaults); it must not read the database or send a notice.
+        """
         self._store = store
         self._chat = chat
         self._conversations = conversations
         self._by = str(allowed_user_id)
         self._now = now
+        self._in_use = in_use
         self._confirmation = Confirmation(store, chat, conversations, self._by, now)
 
     async def begin(self, conversation: OpenConversation) -> None:
@@ -189,10 +198,16 @@ class SettingsDialog:
 
     async def _card(self, conversation: OpenConversation, note: str | None) -> None:
         """Move to the card at the stored version (new nonce) and show it."""
-        stored = await self._store.read()
-        moved = await self._conversations.advance(conversation.nonce, CARD, {"version": _version(stored)})
+        view = await self._store.read_for_dialogue()
+        moved = await self._conversations.advance(conversation.nonce, CARD, {"version": view.version})
         if moved is not None:
-            await self._show_card(moved.nonce, _policy(stored), note)
+            await self._show_card(moved.nonce, self._shown(view), _note(view, note))
+
+    def _shown(self, view: SettingsView) -> TimePolicy:
+        """The policy a card shows and a change starts from: the stored one, else what is in use, else the defaults."""
+        if view.policy is not None:
+            return view.policy
+        return self._in_use() if view.invalid else DEFAULT_POLICY
 
     async def _show_card(self, nonce: str, policy: TimePolicy, note: str | None) -> None:
         change = {key: button_data("set", nonce, key) for key in settings_text.VALUE_NAMES}
@@ -230,7 +245,8 @@ class SettingsDialog:
             text = f"{lead}\n\n{question}" if lead else question
             await self._chat.send(settings_text.with_cancel(text, button_data("cancel", conversation.nonce)))
         else:  # the card, or a step this dialogue does not know
-            await self._show_card(conversation.nonce, _policy(await self._store.read()), lead)
+            view = await self._store.read_for_dialogue()
+            await self._show_card(conversation.nonce, self._shown(view), _note(view, lead))
 
     # ---- answers -------------------------------------------------------------------------------------------------
 
@@ -254,7 +270,7 @@ class SettingsDialog:
         if end is None:
             await self._repeat(conversation, settings_text.unreadable(text, _EXAMPLE[ASK_END]))
             return
-        start = _hhmm(conversation.partial["start"])
+        start = _parse_clock(conversation.partial["start"])
         await self._save(conversation, {"quiet_start": start, "quiet_end": end})
 
     async def _zone_text(self, conversation: OpenConversation, text: str) -> None:
@@ -306,12 +322,15 @@ class SettingsDialog:
     # ---- storing -------------------------------------------------------------------------------------------------
 
     async def _current(self, conversation: OpenConversation) -> TimePolicy | None:
-        """The stored policy if it is still at the version the card was shown at; else tell Marco and return None."""
-        stored = await self._store.read()
-        if _version(stored) != int(str(conversation.partial["version"])):
+        """The policy to change if the row is still at the version the card was shown at; else tell Marco, return None.
+
+        An invalid row counts as at its version: the policy returned is then the one in use, and the write replaces it.
+        """
+        view = await self._store.read_for_dialogue()
+        if view.version != int(str(conversation.partial["version"])):
             await self._changed_elsewhere(conversation)
             return None
-        return _policy(stored)
+        return self._shown(view)
 
     async def _changed_elsewhere(self, conversation: OpenConversation) -> None:
         await self._card(conversation, settings_text.CHANGED_ELSEWHERE)
@@ -331,7 +350,7 @@ class SettingsDialog:
             written = await self._store.write(proposed, int(str(conversation.partial["version"])), "telegram", self._by)
         except VersionConflict:
             await self._changed_elsewhere(conversation)
-        except PolicyRefused as refused:  # unreachable after validate; kept so a refusal is never an error page
+        except PolicyRefused as refused:  # the store validates again; a skew between the two is a refusal, not a crash
             await self._refuse(conversation, proposed, refused.problems)
         else:
             await self._confirmation.confirm(settings_text.SAVED, previous, written)
@@ -361,7 +380,9 @@ class SettingsDialog:
         if current is None:
             return None
         partial = conversation.partial
-        return current, replace(current, quiet_start=_hhmm(partial["start"]), quiet_end=_hhmm(partial["end"]))
+        return current, replace(
+            current, quiet_start=_parse_clock(partial["start"]), quiet_end=_parse_clock(partial["end"])
+        )
 
     async def _offer_again(self, conversation: OpenConversation) -> None:
         both = await self._with_new_window(conversation)

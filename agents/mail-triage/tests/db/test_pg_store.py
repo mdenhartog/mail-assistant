@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
+from app.db.pg_conversation import ConversationStore
 from app.db.pg_store import PgStore
 from app.usecases.reply import StoredDraft
 from app.usecases.triage import Claim, MailContent, Outcome
@@ -30,9 +31,14 @@ async def engine(migrated_url: str) -> AsyncIterator[AsyncEngine]:
     await engine.dispose()
 
 
+def _fresh_store(engine: AsyncEngine) -> PgStore:
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    return PgStore(sessions, ConversationStore(sessions, lambda: datetime.now(UTC)))
+
+
 @pytest.fixture
 def store(engine: AsyncEngine) -> PgStore:
-    return PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    return _fresh_store(engine)
 
 
 def content(**changes: object) -> MailContent:
@@ -387,7 +393,7 @@ async def test_given_a_finished_catch_up_when_a_new_store_reads_it_then_it_is_st
     await store.start_catchup(NOW)
     await store.finish_catchup(NOW + timedelta(hours=1))
 
-    state = await PgStore(async_sessionmaker(engine, expire_on_commit=False)).catchup_state()
+    state = await _fresh_store(engine).catchup_state()
 
     assert state is not None
     assert state.finished_at == NOW + timedelta(hours=1)

@@ -125,7 +125,8 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     today: Callable[[], str] | None = None,
 ) -> Runner:
     """Wire the store, the adapters and the use cases into a runner."""
-    store = PgStore(sessions)
+    conversations = ConversationStore(sessions, now)  # the one: PgStore and the router judge expiry with this clock
+    store = PgStore(sessions, conversations)
     outbox = TelegramOutbox(client, settings.telegram_bot_token, settings.telegram_allowed_chat_id)
     cursor = PgUpdateCursor(sessions)  # the last handled Telegram update; it survives a restart
     inbox = TelegramInbox(
@@ -139,11 +140,12 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
     settings_store = PgSettingsStore(sessions)
     policy = PgPolicySource(settings_store, PolicyNotice(outbox))  # one per process: it holds the last good values
-    conversations = ConversationStore(sessions, now)
     snooze = SnoozeService(store, outbox, now, policy)
     reply = ReplyService(store, mailbox, sender, outbox, own_address=own_address, now=now, new_id=new_id)  # type: ignore[arg-type]
     router = CommandRouter(reply, snooze, store, outbox, conversations, cursor)
-    router.register(SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now))
+    router.register(
+        SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now, policy.in_use)
+    )
     return Runner(
         pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now, policy),  # type: ignore[arg-type]
         catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now, policy),  # type: ignore[arg-type]

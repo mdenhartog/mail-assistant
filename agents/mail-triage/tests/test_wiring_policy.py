@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -14,7 +15,14 @@ from app.wiring import build_runner, make_engine
 from tests.test_settings import VALID
 
 
-def _runner() -> Any:
+class _Clock:
+    """A fake clock: the wiring must hand this very object to the one conversation store."""
+
+    def __call__(self) -> datetime:
+        return datetime(2020, 1, 1, tzinfo=UTC)
+
+
+def _runner(now: Any = lambda: None) -> Any:
     engine = create_async_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")  # never connected in this test
     return build_runner(
         load_settings(VALID),
@@ -24,7 +32,7 @@ def _runner() -> Any:
         sender=object(),
         own_address="marco@example.com",
         heartbeat=None,  # type: ignore[arg-type]
-        now=lambda: None,  # type: ignore[arg-type,return-value]
+        now=now,
     )
 
 
@@ -57,3 +65,16 @@ def test_given_the_engine_factory_when_an_engine_is_made_then_bound_parameters_a
     engine = make_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")
 
     assert engine.sync_engine.hide_parameters is True
+
+
+def test_given_a_fake_clock_when_the_runner_is_built_then_the_store_and_the_router_share_one_conversation_store() -> (
+    None
+):
+    clock = _Clock()
+
+    runner = _runner(clock)
+
+    from_store = vars(runner._store)["_conversations"]
+    from_router = vars(runner._router)["_conversations"]
+    assert from_store is from_router
+    assert vars(from_store)["_now"] is clock

@@ -25,6 +25,8 @@ from tests.usecases.test_dispatch import text as typed
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
 
 
@@ -34,6 +36,11 @@ class Clock:
 
     def __call__(self) -> datetime:
         return self.now
+
+
+def _pg_store(bind: AsyncEngine | async_sessionmaker[AsyncSession]) -> PgStore:
+    sessions = bind if isinstance(bind, async_sessionmaker) else async_sessionmaker(bind, expire_on_commit=False)
+    return PgStore(sessions, ConversationStore(sessions, Clock()))
 
 
 @pytest.fixture
@@ -157,7 +164,7 @@ async def test_given_an_expired_dialogue_when_advanced_then_nothing_changes(
 async def test_given_a_set_awaiting_when_stored_then_the_conversation_row_holds_it_and_the_alert_has_no_such_column(
     engine: AsyncEngine,
 ) -> None:
-    store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    store = _pg_store(engine)
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
 
@@ -182,7 +189,7 @@ async def test_given_a_set_awaiting_when_stored_then_the_conversation_row_holds_
 async def test_given_a_snooze_question_when_a_reply_question_starts_for_another_alert_then_only_the_reply_is_awaited(
     engine: AsyncEngine,
 ) -> None:
-    store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    store = _pg_store(engine)
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     await add(store, "m2", outcome(alert=AlertState.OPEN))
     first, second = await store.unsent()
@@ -198,7 +205,7 @@ async def test_given_the_real_store_when_a_snooze_is_asked_and_answered_then_the
     engine: AsyncEngine,
     conversations: ConversationStore,
 ) -> None:
-    store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    store = _pg_store(engine)
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
     chat = FakeChat()
@@ -216,7 +223,7 @@ async def test_given_the_real_store_when_reply_replaces_a_pending_snooze_then_th
     engine: AsyncEngine,
     conversations: ConversationStore,
 ) -> None:
-    store = PgStore(async_sessionmaker(engine, expire_on_commit=False))
+    store = _pg_store(engine)
     await add(store, "m1", outcome(alert=AlertState.OPEN))
     [pending] = await store.unsent()
     chat, reply = FakeChat(), FakeReply()
@@ -241,25 +248,18 @@ async def test_given_a_pending_question_when_the_store_is_rebuilt_then_awaiting_
     engine: AsyncEngine,
 ) -> None:
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    await add(PgStore(sessions), "m1", outcome(alert=AlertState.OPEN))
-    [pending] = await PgStore(sessions).unsent()
-    await PgStore(sessions).set_awaiting(pending.alert_id, "reply_text")
+    await add(_pg_store(sessions), "m1", outcome(alert=AlertState.OPEN))
+    [pending] = await _pg_store(sessions).unsent()
+    await _pg_store(sessions).set_awaiting(pending.alert_id, "reply_text")
 
-    assert await PgStore(sessions).awaiting() == (pending.alert_id, "reply_text")
+    assert await _pg_store(sessions).awaiting() == (pending.alert_id, "reply_text")
 
 
 async def _settings_rig(
     engine: AsyncEngine, conversations: ConversationStore
 ) -> tuple[CommandRouter, FakeSettings, FakeChat]:
     chat, settings = FakeChat(), FakeSettings()
-    router = CommandRouter(
-        FakeReply(),
-        FakeSnooze(),
-        PgStore(async_sessionmaker(engine, expire_on_commit=False)),
-        chat,
-        conversations,
-        FakeUpdateCursor(),
-    )
+    router = CommandRouter(FakeReply(), FakeSnooze(), _pg_store(engine), chat, conversations, FakeUpdateCursor())
     router.register(settings)
     await router.handle(typed("/settings"))
     return router, settings, chat

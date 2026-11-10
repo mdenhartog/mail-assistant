@@ -70,7 +70,7 @@ async def test_given_the_gmail_position_when_the_update_id_is_stored_then_neithe
     engine: AsyncEngine,
 ) -> None:
     sessions = _sessions(engine)
-    store, cursor = PgStore(sessions), PgUpdateCursor(sessions)
+    store, cursor = PgStore(sessions, ConversationStore(sessions, lambda: NOW)), PgUpdateCursor(sessions)
 
     await store.save_history_id("100")
     await cursor.advance(7)
@@ -123,7 +123,7 @@ async def test_given_revision_0006_with_a_poll_row_when_upgraded_then_the_row_is
 
     engine = create_async_engine(database_url)
     try:
-        assert await PgStore(_sessions(engine)).history_id() == "55"
+        assert await PgStore(_sessions(engine), ConversationStore(_sessions(engine), lambda: NOW)).history_id() == "55"
         assert await PgUpdateCursor(_sessions(engine)).last() is None
     finally:
         await engine.dispose()

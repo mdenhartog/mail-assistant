@@ -17,7 +17,6 @@ from app.core.alert_text import AuthResults, MailMeta
 from app.core.judgement import Judgement
 from app.db import repos
 from app.db.models import Alert, CatchupState, Draft, MailItem, PollState
-from app.db.pg_conversation import ConversationStore, Kind
 from app.usecases.catchup import CatchUpState
 from app.usecases.deliver_alerts import PendingAlert
 from app.usecases.overview import FiledMail
@@ -26,6 +25,8 @@ from app.usecases.triage import Claim, Outcome
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.pg_conversation import ConversationStore, Kind
 
 POLL_ROW = 1
 _QUESTIONS: dict[str, tuple[Kind, str]] = {"snooze_hours": ("snooze", "hours"), "reply_text": ("reply", "text")}
@@ -70,10 +71,10 @@ def _stored(draft: Draft) -> StoredDraft:
 class PgStore:
     """Triage, delivery, snooze, reply and overview storage in PostgreSQL."""
 
-    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
-        """Keep the session factory; the pending question lives in the conversation row."""
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], conversations: ConversationStore) -> None:
+        """Keep the session factory and the one conversation store; the pending question lives in its row."""
         self._sessions = sessions
-        self._conversations = ConversationStore(sessions, lambda: datetime.now(UTC))
+        self._conversations = conversations
 
     # ---- triage pipeline -------------------------------------------------------------------------------------
 

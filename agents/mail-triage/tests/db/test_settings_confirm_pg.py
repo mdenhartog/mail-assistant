@@ -14,6 +14,7 @@ from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_update_cursor import PgUpdateCursor
 from app.usecases.dispatch import CommandRouter
 from app.usecases.settings_dialog import SettingsDialog
+from schedule_policy.policy import DEFAULT_POLICY
 from schedule_policy.testing import FakeClock, make_policy
 from tests.db.test_settings_dialog_pg import engine  # noqa: F401  # the fixture of the U-09 database tests
 from tests.usecases.test_dispatch import FakeReply, FakeSnooze, FakeStore, button
@@ -38,7 +39,8 @@ class Agent:
         self.router = CommandRouter(
             FakeReply(), FakeSnooze(), FakeStore(), self.chat, conversations, PgUpdateCursor(sessions)
         )
-        self.router.register(SettingsDialog(self.store, self.chat, conversations, USER, clock.now))
+        dialog = SettingsDialog(self.store, self.chat, conversations, USER, clock.now, lambda: DEFAULT_POLICY)
+        self.router.register(dialog)
 
     async def press(self, label: str) -> None:
         matches = [b for b in self.chat.sent[-1].buttons if b.label == label]

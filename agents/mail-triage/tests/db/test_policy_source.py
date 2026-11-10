@@ -413,3 +413,17 @@ async def test_given_a_store_failure_when_read_then_the_log_line_names_the_drive
 
     assert messages == ["settings_unreadable error=UndefinedTableError sqlstate=42P01"] * 2
     assert len(notifier.sent) == 1
+
+
+async def test_given_a_source_when_asked_what_is_in_use_then_last_good_or_defaults_and_no_notice() -> None:
+    notifier = FakeNotifier()
+    good = make_policy(quiet_start=time(22, 30))
+    source = PgPolicySource(ScriptedStore(_row(good), StoredSettingsInvalid(("zone_unknown",))), PolicyNotice(notifier))
+    assert source.in_use() == DEFAULT_POLICY  # nothing read yet
+
+    await source.current()
+    assert source.in_use() == good
+
+    await source.current()  # the row went invalid: the last good values stay in use
+    assert source.in_use() == good
+    assert len(notifier.sent) == 1  # in_use itself sent nothing: only the one incident notice

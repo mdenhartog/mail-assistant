@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING
 
 from app.db.repos import SettingsStoreFailure
 from app.usecases.settings_dialog import SettingsDialog
+from schedule_policy.policy import DEFAULT_POLICY
 from tests.usecases.test_dispatch import FakeChat, Rig, text
 
 if TYPE_CHECKING:
     from app.core.alert_text import AlertMessage
-    from app.db.repos import StoredSettings
+    from app.db.repos import SettingsView
 
 USER = 4242
 
@@ -30,7 +31,7 @@ class SentChat(FakeChat):
 class UnreadableStore:
     """A settings store whose database cannot answer a read."""
 
-    async def read(self) -> StoredSettings | None:
+    async def read_for_dialogue(self) -> SettingsView:
         raise SettingsStoreFailure("UndefinedTableError", "42P01")
 
 
@@ -39,7 +40,9 @@ async def test_given_a_read_fault_when_settings_is_sent_then_the_dialogue_ends_w
     chat = SentChat()
     rig.chat = chat
     router = rig.router()
-    router.register(SettingsDialog(UnreadableStore(), chat, rig.conversations, USER, rig.clock.now))  # type: ignore[arg-type]
+    router.register(
+        SettingsDialog(UnreadableStore(), chat, rig.conversations, USER, rig.clock.now, lambda: DEFAULT_POLICY)
+    )  # type: ignore[arg-type]
 
     await router.handle(text("/settings"))
 
@@ -50,7 +53,7 @@ async def test_given_a_read_fault_when_settings_is_sent_then_the_dialogue_ends_w
 class RefusedStore:
     """A settings store whose connection is refused: the raw error can reach ``read`` unwrapped."""
 
-    async def read(self) -> StoredSettings | None:
+    async def read_for_dialogue(self) -> SettingsView:
         raise ConnectionRefusedError("[Errno 111] Connect call failed ('10.0.0.5', 5432)")
 
 
@@ -59,7 +62,9 @@ async def test_given_a_refused_connection_when_settings_is_sent_then_the_dialogu
     chat = SentChat()
     rig.chat = chat
     router = rig.router()
-    router.register(SettingsDialog(RefusedStore(), chat, rig.conversations, USER, rig.clock.now))  # type: ignore[arg-type]
+    router.register(
+        SettingsDialog(RefusedStore(), chat, rig.conversations, USER, rig.clock.now, lambda: DEFAULT_POLICY)
+    )  # type: ignore[arg-type]
 
     await router.handle(text("/settings"))
 
