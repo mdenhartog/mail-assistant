@@ -30,4 +30,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0026 · Mail triage: one conversation state for all Telegram dialogues · area:architecture · tags:mail-triage,telegram,state · decisions/ADR-0026-single-conversation-state.md
 - ADR-0027 · Wall-clock times: resolution of non-existent and ambiguous local times · area:architecture · tags:mail-triage,time,dst · decisions/ADR-0027-wall-clock-resolution.md
 - ADR-0028 · Time-zone lookup: a hand-curated list of cities, countries and aliases · area:architecture · tags:mail-triage,time-zone,data · decisions/ADR-0028-place-list.md
+- ADR-0029 · Cluster secrets: Sealed Secrets, committed encrypted through GitOps · area:security · tags:kubernetes,argocd,secrets,sealed-secrets,mail-triage · decisions/ADR-0029-secrets-sealed-secrets.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md

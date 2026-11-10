@@ -24,13 +24,18 @@ The chart only **references** Secrets by name; it never creates one and no value
 | `migration.secretName` (e.g. `mail-triage-migration`) | the migration Job only | `DATABASE_OWNER_URL` (SQLAlchemy asyncpg URL of the owner role, which needs `CREATEROLE`), `RUNTIME_ROLE_PASSWORD` |
 | `envFromSecret` (e.g. `mail-triage-secrets`) | the worker only | all agent settings, with `DATABASE_URL` using the user `mail_triage_runtime` and the **same** password as `RUNTIME_ROLE_PASSWORD` |
 
+Secrets are provisioned with Sealed Secrets (ADR-0029): seal each Secret against the cluster certificate and commit the
+`SealedSecret` to the GitOps repository; the controller turns it into the Secret the chart references. Scope is `strict`
+(bound to name and namespace). Read the values from your password manager on standard input; never write them to a file.
+
 ```sh
-kubectl create secret generic mail-triage-migration \
-  --from-literal=DATABASE_OWNER_URL="$OWNER_URL" --from-literal=RUNTIME_ROLE_PASSWORD="$RUNTIME_PASSWORD"
+kubectl create secret generic mail-triage-migration --dry-run=client -o yaml \
+  --from-literal=DATABASE_OWNER_URL="$OWNER_URL" --from-literal=RUNTIME_ROLE_PASSWORD="$RUNTIME_PASSWORD" \
+  | kubeseal --format yaml --namespace mail-triage > mail-triage-migration.sealed.yaml
 ```
 
-(read the values from your password manager into the shell; never type them into a file in Git). To rotate the runtime
-password: change both Secrets, then sync; the Job sets the new password on the role. How these Secrets are provisioned
-(plain Secret by the operator, sealed secrets, External Secrets) is an open decision; any of them works with this chart.
+Do the same for `mail-triage-secrets` (use the **same** runtime password in `DATABASE_URL`). Back up the controller's
+private key outside the cluster; without it every secret must be sealed again. To rotate the runtime password: reseal both
+Secrets, then sync; the Job sets the new password on the role.
 
 The Job pod has its own NetworkPolicy (DNS and the database port only) and the same hardened pod settings as the worker.
