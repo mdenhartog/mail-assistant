@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_settings_store import PgSettingsStore
+from app.db.pg_update_cursor import PgUpdateCursor
 from app.usecases.dispatch import CommandRouter
 from app.usecases.settings_dialog import SettingsDialog
 from schedule_policy.testing import FakeClock, make_policy
@@ -34,7 +35,7 @@ class Agent:
         self.chat = RecordingChat()
         self.store = PgSettingsStore(sessions)
         conversations = ConversationStore(sessions, clock.now)
-        self.router = CommandRouter(FakeReply(), FakeSnooze(), FakeStore(), self.chat, conversations)
+        self.router = CommandRouter(FakeReply(), FakeSnooze(), FakeStore(), self.chat, conversations, PgUpdateCursor(sessions))
         self.router.register(SettingsDialog(self.store, self.chat, conversations, USER, clock.now))
 
     async def press(self, label: str) -> None:

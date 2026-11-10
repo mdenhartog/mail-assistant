@@ -89,9 +89,13 @@ class Store:
 class Inbox:
     def __init__(self, batches: list[list[Command]]) -> None:
         self.batches = batches
+        self.rewound: list[int] = []
 
     async def poll_once(self) -> list[Command]:
         return self.batches.pop(0) if self.batches else []
+
+    def rewind(self, update_id: int) -> None:
+        self.rewound.append(update_id)
 
 
 class Router:
@@ -188,18 +192,34 @@ async def test_given_commands_from_marco_when_the_telegram_cycle_runs_then_each_
     assert router.handled == commands
 
 
-async def test_given_a_command_that_fails_when_routed_then_the_next_one_still_runs(
+async def test_given_a_command_that_fails_when_routed_then_the_rest_of_the_batch_waits_and_the_log_has_no_text(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.DEBUG)
     commands = [Command("text", "secret words", 1, 1, None, 1), Command("text", "more", 1, 2, None, 2)]
     router = Router(fail=True)
-    run, _ = runner(Steps(), tmp_path, inbox=Inbox([commands]), router=router)
+    inbox = Inbox([commands])
+    run, _ = runner(Steps(), tmp_path, inbox=inbox, router=router)
 
     await run.telegram_cycle()
 
-    assert len(router.handled) == 2
+    assert [c.update_id for c in router.handled] == [1]  # a later update must not move the stored id past it
+    assert inbox.rewound == [1]  # the failed update is asked for again, not lost
     assert "secret words" not in caplog.text
+
+
+async def test_given_an_update_that_keeps_failing_when_it_has_failed_three_times_then_it_is_not_asked_for_again(
+    tmp_path: Path,
+) -> None:
+    command = Command("text", "x", 1, 1, None, 1)
+    router = Router(fail=True)
+    inbox = Inbox([[command]] * 5)
+    run, _ = runner(Steps(), tmp_path, inbox=inbox, router=router)
+
+    for _ in range(5):
+        await run.telegram_cycle()
+
+    assert inbox.rewound == [1, 1]  # tried three times in all, then the cycle goes on past it
 
 
 async def test_given_a_stop_signal_when_running_then_both_loops_end(tmp_path: Path) -> None:

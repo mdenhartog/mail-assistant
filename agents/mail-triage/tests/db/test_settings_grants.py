@@ -181,6 +181,7 @@ async def test_given_the_runtime_role_when_it_works_on_mail_and_conversation_the
     await runtime.execute("update oauth_token set updated_at = now()")
     await runtime.execute("insert into poll_state (id, history_id) values (1, '1')")
     await runtime.execute("update poll_state set history_id = '2'")
+    await runtime.execute("update poll_state set telegram_update_id = 5000000000")
     await runtime.execute("insert into catchup_state (id, started_at) values (1, now())")
     await runtime.execute("update catchup_state set finished_at = now()")
 

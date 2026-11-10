@@ -55,6 +55,21 @@ class FakeConversations:
         self._row = None
 
 
+class FakeUpdateCursor:
+    """The stored id of the last handled Telegram update, in memory; it outlives a router, like the database row."""
+
+    def __init__(self, last: int | None = None) -> None:
+        self.value = last
+        self.advances: list[int] = []
+
+    async def last(self) -> int | None:
+        return self.value
+
+    async def advance(self, update_id: int) -> None:
+        self.advances.append(update_id)
+        self.value = max(self.value or 0, update_id)
+
+
 @dataclass
 class FakeSettings:
     """A registered settings handler that records what the router hands it (the real dialogue is a later unit)."""

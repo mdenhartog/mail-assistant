@@ -11,6 +11,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.adapters.telegram_inbox import MAX_BUTTON_DATA_CHARS, Command, TelegramInbox
+from tests.usecases.fakes_dialogue import FakeUpdateCursor
 
 TOKEN = "123456:ABC-secret-token"  # noqa: S105 - a fake token for tests
 USER = 4242
@@ -58,7 +59,9 @@ class FakeTelegram:
         return [json.loads(request.content).get("offset") for request in self.requests]
 
 
-def make_inbox(fake: FakeTelegram, sleeps: list[float] | None = None) -> TelegramInbox:
+def make_inbox(
+    fake: FakeTelegram, sleeps: list[float] | None = None, cursor: FakeUpdateCursor | None = None
+) -> TelegramInbox:
     async def sleep(seconds: float) -> None:
         if sleeps is not None:
             sleeps.append(seconds)
@@ -68,6 +71,7 @@ def make_inbox(fake: FakeTelegram, sleeps: list[float] | None = None) -> Telegra
         token=SecretStr(TOKEN),
         allowed_user_id=USER,
         allowed_chat_id=CHAT,
+        cursor=cursor or FakeUpdateCursor(),
         sleep=sleep,
     )
 
@@ -192,6 +196,7 @@ async def test_given_an_unreadable_response_when_polled_then_it_is_treated_as_a_
         token=SecretStr(TOKEN),
         allowed_user_id=USER,
         allowed_chat_id=CHAT,
+        cursor=FakeUpdateCursor(),
         sleep=lambda seconds: _record(sleeps, seconds),
     )
 
@@ -246,3 +251,45 @@ async def test_given_a_settings_button_with_the_longest_data_when_polled_then_it
 
     assert command.data == data
     assert len(data.encode("ascii")) <= MAX_BUTTON_DATA_CHARS
+
+
+# ---- U-quiet-hours-16d: the stored id of the last handled update survives a restart (RT-5) -----------------------
+
+
+async def test_given_a_stored_update_id_when_the_agent_starts_then_polling_resumes_at_the_next_id() -> None:
+    fake = FakeTelegram([])
+    inbox = make_inbox(fake, cursor=FakeUpdateCursor(777))
+
+    await inbox.poll_once()
+
+    assert fake.offsets() == [778]
+
+
+async def test_given_telegram_redelivers_handled_updates_when_polled_then_those_at_or_below_the_stored_id_are_dropped() -> (
+    None
+):
+    fake = FakeTelegram([message(776, "a"), message(777, "b"), message(778, "c")])
+    inbox = make_inbox(fake, cursor=FakeUpdateCursor(777))
+
+    commands = await inbox.poll_once()
+
+    assert [command.update_id for command in commands] == [778]
+
+
+async def test_given_no_stored_id_when_polled_then_the_first_request_has_no_offset() -> None:
+    fake = FakeTelegram([])
+
+    await make_inbox(fake).poll_once()
+
+    assert fake.offsets() == [None]
+
+
+async def test_given_an_update_that_failed_when_it_is_rewound_then_the_next_poll_asks_for_it_again() -> None:
+    fake = FakeTelegram([message(5), message(6)], [])
+    inbox = make_inbox(fake)
+
+    await inbox.poll_once()
+    inbox.rewind(5)
+    await inbox.poll_once()
+
+    assert fake.offsets() == [None, 5]
