@@ -2,6 +2,7 @@ from datetime import UTC, time
 
 import pytest
 
+from schedule_policy import policy as policy_module
 from schedule_policy.policy import validate
 from schedule_policy.testing import make_policy
 
@@ -126,3 +127,15 @@ def test_given_several_broken_rules_when_validated_then_all_are_reported():
     )
 
     assert sorted(p.rule for p in problems) == ["quiet_window_empty", "zone_unknown"]
+
+
+def test_given_a_system_zoneinfo_with_extra_names_when_validated_then_only_tzdata_zones_pass(monkeypatch):
+    # A Linux host lists files such as `localtime` and `posixrules` next to the real zones; the check must ignore them.
+    monkeypatch.setattr(policy_module, "available_timezones", lambda: {"localtime", "Europe/Amsterdam"}, raising=False)
+    policy_module._known_zones.cache_clear()
+    try:
+        problems = validate(make_policy(zone="localtime"))
+    finally:
+        policy_module._known_zones.cache_clear()
+
+    assert [p.rule for p in problems] == ["zone_unknown"]
