@@ -25,7 +25,7 @@ from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
-from app.db.migrate import upgrade
+from app.db.migrate import SchemaNotReady, check_schema, migrate_database
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
-    from app.settings import Settings
+    from app.settings import MigrateSettings, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +69,8 @@ GMAIL_SCOPES = (
 EXIT_OK = 0
 EXIT_NO_CONSENT = 3
 EXIT_LOCKED = 4
+EXIT_SCHEMA_NOT_READY = 5
+EXIT_MIGRATION_FAILED = 6
 
 
 class MailPorts:
@@ -155,6 +157,29 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+async def verify_schema(engine: AsyncEngine) -> int | None:
+    """The agent's readiness check: None when the schema is at the expected head, else the exit code to stop with."""
+    try:
+        await check_schema(engine)
+    except SchemaNotReady as error:
+        logger.error("%s", error)  # the message holds revisions only, a traceback adds nothing
+        return EXIT_SCHEMA_NOT_READY
+    return None
+
+
+async def migrate(settings: MigrateSettings) -> int:
+    """The migrate command: schema, runtime role and grants, as the owner role. Returns an exit code."""
+    try:
+        await migrate_database(
+            settings.database_owner_url.get_secret_value(), settings.runtime_role_password.get_secret_value()
+        )
+    except Exception as error:  # whatever failed, the job must end non-zero without echoing a value
+        logger.error("migration failed: %s", type(error).__name__)  # no traceback: it may carry the URL
+        return EXIT_MIGRATION_FAILED
+    logger.info("migration finished; the database is at the head this build expects")
+    return EXIT_OK
+
+
 async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real Google, Telegram and database
     """Run the agent until it is told to stop. Returns an exit code."""
     from google.oauth2.credentials import Credentials  # noqa: PLC0415
@@ -166,7 +191,9 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
         if not await repos.try_lock(lock_connection):
             logger.error("another copy of the agent holds the lock; exiting")
             return EXIT_LOCKED
-        await upgrade(settings.database_url.get_secret_value())
+        not_ready = await verify_schema(engine)  # the migrate job owns the schema; the agent only checks it
+        if not_ready is not None:
+            return not_ready
         refresh_token = await TokenStore(sessions, TokenCipher(settings.token_encryption_key)).load()
         if refresh_token is None:
             logger.error("no Google consent stored; run: python -m app.consent")

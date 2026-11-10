@@ -53,12 +53,46 @@ class Settings(BaseSettings):
         return (init_settings,)
 
 
-def load_settings(env: Mapping[str, str] | None = None) -> Settings:
-    """Read and validate the settings; raise ``SettingsError`` naming the keys (never the values) that are wrong."""
+class MigrateSettings(BaseSettings):
+    """What the ``migrate`` command needs, and only that (ADR-0025). The running agent never reads these.
+
+    The owner role runs the migrations and owns every table; the runtime role (``mail_triage_runtime``) owns nothing.
+    Its password is set from here, so the secret store is the single source of it.
+    """
+
+    model_config = SettingsConfigDict(frozen=True, extra="ignore")
+
+    database_owner_url: SecretStr = Field(min_length=1)  # contains the owner's password
+    runtime_role_password: SecretStr = Field(min_length=1)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Read only what ``load_migrate_settings`` hands in."""
+        return (init_settings,)
+
+
+def _load[T: BaseSettings](model: type[T], env: Mapping[str, str] | None) -> T:
     source = os.environ if env is None else env
-    values: dict[str, Any] = {name: source[name.upper()] for name in Settings.model_fields if name.upper() in source}
+    values: dict[str, Any] = {name: source[name.upper()] for name in model.model_fields if name.upper() in source}
     try:
-        return Settings(**values)
+        return model(**values)
     except ValidationError as error:
         keys = sorted({str(problem["loc"][0]).upper() for problem in error.errors() if problem["loc"]})
         raise SettingsError(f"Missing or invalid configuration: {', '.join(keys)}") from None
+
+
+def load_settings(env: Mapping[str, str] | None = None) -> Settings:
+    """Read and validate the settings; raise ``SettingsError`` naming the keys (never the values) that are wrong."""
+    return _load(Settings, env)
+
+
+def load_migrate_settings(env: Mapping[str, str] | None = None) -> MigrateSettings:
+    """Read the owner credentials for the migrate command; same rules as ``load_settings``."""
+    return _load(MigrateSettings, env)

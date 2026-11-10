@@ -134,6 +134,18 @@ jobs:
       - name: kube-linter
         run: helm template app deploy/charts/app -f deploy/envs/local/values.yaml > /tmp/render.yaml && docker run --rm -v /tmp:/tmp stackrox/kube-linter:v0.8.3 lint /tmp/render.yaml
 
+  helm-worker:
+    # The worker chart with its migration Job (ADR-0025), rendered with the local values of mail-triage.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
+      - run: helm lint --strict deploy/charts/worker -f deploy/envs/local/mail-triage.yaml
+      - name: kubeconform
+        run: helm template mail-triage deploy/charts/worker -f deploy/envs/local/mail-triage.yaml | docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0-alpine -strict -summary -
+      - name: kube-linter
+        run: helm template mail-triage deploy/charts/worker -f deploy/envs/local/mail-triage.yaml > /tmp/render-worker.yaml && docker run --rm -v /tmp:/tmp stackrox/kube-linter:v0.8.3 lint /tmp/render-worker.yaml
+
   e2e:
     runs-on: ubuntu-latest
     needs: [images]

@@ -19,6 +19,15 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if .Values.image.digest -}}{{ .Values.image.repository }}@{{ .Values.image.digest }}{{- else -}}{{ .Values.image.repository }}:{{ .Values.image.tag }}{{- end -}}
 {{- end }}
 
+{{- define "worker.migrationName" -}}
+{{- printf "%s-migrate" (include "worker.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end }}
+
+{{- define "worker.migrationSelector" -}}
+app.kubernetes.io/name: {{ include "worker.migrationName" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}
+
 {{- define "worker.probe" -}}
 exec:
   command:
