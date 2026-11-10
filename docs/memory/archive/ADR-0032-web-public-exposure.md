@@ -1,7 +1,8 @@
 ---
 id: ADR-0032
 title: "The web settings page is reachable from the internet"
-status: accepted
+status: superseded
+superseded_by: ADR-0037
 area: hosting
 tags: [web, ingress, tls, exposure, mail-triage]
 date: 2026-11-10
