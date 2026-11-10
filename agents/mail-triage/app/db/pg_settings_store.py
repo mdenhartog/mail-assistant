@@ -15,6 +15,7 @@ from app.db.repos import (
     NothingToUndo,
     PolicyRefused,
     SettingsStoreFailure,
+    SettingsView,
     StoredSettings,
     StoredSettingsInvalid,
     VersionConflict,
@@ -52,6 +53,13 @@ def _policy(columns: Mapping[str, Any]) -> TimePolicy:
 def _stored(row: Schedule) -> StoredSettings:
     columns = {name: getattr(row, name) for name in _VALUE_COLUMNS}
     return StoredSettings(_policy(columns), row.version, row.updated_at, row.updated_via, row.updated_by)
+
+
+def _broken_rules(row: Schedule) -> tuple[str, ...]:
+    """The rule ids the row breaks (none when usable); a NULL an operator allowed is ``value_missing``."""
+    if any(getattr(row, name) is None for name in _VALUE_COLUMNS):
+        return ("value_missing",)
+    return tuple(problem.rule for problem in validate(_stored(row).policy))
 
 
 def _values(policy: TimePolicy, expected_version: int, via: str, by: str) -> dict[str, object]:
@@ -141,17 +149,33 @@ class PgSettingsStore:
             StoredSettingsInvalid: the row exists but fails ``validate``; it is never returned as a policy.
             SettingsStoreFailure: the database could not answer (class and SQLSTATE only, never the SQL).
         """
-        with _without_row_values():
-            async with self._sessions() as session:
-                row = await session.get(Schedule, ROW)
+        row = await self._row()
         if row is None:
             return None
-        if any(getattr(row, name) is None for name in _VALUE_COLUMNS):  # NOT NULL was lifted by an operator
-            raise StoredSettingsInvalid(("value_missing",))
-        stored = _stored(row)
-        if problems := validate(stored.policy):
-            raise StoredSettingsInvalid(tuple(problem.rule for problem in problems))
-        return stored
+        if rules := _broken_rules(row):
+            raise StoredSettingsInvalid(rules)
+        return _stored(row)
+
+    async def read_for_dialogue(self) -> SettingsView:
+        """The version and policy of the row for the settings dialogue; an invalid row is reported with its version.
+
+        The dialogue needs the version of an invalid row to write a whole new row over it. ``read`` stays strict for
+        the policy source.
+
+        Raises:
+            SettingsStoreFailure: the database could not answer (class and SQLSTATE only, never the SQL).
+        """
+        row = await self._row()
+        if row is None:
+            return SettingsView(0, None)
+        if rules := _broken_rules(row):
+            return SettingsView(row.version, None, rules)
+        return SettingsView(row.version, _stored(row).policy)
+
+    async def _row(self) -> Schedule | None:
+        with _without_row_values():
+            async with self._sessions() as session:
+                return await session.get(Schedule, ROW)
 
     async def write(self, policy: TimePolicy, expected_version: int, via: str, by: str) -> StoredSettings:
         """Replace the whole row if it is still at ``expected_version`` (0 = insert the first row).

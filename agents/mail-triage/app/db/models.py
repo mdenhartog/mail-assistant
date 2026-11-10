@@ -198,6 +198,7 @@ class SettingsChange(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     via: Mapped[str] = mapped_column(String(16))
     by: Mapped[str] = mapped_column(String(64))
+    db_role: Mapped[str] = mapped_column(String(63))  # session_user of the writer, set by the trigger
     old: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     new: Mapped[dict[str, object]] = mapped_column(JSONB)
 

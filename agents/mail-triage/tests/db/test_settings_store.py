@@ -24,6 +24,7 @@ from app.db.repos import (
     NothingToUndo,
     PolicyRefused,
     SettingsStoreFailure,
+    SettingsView,
     StoredSettings,
     StoredSettingsInvalid,
     VersionConflict,
@@ -209,7 +210,7 @@ async def test_given_a_stored_row_that_fails_validation_when_read_then_a_clear_e
 ) -> None:
     await store.write(make_policy(), 0, "web", "u1")
     async with engine.begin() as connection:  # the zone pattern CHECK lets a well-formed but unknown name through
-        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus'"))
+        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus', version = version + 1"))
 
     with pytest.raises(StoredSettingsInvalid) as invalid:
         await store.read()
@@ -224,12 +225,49 @@ async def test_given_a_stored_row_with_a_null_value_when_read_then_it_is_an_inva
     await store.write(make_policy(), 0, "web", "u1")
     async with engine.begin() as connection:  # lift the NOT NULL as an operator with owner rights could
         await connection.execute(text("alter table settings.schedule alter column remind_at drop not null"))
-        await connection.execute(text("update settings.schedule set remind_at = null"))
+        await connection.execute(text("update settings.schedule set remind_at = null, version = version + 1"))
 
     with pytest.raises(StoredSettingsInvalid) as invalid:
         await store.read()
 
     assert invalid.value.rules == ("value_missing",)
+
+
+async def test_given_a_valid_row_when_read_for_the_dialogue_then_version_and_policy_are_returned(
+    store: PgSettingsStore,
+) -> None:
+    assert await store.read_for_dialogue() == SettingsView(0, None)
+    policy = make_policy(quiet_start=time(22, 30))
+    await store.write(policy, 0, "web", "u1")
+
+    assert await store.read_for_dialogue() == SettingsView(1, policy)
+
+
+async def test_given_an_invalid_row_when_read_for_the_dialogue_then_its_version_and_rules_come_back_without_values(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    await store.write(make_policy(), 0, "web", "u1")
+    async with engine.begin() as connection:
+        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus', version = version + 1"))
+
+    view = await store.read_for_dialogue()
+
+    assert view == SettingsView(2, None, ("zone_unknown",))
+    assert "Olympus" not in repr(view)
+
+
+async def test_given_an_invalid_row_when_written_over_at_its_version_then_a_whole_new_valid_row_is_stored(
+    store: PgSettingsStore, engine: AsyncEngine
+) -> None:
+    await store.write(make_policy(), 0, "web", "u1")
+    async with engine.begin() as connection:
+        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus', version = version + 1"))
+    version = (await store.read_for_dialogue()).version
+
+    written = await store.write(make_policy(zone="Europe/Paris"), version, "telegram", "u1")
+
+    assert written.version == version + 1
+    assert await store.read() == written
 
 
 @pytest.fixture

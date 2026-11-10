@@ -82,20 +82,20 @@ async def test_given_no_row_when_read_then_the_default_policy_and_no_notice(
 # Statements that make the stored row break a rule. The constraints of migration 0004 keep most of these out of a
 # healthy database, so each case first lifts the constraint it needs (as an operator with owner rights could).
 _CORRUPTIONS = {
-    "unknown_zone": ["update settings.schedule set zone = 'Mars/Olympus'"],
+    "unknown_zone": ["update settings.schedule set zone = 'Mars/Olympus', version = version + 1"],
     "window_of_13_hours": [
         "alter table settings.schedule drop constraint ck_schedule_window_length",
         "alter table settings.schedule drop constraint ck_schedule_overview_outside",
         "alter table settings.schedule drop constraint ck_schedule_remind_outside",
-        "update settings.schedule set quiet_start = 22 * 60, quiet_end = 11 * 60",
+        "update settings.schedule set quiet_start = 22 * 60, quiet_end = 11 * 60, version = version + 1",
     ],
     "overview_inside_the_window": [
         "alter table settings.schedule drop constraint ck_schedule_overview_outside",
-        "update settings.schedule set overview_at = 23 * 60 + 30",
+        "update settings.schedule set overview_at = 23 * 60 + 30, version = version + 1",
     ],
     "null_value": [
         "alter table settings.schedule alter column remind_at drop not null",
-        "update settings.schedule set remind_at = null",
+        "update settings.schedule set remind_at = null, version = version + 1",
     ],
 }
 GOOD = make_policy(zone="America/New_York", quiet_start=time(22, 30), quiet_end=time(6, 30), overview_at=time(17, 15))
@@ -413,3 +413,17 @@ async def test_given_a_store_failure_when_read_then_the_log_line_names_the_drive
 
     assert messages == ["settings_unreadable error=UndefinedTableError sqlstate=42P01"] * 2
     assert len(notifier.sent) == 1
+
+
+async def test_given_a_source_when_asked_what_is_in_use_then_last_good_or_defaults_and_no_notice() -> None:
+    notifier = FakeNotifier()
+    good = make_policy(quiet_start=time(22, 30))
+    source = PgPolicySource(ScriptedStore(_row(good), StoredSettingsInvalid(("zone_unknown",))), PolicyNotice(notifier))
+    assert source.in_use() == DEFAULT_POLICY  # nothing read yet
+
+    await source.current()
+    assert source.in_use() == good
+
+    await source.current()  # the row went invalid: the last good values stay in use
+    assert source.in_use() == good
+    assert len(notifier.sent) == 1  # in_use itself sent nothing: only the one incident notice

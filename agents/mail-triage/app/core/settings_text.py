@@ -120,6 +120,10 @@ def refusal(problem: Problem, window_minutes: int) -> str:
     return f"That is not allowed ({problem.rule}). {example}."
 
 
+INVALID_SAVED = (
+    "The saved settings are not valid, so I am using the values below. "
+    "Change any one of them and I will save all four as a new set."
+)
 CHANGED_ELSEWHERE = "Your settings changed elsewhere. Nothing was saved. These are the current values."
 ZONE_QUESTION = f"{VALUE_NAMES[ZONE]}: type a city or a country, for example Paris or Japan."
 ZONE_NOT_FOUND = "I could not find a time zone for that. Try the nearest big city or the country."
@@ -131,11 +135,6 @@ _MOVABLE = {
     "overview_in_quiet_hours": "the daily overview",
     "remind_in_quiet_hours": "the remind-me-later default",
 }
-
-
-def is_movable(problem: Problem) -> bool:
-    """True when the rule is 'this value is inside quiet hours': the one a one-tap move can fix."""
-    return problem.rule in _MOVABLE
 
 
 def move_label(end: time) -> str:
