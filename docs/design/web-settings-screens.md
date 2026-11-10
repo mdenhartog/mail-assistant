@@ -9,24 +9,44 @@ date: 2026-11-10
 
 # Web settings: screens, states and components
 
-Direction: Pebble (ADR-0035): one soft card per setting (2 by 2 on desktop, stacked on a phone), pill buttons, one short greeting bubble at the top of the settings page that carries no control. Words per C-11 and AC-24. Mobile first; checked at 320, 375, 768, 1280 px and 200 % text size, no horizontal scroll (AC-22).
+Direction: Pebble (ADR-0035): one soft card per setting (2 by 2 on desktop, stacked on a phone), pill buttons, one short greeting bubble at the top of the settings page that carries no control. Words per C-11 and AC-24. Sign-in is a username and an e-mailed code (ADR-0036). Mobile first; checked at 320, 375, 768, 1280 px and 200 % text size, no horizontal scroll (AC-22).
 
-## Screen 1: Login page (`/login`, public)
+## Screen 1: Login page (`/login`, public, two steps)
 
-Content: brand, heading "Sign in", the account to use ("Use the Google account `marco@example.com`. It is the only account that can open this app."), one provider button (label from configuration, "Continue with Google"), a fine-print line: "This page only asks who you are (your name and e-mail). It never asks for access to your mail or calendar."
+Sign-in is a username, then a code sent by e-mail (ADR-0036). Both steps are on `/login`; step 2 replaces the content of step 1 without a new page load, and the page title stays "Sign in - Mail Assistant". `h1` first in `main` in both steps.
+
+**Step 1: username.** Content: brand, heading "Sign in", a label "Username" with a text field (`autocomplete=username`, `autocapitalize=none`, `spellcheck=false`), one primary button "Send me a code", and a fine-print line: "We send a one-time code to the e-mail address on file for this username. This page never asks for access to your mail or calendar."
+
+**Step 2: code.** Content: heading "Enter your code", the line "We sent a code to `m***@example.com`. It is valid for 10 minutes.", a label "Code" with a numeric field (`inputmode=numeric`, `autocomplete=one-time-code`, `pattern=[0-9]*`, `maxlength=6`, six digits, no spinner), a primary button "Sign in", a secondary button "Send a new code", and a link-styled button "Use another username". The e-mail says that the code is valid for 10 minutes and has no link, so the page does not mention a link.
+
+"Send a new code" is disabled for 60 seconds after a code was sent, with visible text beside it: "You can ask for a new code in 52 seconds." The countdown text updates every second on screen but is not announced every second (see Accessibility). When it reaches zero the button is enabled and the text becomes "You can ask for a new code now." (announced once). A new code replaces the old one: the page says "A new code was sent. The earlier code no longer works."
 
 | State | Behaviour |
 | --- | --- |
-| Default | Button focused order: the only interactive element; `h1` first in `main`. |
-| Redirecting | Button disabled, text "Opening Google...", `aria-busy` on the button, status announced via a polite live region. |
-| Refused (403 from callback) | Banner `role=alert`: "This account is not allowed for this app. Try the account named above." No error code, no detail from the provider. Focus moves to the banner heading or the button (the banner is rendered with the page on load, so it is announced). |
-| Provider or network error | Banner: "Sign-in did not work. Try again. If it keeps happening, check your connection and the clock on your phone." with the same button. |
+| Default (step 1) | The username field is focused order first; the button is the only other control. |
+| Sending | Button disabled, text "Sending...", `aria-busy` on the button, status "Sending your code." in a polite live region. Inputs `readonly`. |
+| Code sent (step 2) | Step 2 appears, focus moves to the code field, status (polite, once): "Code sent to `m***@example.com`. It is valid for 10 minutes." The message is the same whether or not the username is known, so the page never says that a username exists or not. |
+| Wrong code | Inline error in a `role=alert` element linked to the code field with `aria-describedby`, field `aria-invalid=true`, focus stays in the field and the field is selected: "That code is not right. You have 3 tries left." (the number counts down; it comes from the page's own count and is shown only as long as the page knows it). Text plus "!" mark plus border, never colour alone. The same generic text is shown for any code failure the server answers with 400, so the page does not say why. |
+| Expired code | Banner `role=alert`: "This code has expired. Send yourself a new one." with the button "Send a new code" focused. The code field is cleared. |
+| Too many attempts | Banner `role=alert`: "Too many wrong tries. This code no longer works. Send a new code." The code field is disabled until a new code is sent. |
+| Asked too soon (429, cooldown) | Info banner (`role=status`): "Please wait before asking for another code. You can try again in 41 seconds." The seconds come from `Retry-After`; the countdown text follows the same rule as above. |
+| Too many codes this hour (429, hourly cap) | Banner `role=alert`: "You have asked for too many codes this hour. Try again in about 25 minutes." The button stays disabled until the time has passed. No code is sent. |
+| Could not send (503) | Banner `role=alert`: "We could not send a code right now. Try again in a few minutes." Generic: no reason, no address detail, no server message. The username field keeps its value. |
+| Locked by the web lock | Banner `role=alert`: "Web sign-in is locked. You can lift the lock in Telegram." No further detail. |
 | Session expired (came from a save) | Info banner (`role=status`): "Your session ended. Sign in again; what you typed is kept." After sign-in return to `/settings` with the draft restored (AC-12). |
 | Already signed in | Redirect to `/settings`. |
 
+Accessibility of the login page:
+
+- After step 1 succeeds, focus moves to the code field; the heading and the masked address are read first because the field is described by that sentence (`aria-describedby`).
+- Errors are `role=alert` and rendered with the page state, so they are announced once; the field is `aria-invalid` only when invalid. Focus returns to the code field after a wrong code and to "Send a new code" after an expired code.
+- The countdown text is a visible element with `aria-live=off`; a separate visually hidden polite status announces only the start ("You can ask for a new code in 60 seconds.") and the end ("You can ask for a new code now."), never every second. Under reduced motion the countdown is text only.
+- The code field accepts paste and the one-time-code autofill of the phone; `maxlength` does not block pasting a code with spaces (spaces are removed before sending).
+- Targets are 44 px, the buttons wrap and stack at 320 px and at 200 % text, and nothing is clipped.
+
 ## Screen 2: Settings page (`/settings`, session needed)
 
-Layout order: header (brand, Sign out as POST button), `h1` Settings, a quiet line "Signed in as `marco@example.com`" (also on phones), four fields in this order: **Time zone first**, then Quiet hours, Daily overview, Remind-me-later default; banner area, last-change line, actions. Save changes is primary; in R2 Reset to defaults is a separate secondary button kept apart from Save. At 320 px and at 200 % text the two buttons stack, Save first.
+Layout order: header (brand, Sign out as POST button), `h1` Settings, a quiet line "Signed in as `m***@example.com`" (the masked address from `/api/session`, also on phones), four fields in this order: **Time zone first**, then Quiet hours, Daily overview, Remind-me-later default; banner area, last-change line, actions. Save changes is primary; in R2 Reset to defaults is a separate secondary button kept apart from Save. At 320 px and at 200 % text the two buttons stack, Save first.
 
 The time zone comes first because the three times are clock times in that zone. Under the times a permanent sentence says "Quiet hours, the overview and reminders follow this time zone." The Time zone hint reads "The times below are local times in this zone." After the zone is changed and before saving, a preview line shows what changes, for example "Quiet hours will now be 22:00 to 07:00 Bangkok time (16:00 to 01:00 Amsterdam time)." The clock times stay as they are; only the moment they mean moves.
 
@@ -41,9 +61,9 @@ Fields (words as Telegram): Quiet hours (From, Until), Daily overview, Remind-me
 | Saved | Success banner (`role=status`) with what is true now: "Saved at 21:42. Quiet hours are 23:00 to 07:00 (Bangkok time). A message with an Undo button follows on Telegram within about N minutes." N is the agent's real run interval from its configuration. The last-change line becomes "Last changed from the web at 21:42". Focus stays on Save. If the audit trigger rolls the write back, the page says "Nothing was saved". |
 | Validation error (AC-10) | Server or shared-validation message next to the field, text plus "!" mark plus red border (never colour alone), `aria-invalid=true`, `aria-describedby` hint + error, error element `role=alert`. On submit, focus moves to the first invalid field. Text matches Telegram, for example "The overview at 23:00 would fall inside quiet hours (22:00 to 07:00). Pick a time outside them, for example 18:00." Nothing stored. |
 | Save failed (network or 5xx) | Danger banner `role=alert`: "Could not save. Nothing was changed. Check your connection and try again." with "Try again". Typed values stay. |
-| Conflict (409, AC-11) | Info banner `role=alert`: "Settings changed in Telegram at 14:02 (Amsterdam time). I loaded the new values." The fields show the new values. Every field Marco had edited is marked with his own value and two buttons: "Use mine" and "Keep Telegram's" (for example "You typed 22:30, Telegram now has 23:00"). Nothing is lost silently and nothing is saved until he presses Save again. The last-change line updates. Focus moves to the banner. |
+| Conflict (409, AC-11) | Info banner `role=alert`: "Settings changed in Telegram at 14:02 (Amsterdam time). I loaded the new values. Nothing is saved until you press Save again." The fields show the new values. Every field Marco had edited is marked with his own value and two buttons: "Use mine" and "Keep Telegram's" (for example "You typed 22:30, Telegram now has 23:00"). Nothing is lost silently and nothing is saved until he presses Save again. The last-change line updates. Focus moves to the banner. |
 | Session expired (401 on save, AC-12) | R1: nothing is stored, Marco is sent to sign in and returns to `/settings` with the stored values. R2: the typed values are kept in memory and restored after sign-in, with the banner "Welcome back. Your unsaved changes are restored. Check them and save."; they are never saved automatically. |
-| Access refused (403) | Full-page message: "This account is not allowed for this app." with "Back to sign in". No settings data in the DOM. |
+| Access refused (403) | Full-page message: "This request was not allowed." with "Back to sign in". No settings data in the DOM. |
 | Reset to defaults (R2, AC-25) | Opens ConfirmDialog that names the values: "This replaces your saved settings with: Time zone Europe/Amsterdam, quiet hours 23:00 to 07:00, daily overview 18:00, reminders 09:00. It takes effect at once for new alerts." The destructive button says "Replace my settings with defaults"; initial focus is "Keep my settings". The dialog says that the time zone is reset too. On confirm: validated write, saving state, banner "Defaults restored. The Undo button is in the Telegram message." |
 | Empty | Not applicable: a missing row means defaults (adjustable-quiet-hours), so the page always shows values. |
 
@@ -67,5 +87,5 @@ Fields (words as Telegram): Quiet hours (From, Until), Daily overview, Remind-me
 - Zoom and reflow: layout is fluid; no fixed heights; text may grow to 200 % without clipping.
 - Motion: only `transform`/`opacity`, under 250 ms; `prefers-reduced-motion` removes it.
 - Theme: follows system preference through tokens (semantic names in Tailwind, no loose `dark:` colours).
-- Security display rules: values rendered as text only (AC-14); e-mail shown for identity, never used to decide access; refusals use human text, no codes.
+- Security display rules: values rendered as text only (AC-14); the masked address is shown for identity and never used to decide access; the page never shows or stores a one-time code beyond the field; refusals use human text, no codes.
 - Test hooks: each component gets Vitest + axe (contrast off in jsdom); Playwright with axe at 375/768/1280 for contrast; token contrast test in `packages/tokens`.

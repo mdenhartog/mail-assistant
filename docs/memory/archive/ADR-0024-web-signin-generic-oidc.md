@@ -1,7 +1,8 @@
 ---
 id: ADR-0024
 title: "Web sign-in: generic OIDC provider, identity scopes only"
-status: accepted
+status: superseded
+superseded_by: ADR-0036
 area: identity
 tags: [oidc, oauth2, authentication, web]
 date: 2026-11-09
