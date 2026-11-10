@@ -1,4 +1,4 @@
-"""U-quiet-hours-04 and 16a: migrations 0004 and 0006 add the settings schema, the conversation row and alert.release_at.
+"""U-quiet-hours-04 and 16a: migrations 0004 and 0006: the settings schema, the guard trigger, the conversation row.
 
 Covers ADR-0025 and ADR-0026, AC-30 and AC-34 of INT-002 against a real PostgreSQL.
 """
@@ -364,5 +364,5 @@ async def test_given_an_update_when_it_succeeds_then_the_server_sets_updated_at_
     finally:
         await connection.close()
 
-    assert stamp.year >= 2026  # noqa: PLR2004  # the clock of the server, not the client's value
+    assert stamp.year >= 2026  # the clock of the server, not the client's value
     assert [r["db_role"] for r in roles] == [session_user, session_user]

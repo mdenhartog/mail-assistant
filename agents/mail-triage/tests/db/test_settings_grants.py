@@ -26,8 +26,8 @@ END $$
 
 
 def _schedule(via: str) -> str:
-    return (
-        "insert into settings.schedule "
+    return (  # fixed test literals, no input
+        "insert into settings.schedule "  # noqa: S608
         "(id, zone, quiet_start, quiet_end, overview_at, remind_at, updated_via, updated_by) "
         f"values (1, 'Europe/Amsterdam', 600, 900, 1080, 540, '{via}', 'u1')"
     )
@@ -78,7 +78,7 @@ async def runtime(owner: asyncpg.Connection, migrated_url: str) -> AsyncIterator
         "alter table settings.schedule disable trigger schedule_audit",
         "set session_replication_role = replica",
         "set role test",
-        # Least privilege per table (ADR-0030 item 1): the audit trail is append-only, nothing is deleted but the dialogue.
+        # Least privilege per table (ADR-0030 item 1): append-only audit trail, deletes only on the dialogue.
         "update audit_log set kind = 'x'",
         "delete from audit_log",
         "delete from oauth_token",

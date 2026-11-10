@@ -209,7 +209,7 @@ async def test_given_a_stored_row_that_fails_validation_when_read_then_a_clear_e
 ) -> None:
     await store.write(make_policy(), 0, "web", "u1")
     async with engine.begin() as connection:  # the zone pattern CHECK lets a well-formed but unknown name through
-        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus'"))
+        await connection.execute(text("update settings.schedule set zone = 'Mars/Olympus', version = version + 1"))
 
     with pytest.raises(StoredSettingsInvalid) as invalid:
         await store.read()
@@ -224,7 +224,7 @@ async def test_given_a_stored_row_with_a_null_value_when_read_then_it_is_an_inva
     await store.write(make_policy(), 0, "web", "u1")
     async with engine.begin() as connection:  # lift the NOT NULL as an operator with owner rights could
         await connection.execute(text("alter table settings.schedule alter column remind_at drop not null"))
-        await connection.execute(text("update settings.schedule set remind_at = null"))
+        await connection.execute(text("update settings.schedule set remind_at = null, version = version + 1"))
 
     with pytest.raises(StoredSettingsInvalid) as invalid:
         await store.read()

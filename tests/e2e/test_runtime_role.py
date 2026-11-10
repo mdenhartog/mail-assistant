@@ -171,7 +171,6 @@ _FORGED_WRITES = [
     "update settings.schedule set version = version + 2, updated_via = 'telegram'",
     "update settings.schedule set version = version, updated_via = 'telegram'",
     "update settings.schedule set version = version + 1, updated_via = 'web'",
-    "update settings.schedule set version = version + 1",
 ]
 
 
