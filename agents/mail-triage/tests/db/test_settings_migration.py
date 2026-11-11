@@ -114,7 +114,16 @@ async def test_given_the_migration_when_downgraded_then_schema_tables_and_column
 async def test_given_a_fresh_database_when_all_migrations_run_then_the_models_match_the_schema(
     database_url: str,
 ) -> None:
-    assert {"settings.schedule", "settings.settings_change", "conversation"} <= set(Base.metadata.tables)
+    assert {
+        "settings.schedule",
+        "settings.settings_change",
+        "conversation",
+        "web_auth.login_request",
+        "web_auth.session",
+        "web_auth.security_event",
+        "web_auth.web_lock",
+        "web_notice_token",
+    } <= set(Base.metadata.tables)
     await _migrate(database_url, "head")
     engine = create_async_engine(database_url)
     try:

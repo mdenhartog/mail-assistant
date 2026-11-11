@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime  # noqa: TC003  # SQLAlchemy reads the annotations at runtime
 
 from sqlalchemy import (
+    CHAR,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -16,11 +17,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Identity,
     Integer,
     LargeBinary,
     SmallInteger,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -135,6 +138,7 @@ class PollState(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     history_id: Mapped[str | None] = mapped_column(String(32))
     telegram_update_id: Mapped[int | None] = mapped_column(BigInteger)
+    web_notice_version: Mapped[int | None] = mapped_column(Integer)  # last announced web change (ADR-0033)
 
 
 class CatchupState(Base):
@@ -219,4 +223,92 @@ class Conversation(Base):
     step: Mapped[str] = mapped_column(String(32))
     partial: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     nonce: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+_SECURITY_EVENT_KINDS = (
+    "code_refused",
+    "code_request_refused",
+    "mail_failed",
+    "session_start",
+    "session_end",
+    "csrf_refused",
+    "rate_limited",
+    "lock_refused",
+)
+
+
+class LoginRequest(Base):
+    """An e-mailed sign-in code in flight (ADR-0036): only a keyed hash of the code, dead rows kept for an hour."""
+
+    __tablename__ = "login_request"
+    __table_args__ = (
+        CheckConstraint("attempts BETWEEN 0 AND 5", name="ck_login_request_attempts"),
+        {"schema": "web_auth"},
+    )
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    username_key: Mapped[str] = mapped_column(CHAR(64))
+    code_hash: Mapped[str] = mapped_column(CHAR(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(SmallInteger, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # the request time starts the cooldown
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # empty when the send failed
+    dead_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebSession(Base):
+    """A web session: the session id and the username are stored as hashes only."""
+
+    __tablename__ = "session"
+    __table_args__ = ({"schema": "web_auth"},)
+
+    id_hash: Mapped[str] = mapped_column(CHAR(64), primary_key=True)
+    username_hash: Mapped[str] = mapped_column(CHAR(64))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    absolute_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SecurityEvent(Base):
+    """One security event per kind, client and window; no free text."""
+
+    __tablename__ = "security_event"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN (" + ", ".join(f"'{kind}'" for kind in _SECURITY_EVENT_KINDS) + ")", name="ck_security_event_kind"
+        ),
+        CheckConstraint("result IN ('ok', 'refused', 'failed')", name="ck_security_event_result"),
+        UniqueConstraint("kind", "client_key", "window", name="uq_security_event_kind_client_window"),
+        {"schema": "web_auth"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    kind: Mapped[str] = mapped_column(String(24))
+    result: Mapped[str] = mapped_column(String(16))
+    username_hash: Mapped[str | None] = mapped_column(CHAR(64))
+    request_id: Mapped[str] = mapped_column(String(64))
+    client_key: Mapped[str] = mapped_column(String(64))
+    window: Mapped[int] = mapped_column(BigInteger)
+
+
+class WebLock(Base):
+    """The single row that locks web sign-in (ADR-0033); set by the agent, cleared from Telegram."""
+
+    __tablename__ = "web_lock"
+    __table_args__ = (CheckConstraint("id = 1", name="ck_web_lock_single_row"), {"schema": "web_auth"})
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class WebNoticeToken(Base):
+    """The own short-lived Undo token of a web notice (ADR-0033); not the conversation row."""
+
+    __tablename__ = "web_notice_token"
+
+    token: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)  # the announced change
+    before: Mapped[dict[str, object]] = mapped_column(JSONB)  # the values Undo restores
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
