@@ -180,3 +180,13 @@ def test_given_the_mounted_write_routes_when_read_then_each_has_the_session_and_
 
     assert [p for p, _ in writes] == ["/auth/logout"]
     assert inventory_violations(writes) == []
+
+
+def test_given_a_route_breaking_every_rule_when_the_inventory_runs_then_each_rule_reports_once() -> None:
+    router = APIRouter()
+    router.add_api_route("/api/other", _nothing, methods=["POST"])
+
+    violations = inventory_violations(_routes_of(router))
+
+    assert len(violations) == 4
+    assert all(v.startswith("/api/other:") for v in violations)

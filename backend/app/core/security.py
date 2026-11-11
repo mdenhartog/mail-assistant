@@ -4,7 +4,7 @@ Every route must declare exactly one of these dependencies so that access contro
 explicit decision; ``tests/test_route_inventory.py`` enforces it.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from fastapi.routing import APIRoute
 from starlette.status import HTTP_204_NO_CONTENT
@@ -61,17 +61,18 @@ def inventory_violations(routes: Iterable[tuple[str, APIRoute]]) -> list[str]:
     """
     violations: list[str] = []
     for path, route in routes:
-        if path not in ROUTE_ALLOW_LIST:
-            violations.append(f"{path}: not on the route allow-list")
-        kinds = {getattr(dep.call, AUTH_DEPENDENCY_MARKER, None) for dep in route.dependant.dependencies}
-        if not kinds & AUTH_KINDS:
-            violations.append(f"{path}: declares neither public nor session")
-        if route.response_model is None and route.status_code != HTTP_204_NO_CONTENT:
-            violations.append(f"{path}: no response_model")
-        if (
-            (route.methods or set()) & WRITE_METHODS
-            and path not in PUBLIC_WRITE_PATHS
-            and not {"session", "csrf"} <= kinds
-        ):
-            violations.append(f"{path}: a write without the session and csrf markers")
+        violations.extend(_route_violations(path, route))
     return violations
+
+
+def _route_violations(path: str, route: APIRoute) -> Iterator[str]:
+    kinds = {getattr(dep.call, AUTH_DEPENDENCY_MARKER, None) for dep in route.dependant.dependencies}
+    if path not in ROUTE_ALLOW_LIST:
+        yield f"{path}: not on the route allow-list"
+    if not kinds & AUTH_KINDS:
+        yield f"{path}: declares neither public nor session"
+    if route.response_model is None and route.status_code != HTTP_204_NO_CONTENT:
+        yield f"{path}: no response_model"
+    is_write = bool((route.methods or set()) & WRITE_METHODS)
+    if is_write and path not in PUBLIC_WRITE_PATHS and not {"session", "csrf"} <= kinds:
+        yield f"{path}: a write without the session and csrf markers"
