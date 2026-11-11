@@ -189,3 +189,11 @@ class LoginRequests:
         async with self._database.session() as session, session.begin():
             result = await session.execute(_SENT_SINCE, {"username_key": username_key, "since": now - RETENTION})
             return result.scalar_one()
+
+    async def sent_times_in_last_hour(self, username_key: str, now: datetime) -> list[datetime]:
+        """Return when the codes of the username were sent, less than an hour before ``now``, oldest first."""
+        raise NotImplementedError
+
+    async def pad(self) -> None:
+        """Run one empty transaction, so a request for an unknown username costs as many round trips."""
+        raise NotImplementedError
