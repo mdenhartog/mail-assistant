@@ -16,7 +16,7 @@ from app.clock import SystemClock
 from app.codes import SecretsCodeSource
 from app.config import Settings
 from app.ids import SecretsIdSource
-from app.main import create_app
+from app.main import build_app
 
 DEFAULT_TARGET = Path(__file__).resolve().parents[2] / "docs" / "api" / "openapi.json"
 
@@ -51,7 +51,7 @@ def build_document() -> str:
     Returns:
         The document with sorted keys, two-space indentation and a trailing newline.
     """
-    app = create_app(
+    app = build_app(
         _document_settings(), clock=SystemClock(), ids=SecretsIdSource(), codes=SecretsCodeSource(), mailer=_NoMailer()
     )
     return json.dumps(app.openapi(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"

@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 
 from app.config import Settings
-from app.main import create_app
+from app.main import build_app
 
 
 class FakeClock:
@@ -90,6 +90,6 @@ def make_settings(**overrides: object) -> Settings:
 
 def make_app(settings: Settings | None = None) -> FastAPI:
     """Create the app with fakes for every injected source."""
-    return create_app(
+    return build_app(
         settings or make_settings(), clock=FakeClock(), ids=FakeIds(), codes=FakeCodes([]), mailer=FakeMailer()
     )

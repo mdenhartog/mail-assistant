@@ -40,7 +40,7 @@ def discover_routers() -> list[MountedRouter]:
     return mounted
 
 
-def create_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: Mailer) -> FastAPI:
+def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: Mailer) -> FastAPI:
     """Build the FastAPI application after the start-up check.
 
     Args:
@@ -68,3 +68,8 @@ def create_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSo
     for mounted in discover_routers():
         app.include_router(mounted.router, prefix=mounted.prefix)
     return app
+
+
+def create_app() -> FastAPI:
+    """Skeleton, replaced in the next commit."""
+    raise NotImplementedError
