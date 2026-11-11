@@ -463,11 +463,16 @@ def test_given_the_ci_workflow_when_read_then_a_job_migrates_and_runs_the_role_c
     assert "WEB_ROLE_PASSWORD=" in commands  # the job stops without this one too (U-web-settings-08)
 
 
-@pytest.mark.parametrize("job_name", ["e2e", "gxp"])
-def test_given_a_job_that_starts_the_prod_like_stack_when_read_then_it_does_not_run_the_migration(
-    job_name: str,
-) -> None:
-    assert "mail-triage-migrate" not in run_steps(ci_jobs()[job_name])
+def test_given_the_gxp_job_when_read_then_it_does_not_run_the_migration() -> None:
+    assert "mail-triage-migrate" not in run_steps(ci_jobs()["gxp"])
+
+
+def test_given_the_e2e_job_when_read_then_it_migrates_once_before_the_stack_comes_up() -> None:
+    # The web role must exist, with its password, before the api connects to the TLS database (U-web-settings-39).
+    commands = run_steps(ci_jobs()["e2e"])
+
+    assert commands.count("mail-triage-migrate") == 1
+    assert commands.index("mail-triage-migrate") < commands.index("up -d --build --wait")
 
 
 def test_given_the_ci_workflow_when_read_then_the_mail_triage_image_is_scanned_for_high_and_critical() -> None:
