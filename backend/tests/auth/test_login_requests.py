@@ -10,6 +10,7 @@ import pytest
 from app.auth.code_rules import hourly_cap_reached
 from app.auth.login_requests import Dead, LoginRequestCapReached, LoginRequests, Ok, Wrong
 from app.db import Database
+from app.ids import SecretsIdSource
 from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, used here without editing them
     db,
     owner,
@@ -235,6 +236,17 @@ async def test_given_rows_older_than_an_hour_when_a_request_is_created_then_they
     ids = {row["id"] for row in await owner.fetch("SELECT id FROM web_auth.login_request")}
     assert old.id not in ids
     assert {recent.id, fresh.id} <= ids
+
+
+async def test_given_the_production_id_source_when_a_request_is_created_then_the_id_fits_the_column(
+    web_database: Database,  # noqa: F811
+) -> None:
+    store = LoginRequests(web_database, SecretsIdSource(), hash_key=KEY, ttl=TTL, max_attempts=MAX_ATTEMPTS)
+
+    request = await store.create(USER, RIGHT, T0, CAP)
+
+    assert len(request.id) == 32  # VARCHAR(32) of migration 0008
+    assert await store.check(request.id, RIGHT, T0) == Ok()
 
 
 async def test_given_a_stored_request_when_read_as_the_owner_then_only_the_hash_of_the_code_is_stored(
