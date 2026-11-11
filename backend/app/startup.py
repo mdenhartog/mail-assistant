@@ -5,18 +5,33 @@ Errors and log lines name fields, never values.
 
 import logging
 import re
-from collections.abc import Iterator
+from collections.abc import AsyncGenerator, Iterator
+from contextlib import asynccontextmanager
+from datetime import timedelta
+from typing import Any
 from urllib.parse import urlsplit
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from pydantic import SecretStr
+from sqlalchemy import text
 
+from app.auth.expiry import IDLE
+from app.clock import Clock
 from app.config import Settings
+from app.db import Database, DatabaseUnavailable
 
 logger = logging.getLogger(__name__)
 
 MIN_KEY_BYTES = 32
 _EMAIL = re.compile(r"[^@\s]+@[^@\s.]+(\.[^@\s.]+)+")
 _KEY_FIELDS = ("code_hash_key", "csrf_key", "username_hash_key")
+# A sign-in request is kept dead for an hour after it is made, so the hourly cap of codes can still be counted.
+LOGIN_REQUEST_RETENTION = timedelta(hours=1)
+_PURGE_LOGIN_REQUESTS = text(
+    "DELETE FROM web_auth.login_request WHERE expires_at <= :now AND created_at <= :retained_since"
+)
+_PURGE_SESSIONS = text("DELETE FROM web_auth.session WHERE absolute_expires_at <= :now OR last_seen_at <= :idle_since")
 
 
 class ConfigurationError(Exception):
@@ -69,6 +84,12 @@ def _key_problems(settings: Settings) -> Iterator[str]:
                 yield second
 
 
+def _database_problems(settings: Settings) -> Iterator[str]:
+    # Only verify-full checks the host name as well as the certificate; production accepts nothing weaker (W-8, W-9).
+    if settings.environment == "production" and settings.database_ssl != "verify-full":
+        yield "database_url"
+
+
 def validate_startup(settings: Settings) -> None:
     """Refuse a wrong configuration, whatever the environment.
 
@@ -78,8 +99,62 @@ def validate_startup(settings: Settings) -> None:
     Raises:
         ConfigurationError: Naming every offending field, never a value.
     """
-    problems = (*_text_problems(settings), *_key_problems(settings))
+    problems = (*_text_problems(settings), *_key_problems(settings), *_database_problems(settings))
     fields = tuple(dict.fromkeys(problems))
     if fields:
         logger.error("startup.refused fields=%s", ", ".join(fields))
         raise ConfigurationError(fields)
+
+
+async def purge_expired(database: Database, clock: Clock, *, idle: timedelta = IDLE) -> None:
+    """Remove the expired ``login_request`` and ``session`` rows; the time comes from the injected clock.
+
+    A login request goes when it is expired and an hour old; a session goes when its absolute limit has passed or it
+    has been idle for ``idle``.
+
+    Args:
+        database: The web role's database access.
+        clock: Source of the current time.
+        idle: The idle limit of a session.
+    """
+    now = clock.now()
+    async with database.session() as session, session.begin():
+        await session.execute(_PURGE_LOGIN_REQUESTS, {"now": now, "retained_since": now - LOGIN_REQUEST_RETENTION})
+        await session.execute(_PURGE_SESSIONS, {"now": now, "idle_since": now - idle})
+
+
+async def _database_unavailable(_request: Request, _error: Exception) -> JSONResponse:
+    return JSONResponse(
+        {"title": "Service unavailable", "status": 503}, status_code=503, media_type="application/problem+json"
+    )
+
+
+def attach_database(app: FastAPI, database: Database, clock: Clock, *, idle: timedelta = IDLE) -> None:
+    """Give the app its database: readiness uses it, start-up purges expired rows, shutdown closes the pool.
+
+    A database that cannot serve a request ends that request in 503 with a generic body. A purge that cannot reach the
+    database does not stop the start: readiness reports it.
+
+    Args:
+        app: The application.
+        database: The web role's database access.
+        clock: Source of the current time.
+        idle: The idle limit of a session.
+    """
+    app.state.database = database
+    app.add_exception_handler(DatabaseUnavailable, _database_unavailable)
+    previous = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncGenerator[Any]:
+        try:
+            await purge_expired(database, clock, idle=idle)
+        except DatabaseUnavailable:
+            logger.warning("startup.purge_skipped")
+        try:
+            async with previous(application) as state:
+                yield state
+        finally:
+            await database.dispose()
+
+    app.router.lifespan_context = lifespan
