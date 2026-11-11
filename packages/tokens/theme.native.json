@@ -1,33 +1,70 @@
 {
   "light": {
-    "surface": "#f7f5f0",
+    "surface": "#faf1ee",
     "surface-raised": "#ffffff",
-    "text": "#1b1d21",
-    "text-muted": "#55595f",
-    "primary": "#1f5f4a",
+    "text": "#2a1823",
+    "text-muted": "#6a4f5e",
+    "border": "#967a89",
+    "divider": "#ead3dc",
+    "primary": "#8a2f63",
     "primary-contrast": "#ffffff",
-    "danger": "#a1261b",
-    "success": "#1f6b2e",
-    "focus": "#2856c9"
+    "danger": "#b42318",
+    "danger-soft": "#fde4e0",
+    "success": "#23683d",
+    "success-soft": "#e0f1e3",
+    "focus": "#0b5fc2"
   },
   "dark": {
-    "surface": "#14161a",
-    "surface-raised": "#1d2026",
-    "text": "#eceae4",
-    "text-muted": "#a6a9ae",
-    "primary": "#7cc8a8",
-    "primary-contrast": "#0d1f18",
-    "danger": "#ff9a8f",
-    "success": "#8fd6a0",
-    "focus": "#8fb0ff"
+    "surface": "#1c1219",
+    "surface-raised": "#281a24",
+    "text": "#f6e9f0",
+    "text-muted": "#c4a9b8",
+    "border": "#8e7282",
+    "divider": "#402e3a",
+    "primary": "#f0a0cb",
+    "primary-contrast": "#3a0f27",
+    "danger": "#ffa399",
+    "danger-soft": "#4b1f1b",
+    "success": "#92d8a6",
+    "success-soft": "#1d3a26",
+    "focus": "#9cc4ff"
   },
   "font": {
-    "sans": "\"Source Sans 3\", system-ui, sans-serif",
-    "display": "\"Fraunces\", Georgia, serif"
+    "sans": "\"Figtree\", system-ui, \"Segoe UI\", sans-serif",
+    "display": "\"Bricolage Grotesque\", \"Trebuchet MS\", system-ui, sans-serif"
   },
   "radius": {
-    "sm": "0.25rem",
-    "md": "0.5rem",
-    "lg": "1rem"
+    "pill": "999px",
+    "control": "14px",
+    "card": "24px"
+  },
+  "shadow": {
+    "soft": "0 6px 24px -8px rgba(60, 20, 45, 0.28)"
+  },
+  "space": {
+    "1": "0.25rem",
+    "2": "0.5rem",
+    "3": "0.75rem",
+    "4": "1rem",
+    "5": "1.25rem",
+    "6": "1.5rem",
+    "8": "2rem"
+  },
+  "fontSize": {
+    "sm": "0.875rem",
+    "md": "1rem",
+    "lg": "1.25rem",
+    "xl": "1.5625rem",
+    "2xl": "2rem"
+  },
+  "motion": {
+    "duration": {
+      "press": "200ms",
+      "enter": "250ms"
+    },
+    "ease": {
+      "spring": "cubic-bezier(0.34, 1.56, 0.64, 1)"
+    },
+    "reducedDuration": "0ms"
   }
 }
