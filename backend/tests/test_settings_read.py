@@ -35,7 +35,6 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
 from tests.fakes import FakeClock, make_app, make_settings
 
 T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
-CHANGED_AT = datetime(2026, 2, 20, 9, 30, 0, tzinfo=UTC)
 USER = username_digest(b"k" * 32, "canary-user")
 GENERIC_401 = {"type": "about:blank", "title": "Unauthorized", "status": 401}
 GENERIC_429 = {"type": "about:blank", "title": "Too many requests", "status": 429}
@@ -57,7 +56,7 @@ TIME_FIELDS = ("quietStart", "quietEnd", "overviewAt", "remindAt")
 INSERT_ROW = (
     "insert into settings.schedule "
     "(id, zone, quiet_start, quiet_end, overview_at, remind_at, version, updated_at, updated_via, updated_by) "
-    "values (1, 'America/New_York', 1350, 405, 1085, 555, 1, $1, 'web', 'web:0123456789abcdef0123456789abcdef')"
+    "values (1, 'America/New_York', 1350, 405, 1085, 555, 1, now(), 'web', 'web:0123456789abcdef0123456789abcdef')"
 )
 
 
@@ -120,23 +119,26 @@ async def _cookie(store: SessionStore) -> dict[str, str]:
     return {COOKIE_NAME: value}
 
 
+async def _seed(owner: asyncpg.Connection) -> datetime:  # noqa: F811
+    """Insert the stored row as the owner; the server stamps ``updated_at``, which is returned."""
+    await owner.execute(INSERT_ROW)
+    return await owner.fetchval("select updated_at from settings.schedule where id = 1")
+
+
 # Criterion 1
 async def test_given_a_stored_row_when_settings_are_read_then_values_version_time_and_channel(
     api: Api,
     store: SessionStore,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    await owner.execute(INSERT_ROW, CHANGED_AT)
+    changed_at = await _seed(owner)
 
     response = await api.http.get("/api/settings", cookies=await _cookie(store))
 
     assert response.status_code == 200
-    assert response.json() == {
-        "values": STORED,
-        "version": 1,
-        "updatedAt": "2026-02-20T09:30:00Z",
-        "updatedVia": "web",
-    }
+    body = response.json()
+    assert datetime.fromisoformat(body.pop("updatedAt")) == changed_at
+    assert body == {"values": STORED, "version": 1, "updatedVia": "web"}
 
 
 async def test_given_a_stored_row_when_settings_are_read_then_no_actor_is_in_the_answer(
@@ -144,7 +146,7 @@ async def test_given_a_stored_row_when_settings_are_read_then_no_actor_is_in_the
     store: SessionStore,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    await owner.execute(INSERT_ROW, CHANGED_AT)
+    await _seed(owner)
 
     response = await api.http.get("/api/settings", cookies=await _cookie(store))
 
@@ -170,6 +172,20 @@ async def test_given_no_row_when_the_repository_reads_then_it_returns_the_defaul
 
     assert (stored.version, stored.updated_at, stored.updated_via) == (0, None, None)
     assert stored.policy.zone == "Europe/Amsterdam"
+
+
+async def test_given_a_stored_row_when_the_repository_reads_then_minutes_become_wall_clock_times(
+    web_database: Database,  # noqa: F811
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    changed_at = await _seed(owner)
+
+    stored = await SettingsRepository(web_database).read()
+
+    assert stored.policy.zone == "America/New_York"
+    assert [t.isoformat() for t in (stored.policy.quiet_start, stored.policy.quiet_end)] == ["22:30:00", "06:45:00"]
+    assert [t.isoformat() for t in (stored.policy.overview_at, stored.policy.remind_at)] == ["18:05:00", "09:15:00"]
+    assert (stored.version, stored.updated_at, stored.updated_via) == (1, changed_at, "web")
 
 
 # Criterion 3

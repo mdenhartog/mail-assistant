@@ -1,10 +1,12 @@
 """Request and response models of the settings API (U-web-settings-20)."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
+from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
+from pydantic.json_schema import models_json_schema
 
 from app.settings_repo import StoredSettings
 
@@ -36,8 +38,29 @@ class Settings(BaseModel):
 
     @classmethod
     def from_stored(cls, stored: StoredSettings) -> "Settings":
-        """Build the response from the stored row."""
-        raise NotImplementedError
+        """Build the response from the stored row.
+
+        Args:
+            stored: The row as the repository read it.
+
+        Returns:
+            The settings with ``HH:MM`` times; the database check keeps ``updated_via`` to its two channels.
+        """
+        policy = stored.policy
+        return cls.model_validate(
+            {
+                "values": {
+                    "time_zone": policy.zone,
+                    "quiet_start": f"{policy.quiet_start:%H:%M}",
+                    "quiet_end": f"{policy.quiet_end:%H:%M}",
+                    "overview_at": f"{policy.overview_at:%H:%M}",
+                    "remind_at": f"{policy.remind_at:%H:%M}",
+                },
+                "version": stored.version,
+                "updated_at": stored.updated_at,
+                "updated_via": stored.updated_via,
+            }
+        )
 
 
 class SettingsUpdate(BaseModel):
@@ -80,3 +103,29 @@ class Conflict409(BaseModel):
     title: str
     status: Literal[409]
     current: Settings
+
+
+def declare_write_schemas(app: FastAPI) -> None:
+    """Add the schemas of the write route to the OpenAPI document before that route exists (U-web-settings-22).
+
+    ``SettingsUpdate``, ``Problem422`` and ``Conflict409`` are part of the contract the web client types are generated
+    from. Once the write route uses them FastAPI emits them itself and this hook can go.
+
+    Args:
+        app: The application whose document is extended.
+    """
+    generate = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        schema = generate()
+        schemas: dict[str, Any] = schema.setdefault("components", {}).setdefault("schemas", {})
+        if "SettingsUpdate" not in schemas:
+            _, extra = models_json_schema(
+                [(SettingsUpdate, "validation"), (Problem422, "serialization"), (Conflict409, "serialization")],
+                ref_template="#/components/schemas/{model}",
+            )
+            for name, definition in extra.get("$defs", {}).items():
+                schemas.setdefault(name, definition)
+        return schema
+
+    app.openapi = openapi
