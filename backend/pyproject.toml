@@ -11,6 +11,7 @@ dependencies = [
     "pydantic-settings>=2.16.2",
     "schedule-policy",
     "sqlalchemy[asyncio]>=2.1.8",
+    "starlette>=1.10.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
