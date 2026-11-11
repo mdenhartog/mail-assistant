@@ -233,6 +233,10 @@ async def test_given_the_agent_role_when_it_inserts_and_updates_the_web_lock_the
 
     assert await agent.fetchval("select count(*) from web_auth.web_lock") == 1
 
+    await agent.execute("delete from web_auth.web_lock")  # lifting the lock: only a Telegram command does this
+
+    assert await agent.fetchval("select count(*) from web_auth.web_lock") == 0
+
 
 @pytest.mark.parametrize(
     "statement",
@@ -244,7 +248,6 @@ async def test_given_the_agent_role_when_it_inserts_and_updates_the_web_lock_the
         "values ('session_start', 'ok', 'q1', 'k1', 1)",
         "delete from web_auth.session",
         "update web_auth.login_request set attempts = 1",
-        "delete from web_auth.web_lock",
         "truncate web_auth.web_lock",
         "create table web_auth.evil (id int)",
     ],
