@@ -1,5 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
+from fastapi import FastAPI
+from pydantic import SecretStr
+
+from app.config import Settings
+from app.main import build_app
+
 
 class FakeClock:
     """Settable clock: returns what was set and moves only when told to."""
@@ -51,3 +57,39 @@ class FakeCodes:
             msg = "FakeCodes script is exhausted"
             raise AssertionError(msg)
         return self._codes.pop(0)
+
+
+class FakeMailer:
+    """Recording mailer: remembers every code it was asked to send."""
+
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str, datetime]] = []
+
+    async def send_code(self, address: str, code: str, expires_at: datetime) -> None:
+        self.sent.append((address, code, expires_at))
+
+
+def make_settings(**overrides: object) -> Settings:
+    """Return a complete valid configuration; keyword arguments replace single fields."""
+    values: dict[str, object] = {
+        "environment": "test",
+        "username": "test-user",
+        "email_address": "marco@example.test",
+        "smtp_host": "smtp.example.test",
+        "smtp_port": 587,
+        "smtp_user": "test-smtp-user",
+        "smtp_password": SecretStr("test-smtp-password"),
+        "code_hash_key": SecretStr("a" * 32),
+        "csrf_key": SecretStr("b" * 32),
+        "username_hash_key": SecretStr("c" * 32),
+        "public_origin": "https://settings.example.test",
+    }
+    values.update(overrides)
+    return Settings(**values)  # pyright: ignore[reportArgumentType]
+
+
+def make_app(settings: Settings | None = None) -> FastAPI:
+    """Create the app with fakes for every injected source."""
+    return build_app(
+        settings or make_settings(), clock=FakeClock(), ids=FakeIds(), codes=FakeCodes([]), mailer=FakeMailer()
+    )
