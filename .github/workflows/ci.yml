@@ -193,11 +193,12 @@ jobs:
             test "$code" = 404 || { echo "$path answered $code"; exit 1; }
           done
           for path in /auth/login /api/settings; do
-            test "$(docker compose exec -T web wget -q -S -O /dev/null "http://127.0.0.1:8080$path" 2>&1 | grep -c 'HTTP/1.1 404')" = 1
+            answer="$(docker compose --profile prod-like exec -T web wget -q -S -O /dev/null "http://127.0.0.1:8080$path" 2>&1 || true)"
+            echo "$answer" | grep -q 'HTTP/1.1 404' || { echo "web answered $path with: $answer"; exit 1; }
           done
           curl_edge -o /dev/null "$base/settings?probe=edge-log-canary"
           sleep 1
-          docker compose --profile prod-like logs --no-color edge | grep '/settings'
+          docker compose --profile prod-like logs --no-color edge | tee /dev/stderr | grep -q '/settings'
           if docker compose --profile prod-like logs --no-color edge | grep -q -e 'edge-log-canary' -e 'probe='; then echo "the edge log has a query string"; exit 1; fi
       - name: let the browser trust the private CA
         run: |
