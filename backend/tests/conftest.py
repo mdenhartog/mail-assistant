@@ -5,8 +5,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from app.config import Settings
-from app.main import create_app
+from tests.fakes import make_app
 
 # Values that must never appear in a log record (plan: "Test rules and levels").
 CANARIES = ("canary-user", "424242", "Pacific/Kiritimati", "canary-smtp-secret")
@@ -53,7 +52,7 @@ def canary_log_records() -> Iterator[list[logging.LogRecord]]:
 
 @pytest.fixture
 def app() -> FastAPI:
-    return create_app(Settings(environment="test"))
+    return make_app()
 
 
 @pytest.fixture

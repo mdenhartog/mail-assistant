@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from fastapi import APIRouter, FastAPI
 
 from app import routers
-from app.config import Settings, get_settings
+from app.clock import Clock
+from app.codes import CodeSource
+from app.config import Settings
+from app.ids import IdSource
+from app.mailer import Mailer
+from app.startup import validate_startup
 
 API_PREFIX = "/api"
 
@@ -35,22 +40,31 @@ def discover_routers() -> list[MountedRouter]:
     return mounted
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the FastAPI application.
+def create_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: Mailer) -> FastAPI:
+    """Build the FastAPI application after the start-up check.
 
     Args:
-        settings: Settings to use; defaults to the environment-based settings.
+        settings: The settings to use.
+        clock: Source of the current time.
+        ids: Source of tokens and ids.
+        codes: Source of sign-in codes.
+        mailer: Port that sends the sign-in code.
 
     Returns:
         The configured application.
     """
-    settings = settings or get_settings()
+    validate_startup(settings)
     app = FastAPI(
         title=settings.app_name,
         docs_url="/docs" if settings.docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if settings.docs_enabled else None,
     )
+    app.state.settings = settings
+    app.state.clock = clock
+    app.state.ids = ids
+    app.state.codes = codes
+    app.state.mailer = mailer
     for mounted in discover_routers():
         app.include_router(mounted.router, prefix=mounted.prefix)
     return app

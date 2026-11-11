@@ -7,12 +7,42 @@ from the repository root) or add ``--check`` to fail when the file on disk is ou
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
+from pydantic import SecretStr
+
+from app.clock import SystemClock
+from app.codes import SecretsCodeSource
 from app.config import Settings
+from app.ids import SecretsIdSource
 from app.main import create_app
 
 DEFAULT_TARGET = Path(__file__).resolve().parents[2] / "docs" / "api" / "openapi.json"
+
+
+class _NoMailer:
+    """Mailer for the export: the document is built, no request is served."""
+
+    async def send_code(self, address: str, code: str, expires_at: datetime) -> None:
+        raise NotImplementedError
+
+
+def _document_settings() -> Settings:
+    """Placeholder configuration that passes the start-up check; it never leaves this process."""
+    return Settings(
+        environment="test",
+        username="export",
+        email_address="export@example.invalid",
+        smtp_host="smtp.example.invalid",
+        smtp_port=587,
+        smtp_user="export",
+        smtp_password=SecretStr("export"),
+        code_hash_key=SecretStr("a" * 32),
+        csrf_key=SecretStr("b" * 32),
+        username_hash_key=SecretStr("c" * 32),
+        public_origin="https://export.example.invalid",
+    )
 
 
 def build_document() -> str:
@@ -21,7 +51,9 @@ def build_document() -> str:
     Returns:
         The document with sorted keys, two-space indentation and a trailing newline.
     """
-    app = create_app(Settings(environment="test"))
+    app = create_app(
+        _document_settings(), clock=SystemClock(), ids=SecretsIdSource(), codes=SecretsCodeSource(), mailer=_NoMailer()
+    )
     return json.dumps(app.openapi(), indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
