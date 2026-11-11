@@ -57,14 +57,16 @@ class Settings(BaseSettings):
 class MigrateSettings(BaseSettings):
     """What the ``migrate`` command needs, and only that (ADR-0025). The running agent never reads these.
 
-    The owner role runs the migrations and owns every table; the runtime role (``mail_triage_runtime``) owns nothing.
-    Its password is set from here, so the secret store is the single source of it.
+    The owner role runs the migrations and owns every table; the runtime roles (``mail_triage_runtime`` and
+    ``web_settings_runtime``) own nothing. Their passwords are set from here, so the secret store is the single source
+    of them.
     """
 
     model_config = SettingsConfigDict(frozen=True, extra="ignore")
 
     database_owner_url: SecretStr = Field(min_length=1)  # contains the owner's password
     runtime_role_password: SecretStr = Field(min_length=1)
+    web_role_password: SecretStr = Field(min_length=1)  # password of web_settings_runtime (ADR-0033)
 
     @classmethod
     def settings_customise_sources(

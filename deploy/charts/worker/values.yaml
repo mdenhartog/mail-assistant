@@ -19,8 +19,8 @@ networkPolicy:
 # pre-install/pre-upgrade hook when the chart is used without Argo CD). It connects as the OWNER role, migrates, and sets
 # up the runtime role. Off by default: only a worker with a database needs it.
 # secretName names an EXISTING Secret that the operator creates (see README); only this Job reads it, never the worker.
-# Keys: DATABASE_OWNER_URL (owner connection string) and RUNTIME_ROLE_PASSWORD (password of mail_triage_runtime, the same
-# one that is inside DATABASE_URL of the worker's own Secret). No value ever goes into a values file.
+# Keys: DATABASE_OWNER_URL (owner connection string), RUNTIME_ROLE_PASSWORD (password of mail_triage_runtime, the same
+# one that is inside DATABASE_URL of the worker's own Secret) and WEB_ROLE_PASSWORD (password of web_settings_runtime). No value ever goes into a values file.
 migration:
   enabled: false
   secretName: ""

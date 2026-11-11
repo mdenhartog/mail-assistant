@@ -21,8 +21,11 @@ DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{ROLE}') THEN
         CREATE ROLE {ROLE} LOGIN PASSWORD '{PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'web_settings_runtime') THEN
+        CREATE ROLE web_settings_runtime LOGIN PASSWORD 'web-test-password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+    END IF;  -- grants.sql names the web role too (U-web-settings-08 removed its guard)
 END $$
-"""
+"""  # noqa: S608 - fixed test literals
 
 
 def _schedule(via: str) -> str:
