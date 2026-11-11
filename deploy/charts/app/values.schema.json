@@ -47,13 +47,38 @@
     "web": { "$ref": "#/definitions/component" },
     "ingress": {
       "type": "object",
-      "required": ["enabled", "host", "clusterIssuer", "hsts"],
+      "required": ["enabled", "host", "localDomainSuffix", "clusterIssuer", "tls", "hsts"],
+      "allOf": [
+        { "if": { "properties": { "localDomainSuffix": { "const": "localhost" } } }, "then": { "properties": { "host": { "pattern": "\\.localhost$" } } } },
+        { "if": { "properties": { "localDomainSuffix": { "const": "local" } } }, "then": { "properties": { "host": { "pattern": "\\.local$" } } } },
+        { "if": { "properties": { "localDomainSuffix": { "const": "lan" } } }, "then": { "properties": { "host": { "pattern": "\\.lan$" } } } },
+        { "if": { "properties": { "localDomainSuffix": { "const": "home.arpa" } } }, "then": { "properties": { "host": { "pattern": "\\.home\\.arpa$" } } } },
+        { "if": { "properties": { "localDomainSuffix": { "const": "internal" } } }, "then": { "properties": { "host": { "pattern": "\\.internal$" } } } }
+      ],
+      "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean" },
         "className": { "type": "string" },
-        "host": { "type": "string", "minLength": 1 },
-        "clusterIssuer": { "type": "string", "minLength": 1 },
-        "hsts": { "type": "boolean" }
+        "host": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$" },
+        "localDomainSuffix": { "enum": ["localhost", "local", "lan", "home.arpa", "internal"] },
+        "clusterIssuer": { "type": "string", "minLength": 1, "not": { "pattern": "letsencrypt|acme" } },
+        "tls": {
+          "type": "object",
+          "required": ["enabled"],
+          "additionalProperties": false,
+          "properties": { "enabled": { "enum": [true] } }
+        },
+        "hsts": { "enum": [true] },
+        "hstsAnnotation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "key": { "type": "string" },
+            "format": { "type": "string", "pattern": "^[^%]*%s[^%]*$", "not": { "pattern": "includeSubDomains|preload" } }
+          }
+        },
+        "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
+        "controllerConfig": { "type": "object", "additionalProperties": { "type": "string" } }
       }
     },
     "podDisruptionBudget": { "type": "object", "required": ["minAvailable"] },
