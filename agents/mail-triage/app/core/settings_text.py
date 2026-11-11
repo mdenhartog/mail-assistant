@@ -269,6 +269,14 @@ def web_button_data(action: str, token: str) -> str:
     return f"{action}:{token}"
 
 
+def split_web_button(data: str) -> tuple[str, str] | None:
+    """``(action, token)`` of ``webundo:<token>`` or ``weblock:<token>``; ``None`` for anything else."""
+    action, _, token = data.partition(":")
+    if action not in {WEB_UNDO, WEB_LOCK} or not _WEB_TOKEN.fullmatch(token) or not data.isascii():
+        return None
+    return action, token
+
+
 def _changed(name: str, new: str, old: str | None) -> str:
     """One value line: the new value, then what it was (or that it did not change)."""
     return f"{name}: {new} ({'unchanged' if old is None else f'was {old}'})"
@@ -311,3 +319,19 @@ def web_notice(version: int, at: datetime, old: TimePolicy | None, new: TimePoli
         Button(WEB_LOCK_LABEL, web_button_data(WEB_LOCK, token)),
     )
     return AlertMessage(html.escape("\n".join(lines), quote=False), buttons)
+
+
+# ---- what the buttons of the web notice answer, and /web_unlock (spec C-8; AC-13, AC-27) -----------------------------
+
+WEB_UNLOCK_COMMAND = "/web_unlock"
+WEB_UNDONE = "Undone. The values from before the web changes are back."
+WEB_EXPIRED = "Expired"
+WEB_DONE = "Already done"
+WEB_UNLOCKED = "Web sign-in is unlocked."
+WEB_NOT_LOCKED = "Web sign-in was not locked. Nothing was changed."
+_WEB_LOCK_NOTE = f"Web sign-in is locked. Send {WEB_UNLOCK_COMMAND} to allow it again."
+
+
+def web_locked(outcome: str) -> str:
+    """The answer to "Undo and lock web sign-in": what happened to the values, then that sign-in is locked."""
+    return f"{outcome} {_WEB_LOCK_NOTE}"

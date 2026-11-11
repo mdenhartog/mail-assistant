@@ -3,7 +3,7 @@
 A web change is an audit record whose ``db_role`` is the web login role. ``db_role`` is set by the audit trigger from
 ``session_user``, so the writer cannot choose it; the actor text (``by``) is never used to decide. The version is
 read as an integer, never as text, so version 10 comes after version 9. The agent role may read ``settings_change``,
-read and write ``poll_state`` and write ``web_notice_token`` (``app/db/grants.sql``) and nothing more.
+read and write ``poll_state`` and read, write and delete ``web_notice_token`` (``app/db/grants.sql``) and nothing more.
 """
 
 from __future__ import annotations
@@ -11,20 +11,18 @@ from __future__ import annotations
 from datetime import time
 from typing import TYPE_CHECKING, Any, Final
 
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import PollState, SettingsChange, WebNoticeToken
 from app.db.pg_update_cursor import POLL_ROW
-from app.usecases.web_notice import WebChange
+from app.usecases.web_notice import NoticeToken, WebChange
 from schedule_policy.policy import TimePolicy
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-    from app.usecases.web_notice import NoticeToken
 
 WEB_ROLE: Final = "web_settings_runtime"  # the database login of the api; the audit trigger records it as ``db_role``
 _version_int = SettingsChange.new["version"].astext.cast(Integer)
@@ -83,6 +81,27 @@ class PgWebNotice:
         )
         async with self._sessions.begin() as session:
             session.add(record)
+
+    async def find(self, token: str) -> NoticeToken | None:
+        """The record of ``token`` (expired or not); ``None`` when there is none."""
+        async with self._sessions() as session:
+            row = await session.get(WebNoticeToken, token)
+        if row is None:
+            return None
+        return NoticeToken(row.token, row.version, dict(row.before), row.created_at, row.expires_at)
+
+    async def burst_end(self, before: dict[str, object]) -> int:
+        """The highest announced version among the tokens that restore the same ``before`` (0 when none)."""
+        statement = select(func.max(WebNoticeToken.version)).where(WebNoticeToken.before == before)
+        async with self._sessions() as session:
+            return (await session.execute(statement)).scalar_one() or 0
+
+    async def consume(self, token: str) -> bool:
+        """Delete the record of ``token``; ``True`` when this call deleted it (a second call gets ``False``)."""
+        statement = delete(WebNoticeToken).where(WebNoticeToken.token == token).returning(WebNoticeToken.token)
+        async with self._sessions.begin() as session:
+            deleted = await session.execute(statement)
+        return deleted.first() is not None
 
     async def advance(self, version: int) -> None:
         """Move the cursor to ``version`` unless it is already higher; the other columns of the row stay."""
