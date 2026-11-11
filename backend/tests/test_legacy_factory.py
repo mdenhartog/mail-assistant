@@ -70,3 +70,10 @@ def test_given_unconfigured_settings_when_build_app_runs_then_refused_in_every_e
 
 def test_given_notice_interval_default_when_read_then_one_minute_like_the_agent_poll_interval() -> None:
     assert Settings().notice_interval_minutes == 1
+
+
+def test_given_notice_interval_field_when_described_then_it_names_the_agent_interval() -> None:
+    description = Settings.model_fields["notice_interval_minutes"].description
+
+    assert description is not None
+    assert "agent" in description.lower()

@@ -7,7 +7,7 @@ Secrets are ``SecretStr`` so they never appear in ``repr`` or in a dump.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.auth.expiry import ABSOLUTE, IDLE
@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     public_origin: str = ""
     database_url: SecretStr = SecretStr("")
     database_ssl: Literal["require", "verify-ca", "verify-full"] = "verify-full"
-    notice_interval_minutes: int = 15
+    # Must equal the agent's run interval (POLL_INTERVAL_SECONDS, 60 by default) rounded up to whole minutes.
+    notice_interval_minutes: int = Field(default=1, description="Agent run interval in whole minutes, rounded up.")
 
     # Limits (C-4); tests lower them.
     rate_limit_per_minute: int = 30
