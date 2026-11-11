@@ -68,6 +68,14 @@ class FakeMailer:
     async def send_code(self, address: str, code: str, expires_at: datetime) -> None:
         self.sent.append((address, code, expires_at))
 
+    def fail(self) -> None:
+        """Make every following send fail with MailError."""
+        raise NotImplementedError
+
+    def succeed(self) -> None:
+        """Make the following sends work again."""
+        raise NotImplementedError
+
 
 def make_settings(**overrides: object) -> Settings:
     """Return a complete valid configuration; keyword arguments replace single fields."""
