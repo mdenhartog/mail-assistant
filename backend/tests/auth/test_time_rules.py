@@ -157,8 +157,8 @@ def test_naive_datetimes_raise(call: Callable[[], object]) -> None:
 
 def test_other_time_zones_compare_by_instant() -> None:
     plus_two = timezone(timedelta(hours=2))
-    assert code_rules.code_expired(at(14), at(16, 10).astimezone(plus_two), TTL) is True
-    assert code_rules.code_expired(at(14), at(16, 9, 59).astimezone(plus_two), TTL) is False
+    assert code_rules.code_expired(at(14), at(14, 10).astimezone(plus_two), TTL) is True
+    assert code_rules.code_expired(at(14), at(14, 9, 59).astimezone(plus_two), TTL) is False
 
 
 # Criterion 8: standard library only, marker present
