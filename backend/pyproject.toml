@@ -4,16 +4,20 @@ version = "0.1.0"
 description = "Mail Assistant backend"
 requires-python = ">=3.12"
 dependencies = [
+    "asyncpg>=0.32.0",
     "fastapi>=0.162.2",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.2",
     "schedule-policy",
+    "sqlalchemy[asyncio]>=2.1.8",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
 dev = [
+    "alembic>=1.20.1",
     "bandit>=1.9.4",
+    "cryptography>=50.0.2",
     "deptry>=0.25.1",
     "diff-cover>=11.0.1",
     "httpx>=0.28.1",
@@ -25,6 +29,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "respx>=0.23.1",
     "ruff>=0.17.4",
+    "testcontainers[postgres]>=4.15.0",
     "vulture>=2.16",
     "xenon>=0.9.3",
 ]
