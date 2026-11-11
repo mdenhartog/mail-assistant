@@ -33,6 +33,7 @@ from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
+from app.db.pg_web_lock import PgWebLock
 from app.db.pg_web_notice import PgWebNotice
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
@@ -45,6 +46,7 @@ from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.snooze import SnoozeService
 from app.usecases.triage import TriagePipeline
 from app.usecases.web_notice import WebNotice
+from app.usecases.web_notice_actions import WebNoticeActions
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -150,13 +152,25 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     router.register(
         SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now, policy.in_use)
     )
+    web_notices = PgWebNotice(sessions)
+    router.register_web_actions(
+        WebNoticeActions(
+            web_notices,
+            PgWebLock(sessions),
+            settings_store,
+            outbox,
+            chat_id=settings.telegram_allowed_chat_id,
+            by=str(settings.telegram_allowed_user_id),
+            now=now,
+        )
+    )
     return Runner(
         pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now, policy),  # type: ignore[arg-type]
         catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now, policy),  # type: ignore[arg-type]
         delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),
-        web_notice=WebNotice(PgWebNotice(sessions), outbox, new_token),
+        web_notice=WebNotice(web_notices, outbox, new_token),
         store=store,
         inbox=inbox,
         router=router,

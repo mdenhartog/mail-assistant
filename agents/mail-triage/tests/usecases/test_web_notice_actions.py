@@ -12,7 +12,6 @@ import pytest
 
 from app.adapters.telegram_inbox import Command
 from app.core import settings_text
-from app.usecases.dispatch import CommandRouter
 from app.usecases.web_notice import NoticeToken, WebChange, WebNotice
 from app.usecases.web_notice_actions import WebNoticeActions
 from tests.usecases.fakes_web_actions import FakeLock, FakeSettingsWriter, FakeTokens
@@ -40,7 +39,7 @@ class Setup:
         self.rig, self.records, self.row, self.lock = rig, records, row, lock
         self.tokens = FakeTokens(records)
         self.actions = WebNoticeActions(self.tokens, lock, row, rig.chat, chat_id=CHAT, by=OWNER, now=rig.clock.now)
-        self.router: CommandRouter = rig.router()
+        self.router = rig.router()
         self.router.register_web_actions(self.actions)
 
     def token(self, version: int) -> str:
@@ -66,7 +65,7 @@ async def burst(
 # ---- criteria 1 to 3: Undo goes back to before the burst, guarded by the version ------------------------------------
 
 
-async def test_given_changes_3_4_5_when_undo_of_notice_5_is_tapped_then_the_values_from_before_change_3_are_back() -> None:
+async def test_given_changes_3_4_5_when_undo_of_notice_5_is_tapped_then_the_values_before_change_3_are_back() -> None:
     setup = await burst()
 
     await setup.router.handle(tap(f"webundo:{setup.token(5)}"))
@@ -98,7 +97,7 @@ async def test_given_telegram_changed_the_row_after_the_burst_when_undo_is_tappe
     assert setup.rig.chat.edited == [(9, settings_text.UNDO_CHANGED)]
 
 
-async def test_given_a_later_burst_when_undo_of_an_older_notice_is_tapped_then_it_is_refused_and_nothing_changes() -> None:
+async def test_given_a_later_burst_when_an_older_undo_is_tapped_then_it_is_refused() -> None:
     setup = await burst((3, 4))
     later = FakeNoticeStore([change(5, old_start=21, new_start=20)], cursor=4)
     await WebNotice(later, RecordingChat(), Tokens()).run(setup.rig.clock.now())
@@ -126,6 +125,22 @@ async def test_given_a_before_that_is_no_longer_allowed_when_undo_is_tapped_then
     setup = await burst()
     setup.records[:] = [
         NoticeToken(r.token, r.version, {**r.before, "zone": "Not/AZone"}, r.created_at, r.expires_at)
+        for r in setup.records
+    ]
+
+    await setup.router.handle(tap(f"webundo:{setup.token(5)}"))
+
+    assert setup.row.audit == []
+    assert setup.rig.chat.edited == [(9, settings_text.UNDO_REFUSED)]
+
+
+@pytest.mark.parametrize("broken", ["ten", True, None])
+async def test_given_a_token_record_with_unreadable_minutes_when_undo_is_tapped_then_nothing_is_written(
+    broken: object,
+) -> None:
+    setup = await burst()
+    setup.records[:] = [
+        NoticeToken(r.token, r.version, {**r.before, "quiet_end": broken}, r.created_at, r.expires_at)
         for r in setup.records
     ]
 
@@ -278,7 +293,10 @@ async def test_given_an_unknown_token_when_tapped_then_the_message_says_already_
     assert setup.lock.locked_at is None
 
 
-@pytest.mark.parametrize("data", ["webundo:short", f"weblock:{'a' * 41}", f"webundo:{'a' * 21}!", "webundo:", "webundo"])
+_MALFORMED = ["webundo:short", f"weblock:{'a' * 41}", f"webundo:{'a' * 21}!", "webundo:", "webundo"]
+
+
+@pytest.mark.parametrize("data", _MALFORMED)
 async def test_given_a_malformed_web_button_when_tapped_then_it_is_ignored(data: str) -> None:
     setup = await burst()
 
@@ -304,10 +322,10 @@ async def test_given_a_tap_from_another_chat_with_a_valid_token_when_handled_the
     assert setup.tokens.records  # the token is untouched
 
 
-# ---- criterion 9 (agent level): a pending Telegram dialogue is never replaced ---------------------------------------------
+# ---- criterion 9 (agent level): a pending Telegram dialogue is never replaced ----------------------------
 
 
-async def test_given_a_pending_telegram_dialogue_when_web_buttons_and_unlock_are_used_then_the_dialogue_is_unchanged() -> None:
+async def test_given_a_pending_telegram_dialogue_when_web_buttons_are_used_then_the_dialogue_is_unchanged() -> None:
     setup = await burst()
     started = await setup.rig.conversations.start("settings", None, "card", {"k": "v"}, timedelta(minutes=15))
     starts = setup.rig.conversations.starts
@@ -321,7 +339,7 @@ async def test_given_a_pending_telegram_dialogue_when_web_buttons_and_unlock_are
     assert setup.rig.chat.offered == []
 
 
-# ---- criterion 10: no canary in the logs, and no clock or random value -------------------------------------------------
+# ---- criterion 10: no canary in the logs, and no clock or random value ---------------------------------
 
 
 async def test_given_a_failure_with_a_canary_zone_and_token_when_a_button_is_tapped_then_no_log_line_holds_it(

@@ -13,6 +13,9 @@ the buttons and answers of its own conversation; the older snooze and reply ques
   button (or of the pending question for text). ``advance`` is atomic and rotates the nonce, so a double tap, or a tap
   and a text at once, reach the handler once; the loser finds the nonce stale and does nothing.
 
+- The buttons of a web notice (``webundo:<token>``, ``weblock:<token>``) and ``/web_unlock`` go to the registered
+  ``WebActionsPort``. They have their own token record: they never read, claim, start or clear the conversation.
+
 Who may talk to the agent is decided before this point, by the Telegram intake. Nothing here logs an answer, a nonce,
 a token or a zone; rejections are logged by reason only.
 """
@@ -24,6 +27,7 @@ import re
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
+from app.core import settings_text
 from app.core.alert_state import AlertState
 from app.core.settings_text import UNDO_CHANGED
 
@@ -357,6 +361,9 @@ class CommandRouter:
 
     async def _run(self, command: Command) -> None:
         if command.kind == "text":
+            if self._web is not None and _slash_command(command.data) == settings_text.WEB_UNLOCK_COMMAND:
+                await self._web.unlock(command)  # no dialogue: a pending question stays as it is
+                return
             await self._text(command.data)
             return
         if command.callback_id:
@@ -389,6 +396,11 @@ class CommandRouter:
             await owner.on_text(claimed, text)
 
     async def _button(self, command: Command) -> None:
+        web = settings_text.split_web_button(command.data)
+        if web is not None:
+            if self._web is not None:  # a web notice has its own token record and never touches the conversation
+                await self._web.on_button(command, *web)
+            return
         started = _START.fullmatch(command.data)
         if started is not None:
             handler = self._handlers.get(started.group(1))

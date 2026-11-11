@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.db.pg_policy_source import PgPolicySource
 from app.settings import load_settings
 from app.usecases.settings_dialog import SettingsDialog
+from app.usecases.web_notice_actions import WebNoticeActions
 from app.wiring import build_runner, make_engine
 from tests.test_settings import VALID
 
@@ -55,6 +56,16 @@ def test_given_the_wiring_when_built_then_the_settings_dialogue_is_registered_wi
     handlers = list(runner_handlers(_runner()._router))
 
     assert any(isinstance(handler, SettingsDialog) for handler in handlers)
+
+
+def test_given_the_wiring_when_built_then_the_web_notice_buttons_are_registered_for_the_allowed_chat() -> None:
+    settings = load_settings(VALID)
+
+    actions = vars(_runner()._router).get("_web")
+
+    assert isinstance(actions, WebNoticeActions)
+    assert vars(actions)["_chat_id"] == settings.telegram_allowed_chat_id
+    assert vars(actions)["_by"] == str(settings.telegram_allowed_user_id)
 
 
 def runner_handlers(router: Any) -> Any:

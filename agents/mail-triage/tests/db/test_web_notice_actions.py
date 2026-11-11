@@ -221,3 +221,19 @@ async def test_given_the_first_saved_row_when_undo_is_tapped_then_nothing_is_wri
 
     assert rig.chat.edited == [(9, settings_text.NOTHING_TO_UNDO)]
     assert await owner.fetchval("select version from settings.schedule") == 1
+
+
+async def test_given_the_lock_store_when_the_lock_is_set_twice_and_cleared_twice_then_one_row_and_a_true_then_a_false(
+    owner: asyncpg.Connection, agent_engine: AsyncEngine
+) -> None:
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(agent_engine, expire_on_commit=False)
+    lock = PgWebLock(sessions)
+
+    await lock.lock(NOW)
+    await lock.lock(NOW + timedelta(hours=1))  # setting it again changes nothing, not even the time
+
+    assert await owner.fetchval("select count(*) from web_auth.web_lock") == 1
+    assert await owner.fetchval("select locked_at from web_auth.web_lock") == NOW
+    assert await lock.unlock() is True
+    assert await lock.unlock() is False
+    assert await owner.fetchval("select count(*) from web_auth.web_lock") == 0

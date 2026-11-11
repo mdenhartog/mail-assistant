@@ -269,6 +269,14 @@ def web_button_data(action: str, token: str) -> str:
     return f"{action}:{token}"
 
 
+def split_web_button(data: str) -> tuple[str, str] | None:
+    """``(action, token)`` of ``webundo:<token>`` or ``weblock:<token>``; ``None`` for anything else."""
+    action, _, token = data.partition(":")
+    if action not in {WEB_UNDO, WEB_LOCK} or not _WEB_TOKEN.fullmatch(token) or not data.isascii():
+        return None
+    return action, token
+
+
 def _changed(name: str, new: str, old: str | None) -> str:
     """One value line: the new value, then what it was (or that it did not change)."""
     return f"{name}: {new} ({'unchanged' if old is None else f'was {old}'})"
