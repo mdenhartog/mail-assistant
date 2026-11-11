@@ -58,6 +58,7 @@ def build_ssl_context(mode: str, ca_file: str = "") -> ssl.SSLContext:
     if mode not in _MODES:
         raise ValueError("unknown database ssl mode")
     context = ssl.create_default_context(cafile=ca_file or None)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2  # not left to the OpenSSL build: some report "no minimum"
     if mode != "verify-full":
         context.check_hostname = False
     if mode == "require":

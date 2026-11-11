@@ -22,7 +22,7 @@ def test_given_verify_full_when_context_built_then_hostname_and_certificate_are_
 
     assert context.check_hostname is True
     assert context.verify_mode == ssl.CERT_REQUIRED
-    assert context.minimum_version >= ssl.TLSVersion.TLSv1_2
+    assert context.minimum_version == ssl.TLSVersion.TLSv1_2  # set explicitly: the OpenSSL default may be "none"
 
 
 def test_given_verify_ca_when_context_built_then_certificate_is_checked_but_not_the_host() -> None:
