@@ -1,87 +1,488 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
-  "required": ["api", "web", "ingress", "podDisruptionBudget", "networkPolicy"],
+  "required": [
+    "api",
+    "web",
+    "ingress",
+    "podDisruptionBudget",
+    "networkPolicy",
+    "certAlert"
+  ],
   "definitions": {
     "image": {
       "type": "object",
-      "required": ["repository", "pullPolicy"],
+      "required": [
+        "repository",
+        "pullPolicy"
+      ],
       "properties": {
-        "repository": { "type": "string", "minLength": 1 },
-        "digest": { "type": "string", "pattern": "^(|sha256:[a-f0-9]{64})$" },
-        "tag": { "type": "string" },
-        "pullPolicy": { "enum": ["IfNotPresent", "Always", "Never"] }
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^(|sha256:[a-f0-9]{64})$"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "enum": [
+            "IfNotPresent",
+            "Always",
+            "Never"
+          ]
+        }
       }
     },
     "component": {
       "type": "object",
-      "required": ["image", "replicas", "port", "resources", "autoscaling"],
+      "required": [
+        "image",
+        "replicas",
+        "port",
+        "resources",
+        "autoscaling"
+      ],
       "properties": {
-        "image": { "$ref": "#/definitions/image" },
-        "replicas": { "type": "integer", "minimum": 1 },
-        "port": { "type": "integer", "minimum": 1025, "maximum": 65535 },
-        "env": { "type": "object", "additionalProperties": { "type": "string" } },
+        "image": {
+          "$ref": "#/definitions/image"
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1025,
+          "maximum": 65535
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "resources": {
           "type": "object",
-          "required": ["requests", "limits"],
+          "required": [
+            "requests",
+            "limits"
+          ],
           "properties": {
-            "requests": { "type": "object", "required": ["cpu", "memory"] },
-            "limits": { "type": "object", "required": ["cpu", "memory"] }
+            "requests": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            },
+            "limits": {
+              "type": "object",
+              "required": [
+                "cpu",
+                "memory"
+              ]
+            }
           }
         },
         "autoscaling": {
           "type": "object",
-          "required": ["enabled", "minReplicas", "maxReplicas", "targetCPUUtilizationPercentage"],
+          "required": [
+            "enabled",
+            "minReplicas",
+            "maxReplicas",
+            "targetCPUUtilizationPercentage"
+          ],
           "properties": {
-            "enabled": { "type": "boolean" },
-            "minReplicas": { "type": "integer", "minimum": 1 },
-            "maxReplicas": { "type": "integer", "minimum": 1 },
-            "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+            "enabled": {
+              "type": "boolean"
+            },
+            "minReplicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "maxReplicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "targetCPUUtilizationPercentage": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
           }
         }
+      }
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "not": {
+        "const": 443
+      }
+    },
+    "hostCidr": {
+      "type": "string",
+      "pattern": "^((25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\\.){3}(25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})/(2[4-9]|3[0-2])$",
+      "not": {
+        "pattern": "^0\\.0\\.0\\.0/"
       }
     }
   },
   "properties": {
-    "api": { "$ref": "#/definitions/component" },
-    "web": { "$ref": "#/definitions/component" },
+    "api": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/component"
+        },
+        {
+          "required": [
+            "config"
+          ],
+          "properties": {
+            "replicas": {
+              "const": 1
+            },
+            "autoscaling": {
+              "properties": {
+                "enabled": {
+                  "const": false
+                },
+                "minReplicas": {
+                  "maximum": 1
+                },
+                "maxReplicas": {
+                  "maximum": 1
+                }
+              }
+            },
+            "config": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "username",
+                "emailAddress",
+                "publicOrigin",
+                "noticeIntervalMinutes",
+                "smtp"
+              ],
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "emailAddress": {
+                  "type": "string",
+                  "pattern": "^[^@\\s]+@[^@\\s]+$"
+                },
+                "publicOrigin": {
+                  "type": "string",
+                  "pattern": "^https://[a-z0-9.-]+(:[0-9]+)?$"
+                },
+                "noticeIntervalMinutes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "smtp": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "host",
+                    "port",
+                    "from"
+                  ],
+                  "properties": {
+                    "host": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "port": {
+                      "$ref": "#/definitions/port"
+                    },
+                    "from": {
+                      "type": "string",
+                      "pattern": "^[^@\\s]+@[^@\\s]+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "web": {
+      "$ref": "#/definitions/component"
+    },
     "ingress": {
       "type": "object",
-      "required": ["enabled", "host", "localDomainSuffix", "clusterIssuer", "tls", "hsts"],
+      "required": [
+        "enabled",
+        "host",
+        "localDomainSuffix",
+        "clusterIssuer",
+        "tls",
+        "hsts"
+      ],
       "allOf": [
-        { "if": { "properties": { "localDomainSuffix": { "const": "localhost" } } }, "then": { "properties": { "host": { "pattern": "\\.localhost$" } } } },
-        { "if": { "properties": { "localDomainSuffix": { "const": "local" } } }, "then": { "properties": { "host": { "pattern": "\\.local$" } } } },
-        { "if": { "properties": { "localDomainSuffix": { "const": "lan" } } }, "then": { "properties": { "host": { "pattern": "\\.lan$" } } } },
-        { "if": { "properties": { "localDomainSuffix": { "const": "home.arpa" } } }, "then": { "properties": { "host": { "pattern": "\\.home\\.arpa$" } } } },
-        { "if": { "properties": { "localDomainSuffix": { "const": "internal" } } }, "then": { "properties": { "host": { "pattern": "\\.internal$" } } } }
+        {
+          "if": {
+            "properties": {
+              "localDomainSuffix": {
+                "const": "localhost"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "host": {
+                "pattern": "\\.localhost$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "localDomainSuffix": {
+                "const": "local"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "host": {
+                "pattern": "\\.local$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "localDomainSuffix": {
+                "const": "lan"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "host": {
+                "pattern": "\\.lan$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "localDomainSuffix": {
+                "const": "home.arpa"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "host": {
+                "pattern": "\\.home\\.arpa$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "localDomainSuffix": {
+                "const": "internal"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "host": {
+                "pattern": "\\.internal$"
+              }
+            }
+          }
+        }
       ],
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" },
-        "className": { "type": "string" },
-        "host": { "type": "string", "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$" },
-        "localDomainSuffix": { "enum": ["localhost", "local", "lan", "home.arpa", "internal"] },
-        "clusterIssuer": { "type": "string", "minLength": 1, "not": { "pattern": "letsencrypt|acme" } },
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+        },
+        "localDomainSuffix": {
+          "enum": [
+            "localhost",
+            "local",
+            "lan",
+            "home.arpa",
+            "internal"
+          ]
+        },
+        "clusterIssuer": {
+          "type": "string",
+          "minLength": 1,
+          "not": {
+            "pattern": "letsencrypt|acme"
+          }
+        },
         "tls": {
           "type": "object",
-          "required": ["enabled"],
+          "required": [
+            "enabled"
+          ],
           "additionalProperties": false,
-          "properties": { "enabled": { "enum": [true] } }
+          "properties": {
+            "enabled": {
+              "enum": [
+                true
+              ]
+            }
+          }
         },
-        "hsts": { "enum": [true] },
+        "hsts": {
+          "enum": [
+            true
+          ]
+        },
         "hstsAnnotation": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "key": { "type": "string" },
-            "format": { "type": "string", "pattern": "^[^%]*%s[^%]*$", "not": { "pattern": "includeSubDomains|preload" } }
+            "key": {
+              "type": "string"
+            },
+            "format": {
+              "type": "string",
+              "pattern": "^[^%]*%s[^%]*$",
+              "not": {
+                "pattern": "includeSubDomains|preload"
+              }
+            }
           }
         },
-        "annotations": { "type": "object", "additionalProperties": { "type": "string" } },
-        "controllerConfig": { "type": "object", "additionalProperties": { "type": "string" } }
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "controllerConfig": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
       }
     },
-    "podDisruptionBudget": { "type": "object", "required": ["minAvailable"] },
-    "networkPolicy": { "type": "object", "required": ["enabled"], "properties": { "enabled": { "type": "boolean" } } }
+    "podDisruptionBudget": {
+      "type": "object",
+      "required": [
+        "minAvailable"
+      ]
+    },
+    "networkPolicy": {
+      "type": "object",
+      "required": [
+        "enabled",
+        "ingressController",
+        "egress"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "ingressController": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "namespace",
+            "podLabels"
+          ],
+          "properties": {
+            "namespace": {
+              "type": "string",
+              "minLength": 1
+            },
+            "podLabels": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "egress": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "database",
+            "smtp"
+          ],
+          "properties": {
+            "database": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cidr",
+                "port"
+              ],
+              "properties": {
+                "cidr": {
+                  "$ref": "#/definitions/hostCidr"
+                },
+                "port": {
+                  "$ref": "#/definitions/port"
+                }
+              }
+            },
+            "smtp": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "cidr"
+              ],
+              "properties": {
+                "cidr": {
+                  "$ref": "#/definitions/hostCidr"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "certAlert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "daysAhead"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "daysAhead": {
+          "type": "integer",
+          "minimum": 14
+        }
+      }
+    }
   }
 }

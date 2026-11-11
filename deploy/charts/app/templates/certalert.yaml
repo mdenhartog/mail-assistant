@@ -1,0 +1,18 @@
+{{- if .Values.certAlert.enabled }}
+{{- /* Optional (D-7, off by default): warns daysAhead days before the ingress certificate expires. Needs the Prometheus operator CRDs. */ -}}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-cert-expiry
+  labels: {{- include "app.labels" (dict "name" "cert-alert" "root" .) | nindent 4 }}
+spec:
+  groups:
+    - name: {{ .Release.Name }}-certificate
+      rules:
+        - alert: AppCertificateExpiresSoon
+          expr: certmanager_certificate_expiration_timestamp_seconds{name={{ printf "%s-tls" .Release.Name | quote }}} - time() < {{ mul .Values.certAlert.daysAhead 86400 }}
+          for: 1h
+          labels: { severity: warning }
+          annotations:
+            summary: "The certificate {{ .Release.Name }}-tls expires in less than {{ .Values.certAlert.daysAhead }} days"
+{{- end }}

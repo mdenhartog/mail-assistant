@@ -1,14 +1,26 @@
 # Secure defaults (guardrail-kubernetes / guardrail-helm). Environments override only what differs.
 api:
   image: { repository: ghcr.io/mdenhartog/mail-assistant/api, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
-  replicas: 2
+  replicas: 1 # exactly one (ADR-0034): the sign-in limits and the code store are per process
   port: 8000
   env:
     APP_ENVIRONMENT: production
+  # Plain settings (not secrets). The address is personal data, so it is set per environment, never here.
+  config:
+    username: owner
+    emailAddress: owner@home.arpa
+    publicOrigin: https://app.home.arpa
+    noticeIntervalMinutes: 1 # must equal the agent run interval, rounded up to whole minutes
+    smtp:
+      host: smtp.home.arpa
+      port: 587 # STARTTLS submission; the egress rule follows this value
+      from: mail-assistant@home.arpa # the From address (the SMTP user is often not an address)
+  # Secrets come from the SealedSecret "<release>-api" by reference; the chart renders no Secret (ADR-0029).
+  # Keys: database-url, code-hash-key, csrf-key, username-hash-key, smtp-user, smtp-password.
   resources:
     requests: { cpu: 100m, memory: 128Mi }
     limits: { cpu: 500m, memory: 512Mi }
-  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70 }
+  autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 1, targetCPUUtilizationPercentage: 70 }
 
 web:
   image: { repository: ghcr.io/mdenhartog/mail-assistant/web, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
@@ -34,4 +46,18 @@ ingress:
   controllerConfig: {} # settings of the controller's own ConfigMap (TLS minimum, log format); not rendered here
 
 podDisruptionBudget: { minAvailable: 1 }
-networkPolicy: { enabled: true }
+networkPolicy:
+  enabled: true
+  # The one ingress peer for api and web: the controller's namespace AND its pods (never an empty selector).
+  ingressController:
+    namespace: ingress-nginx
+    podLabels: { app.kubernetes.io/name: ingress-nginx }
+  # api egress: the database, DNS and the SMTP host. Addresses are placeholders; set the real ones per environment.
+  egress:
+    database: { cidr: 10.0.0.10/32, port: 5432 }
+    smtp: { cidr: 10.0.0.11/32 } # the port is api.config.smtp.port
+
+# Optional alert on the ingress certificate expiry (needs the Prometheus operator and cert-manager metrics).
+certAlert:
+  enabled: false
+  daysAhead: 14 # at least 14

@@ -3,6 +3,12 @@ api:
   image: { repository: "mail-assistant-api", tag: "local", pullPolicy: Never }
   replicas: 1
   autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 1, targetCPUUtilizationPercentage: 70 }
+  config:
+    username: owner
+    emailAddress: owner@home.arpa
+    publicOrigin: https://app.localhost
+    noticeIntervalMinutes: 1
+    smtp: { host: smtp.home.arpa, port: 587, from: mail-assistant@home.arpa }
 web:
   image: { repository: "mail-assistant-web", tag: "local", pullPolicy: Never }
   replicas: 1
@@ -25,3 +31,9 @@ ingress:
     ssl-protocols: TLSv1.2 TLSv1.3
     log-format-upstream: '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time'
 podDisruptionBudget: { minAvailable: 0 }
+networkPolicy:
+  ingressController: { namespace: ingress-nginx, podLabels: { app.kubernetes.io/name: ingress-nginx } }
+  # Placeholder addresses of the kind cluster; the real database and SMTP host are decided before staging.
+  egress:
+    database: { cidr: 10.244.0.10/32, port: 5432 }
+    smtp: { cidr: 10.244.0.11/32 }
