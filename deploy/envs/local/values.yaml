@@ -8,6 +8,20 @@ web:
   replicas: 1
   autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 1, targetCPUUtilizationPercentage: 70 }
 ingress:
-  host: app.localtest.me
+  # Local only (ADR-0037). The controller-specific keys below follow the ingress-nginx vocabulary; the controller
+  # is an open hosting point, so this block is what changes when it is chosen.
+  host: app.localhost
+  localDomainSuffix: localhost
   clusterIssuer: selfsigned-local
+  hstsAnnotation:
+    key: nginx.ingress.kubernetes.io/configuration-snippet
+    format: 'more_set_headers "Strict-Transport-Security: %s";'
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: 8k
+  # Applied to the controller's own ConfigMap (not rendered by this chart): TLS 1.2 minimum, no query string in the log.
+  controllerConfig:
+    ssl-protocols: TLSv1.2 TLSv1.3
+    log-format-upstream: '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time'
 podDisruptionBudget: { minAvailable: 0 }
