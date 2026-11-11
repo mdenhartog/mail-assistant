@@ -115,3 +115,15 @@ async def test_given_one_request_when_served_then_one_request_line_has_id_and_pa
     assert "12345" not in text
     assert "200" in text
     assert response.headers["x-request-id"] in text
+
+
+async def test_given_an_unknown_path_when_served_then_the_line_has_no_raw_path(
+    canary_log_records: list[logging.LogRecord],
+) -> None:
+    await _get("/nope/12345?q=1")
+
+    lines = [r for r in canary_log_records if r.name == ACCESS_LOGGER]
+    assert len(lines) == 1
+    text = _texts(lines)[0]
+    assert "12345" not in text
+    assert "404" in text
