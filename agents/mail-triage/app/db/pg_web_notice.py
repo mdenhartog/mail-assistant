@@ -84,6 +84,18 @@ class PgWebNotice:
         async with self._sessions.begin() as session:
             session.add(record)
 
+    async def find(self, token: str) -> NoticeToken | None:
+        """The record of ``token``."""
+        raise NotImplementedError
+
+    async def burst_end(self, before: dict[str, object]) -> int:
+        """The highest announced version among the tokens with the same ``before``."""
+        raise NotImplementedError
+
+    async def consume(self, token: str) -> bool:
+        """Delete the record of ``token``."""
+        raise NotImplementedError
+
     async def advance(self, version: int) -> None:
         """Move the cursor to ``version`` unless it is already higher; the other columns of the row stay."""
         statement = insert(PollState).values(id=POLL_ROW, web_notice_version=version)

@@ -311,3 +311,19 @@ def web_notice(version: int, at: datetime, old: TimePolicy | None, new: TimePoli
         Button(WEB_LOCK_LABEL, web_button_data(WEB_LOCK, token)),
     )
     return AlertMessage(html.escape("\n".join(lines), quote=False), buttons)
+
+
+# ---- what the buttons of the web notice answer, and /web_unlock (spec C-8; AC-13, AC-27) -----------------------------
+
+WEB_UNLOCK_COMMAND = "/web_unlock"
+WEB_UNDONE = "Undone. The values from before the web changes are back."
+WEB_EXPIRED = "Expired"
+WEB_DONE = "Already done"
+WEB_UNLOCKED = "Web sign-in is unlocked."
+WEB_NOT_LOCKED = "Web sign-in was not locked. Nothing was changed."
+_WEB_LOCK_NOTE = f"Web sign-in is locked. Send {WEB_UNLOCK_COMMAND} to allow it again."
+
+
+def web_locked(outcome: str) -> str:
+    """The answer to "Undo and lock web sign-in": what happened to the values, then that sign-in is locked."""
+    return f"{outcome} {_WEB_LOCK_NOTE}"

@@ -171,6 +171,18 @@ class UpdateCursorPort(Protocol):
         ...
 
 
+class WebActionsPort(Protocol):
+    """The buttons of a web notice and the unlock command (``WebNoticeActions``)."""
+
+    async def on_button(self, command: Command, action: str, token: str) -> None:
+        """Run ``webundo`` or ``weblock`` for ``token``."""
+        ...
+
+    async def unlock(self, command: Command) -> None:
+        """Lift the lock of web sign-in."""
+        ...
+
+
 class DialogueHandler(Protocol):
     """A dialogue the router can start and feed (the settings dialogue).
 
@@ -323,11 +335,16 @@ class CommandRouter:
         self._handlers: dict[str, DialogueHandler] = {}
         self._commands: dict[str, DialogueHandler] = {}
         self._cursor = cursor
+        self._web: WebActionsPort | None = None
 
     def register(self, handler: DialogueHandler) -> None:
         """Add a dialogue: its slash commands start it, and its conversation kind routes buttons and text to it."""
         self._handlers[handler.kind] = handler
         self._commands.update(dict.fromkeys(handler.commands, handler))
+
+    def register_web_actions(self, actions: WebActionsPort) -> None:
+        """Add the buttons of the web notice and the unlock command."""
+        self._web = actions
 
     async def handle(self, command: Command) -> None:
         """Run one update, once: skip a redelivered one; store its id only after it was handled (a failure raises)."""
