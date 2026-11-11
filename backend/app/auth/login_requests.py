@@ -33,6 +33,7 @@ _INSERT = text(
 _LOCK_ROW = text(
     "SELECT code_hash, created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id FOR UPDATE"
 )
+_READ_ROW = text("SELECT created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id")
 _COUNT_WRONG = text("UPDATE web_auth.login_request SET attempts = :attempts, dead_at = :dead_at WHERE id = :id")
 _CONSUME = text("UPDATE web_auth.login_request SET dead_at = :now WHERE id = :id")
 _MARK_SENT = text("UPDATE web_auth.login_request SET sent_at = :now WHERE id = :id AND sent_at IS NULL")
@@ -175,8 +176,28 @@ class LoginRequests:
             return Dead() if dead else Wrong(self._max_attempts - attempts)
 
     async def attempts_left(self, request_id: str | None, now: datetime) -> int | None:
-        """Return the attempts a live request has left, or None (skeleton)."""
-        raise NotImplementedError
+        """Return the attempts a live request has left, or None; nothing is counted or changed.
+
+        Args:
+            request_id: The id from the ``__Host-login`` cookie, or None.
+            now: The time of the read.
+
+        Returns:
+            The wrong attempts still allowed, or None when the request is unknown, replaced, used, expired or out
+            of attempts.
+        """
+        if request_id is None:
+            return None
+        async with self._database.session() as session, session.begin():
+            row = (await session.execute(_READ_ROW, {"id": request_id})).one_or_none()
+        if (
+            row is None
+            or row.dead_at is not None
+            or code_expired(row.created_at, now, self._ttl)
+            or attempts_exhausted(row.attempts, self._max_attempts)
+        ):
+            return None
+        return self._max_attempts - row.attempts
 
     async def mark_sent(self, request_id: str, now: datetime) -> None:
         """Record that the code was sent; called only after a successful send.

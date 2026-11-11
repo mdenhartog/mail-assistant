@@ -19,7 +19,7 @@ from app.auth.digest import username_digest
 from app.auth.login_requests import LoginRequests
 from app.auth.request_code import attach_request_code
 from app.auth.session import SessionStore, attach_sessions
-from app.auth.verify_code import attach_verify_code
+from app.auth.verify_code import attach_verify_code, clear_login_cookie
 from app.db import Database
 from app.ids import SecretsIdSource
 from app.main import build_app
@@ -142,6 +142,21 @@ async def _sessions(owner: asyncpg.Connection) -> int:  # noqa: F811
 
 async def _events(owner: asyncpg.Connection, kind: str) -> list[asyncpg.Record]:  # noqa: F811
     return await owner.fetch("SELECT * FROM web_auth.security_event WHERE kind = $1", kind)
+
+
+def test_given_the_login_cookie_when_cleared_then_it_has_the_host_attributes_and_expires_now() -> None:
+    jar: SimpleCookie = SimpleCookie()
+    jar.load(clear_login_cookie())
+
+    morsel = jar["__Host-login"]
+    assert morsel.value == ""
+    assert morsel["max-age"] == "0"
+    assert morsel["expires"] == "Thu, 01 Jan 1970 00:00:00 GMT"
+    assert morsel["path"] == "/"
+    assert morsel["domain"] == ""
+    assert morsel["secure"] is True
+    assert morsel["httponly"] is True
+    assert morsel["samesite"] == "Lax"
 
 
 # Criterion 1
@@ -279,7 +294,7 @@ async def test_given_no_cookie_when_a_code_is_posted_then_the_generic_400(
     assert await _sessions(owner) == 0
 
 
-@pytest.mark.parametrize("cookie", ["a" * 400, "bad value%00", "é" * 32])
+@pytest.mark.parametrize("cookie", ["a" * 400, "bad value%00", "x" * 31 + "-e"])
 async def test_given_a_malformed_cookie_value_when_a_code_is_posted_then_the_generic_400_not_a_500(
     api: Api, cookie: str
 ) -> None:
