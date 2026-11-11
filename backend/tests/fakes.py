@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from pydantic import SecretStr
 
 from app.config import Settings
+from app.mail.sender import MailError
 from app.main import build_app
 
 
@@ -64,17 +65,20 @@ class FakeMailer:
 
     def __init__(self) -> None:
         self.sent: list[tuple[str, str, datetime]] = []
+        self._failing = False
 
     async def send_code(self, address: str, code: str, expires_at: datetime) -> None:
+        if self._failing:
+            raise MailError("mail send failed")
         self.sent.append((address, code, expires_at))
 
     def fail(self) -> None:
         """Make every following send fail with MailError."""
-        raise NotImplementedError
+        self._failing = True
 
     def succeed(self) -> None:
         """Make the following sends work again."""
-        raise NotImplementedError
+        self._failing = False
 
 
 def make_settings(**overrides: object) -> Settings:
