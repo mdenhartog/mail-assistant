@@ -235,6 +235,10 @@ def test_given_the_prod_like_services_when_read_then_each_is_hardened_and_binds_
     assert service["read_only"] is True
     assert "no-new-privileges:true" in service["security_opt"]
     assert service["cap_drop"] == ["ALL"]
+    # The official caddy image sets file capabilities on the binary (cap_net_bind_service). With the bounding set
+    # emptied by cap_drop ALL the kernel refuses to exec it (EPERM). The edge gets that one capability back; its
+    # ports are unprivileged and no-new-privileges stops the process from gaining it.
+    assert service.get("cap_add", []) == (["NET_BIND_SERVICE"] if name == "edge" else [])
     assert "privileged" not in service
     assert all(str(port).startswith("127.0.0.1:") for port in service.get("ports", []))
 
