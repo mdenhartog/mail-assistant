@@ -75,6 +75,16 @@ class Overview:
         await self.steps.step("overview")
 
 
+class WebNoticeStep:
+    def __init__(self, steps: Steps) -> None:
+        self.steps = steps
+        self.ran_at: list[datetime] = []
+
+    async def run(self, now: datetime) -> None:
+        await self.steps.step("web_notice")
+        self.ran_at.append(now)
+
+
 class Store:
     def __init__(self, steps: Steps) -> None:
         self.steps = steps
@@ -109,15 +119,17 @@ class Router:
             raise RuntimeError("boom")
 
 
-def runner(
+def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
     steps: Steps,
     tmp_path: Path,
     *,
     inbox: Inbox | None = None,
     router: Router | None = None,
     now: datetime = NOW,
+    web_notice: WebNoticeStep | None = None,
 ) -> tuple[Runner, Store]:
     store = Store(steps)
+    web_notice = web_notice or WebNoticeStep(steps)
     return (
         Runner(
             pipeline=Pipeline(steps),
@@ -125,6 +137,7 @@ def runner(
             delivery=Delivery(steps),
             snooze=Snooze(steps),
             overview=Overview(steps),
+            web_notice=web_notice,
             store=store,
             inbox=inbox or Inbox([]),
             router=router or Router(),
@@ -144,7 +157,34 @@ async def test_given_a_cycle_when_run_then_due_alerts_are_released_before_mail_i
 
     await run.mail_cycle()
 
-    assert steps.calls == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls == ["web_notice", "release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+
+
+async def test_given_a_cycle_when_run_then_web_changes_are_announced_first_with_the_clock_of_the_runner(
+    tmp_path: Path,
+) -> None:
+    steps = Steps()
+    web_notice = WebNoticeStep(steps)
+    run, _ = runner(steps, tmp_path, web_notice=web_notice)
+
+    await run.mail_cycle()
+
+    assert steps.calls[0] == "web_notice"
+    assert web_notice.ran_at == [NOW]
+
+
+async def test_given_a_failing_web_notice_when_a_cycle_runs_then_the_mail_steps_still_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    steps = Steps(failing={"web_notice"})
+    run, _ = runner(steps, tmp_path)
+
+    await run.mail_cycle()
+
+    assert steps.calls[1:] == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert "step web_notice failed kind=RuntimeError" in caplog.text
+    assert "very private" not in caplog.text
 
 
 async def test_given_a_cycle_when_it_ends_then_the_heartbeat_file_is_touched(tmp_path: Path) -> None:
@@ -164,7 +204,7 @@ async def test_given_a_failing_step_when_a_cycle_runs_then_the_others_still_run_
 
     await run.mail_cycle()
 
-    assert steps.calls == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls == ["web_notice", "release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
     assert "very private" not in caplog.text
     assert "RuntimeError" in caplog.text
 
@@ -257,7 +297,7 @@ async def test_given_the_catch_up_fails_when_a_cycle_runs_then_the_later_steps_a
 
     await run.mail_cycle()
 
-    assert steps.calls == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls == ["web_notice", "release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
     assert (tmp_path / "heartbeat").exists()
 
 

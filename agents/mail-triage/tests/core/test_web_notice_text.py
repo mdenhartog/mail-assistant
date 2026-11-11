@@ -9,7 +9,7 @@ import pytest
 from app.core import settings_text
 from schedule_policy.policy import TimePolicy
 
-TOKEN = "AbCdEfGhIjKlMnOpQrStUv"  # 22 characters, like a 16-byte URL-safe token
+TOKEN = "AbCdEfGhIjKlMnOpQrStUv"  # noqa: S105  # 22 characters, like a 16-byte URL-safe token
 OLD = TimePolicy("Europe/Amsterdam", time(23, 0), time(7, 0), time(18, 0), time(9, 0))
 NEW = TimePolicy("Europe/Amsterdam", time(22, 0), time(7, 0), time(18, 0), time(9, 0))
 AT = datetime(2026, 11, 11, 13, 5, tzinfo=UTC)  # 14:05 in Amsterdam
