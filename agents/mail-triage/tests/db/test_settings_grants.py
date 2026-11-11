@@ -25,7 +25,7 @@ DO $$ BEGIN
         CREATE ROLE web_settings_runtime LOGIN PASSWORD 'web-test-password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;  -- grants.sql names the web role too (U-web-settings-08 removed its guard)
 END $$
-"""
+"""  # noqa: S608 - fixed test literals
 
 
 def _schedule(via: str) -> str:

@@ -267,8 +267,8 @@ async def test_given_the_job_runs_twice_when_compared_then_roles_attributes_and_
 ) -> None:
     snapshot = (
         "select r.rolname, r.rolinherit, r.rolreplication, r.rolbypassrls, "
-        "(select array_agg(g.privilege_type || ':' || g.table_schema || '.' || g.table_name order by 1) "
-        " from information_schema.role_table_grants g where g.grantee = r.rolname) as grants "
+        "array(select g.privilege_type || ':' || g.table_schema || '.' || g.table_name "
+        " from information_schema.role_table_grants g where g.grantee = r.rolname order by 1) as grants "
         "from pg_roles r where r.rolname = any($1) order by r.rolname"
     )
     await migrate_database(database_url, PASSWORDS)

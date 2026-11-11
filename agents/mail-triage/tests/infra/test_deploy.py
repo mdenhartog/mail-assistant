@@ -397,7 +397,7 @@ def test_given_the_dev_profile_when_compose_renders_then_the_migration_precedes_
     assert services["mail-triage"]["depends_on"]["mail-triage-migrate"]["condition"] == "service_completed_successfully"
     assert services["mail-triage-migrate"]["environment"]["DATABASE_OWNER_URL"].startswith("postgresql+asyncpg://app:")
     assert "mail_triage_runtime:rt-render-test@" in services["mail-triage"]["environment"]["DATABASE_URL"]
-    assert services["mail-triage-migrate"]["environment"]["WEB_ROLE_PASSWORD"] == "web-render-test"
+    assert services["mail-triage-migrate"]["environment"]["WEB_ROLE_PASSWORD"] == "web-render-test"  # noqa: S105
     assert "rt-render-test" not in COMPOSE_FILE.read_text(encoding="utf-8")
     assert "web-render-test" not in COMPOSE_FILE.read_text(encoding="utf-8")
 
@@ -699,7 +699,7 @@ def test_given_the_runtime_image_when_read_then_tzdata_is_a_locked_dependency_of
 def test_given_the_compose_file_when_read_then_the_migrate_service_passes_the_web_password_by_reference() -> None:
     environment = compose_services()["mail-triage-migrate"]["environment"]
 
-    assert environment["WEB_ROLE_PASSWORD"] == "${WEB_ROLE_PASSWORD:-}"  # a reference, empty when unset (exit code 2)
+    assert environment["WEB_ROLE_PASSWORD"] == "${WEB_ROLE_PASSWORD:-}"  # noqa: S105  # a reference, empty when unset (exit code 2)
     assert "WEB_ROLE_PASSWORD" not in compose_services()["mail-triage"]["environment"]  # the agent never needs it
 
 

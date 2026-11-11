@@ -178,7 +178,7 @@ async def test_given_a_runtime_role_with_a_membership_when_the_command_runs_then
     assert owner_url not in caplog.text
 
 
-async def test_given_a_web_role_with_replication_and_a_membership_when_the_command_runs_then_replication_is_reset_and_exit_6_names_it(
+async def test_given_a_web_role_with_replication_and_a_membership_when_the_job_runs_then_it_resets_and_exits_6(
     owner_url: str, owner: asyncpg.Connection, caplog: pytest.LogCaptureFixture
 ) -> None:
     await migrate_database(owner_url, PASSWORDS)
