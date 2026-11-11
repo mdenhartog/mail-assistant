@@ -28,7 +28,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - { name: api, context: backend, file: backend/Dockerfile }
+          - { name: api, context: ., file: backend/Dockerfile }
           - { name: web, context: ., file: apps/web/Dockerfile }
           - { name: mail-triage, context: ., file: agents/mail-triage/Dockerfile }
     steps:
