@@ -16,6 +16,60 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "Place": {
+        "additionalProperties": false,
+        "description": "One selectable time zone.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "utcOffsetMinutes": {
+            "title": "Utcoffsetminutes",
+            "type": "integer"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "label",
+          "utcOffsetMinutes"
+        ],
+        "title": "Place",
+        "type": "object"
+      },
+      "PlaceResults": {
+        "additionalProperties": false,
+        "description": "Up to five places, or a near-miss suggestion, or neither.",
+        "properties": {
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "title": "Places",
+            "type": "array"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
+          }
+        },
+        "required": [
+          "places"
+        ],
+        "title": "PlaceResults",
+        "type": "object"
+      },
       "RequestCodeBody": {
         "additionalProperties": false,
         "description": "The username a code is asked for: 1 to 64 characters, no control characters.",
@@ -104,6 +158,47 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/places": {
+      "get": {
+        "description": "Find time zones for a typed place name, with the same lookup and aliases as Telegram.\n\nThe query is validated before matching and is never logged.\n\nArgs:\n    request: The request; its clock gives the moment the UTC offsets are computed for.\n    q: The typed text, at most 64 characters, no control characters.\n\nReturns:\n    Up to five places, or a suggestion for a near miss, or neither.",
+        "operationId": "search_places_api_places_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "422": {
+            "description": "Query too long or invalid"
+          }
+        },
+        "summary": "Search Places",
+        "tags": [
+          "places"
+        ]
+      }
+    },
     "/api/session": {
       "get": {
         "description": "Return the masked address, the CSRF token and the expiry times of the session.\n\nOnly a same-origin request (``Sec-Fetch-Site`` absent or ``same-origin``) gets the token.\n\nArgs:\n    request: The request.\n    current: The live session.\n\nReturns:\n    The session information.\n\nRaises:\n    ProblemError: 403 (through ``refuse``) for a request that is not same-origin.",
