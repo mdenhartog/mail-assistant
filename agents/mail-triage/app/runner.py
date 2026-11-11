@@ -66,6 +66,14 @@ class OverviewPort(Protocol):
         ...
 
 
+class WebNoticePort(Protocol):
+    """Announces changes made on the web (INT-002, ADR-0033)."""
+
+    async def run(self, now: datetime) -> None:
+        """Send a notice for every web change not yet announced."""
+        ...
+
+
 class PurgePort(Protocol):
     """Clears old mail content."""
 
@@ -127,6 +135,7 @@ class Runner:
         delivery: DeliveryPort,
         snooze: SnoozePort,
         overview: OverviewPort,
+        web_notice: WebNoticePort,
         store: PurgePort,
         inbox: InboxPort,
         router: RouterPort,
@@ -140,6 +149,7 @@ class Runner:
         self._delivery = delivery
         self._snooze = snooze
         self._overview = overview
+        self._web_notice = web_notice
         self._store = store
         self._inbox = inbox
         self._router = router
@@ -150,7 +160,11 @@ class Runner:
         self._failed: dict[int, int] = {}
 
     async def mail_cycle(self) -> None:
-        """Release due alerts, read new mail, catch up on old mail, send alerts, send the overview, purge, heartbeat."""
+        """Announce web changes, release due alerts, read new mail, catch up, send alerts and the overview, purge, beat.
+
+        The web notice goes first and takes no part in quiet hours: a change from someone else must reach Marco soon.
+        """
+        await self._guard("web_notice", self._web_notice.run(self._now()))
         await self._guard("release_due", self._snooze.release_due())
         await self._guard("pipeline", self._pipeline.run_once())
         await self._guard("catchup", self._catchup.run_once())  # after new mail, so new mail always comes first
