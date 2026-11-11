@@ -169,10 +169,25 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: echo "POSTGRES_PASSWORD=ci-$(openssl rand -hex 12)" > .env
-      - name: private CA and edge certificate
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: printf 'POSTGRES_PASSWORD=ci-%s\nMAIL_TRIAGE_RUNTIME_PASSWORD=ci-%s\nWEB_ROLE_PASSWORD=ci-%s\n' "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" > .env
+      - name: private CA, edge certificate and database certificate
         run: deploy/prod-like/certs.sh
+      - name: compose has no literal password (W-9; the unresolved file, so the .env values are not in it)
+        run: |
+          rendered="$(docker compose --profile prod-like config --no-interpolate)"
+          if echo "$rendered" | grep -E '://[^:/[:space:]]+:[^$[:space:]@][^@[:space:]]*@'; then echo "a URL with a literal password"; exit 1; fi
+          if echo "$rendered" | grep -E '(PASSWORD|SECRET)[A-Z_]*: +[^$[:space:]]'; then echo "a literal password"; exit 1; fi
+      - name: migrate (owner credentials; creates both roles; a one-shot service cannot be part of `up --wait`)
+        run: docker compose run --rm --build mail-triage-migrate
       - run: docker compose --profile prod-like up -d --build --wait
+      - name: database over TLS (verify-full, host name, CA, plain refusal, roles) and /readyz of the api
+        run: |
+          echo "127.0.0.1 db" | sudo tee -a /etc/hosts
+          answer="$(docker compose --profile prod-like exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/readyz').status)")"
+          test "$answer" = 200 || { echo "readyz answered $answer"; exit 1; }
+          set -a; . ./.env; set +a
+          E2E_PROD_LIKE=1 uv run --frozen --project backend pytest --no-cov backend/tests/e2e
       - name: edge checks (redirect, HSTS, 404 matrix, query-free log)
         run: |
           base=https://mail-assistant.localhost:8443
@@ -210,7 +225,7 @@ jobs:
       - run: pnpm --filter web e2e
         env: { E2E_BASE_URL: "https://mail-assistant.localhost:8443" }
       - if: failure()
-        run: docker compose --profile prod-like logs --no-color edge web api
+        run: docker compose --profile prod-like logs --no-color edge web api db
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with: { name: playwright-report, path: apps/web/playwright-report }
