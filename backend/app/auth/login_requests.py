@@ -174,6 +174,10 @@ class LoginRequests:
             )
             return Dead() if dead else Wrong(self._max_attempts - attempts)
 
+    async def attempts_left(self, request_id: str | None, now: datetime) -> int | None:
+        """Return the attempts a live request has left, or None (skeleton)."""
+        raise NotImplementedError
+
     async def mark_sent(self, request_id: str, now: datetime) -> None:
         """Record that the code was sent; called only after a successful send.
 

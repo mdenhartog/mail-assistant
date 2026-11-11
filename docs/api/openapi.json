@@ -194,6 +194,21 @@
         ]
       }
     },
+    "/auth/verify-code": {
+      "post": {
+        "description": "Check the code and sign in (skeleton).",
+        "operationId": "verify_code_auth_verify_code_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verify Code",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "description": "Report that the process is alive.\n\nReturns:\n    A fixed ``ok`` status.",

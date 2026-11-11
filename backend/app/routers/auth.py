@@ -1,7 +1,7 @@
 """Sign-in routes under ``/auth``."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
@@ -10,6 +10,9 @@ from pydantic.alias_generators import to_camel
 from app.auth.request_code import CodeRequests, client_of, login_cookie, require_signin_origin
 from app.core.security import public
 from app.limit_guard import limit
+
+if TYPE_CHECKING:
+    from app.auth.verify_code import VerifyCode
 
 ROUTER_PREFIX = ""  # the sign-in routes live under /auth, outside /api
 router = APIRouter(tags=["auth"])
@@ -78,3 +81,17 @@ async def request_code(
         expires_at=issued.expires_at,
         resend_after_seconds=issued.resend_after_seconds,
     )
+
+
+# ---- verify-code (U-web-settings-18) -----------------------------------------------------------------------------
+
+
+@router.post(
+    "/auth/verify-code",
+    status_code=204,
+    dependencies=[Depends(public), Depends(require_signin_origin), Depends(limit("signin"))],
+)
+async def verify_code(request: Request) -> Response:
+    """Check the code and sign in (skeleton)."""
+    service: VerifyCode = request.app.state.verify_code
+    return await service.verify(await request.body(), None, client_of(request), request.state.request_id)

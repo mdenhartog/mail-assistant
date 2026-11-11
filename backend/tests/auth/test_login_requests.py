@@ -292,3 +292,19 @@ async def test_given_the_pad_when_run_then_it_writes_nothing(
     await store.pad()
 
     assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 0
+
+
+async def test_given_requests_in_every_state_when_attempts_left_is_read_then_only_a_live_one_has_a_number(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    live = await store.create(USER, RIGHT, T0, CAP)
+    assert await store.attempts_left(live.id, T0) == MAX_ATTEMPTS
+    await store.check(live.id, WRONG, T0)
+    assert await store.attempts_left(live.id, T0) == MAX_ATTEMPTS - 1
+    assert await store.attempts_left(live.id, T0 + TTL) is None
+    assert await store.attempts_left("n" * 32, T0) is None
+    assert await store.attempts_left(None, T0) is None
+    await store.check(live.id, RIGHT, T0)
+    assert await store.attempts_left(live.id, T0) is None
+    assert await owner.fetchval("SELECT attempts FROM web_auth.login_request") == 1
