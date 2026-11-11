@@ -22,9 +22,16 @@ web:
 ingress:
   enabled: true
   className: ""
-  host: app.example.com
-  clusterIssuer: letsencrypt-prod
-  hsts: true
+  # Local only (ADR-0037): the host must sit under localDomainSuffix; there is no public name.
+  host: app.home.arpa
+  localDomainSuffix: home.arpa
+  clusterIssuer: private-ca # a cert-manager issuer backed by the private CA
+  tls: { enabled: true } # only true is accepted
+  hsts: true # only true is accepted; max-age=31536000, no includeSubDomains, no preload
+  # Controller-specific parts come from the environment values (hosting is an open point); none by default.
+  hstsAnnotation: { key: "", format: "%s" } # annotation that carries the header; format gets "max-age=..."
+  annotations: {}
+  controllerConfig: {} # settings of the controller's own ConfigMap (TLS minimum, log format); not rendered here
 
 podDisruptionBudget: { minAvailable: 1 }
 networkPolicy: { enabled: true }
