@@ -199,7 +199,7 @@ def test_given_the_image_when_built_from_the_repo_root_then_it_carries_the_share
 # --- U-quiet-hours-15a: the owner role runs the migrations, the agent runs with a role that owns nothing (ADR-0025) ---
 
 MIGRATION = ("migration.enabled=true", "migration.secretName=mail-triage-migration")
-OWNER_KEYS = ("DATABASE_OWNER_URL", "RUNTIME_ROLE_PASSWORD")
+OWNER_KEYS = ("DATABASE_OWNER_URL", "RUNTIME_ROLE_PASSWORD", "WEB_ROLE_PASSWORD")
 COMPOSE_FILE = COMPONENT / "compose.yaml"
 
 
@@ -337,7 +337,7 @@ def test_given_the_migration_when_rendered_then_the_manifests_and_values_hold_no
     for pattern in SECRET_PATTERNS:
         assert not pattern.search(text + values + env_values), pattern.pattern
     assert "mail-triage-migration" in env_values  # a name reference only
-    assert not re.search(r"(DATABASE_OWNER_URL|RUNTIME_ROLE_PASSWORD)\s*:\s*\S", values + env_values)
+    assert not re.search(r"(DATABASE_OWNER_URL|RUNTIME_ROLE_PASSWORD|WEB_ROLE_PASSWORD)\s*:\s*\S", values + env_values)
 
 
 def test_given_the_local_environment_values_when_read_then_the_migration_is_on_by_reference() -> None:
@@ -380,6 +380,7 @@ def test_given_the_dev_profile_when_compose_renders_then_the_migration_precedes_
         **os.environ,
         "POSTGRES_PASSWORD": "pg-render-test",
         "MAIL_TRIAGE_RUNTIME_PASSWORD": "rt-render-test",
+        "WEB_ROLE_PASSWORD": "web-render-test",
     }
     result = subprocess.run(
         ["docker", "compose", "--profile", "dev", "config", "--format", "json"],  # noqa: S607
@@ -396,7 +397,9 @@ def test_given_the_dev_profile_when_compose_renders_then_the_migration_precedes_
     assert services["mail-triage"]["depends_on"]["mail-triage-migrate"]["condition"] == "service_completed_successfully"
     assert services["mail-triage-migrate"]["environment"]["DATABASE_OWNER_URL"].startswith("postgresql+asyncpg://app:")
     assert "mail_triage_runtime:rt-render-test@" in services["mail-triage"]["environment"]["DATABASE_URL"]
+    assert services["mail-triage-migrate"]["environment"]["WEB_ROLE_PASSWORD"] == "web-render-test"
     assert "rt-render-test" not in COMPOSE_FILE.read_text(encoding="utf-8")
+    assert "web-render-test" not in COMPOSE_FILE.read_text(encoding="utf-8")
 
 
 def test_given_the_migrate_settings_when_compared_then_the_compose_job_passes_every_one_on() -> None:
@@ -457,6 +460,7 @@ def test_given_the_ci_workflow_when_read_then_a_job_migrates_and_runs_the_role_c
     assert commands.index("up -d --build --wait") < commands.index("mail-triage-migrate")  # the stack first
     assert commands.index("mail-triage-migrate") < commands.index("tests/e2e")  # the role exists before it is checked
     assert "MAIL_TRIAGE_RUNTIME_PASSWORD=" in commands  # the migrate job stops without it (exit code 2)
+    assert "WEB_ROLE_PASSWORD=" in commands  # the job stops without this one too (U-web-settings-08)
 
 
 @pytest.mark.parametrize("job_name", ["e2e", "gxp"])
@@ -687,3 +691,39 @@ def test_given_the_runtime_image_when_read_then_tzdata_is_a_locked_dependency_of
     lock = (COMPONENT / "uv.lock").read_text(encoding="utf-8")
 
     assert re.search(r'^name = "tzdata"$', lock, re.MULTILINE)
+
+
+# --- U-web-settings-08: the web role password reaches the migrate job everywhere it runs ---
+
+
+def test_given_the_compose_file_when_read_then_the_migrate_service_passes_the_web_password_by_reference() -> None:
+    environment = compose_services()["mail-triage-migrate"]["environment"]
+
+    assert environment["WEB_ROLE_PASSWORD"] == "${WEB_ROLE_PASSWORD:-}"  # a reference, empty when unset (exit code 2)
+    assert "WEB_ROLE_PASSWORD" not in compose_services()["mail-triage"]["environment"]  # the agent never needs it
+
+
+@needs_helm
+def test_given_the_migration_when_rendered_then_the_web_password_is_a_required_secret_key_reference() -> None:
+    job = job_container(render(*MIGRATION))
+
+    ref = next(item for item in job["env"] if item["name"] == "WEB_ROLE_PASSWORD")["valueFrom"]["secretKeyRef"]
+    assert ref == {"name": "mail-triage-migration", "key": "WEB_ROLE_PASSWORD"}  # no `optional`: a missing key fails
+
+
+def test_given_the_chart_files_when_read_then_the_web_password_is_in_no_values_file_or_configmap() -> None:
+    values = (CHART / "values.yaml").read_text(encoding="utf-8")
+    env_values = (ROOT / "deploy" / "envs" / "local" / "mail-triage.yaml").read_text(encoding="utf-8")
+
+    assert not re.search(r"WEB_ROLE_PASSWORD\s*:\s*\S", values + env_values)
+    assert not (CHART / "templates" / "configmap.yaml").exists() or "WEB_ROLE_PASSWORD" not in (
+        CHART / "templates" / "configmap.yaml"
+    ).read_text(encoding="utf-8")
+
+
+def test_given_the_chart_readme_when_read_then_it_names_the_web_password_key_and_seals_by_standard_input() -> None:
+    text = README.read_text(encoding="utf-8")
+
+    assert "WEB_ROLE_PASSWORD" in text
+    assert "--from-literal=" not in text
+    assert "--from-env-file=/dev/stdin" in text

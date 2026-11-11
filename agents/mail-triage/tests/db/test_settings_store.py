@@ -280,6 +280,11 @@ async def runtime_store(migrated_url: str) -> AsyncIterator[PgSettingsStore]:
             f"CREATE ROLE {RUNTIME_ROLE} LOGIN PASSWORD '{RUNTIME_PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE; "
             "END IF; END $$"
         )
+        await owner.execute(  # grants.sql names the web role too (U-web-settings-08 removed its guard)
+            "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'web_settings_runtime') THEN "
+            "CREATE ROLE web_settings_runtime LOGIN PASSWORD 'web-test-password' NOSUPERUSER NOCREATEDB NOCREATEROLE; "
+            "END IF; END $$"
+        )
         await owner.execute(GRANTS.read_text(encoding="utf-8"))
     finally:
         await owner.close()

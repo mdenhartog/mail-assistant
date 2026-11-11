@@ -17,7 +17,7 @@ from pydantic import SecretStr
 from sqlalchemy.engine import make_url
 from testcontainers.community.postgres import PostgresContainer
 
-from app.db.migrate import RUNTIME_ROLE, RuntimeRoleNotSafe, migrate_database
+from app.db.migrate import RUNTIME_ROLE, WEB_ROLE, RuntimeRoleNotSafe, migrate_database
 from app.settings import MigrateSettings
 from app.wiring import EXIT_MIGRATION_FAILED, migrate
 from tests.db.conftest import IMAGE
@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterator
 
 PASSWORD = "clear-pw-NEVER-in-a-log-9f3a"  # noqa: S105  # a throwaway role inside a throwaway test container
+WEB_PASSWORD = "clear-web-pw-NEVER-in-a-log-71cc"  # noqa: S105  # same
+PASSWORDS = {RUNTIME_ROLE: PASSWORD, WEB_ROLE: WEB_PASSWORD}
 
 
 @pytest.fixture(scope="module")
@@ -91,6 +93,13 @@ async def _reset_the_cluster_wide_role(logging_server: PostgresContainer) -> Asy
         )
         for row in granted:
             await connection.execute(f'REVOKE "{row["rolname"]}" FROM {RUNTIME_ROLE}')
+        web_granted = await connection.fetch(
+            "select g.rolname from pg_auth_members m join pg_roles g on g.oid = m.roleid "
+            "join pg_roles r on r.oid = m.member where r.rolname = $1",
+            WEB_ROLE,
+        )
+        for row in web_granted:
+            await connection.execute(f'REVOKE "{row["rolname"]}" FROM {WEB_ROLE}')
     finally:
         await connection.close()
 
@@ -98,7 +107,7 @@ async def _reset_the_cluster_wide_role(logging_server: PostgresContainer) -> Asy
 async def test_given_a_real_server_when_the_job_sets_the_password_then_the_agent_logs_in_over_scram_and_no_log_has_it(
     owner_url: str, owner: asyncpg.Connection, logging_server: PostgresContainer
 ) -> None:
-    await migrate_database(owner_url, PASSWORD)
+    await migrate_database(owner_url, PASSWORDS)
 
     stored = await owner.fetchval("select rolpassword from pg_authid where rolname = $1", RUNTIME_ROLE)
     assert str(stored).startswith("SCRAM-SHA-256$4096:")
@@ -114,15 +123,22 @@ async def test_given_a_real_server_when_the_job_sets_the_password_then_the_agent
     server_log = (stdout + stderr).decode("utf-8", errors="replace")
     assert "CREATE ROLE" in server_log or "ALTER ROLE" in server_log  # the server did log the statements
     assert PASSWORD not in server_log
+    assert WEB_PASSWORD not in server_log
+    web_stored = await owner.fetchval("select rolpassword from pg_authid where rolname = $1", WEB_ROLE)
+    assert str(web_stored).startswith("SCRAM-SHA-256$4096:")
+    web = await asyncpg.connect(
+        host=parsed.host, port=parsed.port, user=WEB_ROLE, password=WEB_PASSWORD, database=parsed.database
+    )
+    await web.close()
 
 
 async def test_given_a_runtime_role_with_replication_when_the_job_runs_then_replication_and_bypassrls_are_off(
     owner_url: str, owner: asyncpg.Connection
 ) -> None:
-    await migrate_database(owner_url, PASSWORD)
+    await migrate_database(owner_url, PASSWORDS)
     await owner.execute(f"ALTER ROLE {RUNTIME_ROLE} REPLICATION BYPASSRLS")
 
-    await migrate_database(owner_url, PASSWORD)
+    await migrate_database(owner_url, PASSWORDS)
 
     role = await owner.fetchrow("select rolreplication, rolbypassrls from pg_roles where rolname = $1", RUNTIME_ROLE)
     assert role is not None
@@ -132,11 +148,11 @@ async def test_given_a_runtime_role_with_replication_when_the_job_runs_then_repl
 async def test_given_a_runtime_role_with_a_membership_when_the_job_runs_then_it_fails_naming_the_role_not_the_password(
     owner_url: str, owner: asyncpg.Connection
 ) -> None:
-    await migrate_database(owner_url, PASSWORD)
+    await migrate_database(owner_url, PASSWORDS)
     await owner.execute(f"GRANT pg_read_all_data TO {RUNTIME_ROLE}")
 
     with pytest.raises(RuntimeRoleNotSafe) as error:
-        await migrate_database(owner_url, PASSWORD)
+        await migrate_database(owner_url, PASSWORDS)
 
     assert RUNTIME_ROLE in str(error.value)
     assert PASSWORD not in str(error.value)
@@ -145,9 +161,13 @@ async def test_given_a_runtime_role_with_a_membership_when_the_job_runs_then_it_
 async def test_given_a_runtime_role_with_a_membership_when_the_command_runs_then_exit_6_and_the_log_names_the_role(
     owner_url: str, owner: asyncpg.Connection, caplog: pytest.LogCaptureFixture
 ) -> None:
-    await migrate_database(owner_url, PASSWORD)
+    await migrate_database(owner_url, PASSWORDS)
     await owner.execute(f"GRANT pg_read_all_data TO {RUNTIME_ROLE}")
-    settings = MigrateSettings(database_owner_url=SecretStr(owner_url), runtime_role_password=SecretStr(PASSWORD))
+    settings = MigrateSettings(
+        database_owner_url=SecretStr(owner_url),
+        runtime_role_password=SecretStr(PASSWORD),
+        web_role_password=SecretStr(WEB_PASSWORD),
+    )
 
     with caplog.at_level(logging.ERROR):
         code = await migrate(settings)
@@ -156,3 +176,27 @@ async def test_given_a_runtime_role_with_a_membership_when_the_command_runs_then
     assert RUNTIME_ROLE in caplog.text
     assert PASSWORD not in caplog.text
     assert owner_url not in caplog.text
+
+
+async def test_given_a_web_role_with_replication_and_a_membership_when_the_command_runs_then_replication_is_reset_and_exit_6_names_it(
+    owner_url: str, owner: asyncpg.Connection, caplog: pytest.LogCaptureFixture
+) -> None:
+    await migrate_database(owner_url, PASSWORDS)
+    await owner.execute(f"ALTER ROLE {WEB_ROLE} REPLICATION BYPASSRLS")
+    await owner.execute(f"GRANT pg_read_all_data TO {WEB_ROLE}")
+    settings = MigrateSettings(
+        database_owner_url=SecretStr(owner_url),
+        runtime_role_password=SecretStr(PASSWORD),
+        web_role_password=SecretStr(WEB_PASSWORD),
+    )
+
+    with caplog.at_level(logging.ERROR):
+        code = await migrate(settings)
+
+    assert code == EXIT_MIGRATION_FAILED == 6
+    assert WEB_ROLE in caplog.text
+    assert WEB_PASSWORD not in caplog.text
+    assert owner_url not in caplog.text
+    role = await owner.fetchrow("select rolreplication, rolbypassrls from pg_roles where rolname = $1", WEB_ROLE)
+    assert role is not None
+    assert (role["rolreplication"], role["rolbypassrls"]) == (False, False)  # reset even though the job failed
