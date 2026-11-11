@@ -13,7 +13,7 @@ from app.config import Settings, get_settings
 from app.errors import install_error_handlers
 from app.ids import IdSource
 from app.limit_guard import NoopLimitGuard
-from app.mailer import Mailer
+from app.mail.sender import MailSender
 from app.middleware import HttpSurfaceMiddleware
 from app.startup import validate_startup
 
@@ -43,7 +43,7 @@ def discover_routers() -> list[MountedRouter]:
     return mounted
 
 
-def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: Mailer) -> FastAPI:
+def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: MailSender) -> FastAPI:
     """Build the FastAPI application after the start-up check.
 
     Args:

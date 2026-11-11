@@ -6,13 +6,15 @@ Every message is HTML for Telegram, so everything that is not written here is es
 from __future__ import annotations
 
 import html
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from app.core.alert_text import AlertMessage, Button
 
 if TYPE_CHECKING:
-    from datetime import date, time
+    from datetime import date, datetime, time
 
     from schedule_policy.policy import Problem, TimePolicy
 
@@ -249,3 +251,63 @@ def undo_offer(undo_data: str, start_data: str) -> AlertMessage:
     """The Undo button again, under a fresh nonce, when the confirmation was answered with something else."""
     buttons = (Button(UNDO_LABEL, undo_data), Button(SHOW_SETTINGS, start_data))
     return AlertMessage(html.escape(UNDO_AGAIN, quote=False), buttons)
+
+
+# ---- the notice for a change made on the web (spec C-8; AC-13; ADR-0033) ---------------------------------------------
+
+WEB_UNDO = "webundo"
+WEB_LOCK = "weblock"
+WEB_UNDO_LABEL = UNDO_LABEL
+WEB_LOCK_LABEL = "Undo and lock web sign-in"
+_WEB_TOKEN = re.compile(r"[A-Za-z0-9_-]{22,40}")  # the 16-byte URL-safe token; 7 + 1 + 40 stays under 64 bytes
+
+
+def web_button_data(action: str, token: str) -> str:
+    """Callback data ``webundo:<token>`` or ``weblock:<token>``; the token must be URL-safe ASCII and fit the limit."""
+    if action not in {WEB_UNDO, WEB_LOCK} or not _WEB_TOKEN.fullmatch(token) or not token.isascii():
+        raise ValueError("web notice token is malformed")
+    return f"{action}:{token}"
+
+
+def _changed(name: str, new: str, old: str | None) -> str:
+    """One value line: the new value, then what it was (or that it did not change)."""
+    return f"{name}: {new} ({'unchanged' if old is None else f'was {old}'})"
+
+
+def _value_lines(old: TimePolicy | None, new: TimePolicy) -> list[str]:
+    rows = [
+        (VALUE_NAMES[QUIET], f"{clock(new.quiet_start)} to {clock(new.quiet_end)}"),
+        (VALUE_NAMES[OVERVIEW], clock(new.overview_at)),
+        (VALUE_NAMES[REMIND], clock(new.remind_at)),
+        (VALUE_NAMES[ZONE], new.zone),
+    ]
+    if old is None:
+        return [f"{name}: {value}" for name, value in rows]
+    before = [
+        f"{clock(old.quiet_start)} to {clock(old.quiet_end)}",
+        clock(old.overview_at),
+        clock(old.remind_at),
+        old.zone,
+    ]
+    return [
+        _changed(name, value, None if value == was else was) for (name, value), was in zip(rows, before, strict=True)
+    ]
+
+
+def web_notice(version: int, at: datetime, old: TimePolicy | None, new: TimePolicy, token: str) -> AlertMessage:
+    """The notice for the web change that made ``version``: old and new values, number, channel, time, two buttons.
+
+    The time is the moment of the change in the new time zone. There is no username in it: nobody is named.
+    """
+    local = at.astimezone(ZoneInfo(new.zone))
+    lines = [
+        f"Your settings were changed on the web (change {version}).",
+        f"Channel: web. Time: {local:%Y-%m-%d %H:%M} ({new.zone})",
+        *(["These are the first saved values."] if old is None else []),
+        *_value_lines(old, new),
+    ]
+    buttons = (
+        Button(WEB_UNDO_LABEL, web_button_data(WEB_UNDO, token)),
+        Button(WEB_LOCK_LABEL, web_button_data(WEB_LOCK, token)),
+    )
+    return AlertMessage(html.escape("\n".join(lines), quote=False), buttons)
