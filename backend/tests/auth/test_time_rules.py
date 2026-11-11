@@ -3,7 +3,7 @@
 import ast
 import sys
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 
 import pytest
@@ -159,6 +159,21 @@ def test_other_time_zones_compare_by_instant() -> None:
     plus_two = timezone(timedelta(hours=2))
     assert code_rules.code_expired(at(14), at(14, 10).astimezone(plus_two), TTL) is True
     assert code_rules.code_expired(at(14), at(14, 9, 59).astimezone(plus_two), TTL) is False
+
+
+class _NoOffset(tzinfo):
+    """A tzinfo that cannot tell its offset: such a datetime is naive in the sense of the datetime docs."""
+
+    def utcoffset(self, dt: datetime | None) -> timedelta | None:
+        return None
+
+
+def test_a_tzinfo_without_an_offset_counts_as_naive() -> None:
+    odd = datetime(2026, 11, 10, 14, tzinfo=_NoOffset())
+    with pytest.raises(ValueError, match="timezone-aware"):
+        code_rules.code_expired(odd, at(14), TTL)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        expiry.idle_expired(odd, at(14))
 
 
 # Criterion 8: standard library only, marker present
