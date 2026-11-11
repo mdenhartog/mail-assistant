@@ -5,10 +5,11 @@ from collections.abc import AsyncIterator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
-from app.db import Database
+from app.db import Database, DatabaseUnavailable
 from app.startup import attach_database
-from tests.fakes import FakeClock, make_app
+from tests.fakes import FakeClock, make_app, make_settings
 
 CANARY = "canary-smtp-secret"  # also on the canary list of tests/conftest.py, which fails the test if it is logged
 URL = f"postgresql+asyncpg://web_settings_runtime:{CANARY}@127.0.0.1:1/canary-db"
@@ -48,3 +49,28 @@ async def test_given_an_app_without_a_database_when_readyz_then_200_as_the_legac
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.get("/readyz")).status_code == 200
+
+
+async def test_given_settings_with_a_dead_database_when_a_session_is_used_then_it_is_unavailable() -> None:
+    settings = make_settings(database_url=SecretStr(URL), database_ssl="require")
+    database = Database.from_settings(settings)
+
+    try:
+        with pytest.raises(DatabaseUnavailable):
+            async with database.session() as session:
+                await session.connection()
+    finally:
+        await database.dispose()
+
+
+async def test_given_a_dead_database_when_the_app_starts_then_the_start_goes_on(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    database = Database.create(URL, ssl_context=None, statement_timeout_ms=1000)
+    app = make_app()
+    attach_database(app, database, FakeClock())
+
+    async with app.router.lifespan_context(app):
+        pass
+
+    assert any(record.getMessage() == "startup.purge_skipped" for record in caplog.records)

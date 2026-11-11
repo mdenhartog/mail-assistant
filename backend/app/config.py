@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     public_origin: str = ""
     database_url: SecretStr = SecretStr("")
     database_ssl: Literal["require", "verify-ca", "verify-full"] = "verify-full"
+    # Trusted CA for the database; empty uses the system trust store (SSL_CERT_FILE).
+    database_ca_file: str = ""
+    database_statement_timeout_ms: int = Field(default=5000, gt=0, description="Server-side statement timeout.")
     # Must equal the agent's run interval (POLL_INTERVAL_SECONDS, 60 by default) rounded up to whole minutes.
     notice_interval_minutes: int = Field(default=1, description="Agent run interval in whole minutes, rounded up.")
 

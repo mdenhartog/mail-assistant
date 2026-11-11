@@ -111,3 +111,12 @@ def test_given_sql_text_with_now_when_searched_then_the_rule_finds_it() -> None:
     assert [t for t in _sql_strings('x = "update t set a = now()"') if SQL_CLOCK.search(t)]
     assert [t for t in _sql_strings('x = "select CURRENT_TIMESTAMP"') if SQL_CLOCK.search(t)]
     assert not [t for t in _sql_strings('"""now() in a docstring"""\nx = clock.now()') if SQL_CLOCK.search(t)]
+
+
+def test_given_default_settings_when_read_then_timeout_is_five_seconds_and_the_ca_is_the_system_one() -> None:
+    settings = Settings()
+
+    assert settings.database_statement_timeout_ms == 5000
+    assert settings.database_ca_file == ""
+    with pytest.raises(ValidationError):
+        Settings(database_statement_timeout_ms=0)

@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.exc import ProgrammingError
 
 from app.db import Database
 from app.startup import attach_database
@@ -126,3 +127,20 @@ async def test_given_a_second_test_after_it_when_it_starts_then_the_schema_state
 ) -> None:
     assert await owner.fetchval("select count(*) from web_auth.web_lock") == 0
     assert await owner.fetchval("select to_regclass('public.leftover')") is None
+
+
+async def test_given_a_fault_of_the_code_when_a_statement_fails_then_it_is_not_reported_as_unavailable(
+    web_database: Database,
+) -> None:
+    with pytest.raises(ProgrammingError):
+        async with web_database.session() as session:
+            await session.execute(text("select * from no_such_table"))
+
+
+async def test_given_sslmode_in_the_url_when_the_database_is_built_then_it_is_ignored(db: DbEndpoint) -> None:
+    database = Database.create(db.web_url + "?sslmode=verify-full", ssl_context=None, statement_timeout_ms=1000)
+    try:
+        async with database.session() as session:
+            assert (await session.execute(text("select 1"))).scalar_one() == 1
+    finally:
+        await database.dispose()

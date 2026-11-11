@@ -48,7 +48,7 @@
     },
     "/readyz": {
       "get": {
-        "description": "Report that the service can accept traffic.\n\nReturns:\n    A fixed ``ok`` status until real dependencies (database, IdP) are added.",
+        "description": "Report that the service can accept traffic: the database answers and speaks the expected contract.\n\nAn app without a database (the legacy factory until U-web-settings-38) has nothing to check and reports ok.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    A fixed ``ok`` status.\n\nRaises:\n    HTTPException: 503 with a generic body when the database is down or its contract version differs.",
         "operationId": "readiness_readyz_get",
         "responses": {
           "200": {
@@ -60,6 +60,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "description": "Not ready"
           }
         },
         "summary": "Readiness",
