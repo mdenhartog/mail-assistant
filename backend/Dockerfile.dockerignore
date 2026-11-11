@@ -1,0 +1,10 @@
+# Build context is the repository root: send only what the backend image needs (allow-list). The deny-all keeps
+# environment files, the Git directory and node_modules out of the context and so out of every layer.
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/app
+!packages/schedule-policy/pyproject.toml
+!packages/schedule-policy/schedule_policy
+**/__pycache__
+**/*.pyc

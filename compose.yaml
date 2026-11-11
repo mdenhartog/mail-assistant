@@ -36,12 +36,12 @@ services:
 
   api-dev:
     profiles: ["dev"]
-    build: { context: ./backend, target: build }
+    build: { context: ., dockerfile: backend/Dockerfile, target: build }
     command: ["uv", "run", "--frozen", "uvicorn", "app.main:create_app", "--factory", "--reload", "--host", "0.0.0.0", "--port", "8000"]
-    working_dir: /srv
+    working_dir: /srv/backend
     environment:
       APP_ENVIRONMENT: development
-    volumes: ["./backend/app:/srv/app"]
+    volumes: ["./backend/app:/srv/backend/app"]
     ports: ["127.0.0.1:${API_DEV_PORT:-8000}:8000"]
     depends_on: { db: { condition: service_healthy } }
 
@@ -57,7 +57,7 @@ services:
     profiles: ["prod-like"]
     <<: *hardening
     image: mail-assistant-api:local
-    build: { context: ./backend }
+    build: { context: ., dockerfile: backend/Dockerfile }
     environment:
       APP_ENVIRONMENT: production
     healthcheck:
@@ -77,10 +77,10 @@ services:
 
   api-test:
     profiles: ["test"]
-    build: { context: ./backend, target: build }
-    working_dir: /srv
+    build: { context: ., dockerfile: backend/Dockerfile, target: build }
+    working_dir: /srv/backend
     command: ["sh", "-c", "uv sync --frozen && uv run pytest"]
-    volumes: ["./backend:/srv"]
+    volumes: ["./backend:/srv/backend"]
     environment:
       APP_ENVIRONMENT: test
 
