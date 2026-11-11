@@ -122,12 +122,11 @@ async def test_given_the_insert_fails_when_recorded_then_nothing_is_raised_and_o
 
     await events.record("code_refused", "req-1", CLIENT)
 
-    lines = _lines(canary_log_records)
-    assert len(lines) == 1
-    assert "security_event.failed" in lines[0]
-    assert "error_class=" in lines[0]
-    assert "security_event_gone" not in lines[0]
-    assert "insert" not in lines[0].lower()
+    failures = [line for line in _lines(canary_log_records) if "security_event.failed" in line]
+    assert len(failures) == 1
+    assert "error_class=ProgrammingError" in failures[0]
+    assert "security_event_gone" not in failures[0]
+    assert "insert" not in failures[0].lower()
     assert all(r.exc_info is None for r in canary_log_records if r.name == "app.security_events")
 
 

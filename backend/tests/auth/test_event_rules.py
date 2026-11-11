@@ -37,6 +37,10 @@ def test_window_is_the_floor_of_epoch_minutes() -> None:
     assert event_rules.event_window(T0 + timedelta(seconds=60)) == base + 1
 
 
+def test_window_floors_instead_of_truncating_before_the_epoch() -> None:
+    assert event_rules.event_window(datetime(1969, 12, 31, 23, 59, 30, tzinfo=UTC)) == -1
+
+
 @pytest.mark.parametrize(
     ("client", "expected"),
     [
