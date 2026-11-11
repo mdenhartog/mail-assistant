@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     smtp_user: str = ""
     smtp_password: SecretStr = SecretStr("")
     smtp_starttls: bool = True
+    smtp_timeout_seconds: float = 10.0
 
     # Keys: at least 32 bytes each, all different.
     code_hash_key: SecretStr = SecretStr("")

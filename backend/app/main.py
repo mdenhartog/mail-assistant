@@ -11,7 +11,7 @@ from app.clock import Clock
 from app.codes import CodeSource
 from app.config import Settings, get_settings
 from app.ids import IdSource
-from app.mailer import Mailer
+from app.mail.sender import MailSender
 from app.startup import validate_startup
 
 API_PREFIX = "/api"
@@ -40,7 +40,7 @@ def discover_routers() -> list[MountedRouter]:
     return mounted
 
 
-def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: Mailer) -> FastAPI:
+def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSource, mailer: MailSender) -> FastAPI:
     """Build the FastAPI application after the start-up check.
 
     Args:

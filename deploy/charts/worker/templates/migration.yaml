@@ -1,5 +1,5 @@
 {{- if .Values.migration.enabled }}
-{{- $secret := required "migration.secretName is required when migration.enabled is true (name of the Secret with DATABASE_OWNER_URL and RUNTIME_ROLE_PASSWORD)" .Values.migration.secretName }}
+{{- $secret := required "migration.secretName is required when migration.enabled is true (name of the Secret with DATABASE_OWNER_URL, RUNTIME_ROLE_PASSWORD and WEB_ROLE_PASSWORD)" .Values.migration.secretName }}
 # The ServiceAccount and the NetworkPolicy are hooks too, with a lower weight and sync-wave than the Job (default 0): in a
 # PreSync phase they are created first, so the Job pod never starts without its policy. before-hook-creation keeps them
 # in place after the sync (they are replaced at the next one), so the policy still guards a Job that is retried.
@@ -83,6 +83,8 @@ spec:
               valueFrom: { secretKeyRef: { name: {{ $secret | quote }}, key: DATABASE_OWNER_URL } }
             - name: RUNTIME_ROLE_PASSWORD
               valueFrom: { secretKeyRef: { name: {{ $secret | quote }}, key: RUNTIME_ROLE_PASSWORD } }
+            - name: WEB_ROLE_PASSWORD  # no `optional`: a Secret without this key fails the pod, naming the key
+              valueFrom: { secretKeyRef: { name: {{ $secret | quote }}, key: WEB_ROLE_PASSWORD } }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

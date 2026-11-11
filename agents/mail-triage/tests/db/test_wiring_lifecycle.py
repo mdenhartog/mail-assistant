@@ -23,7 +23,13 @@ WIRING = Path(__file__).resolve().parents[2] / "app" / "wiring.py"
 
 
 def _settings(database_url: str, password: str = "runtime-lifecycle-test-only") -> MigrateSettings:  # noqa: S107
-    return load_migrate_settings({"DATABASE_OWNER_URL": database_url, "RUNTIME_ROLE_PASSWORD": password})
+    return load_migrate_settings(
+        {
+            "DATABASE_OWNER_URL": database_url,
+            "RUNTIME_ROLE_PASSWORD": password,
+            "WEB_ROLE_PASSWORD": "web-lifecycle-test-only",
+        }
+    )
 
 
 def test_given_the_agent_wiring_when_scanned_then_it_never_imports_or_calls_the_migrations_in_serve() -> None:

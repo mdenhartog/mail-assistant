@@ -1,7 +1,8 @@
 # Local run of the mail-triage agent: docker compose --profile components up mail-triage
 # The agent has no inbound port: it polls Gmail and Telegram. Secrets come from your .env, never from this file.
 # Two database roles (ADR-0025). The one-shot migrate service connects as the owner (the database's bootstrap user, so
-# the password is POSTGRES_PASSWORD) and creates the runtime role mail_triage_runtime with MAIL_TRIAGE_RUNTIME_PASSWORD.
+# the password is POSTGRES_PASSWORD) and creates the runtime role mail_triage_runtime with MAIL_TRIAGE_RUNTIME_PASSWORD and the web role
+# web_settings_runtime with WEB_ROLE_PASSWORD (empty means the job stops with exit code 2, naming the key).
 # The agent runs with that runtime role, which owns nothing, and starts only after the migration has completed.
 services:
   mail-triage-migrate:
@@ -19,6 +20,7 @@ services:
     environment:
       DATABASE_OWNER_URL: ${MAIL_TRIAGE_DATABASE_OWNER_URL:-postgresql+asyncpg://app:${POSTGRES_PASSWORD:-}@db:5432/app}
       RUNTIME_ROLE_PASSWORD: ${MAIL_TRIAGE_RUNTIME_PASSWORD:-}
+      WEB_ROLE_PASSWORD: ${WEB_ROLE_PASSWORD:-}
 
   mail-triage:
     profiles: ["components", "dev"]

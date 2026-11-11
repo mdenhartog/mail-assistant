@@ -11,7 +11,7 @@ from alembic import command
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.db.migrate import MIGRATION_LOCK_KEY, RUNTIME_ROLE, SchemaNotReady, check_schema, migrate_database
+from app.db.migrate import MIGRATION_LOCK_KEY, RUNTIME_ROLE, WEB_ROLE, SchemaNotReady, check_schema, migrate_database
 from tests.db.conftest import alembic_config
 
 if TYPE_CHECKING:
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from testcontainers.community.postgres import PostgresContainer
 
 PASSWORD = "runtime-job-test-only"  # noqa: S105  # a throwaway role inside a throwaway test container
+
+
+WEB_PASSWORD = "web-job-test-only"  # noqa: S105  # a throwaway role inside a throwaway test container
+PASSWORDS = {RUNTIME_ROLE: PASSWORD, WEB_ROLE: WEB_PASSWORD}
 
 
 def _dsn(url: str, *, user: str | None = None, password: str | None = None) -> dict[str, object]:
@@ -37,6 +41,7 @@ def _runtime_url(url: str, password: str = PASSWORD) -> str:
     return make_url(url).set(username=RUNTIME_ROLE, password=password).render_as_string(hide_password=False)
 
 
+SHARED_WEB_PASSWORD = "web-test-password"  # noqa: S105  # what the web role grant tests expect of the shared role
 SHARED_TEST_PASSWORD = "runtime-test-only"  # noqa: S105  # what the other database tests expect of the shared role
 
 
@@ -54,6 +59,8 @@ async def _leave_the_shared_role_as_found(pg_server: PostgresContainer) -> Async
     try:
         if await connection.fetchval("select 1 from pg_roles where rolname = $1", RUNTIME_ROLE):
             await connection.execute(f"ALTER ROLE {RUNTIME_ROLE} PASSWORD '{SHARED_TEST_PASSWORD}'")
+        if await connection.fetchval("select 1 from pg_roles where rolname = $1", WEB_ROLE):
+            await connection.execute(f"ALTER ROLE {WEB_ROLE} PASSWORD '{SHARED_WEB_PASSWORD}'")
     finally:
         await connection.close()
 
@@ -72,7 +79,7 @@ async def _as_runtime(url: str, password: str = PASSWORD) -> asyncpg.Connection:
 async def test_given_an_empty_database_when_the_job_runs_then_the_schema_the_role_and_the_grants_exist(
     database_url: str, owner: asyncpg.Connection
 ) -> None:
-    await migrate_database(database_url, PASSWORD)
+    await migrate_database(database_url, PASSWORDS)
 
     tables = {r["tablename"] for r in await owner.fetch("select tablename from pg_tables where schemaname = 'public'")}
     assert {"mail_item", "alert", "conversation", "alembic_version"} <= tables
@@ -104,8 +111,8 @@ async def test_given_an_empty_database_when_the_job_runs_then_the_schema_the_rol
 async def test_given_the_job_has_run_when_it_runs_again_then_nothing_breaks_and_nothing_is_duplicated(
     database_url: str, owner: asyncpg.Connection
 ) -> None:
-    await migrate_database(database_url, PASSWORD)
-    await migrate_database(database_url, PASSWORD)
+    await migrate_database(database_url, PASSWORDS)
+    await migrate_database(database_url, PASSWORDS)
 
     assert await owner.fetchval("select count(*) from pg_roles where rolname = $1", RUNTIME_ROLE) == 1
     assert await owner.fetchval("select count(*) from alembic_version") == 1
@@ -119,8 +126,8 @@ async def test_given_the_job_has_run_when_it_runs_again_then_nothing_breaks_and_
 async def test_given_a_new_password_when_the_job_runs_then_the_runtime_role_uses_it_and_the_old_one_is_dead(
     database_url: str,
 ) -> None:
-    await migrate_database(database_url, PASSWORD)
-    await migrate_database(database_url, "rotated-test-only")
+    await migrate_database(database_url, PASSWORDS)
+    await migrate_database(database_url, {**PASSWORDS, RUNTIME_ROLE: "rotated-test-only"})
 
     runtime = await _as_runtime(database_url, "rotated-test-only")
     await runtime.close()
@@ -133,7 +140,7 @@ async def test_given_a_password_with_quotes_and_semicolons_when_the_job_runs_the
 ) -> None:
     awkward = "o'brien\";--drop role x;"
 
-    await migrate_database(database_url, awkward)
+    await migrate_database(database_url, {**PASSWORDS, RUNTIME_ROLE: awkward})
 
     runtime = await _as_runtime(database_url, awkward)
     await runtime.close()
@@ -144,7 +151,7 @@ async def test_given_another_migration_holds_the_lock_when_the_job_runs_then_it_
 ) -> None:
     await owner.execute("select pg_advisory_lock($1)", MIGRATION_LOCK_KEY)
 
-    job = asyncio.create_task(migrate_database(database_url, PASSWORD))
+    job = asyncio.create_task(migrate_database(database_url, PASSWORDS))
     done, _ = await asyncio.wait({job}, timeout=1.5)
     assert not done, "the job must wait while another migration holds the lock"
     tables = await owner.fetchval("select count(*) from pg_tables where schemaname = 'public'")
@@ -166,7 +173,7 @@ async def test_given_the_wrong_owner_password_when_the_job_runs_then_the_error_d
     broken = make_url(database_url).set(password="wrong-owner-secret").render_as_string(hide_password=False)
 
     with pytest.raises(Exception) as error:  # noqa: PT011 - any driver error
-        await migrate_database(broken, PASSWORD)
+        await migrate_database(broken, PASSWORDS)
 
     assert "wrong-owner-secret" not in str(error.value)
     assert PASSWORD not in str(error.value)
@@ -200,9 +207,92 @@ async def test_given_a_schema_behind_the_head_when_it_is_checked_then_it_is_not_
 async def test_given_the_head_when_the_schema_is_checked_by_the_runtime_role_then_it_is_ready(
     database_url: str,
 ) -> None:
-    await migrate_database(database_url, PASSWORD)
+    await migrate_database(database_url, PASSWORDS)
     engine = create_async_engine(_runtime_url(database_url))
     try:
         await check_schema(engine)
     finally:
         await engine.dispose()
+
+
+# --- U-web-settings-08: the roles come from a list; the web role is created like the agent role (ADR-0030) ---
+
+
+async def test_given_two_roles_and_two_passwords_when_the_job_runs_then_both_log_in_with_scram_and_are_hardened(
+    database_url: str, owner: asyncpg.Connection
+) -> None:
+    await migrate_database(database_url, PASSWORDS)
+
+    rows = await owner.fetch(
+        "select r.rolname, r.rolcanlogin, r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolinherit, r.rolreplication, "
+        "r.rolbypassrls, a.rolpassword from pg_roles r join pg_authid a on a.oid = r.oid where r.rolname = any($1)",
+        [RUNTIME_ROLE, WEB_ROLE],
+    )
+    assert {row["rolname"] for row in rows} == {RUNTIME_ROLE, WEB_ROLE}
+    for row in rows:
+        assert (row["rolcanlogin"], row["rolsuper"], row["rolcreatedb"], row["rolcreaterole"]) == (
+            True,
+            False,
+            False,
+            False,
+        )
+        assert (row["rolinherit"], row["rolreplication"], row["rolbypassrls"]) == (False, False, False)
+        assert str(row["rolpassword"]).startswith("SCRAM-SHA-256$4096:")
+    members = await owner.fetchval(
+        "select count(*) from pg_auth_members m join pg_roles r on r.oid = m.member where r.rolname = any($1)",
+        [RUNTIME_ROLE, WEB_ROLE],
+    )
+    assert members == 0
+    for role, password in PASSWORDS.items():
+        connection = await asyncpg.connect(**_dsn(database_url, user=role, password=password))  # type: ignore[arg-type]
+        await connection.close()
+
+
+async def test_given_the_job_has_run_when_the_web_role_is_used_then_it_has_the_rights_of_grants_sql_only(
+    database_url: str,
+) -> None:
+    await migrate_database(database_url, PASSWORDS)
+
+    web = await asyncpg.connect(**_dsn(database_url, user=WEB_ROLE, password=WEB_PASSWORD))  # type: ignore[arg-type]
+    try:
+        assert await web.fetchval("select count(*) from settings.schedule") == 0
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await web.execute("select count(*) from mail_item")
+    finally:
+        await web.close()
+
+
+async def test_given_the_job_runs_twice_when_compared_then_roles_attributes_and_grants_are_the_same(
+    database_url: str, owner: asyncpg.Connection
+) -> None:
+    snapshot = (
+        "select r.rolname, r.rolinherit, r.rolreplication, r.rolbypassrls, "
+        "array(select g.privilege_type || ':' || g.table_schema || '.' || g.table_name "
+        " from information_schema.role_table_grants g where g.grantee = r.rolname order by 1) as grants "
+        "from pg_roles r where r.rolname = any($1) order by r.rolname"
+    )
+    await migrate_database(database_url, PASSWORDS)
+    first = [tuple(row) for row in await owner.fetch(snapshot, [RUNTIME_ROLE, WEB_ROLE])]
+
+    await migrate_database(database_url, PASSWORDS)
+    second = [tuple(row) for row in await owner.fetch(snapshot, [RUNTIME_ROLE, WEB_ROLE])]
+
+    assert first == second
+    assert len(first) == 2
+
+
+async def test_given_a_missing_web_role_password_when_the_command_runs_then_it_exits_naming_the_key_and_changes_nothing(
+    database_url: str, owner: asyncpg.Connection, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from app.main import EXIT_BAD_CONFIG, main  # noqa: PLC0415
+
+    env = {"DATABASE_OWNER_URL": database_url, "RUNTIME_ROLE_PASSWORD": PASSWORD}  # no WEB_ROLE_PASSWORD
+
+    assert main(env, argv=["migrate"]) == EXIT_BAD_CONFIG
+
+    err = capsys.readouterr().err
+    assert "WEB_ROLE_PASSWORD" in err
+    assert PASSWORD not in err
+    assert database_url not in err
+    tables = await owner.fetchval("select count(*) from pg_tables where schemaname = 'public'")
+    assert tables == 0  # not even the schema was touched

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import signal
 import uuid
 from datetime import UTC, datetime
@@ -25,13 +26,14 @@ from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
-from app.db.migrate import RuntimeRoleNotSafe, SchemaNotReady, check_schema, migrate_database
+from app.db.migrate import ROLES, RuntimeRoleNotSafe, SchemaNotReady, check_schema, migrate_database
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
+from app.db.pg_web_notice import PgWebNotice
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
 from app.usecases.deliver_alerts import AlertDelivery
@@ -42,6 +44,7 @@ from app.usecases.reply import ReplyService
 from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.snooze import SnoozeService
 from app.usecases.triage import TriagePipeline
+from app.usecases.web_notice import WebNotice
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -122,6 +125,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     heartbeat: Path,
     now: Callable[[], datetime],
     new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
+    new_token: Callable[[], str] = lambda: secrets.token_urlsafe(16),  # 22 characters: the notice's own Undo token
     today: Callable[[], str] | None = None,
 ) -> Runner:
     """Wire the store, the adapters and the use cases into a runner."""
@@ -152,6 +156,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),
+        web_notice=WebNotice(PgWebNotice(sessions), outbox, new_token),
         store=store,
         inbox=inbox,
         router=router,
@@ -178,9 +183,8 @@ async def verify_schema(engine: AsyncEngine) -> int | None:
 async def migrate(settings: MigrateSettings) -> int:
     """The migrate command: schema, runtime role and grants, as the owner role. Returns an exit code."""
     try:
-        await migrate_database(
-            settings.database_owner_url.get_secret_value(), settings.runtime_role_password.get_secret_value()
-        )
+        passwords = {role.name: getattr(settings, role.password_setting).get_secret_value() for role in ROLES}
+        await migrate_database(settings.database_owner_url.get_secret_value(), passwords)
     except RuntimeRoleNotSafe as error:
         logger.error("migration failed: %s", error)  # names the role only, never a password or a URL
         return EXIT_MIGRATION_FAILED
