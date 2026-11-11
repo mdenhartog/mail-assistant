@@ -120,6 +120,15 @@ async def test_given_an_alias_when_searched_then_the_result_equals_the_telegram_
     ]
 
 
+async def test_given_accents_and_case_when_searched_then_the_result_equals_the_plain_spelling(api: Api) -> None:
+    plain = (await api.search("Zurich")).json()
+
+    accented = (await api.search("ZÜRICH")).json()
+
+    assert plain["places"]
+    assert accented == plain
+
+
 # Criterion 4
 async def test_given_nothing_matches_when_searched_then_an_empty_list_without_error(api: Api) -> None:
     response = await api.search("Qqqqzzzz Xxxwwvv")

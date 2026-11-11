@@ -1,19 +1,6 @@
 {
   "components": {
     "schemas": {
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
-      },
       "HealthResponse": {
         "description": "Probe result.",
         "properties": {
@@ -162,46 +149,6 @@
         ],
         "title": "SessionInfo",
         "type": "object"
-      },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
-        "type": "object"
       }
     }
   },
@@ -213,15 +160,16 @@
   "paths": {
     "/api/places": {
       "get": {
-        "description": "Skeleton: not implemented yet.",
+        "description": "Find time zones for a typed place name, with the same lookup and aliases as Telegram.\n\nThe query is validated before matching and is never logged.\n\nArgs:\n    request: The request; its clock gives the moment the UTC offsets are computed for.\n    q: The typed text, at most 64 characters, no control characters.\n\nReturns:\n    Up to five places, or a suggestion for a near miss, or neither.",
         "operationId": "search_places_api_places_get",
         "parameters": [
           {
             "in": "query",
             "name": "q",
-            "required": false,
+            "required": true,
             "schema": {
-              "default": "",
+              "maxLength": 64,
+              "pattern": "^[^\\x00-\\x1f\\x7f]*$",
               "title": "Q",
               "type": "string"
             }
@@ -238,15 +186,11 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "No live session"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Query too long or invalid"
           }
         },
         "summary": "Search Places",
