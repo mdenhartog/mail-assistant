@@ -8,7 +8,7 @@ from collections.abc import Iterable
 
 from fastapi.routing import APIRoute
 
-from app.errors import ProblemError
+from app.auth.session import require_session
 
 AUTH_DEPENDENCY_MARKER = "__sdlc_auth__"
 AUTH_KINDS = frozenset({"public", "session"})
@@ -32,14 +32,7 @@ def public() -> None:
     """Mark a route as intentionally reachable without authentication."""
 
 
-def session() -> None:
-    """Require a session; refuses every request until the session store replaces it (U-web-settings-15).
-
-    Raises:
-        ProblemError: Always, with status 401 (fail closed).
-    """
-    raise ProblemError(401)
-
+session = require_session  # the dependency routes declare: a live session or 401, fail closed
 
 setattr(public, AUTH_DEPENDENCY_MARKER, "public")  # marker read by the route inventory test
 setattr(session, AUTH_DEPENDENCY_MARKER, "session")

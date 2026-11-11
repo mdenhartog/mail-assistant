@@ -256,6 +256,21 @@ async def test_given_the_logout_path_when_a_session_is_deleted_then_a_session_en
     assert value not in repr(tuple(event.values()))
 
 
+async def test_given_a_session_when_read_then_created_at_is_the_sign_in_time_and_touch_of_a_gone_one_is_a_noop(
+    store: SessionStore,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    value, created = await store.create(USER, T0)
+    found = await store.get(value, T0)
+    await store.delete(value, "req-1", CLIENT)
+
+    await store.touch(created, T0 + timedelta(minutes=1))
+
+    assert found is not None
+    assert found.created_at == T0
+    assert await _rows(owner) == []
+
+
 async def test_given_an_unknown_cookie_when_deleted_then_no_event_is_recorded(
     store: SessionStore,
     owner: asyncpg.Connection,  # noqa: F811
