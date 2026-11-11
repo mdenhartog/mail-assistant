@@ -69,7 +69,7 @@ async def _create_web_role(url: str) -> None:
     try:
         exists = await connection.fetchval("select 1 from pg_roles where rolname = $1", WEB_ROLE)
         if not exists:
-            await connection.execute(f"CREATE ROLE {WEB_ROLE} LOGIN PASSWORD '{WEB_PASSWORD}'")  # noqa: S608
+            await connection.execute(f"CREATE ROLE {WEB_ROLE} LOGIN PASSWORD '{WEB_PASSWORD}'")
         await connection.execute(f"GRANT USAGE ON SCHEMA settings TO {WEB_ROLE}")
         await connection.execute(f"GRANT SELECT, INSERT, UPDATE ON settings.schedule TO {WEB_ROLE}")
     finally:
@@ -116,7 +116,9 @@ async def test_given_revision_0007_with_settings_data_when_migrated_then_the_web
     } <= tables
     columns = {
         r["column_name"]
-        for r in await _fetch(database_url, "select column_name from information_schema.columns where table_name = 'poll_state'")
+        for r in await _fetch(
+            database_url, "select column_name from information_schema.columns where table_name = 'poll_state'"
+        )
     }
     assert "web_notice_version" in columns
     rows = await _fetch(database_url, "select version, updated_via, updated_by, quiet_start from settings.schedule")
@@ -145,20 +147,26 @@ async def test_given_0008_when_downgraded_then_everything_is_gone_the_old_guard_
 
     await _downgrade(database_url, "0007")
 
-    schemas = {r["schema_name"] for r in await _fetch(database_url, "select schema_name from information_schema.schemata")}
+    schemas = {
+        r["schema_name"] for r in await _fetch(database_url, "select schema_name from information_schema.schemata")
+    }
     assert "web_auth" not in schemas
     tables = {r["tablename"] for r in await _fetch(database_url, "select tablename from pg_tables")}
     assert "web_notice_token" not in tables
     columns = {
         r["column_name"]
-        for r in await _fetch(database_url, "select column_name from information_schema.columns where table_name = 'poll_state'")
+        for r in await _fetch(
+            database_url, "select column_name from information_schema.columns where table_name = 'poll_state'"
+        )
     }
     assert "web_notice_version" not in columns
     assert await _fetch(database_url, "select 1 from pg_proc where proname = 'contract_version'") == []
     guard = await _fetch(database_url, "select prosrc from pg_proc where proname = 'schedule_guard'")
     assert "web" not in guard[0]["prosrc"].replace("updated_via", "")
     # The 0006 guard still works: a step of one is accepted, a step of two is refused.
-    await _execute(database_url, "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'telegram'")
+    await _execute(
+        database_url, "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'telegram'"
+    )
     with pytest.raises(asyncpg.PostgresError):
         await _execute(database_url, "update settings.schedule set quiet_start = 661, version = 4")
 
@@ -175,7 +183,11 @@ async def test_given_the_web_role_when_it_updates_with_a_valid_actor_then_the_ch
     await web_connection.execute(_WEB_UPDATE.format(version=2, via="web"), GOOD_ACTOR)
 
     row = (await _fetch(migrated_url, "select updated_via, updated_by from settings.schedule"))[0]
-    audit = (await _fetch(migrated_url, "select via, by, db_role, new from settings.settings_change order by new->>'version'"))[-1]
+    audit = (
+        await _fetch(
+            migrated_url, "select via, by, db_role, new from settings.settings_change order by new->>'version'"
+        )
+    )[-1]
     assert (row["updated_via"], row["updated_by"]) == ("web", GOOD_ACTOR)
     assert (audit["via"], audit["by"], audit["db_role"]) == ("web", GOOD_ACTOR, WEB_ROLE)
     assert json.loads(audit["new"])["version"] == 2
@@ -183,7 +195,13 @@ async def test_given_the_web_role_when_it_updates_with_a_valid_actor_then_the_ch
 
 @pytest.mark.parametrize(
     "actor",
-    ["telegram:1", "web:" + "0123456789abcdef" * 2 + "0", ("web:" + "0123456789abcdef" * 2)[:-1], "web:" + "0123456789ABCDEF" * 2, ""],
+    [
+        "telegram:1",
+        "web:" + "0123456789abcdef" * 2 + "0",
+        ("web:" + "0123456789abcdef" * 2)[:-1],
+        "web:" + "0123456789ABCDEF" * 2,
+        "",
+    ],
 )
 async def test_given_the_web_role_when_updated_by_is_not_a_web_actor_then_42501(
     web_connection: asyncpg.Connection, actor: str
@@ -214,7 +232,8 @@ async def test_given_the_agent_role_and_the_owner_when_they_write_then_the_0006_
     await _execute(migrated_url, _SEED_SCHEDULE)
     # The owner keeps the channel it claims and any actor text.
     await _execute(
-        migrated_url, "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'web', updated_by = 'x'"
+        migrated_url,
+        "update settings.schedule set quiet_start = 660, version = 2, updated_via = 'web', updated_by = 'x'",
     )
     with pytest.raises(asyncpg.PostgresError) as skipped:
         await _execute(migrated_url, "update settings.schedule set quiet_start = 670, version = 4")
@@ -263,14 +282,19 @@ async def test_given_the_web_tables_when_their_columns_are_inspected_then_they_a
     }
     assert all(r["character_maximum_length"] is not None for r in rows if r["data_type"].startswith("char"))
     lengths = {(r["table_name"], r["column_name"]): r["character_maximum_length"] for r in rows}
-    for key in [("login_request", "code_hash"), ("login_request", "username_key"), ("session", "id_hash"), ("session", "username_hash")]:
+    for key in [
+        ("login_request", "code_hash"),
+        ("login_request", "username_key"),
+        ("session", "id_hash"),
+        ("session", "username_hash"),
+    ]:
         assert lengths[key] == 64
 
     connection = await asyncpg.connect(_plain(migrated_url))
     try:
         with pytest.raises(asyncpg.CheckViolationError):
             await connection.execute(
-                "insert into web_auth.security_event (kind, result, request_id, client_key, \"window\") "
+                'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
                 "values ('free text', 'ok', 'r', 'c', 1)"
             )
         with pytest.raises(asyncpg.DataError):
