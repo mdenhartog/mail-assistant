@@ -1,0 +1,3 @@
+# Mutants of app/auth/code_rules.py and app/auth/expiry.py that no behavioural test can kill (U-web-settings-11).
+# Format: one survivor per line: <operator> <occurrence> <reason>
+# Baseline run (cosmic-ray 8.7.0, annotations excluded with core/ReplaceBinaryOperator_BitOr_*): no survivors.
