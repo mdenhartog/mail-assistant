@@ -13,6 +13,7 @@ from app.config import Settings, get_settings
 from app.errors import install_error_handlers
 from app.ids import IdSource
 from app.limit_guard import NoopLimitGuard
+from app.logging_setup import configure_logging
 from app.mail.sender import MailSender
 from app.middleware import HttpSurfaceMiddleware
 from app.startup import validate_startup
@@ -57,6 +58,7 @@ def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSou
         The configured application.
     """
     validate_startup(settings)
+    configure_logging()
     app = FastAPI(
         title=settings.app_name,
         docs_url="/docs" if settings.docs_enabled else None,

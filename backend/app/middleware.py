@@ -9,6 +9,7 @@ from app.errors import problem_response
 from app.ids import IdSource
 
 logger = logging.getLogger(__name__)
+access_logger = logging.getLogger("app.access")
 
 CONTENT_SECURITY_POLICY = "script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 _FIXED_HEADERS = {
@@ -16,6 +17,14 @@ _FIXED_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
 }
+
+
+def _log_request(scope: Scope, status: int, request_id: str) -> None:
+    """Log one request line: method, matched path template, status, request id; never the query or the raw path."""
+    template = getattr(scope.get("route"), "path", None) or "unmatched"
+    access_logger.info(
+        "request method=%s route=%s status=%d request_id=%s", scope["method"], template, status, request_id
+    )
 
 
 class HttpSurfaceMiddleware:
@@ -39,6 +48,7 @@ class HttpSurfaceMiddleware:
             nonlocal started
             if message["type"] == "http.response.start":
                 started = True
+                _log_request(scope, message["status"], request_id)
                 headers = MutableHeaders(scope=message)
                 for name, value in _FIXED_HEADERS.items():
                     headers[name] = value
@@ -50,8 +60,8 @@ class HttpSurfaceMiddleware:
         try:
             await self._app(scope, receive, send_with_headers)
         except Exception as exc:
-            # Only the class name is logged: the message and the trace may carry user data.
-            logger.error("unhandled exception: %s", type(exc).__name__)
+            # Only the class name and request id are logged: the message and the trace may carry user data.
+            logger.error("unhandled exception class=%s request_id=%s", type(exc).__name__, request_id)
             if started:
                 raise
             await problem_response(500)(scope, receive, send_with_headers)
