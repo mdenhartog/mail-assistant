@@ -1,0 +1,105 @@
+{
+  "status": "draft",
+  "enforce": "warn",
+  "components": [
+    {
+      "id": "assistant",
+      "name": "assistant",
+      "kind": "agent",
+      "paths": [
+        "agents/assistant"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "mail-triage",
+      "name": "mail-triage",
+      "kind": "agent",
+      "paths": [
+        "agents/mail-triage"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "web",
+      "name": "web",
+      "kind": "frontend",
+      "paths": [
+        "apps/web"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "api",
+      "name": "API",
+      "kind": "backend",
+      "paths": [
+        "backend"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "chat-gateway",
+      "name": "chat-gateway",
+      "kind": "channel",
+      "paths": [
+        "channels/chat-gateway"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "platform",
+      "name": "Deployment",
+      "kind": "platform",
+      "paths": [
+        "deploy"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "tools",
+      "name": "tools",
+      "kind": "mcp-server",
+      "paths": [
+        "mcp-servers/tools"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "schedule-policy",
+      "name": "schedule-policy",
+      "kind": "shared",
+      "paths": [
+        "packages/schedule-policy"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "tokens",
+      "name": "tokens",
+      "kind": "shared",
+      "paths": [
+        "packages/tokens"
+      ],
+      "responsibility": "",
+      "owns": [],
+      "dependsOn": []
+    }
+  ]
+}

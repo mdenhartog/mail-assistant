@@ -13,7 +13,13 @@
     "components:upgrade": "node scripts/components.mjs upgrade",
     "status": "node scripts/status.mjs",
     "docs:api": "node scripts/docs.mjs api",
-    "docs:check": "node scripts/docs.mjs check"
+    "docs:check": "node scripts/docs.mjs check",
+    "check:unit": "node scripts/check.mjs unit",
+    "check:full": "node scripts/check.mjs full --reuse",
+    "integrate": "node scripts/integrate.mjs status",
+    "architecture": "node scripts/architecture.mjs check",
+    "architecture:render": "node scripts/architecture.mjs render",
+    "images": "node scripts/images.mjs sync"
   },
   "devDependencies": {
     "knip": "^6.44.2"
