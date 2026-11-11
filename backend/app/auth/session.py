@@ -173,8 +173,33 @@ def session_cookie(value: str) -> str:
 
 
 def clear_session_cookie() -> str:
-    """Build the ``Set-Cookie`` value that ends the session cookie in the browser."""
-    raise NotImplementedError
+    """Build the ``Set-Cookie`` value that ends the session cookie in the browser (same attributes, expired now).
+
+    Returns:
+        The header value.
+    """
+    jar: SimpleCookie = SimpleCookie()
+    jar[COOKIE_NAME] = ""
+    morsel = jar[COOKIE_NAME]
+    morsel["httponly"] = True
+    morsel["secure"] = True
+    morsel["samesite"] = "Lax"
+    morsel["path"] = "/"
+    morsel["max-age"] = "0"
+    morsel["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
+    return morsel.OutputString()
+
+
+def client_key(request: Request) -> str:
+    """Return the client key for events: the peer address until the client key of U-web-settings-24 exists.
+
+    Args:
+        request: The request.
+
+    Returns:
+        The address of the peer, or ``unknown``.
+    """
+    return request.client.host if request.client else _UNKNOWN_CLIENT
 
 
 def attach_sessions(app: FastAPI, store: SessionStore, events: SecurityEvents) -> None:
@@ -212,8 +237,7 @@ async def require_session(request: Request) -> Session:
     try:
         found = await store.get(request.cookies.get(COOKIE_NAME), now)
     except WebLocked:
-        client = request.client.host if request.client else _UNKNOWN_CLIENT
-        await state.security_events.record("lock_refused", request.state.request_id, client)
+        await state.security_events.record("lock_refused", request.state.request_id, client_key(request))
         raise ProblemError(401) from None
     if found is None:
         raise ProblemError(401)

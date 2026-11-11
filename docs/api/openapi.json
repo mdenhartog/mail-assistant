@@ -15,6 +15,43 @@
         ],
         "title": "HealthResponse",
         "type": "object"
+      },
+      "SessionInfo": {
+        "additionalProperties": false,
+        "description": "What the page needs to know about the signed-in session; no username and no full address.",
+        "properties": {
+          "absoluteExpiresAt": {
+            "format": "date-time",
+            "title": "Absoluteexpiresat",
+            "type": "string"
+          },
+          "csrfToken": {
+            "title": "Csrftoken",
+            "type": "string"
+          },
+          "idleExpiresAt": {
+            "format": "date-time",
+            "title": "Idleexpiresat",
+            "type": "string"
+          },
+          "maskedAddress": {
+            "title": "Maskedaddress",
+            "type": "string"
+          },
+          "noticeIntervalMinutes": {
+            "title": "Noticeintervalminutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maskedAddress",
+          "csrfToken",
+          "idleExpiresAt",
+          "absoluteExpiresAt",
+          "noticeIntervalMinutes"
+        ],
+        "title": "SessionInfo",
+        "type": "object"
       }
     }
   },
@@ -24,6 +61,55 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/session": {
+      "get": {
+        "description": "Return the masked address, the CSRF token and the expiry times of the session.\n\nOnly a same-origin request (``Sec-Fetch-Site`` absent or ``same-origin``) gets the token.\n\nArgs:\n    request: The request.\n    current: The live session.\n\nReturns:\n    The session information.\n\nRaises:\n    ProblemError: 403 (through ``refuse``) for a request that is not same-origin.",
+        "operationId": "read_session_api_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Not a same-origin request"
+          }
+        },
+        "summary": "Read Session",
+        "tags": [
+          "session"
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "description": "End the session on the server and clear the cookie.\n\nArgs:\n    request: The request; its cookie names the session to delete.\n\nReturns:\n    An empty 204 that clears the ``__Host-session`` cookie.",
+        "operationId": "logout_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "CSRF check failed"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "session"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "description": "Report that the process is alive.\n\nReturns:\n    A fixed ``ok`` status.",

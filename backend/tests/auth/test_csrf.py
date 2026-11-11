@@ -101,3 +101,8 @@ def test_given_no_header_or_same_origin_when_checked_then_the_fetch_site_is_acce
 @pytest.mark.parametrize("value", ["cross-site", "same-site", "none", "", "Same-Origin", "unknown"])
 def test_given_any_other_fetch_site_when_checked_then_it_is_refused(value: str) -> None:
     assert fetch_site_ok(value) is False
+
+
+def test_given_a_public_origin_with_a_port_when_checked_then_the_port_must_match() -> None:
+    assert origin_ok("https://settings.example.test:8443", "https://settings.example.test:8443") is True
+    assert origin_ok("https://settings.example.test:8443", PUBLIC) is False
