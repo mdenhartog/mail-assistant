@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// E2E runs against the prod-like stack (docker compose --profile prod-like) or a PR preview.
+// E2E runs against the prod-like TLS edge (docker compose --profile prod-like, after deploy/prod-like/certs.sh) or a PR
+// preview. The browser must trust deploy/prod-like/certs/ca.crt (certificate checks stay on).
 export default defineConfig({
   testDir: "./e2e",
   testIgnore: ["**/*.gxp.spec.ts"], // GAMP 5 scenarios run via playwright.gxp.config.ts
@@ -9,7 +10,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["html", { open: "never" }], ["github"]] : "list",
   use: {
-    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:8080",
+    baseURL: process.env.E2E_BASE_URL ?? "https://mail-assistant.localhost:8443",
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },
