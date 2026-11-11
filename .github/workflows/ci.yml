@@ -185,7 +185,8 @@ jobs:
           echo "$headers" | grep -i '^content-security-policy:'
           echo "$headers" | grep -i '^x-content-type-options: nosniff'
           for path in / /login /settings; do
-            test "$(curl_edge -o /dev/null -w '%{http_code}' "$base$path")" = 200
+            code="$(curl_edge -o /dev/null -w '%{http_code}' "$base$path")"
+            test "$code" = 200 || { echo "$path answered $code"; exit 1; }
           done
           for path in /docs /redoc /openapi.json /healthz /readyz /metrics /api/docs /api/openapi.json /api/readyz /auth/anything-unknown /anything; do
             code="$(curl_edge -o /dev/null -w '%{http_code}' "$base$path")"
