@@ -143,6 +143,10 @@ def test_given_sent_codes_older_than_an_hour_when_asked_then_they_do_not_count()
     assert wait_seconds(None, sent, T0 + timedelta(seconds=3604), COOLDOWN, CAP) == 0
 
 
+def test_given_a_cap_of_one_and_one_sent_code_when_asked_then_the_wait_is_until_it_leaves_the_hour() -> None:
+    assert wait_seconds(T0, _sent(0), T0 + timedelta(seconds=100), COOLDOWN, 1) == 3500
+
+
 def test_given_a_naive_time_when_asked_then_it_is_refused() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         wait_seconds(None, [], datetime(2026, 3, 1, 14, 0, 0), COOLDOWN, CAP)  # noqa: DTZ001

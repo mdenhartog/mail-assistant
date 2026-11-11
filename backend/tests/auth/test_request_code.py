@@ -158,7 +158,7 @@ async def test_given_both_cases_when_the_work_is_counted_then_the_same_steps_run
 
     monkeypatch.setattr(login_requests, "hash_code", count_hash(login_requests.hash_code))
     monkeypatch.setattr(request_code, "hash_code", count_hash(request_code.hash_code))
-    for name in ("last_requested_at", "sent_times_in_last_hour", "create", "pad", "mark_sent"):
+    for name in ("last_requested_at", "sent_times_in_last_hour", "create", "pad"):  # mark_sent runs after the answer
         original = getattr(api.store, name)
 
         def spy(*args: Any, _name: str = name, _original: Callable[..., Awaitable[Any]] = original) -> Awaitable[Any]:
