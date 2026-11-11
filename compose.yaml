@@ -75,6 +75,34 @@ services:
     ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
     depends_on: { api: { condition: service_healthy } }
 
+  # The TLS edge (ADR-0037): HTTPS from a private CA made by deploy/prod-like/certs.sh, local host name only.
+  # /api and /auth go to api, the rest to web. Run deploy/prod-like/certs.sh before the first `up`.
+  edge:
+    profiles: ["prod-like"]
+    <<: *hardening
+    image: caddy:2.10.2-alpine
+    user: "10001:10001"
+    tmpfs: ["/tmp", "/data:uid=10001,gid=10001", "/config:uid=10001,gid=10001"]
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    environment:
+      EDGE_HTTPS_PORT: ${EDGE_HTTPS_PORT:-8443}
+    ports:
+      - "127.0.0.1:${EDGE_HTTPS_PORT:-8443}:8443"
+      - "127.0.0.1:${EDGE_HTTP_PORT:-8081}:8081"
+    volumes:
+      - ./deploy/prod-like/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/prod-like/certs:/certs:ro
+    networks:
+      default:
+        aliases: ["mail-assistant.localhost"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8082/healthz"]
+      interval: 5s
+      retries: 10
+    depends_on:
+      api: { condition: service_healthy }
+      web: { condition: service_healthy }
+
   api-test:
     profiles: ["test"]
     build: { context: ., dockerfile: backend/Dockerfile, target: build }

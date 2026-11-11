@@ -1,0 +1,55 @@
+# Prod-like TLS edge (U-web-settings-37, ADR-0037): HTTPS from a private CA, local host name only.
+# Routes: /api/* and /auth/* to the api, everything else to the web image (which answers 404 for unknown paths).
+# The certificates come from deploy/prod-like/certs.sh (git-ignored, never committed).
+# Ports inside the container are unprivileged (the container drops all capabilities); compose publishes them on 127.0.0.1.
+{
+	admin off
+	auto_https off
+	log {
+		output stderr
+		level WARN
+	}
+}
+
+# Plain HTTP only redirects. The public HTTPS port is passed in, because compose maps it.
+http://:8081 {
+	redir https://mail-assistant.localhost:{$EDGE_HTTPS_PORT:8443}{uri} permanent
+}
+
+# Container health, bound to the loopback of the container and not published.
+http://127.0.0.1:8082 {
+	bind 127.0.0.1
+	respond /healthz 200
+}
+
+https://mail-assistant.localhost:8443 {
+	tls /certs/server.crt /certs/server.key {
+		protocols tls1.2 tls1.3
+	}
+
+	# HSTS without includeSubDomains and without preload (ADR-0037, AC-18).
+	header Strict-Transport-Security "max-age=31536000"
+
+	# The access log has the path only: the query string and the request and response headers are dropped (AC-20).
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>uri regexp \?.* ""
+			request>headers delete
+			resp_headers delete
+		}
+	}
+
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	handle /auth/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+}

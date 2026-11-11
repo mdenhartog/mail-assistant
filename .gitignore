@@ -28,3 +28,6 @@ docs/tutorials/videos/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Prod-like TLS material (made by deploy/prod-like/certs.sh)
+deploy/prod-like/certs/
