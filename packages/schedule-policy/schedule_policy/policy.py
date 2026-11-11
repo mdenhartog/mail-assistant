@@ -15,6 +15,8 @@ MIN_WINDOW_MINUTES = 60
 MAX_WINDOW_MINUTES = 12 * 60
 MAX_SHOWN_LENGTH = 64  # a refused zone text is echoed back at most this long
 
+RULES: tuple[str, ...] = ()  # skeleton: filled in the next commit
+
 
 @dataclass(frozen=True, slots=True)
 class TimePolicy:
