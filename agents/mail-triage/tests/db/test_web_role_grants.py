@@ -1,4 +1,5 @@
 """U-web-settings-07: the web role of ADR-0033 has exactly the rights of app/db/grants.sql, per table and column."""
+# ruff: noqa: S608  # every statement is a fixed test literal inside a throwaway container, never user input
 
 from __future__ import annotations
 
@@ -15,16 +16,17 @@ if TYPE_CHECKING:
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB = "web_settings_runtime"
 AGENT = "mail_triage_runtime"
-PASSWORD = "role-test-only"  # noqa: S105  # throwaway roles inside a throwaway test container
+# Roles are cluster-wide: use the same throwaway passwords as the other db tests that create them.
+PASSWORDS = {WEB: "web-test-password", AGENT: "runtime-test-only"}
 ACTOR = "web:" + "ab" * 16
 
 _CREATE_ROLES = f"""
 DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{WEB}') THEN
-        CREATE ROLE {WEB} LOGIN PASSWORD '{PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+        CREATE ROLE {WEB} LOGIN PASSWORD '{PASSWORDS[WEB]}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{AGENT}') THEN
-        CREATE ROLE {AGENT} LOGIN PASSWORD '{PASSWORD}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+        CREATE ROLE {AGENT} LOGIN PASSWORD '{PASSWORDS[AGENT]}' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
 END $$
 """
@@ -38,7 +40,9 @@ _UPDATE = f"update settings.schedule set quiet_start = 660, version = 2, updated
 
 async def _connect(migrated_url: str, role: str) -> asyncpg.Connection:
     url = make_url(migrated_url)
-    return await asyncpg.connect(host=url.host, port=url.port, user=role, password=PASSWORD, database=url.database)
+    return await asyncpg.connect(
+        host=url.host, port=url.port, user=role, password=PASSWORDS[role], database=url.database
+    )
 
 
 @pytest.fixture
@@ -79,7 +83,7 @@ async def test_given_the_web_role_when_it_inserts_selects_and_updates_the_allowe
     await web.execute(_FIRST_ROW)
     await web.execute(_UPDATE)
     await web.execute(
-        "update settings.schedule set zone = 'UTC', quiet_end = 1, overview_at = 2, remind_at = 3, "
+        "update settings.schedule set zone = 'UTC', quiet_end = 960, overview_at = 1020, remind_at = 480, "
         f"version = 3, updated_via = 'web', updated_by = '{ACTOR}'"
     )
 
@@ -124,7 +128,7 @@ async def test_given_the_web_role_when_it_goes_beyond_the_allowed_columns_then_p
 async def test_given_the_web_role_when_it_selects_from_public_then_postgres_refuses_it(
     web: asyncpg.Connection, table: str
 ) -> None:
-    assert await _refused(web, f"select * from public.{table}") == "42501"  # noqa: S608  # fixed test names
+    assert await _refused(web, f"select * from public.{table}") == "42501"  # fixed test names
 
 
 @pytest.mark.parametrize(
@@ -176,7 +180,7 @@ async def test_given_the_web_role_when_it_works_the_web_auth_tables_then_it_has_
     )
     await web.execute("update web_auth.session set last_seen_at = now()")
     await web.execute(
-        "insert into web_auth.security_event (kind, result, request_id, client_key, \"window\") "
+        'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
         "values ('session_start', 'ok', 'q1', 'k1', 1)"
     )
 
@@ -236,7 +240,7 @@ async def test_given_the_agent_role_when_it_inserts_and_updates_the_web_lock_the
         "select * from web_auth.session",
         "select * from web_auth.login_request",
         "select * from web_auth.security_event",
-        "insert into web_auth.security_event (kind, result, request_id, client_key, \"window\") "
+        'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
         "values ('session_start', 'ok', 'q1', 'k1', 1)",
         "delete from web_auth.session",
         "update web_auth.login_request set attempts = 1",
