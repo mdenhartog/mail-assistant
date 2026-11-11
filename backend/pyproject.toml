@@ -7,6 +7,7 @@ dependencies = [
     "fastapi>=0.162.2",
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.2",
+    "schedule-policy",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -31,6 +32,9 @@ dev = [
 [tool.uv]
 exclude-newer = "7 days"
 package = false
+
+[tool.uv.sources]
+schedule-policy = { path = "../packages/schedule-policy" }
 
 # Temporary: versions already locked that are younger than the cooldown. Remove after 2026-11-15 (ADR-0022).
 [tool.uv.exclude-newer-package]
@@ -68,7 +72,7 @@ max-complexity = 8
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["app", "schedule_policy"]
 
 [tool.pyright]
 typeCheckingMode = "strict"
@@ -89,7 +93,7 @@ omit = ["app/__main__.py"]
 exclude_dirs = ["tests", ".venv"]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["uvicorn"]  # used as the server in the Dockerfile, not imported
+DEP002 = ["uvicorn", "schedule-policy"]  # uvicorn: the server in the Dockerfile; schedule-policy: no code imports it yet (U-web-settings-03+)
 
 [tool.vulture]
 paths = ["app"]
