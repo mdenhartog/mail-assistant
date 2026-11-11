@@ -83,3 +83,13 @@ def validate_startup(settings: Settings) -> None:
     if fields:
         logger.error("startup.refused fields=%s", ", ".join(fields))
         raise ConfigurationError(fields)
+
+
+async def purge_expired(database: object, clock: object) -> None:
+    """Skeleton."""
+    raise NotImplementedError
+
+
+def attach_database(app: object, database: object, clock: object) -> None:
+    """Skeleton."""
+    raise NotImplementedError

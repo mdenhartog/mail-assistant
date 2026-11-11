@@ -16,6 +16,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "alembic>=1.20.1",
+    "asyncpg-stubs>=0.31.2",
     "bandit>=1.9.4",
     "cryptography>=50.0.2",
     "deptry>=0.25.1",
