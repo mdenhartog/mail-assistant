@@ -24,7 +24,15 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
-    volumes: ["db-data:/var/lib/postgresql"]
+    # TLS (ADR-0037, W-9): when deploy/prod-like/certs.sh has made db.crt and db.key, db-tls.sh turns TLS on and loads the
+    # pg_hba.conf that lets the web role in over TLS only. Without them (dev, test) the database starts as before.
+    entrypoint: ["/bin/sh", "/usr/local/bin/db-tls.sh"]
+    command: ["postgres"]
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./deploy/prod-like/db-tls.sh:/usr/local/bin/db-tls.sh:ro
+      - ./deploy/prod-like/pg_hba.conf:/etc/postgresql-tls/pg_hba.conf:ro
+      - ./deploy/prod-like/certs:/certs:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 5s
@@ -60,6 +68,13 @@ services:
     build: { context: ., dockerfile: backend/Dockerfile }
     environment:
       APP_ENVIRONMENT: production
+      # The web role over TLS with the host name checked against the private CA (asyncpg `ssl`, not libpq `sslmode`).
+      # The role and its password are made by the migrate service (WEB_ROLE_PASSWORD); the owner credentials stay there.
+      APP_DATABASE_URL: postgresql+asyncpg://web_settings_runtime:${WEB_ROLE_PASSWORD:-}@db:5432/app
+      APP_DATABASE_SSL: verify-full
+      APP_DATABASE_CA_FILE: /certs/ca.crt
+    volumes:
+      - ./deploy/prod-like/certs/ca.crt:/certs/ca.crt:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
       interval: 5s
