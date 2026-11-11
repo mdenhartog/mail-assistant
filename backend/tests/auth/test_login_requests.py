@@ -261,3 +261,34 @@ async def test_given_a_stored_request_when_read_as_the_owner_then_only_the_hash_
     assert RIGHT not in row["whole"]
     assert len(row["code_hash"]) == 64
     assert request.id in row["whole"]
+
+
+async def test_given_sent_codes_when_their_times_are_read_then_only_those_of_the_last_hour_come_oldest_first(
+    store: LoginRequests,
+) -> None:
+    for offset in (120, 0, 60):
+        moment = T0 + timedelta(seconds=offset)
+        request = await store.create(USER, RIGHT, moment, CAP)
+        await store.mark_sent(request.id, moment)
+    unsent = await store.create(USER, RIGHT, T0 + timedelta(seconds=180), CAP)
+    other = await store.create(OTHER, RIGHT, T0, CAP)
+    await store.mark_sent(other.id, T0)
+    assert unsent.id
+
+    now = T0 + timedelta(seconds=3660)
+
+    assert await store.sent_times_in_last_hour(USER, now) == [T0 + timedelta(seconds=120)]
+    assert await store.sent_times_in_last_hour(USER, T0 + timedelta(seconds=3599)) == [
+        T0,
+        T0 + timedelta(seconds=60),
+        T0 + timedelta(seconds=120),
+    ]
+
+
+async def test_given_the_pad_when_run_then_it_writes_nothing(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await store.pad()
+
+    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 0

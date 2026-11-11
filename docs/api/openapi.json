@@ -16,6 +16,49 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "RequestCodeBody": {
+        "additionalProperties": false,
+        "description": "The username a code is asked for: 1 to 64 characters, no control characters.",
+        "properties": {
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ],
+        "title": "RequestCodeBody",
+        "type": "object"
+      },
+      "RequestCodeResponse": {
+        "description": "The same answer for every username.",
+        "properties": {
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "maskedAddress": {
+            "title": "Maskedaddress",
+            "type": "string"
+          },
+          "resendAfterSeconds": {
+            "title": "Resendafterseconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maskedAddress",
+          "expiresAt",
+          "resendAfterSeconds"
+        ],
+        "title": "RequestCodeResponse",
+        "type": "object"
+      },
       "SessionInfo": {
         "additionalProperties": false,
         "description": "What the page needs to know about the signed-in session; no username and no full address.",
@@ -107,6 +150,47 @@
         "summary": "Logout",
         "tags": [
           "session"
+        ]
+      }
+    },
+    "/auth/request-code": {
+      "post": {
+        "description": "Ask for a sign-in code; the answer and the cookie are the same for every username.\n\nArgs:\n    body: The username.\n    request: The request.\n    response: The response, which gets the login cookie.\n    background: Sends the message after the answer.\n    service: The use case.\n\nReturns:\n    The masked address, the expiry and the wait before the next request.",
+        "operationId": "request_code_auth_request_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCodeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestCodeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Wrong or missing Origin"
+          },
+          "422": {
+            "description": "Invalid username"
+          },
+          "429": {
+            "description": "Cooldown or hourly cap; see Retry-After"
+          }
+        },
+        "summary": "Request Code",
+        "tags": [
+          "auth"
         ]
       }
     },

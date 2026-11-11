@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import cast
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -20,6 +21,7 @@ _TITLES: dict[int, str] = {
     405: "Method not allowed",
     413: "Payload too large",
     415: "Unsupported media type",
+    422: "Unprocessable content",
     429: "Too many requests",
     500: "Internal server error",
 }
@@ -69,6 +71,11 @@ async def _on_problem(_request: Request, exc: Exception) -> JSONResponse:
     return problem_response(error.status)
 
 
+async def _on_invalid_request(_request: Request, _exc: Exception) -> JSONResponse:
+    # The default body echoes the rejected input; the generic problem names neither field nor value.
+    return problem_response(422)
+
+
 async def _on_rate_limited(_request: Request, exc: Exception) -> JSONResponse:
     error = cast("RateLimited", exc)
     return problem_response(429, {"Retry-After": str(int(error.retry_after_seconds))})
@@ -82,4 +89,5 @@ def install_error_handlers(app: FastAPI) -> None:
     """
     app.add_exception_handler(StarletteHTTPException, _on_http_exception)
     app.add_exception_handler(ProblemError, _on_problem)
+    app.add_exception_handler(RequestValidationError, _on_invalid_request)
     app.add_exception_handler(RateLimited, _on_rate_limited)

@@ -40,6 +40,11 @@ _LAST_REQUESTED = text("SELECT max(created_at) FROM web_auth.login_request WHERE
 _SENT_SINCE = text(
     "SELECT count(*) FROM web_auth.login_request WHERE username_key = :username_key AND sent_at > :since"
 )
+_SENT_TIMES = text(
+    "SELECT sent_at FROM web_auth.login_request "
+    "WHERE username_key = :username_key AND sent_at > :since ORDER BY sent_at"
+)
+_PAD = text("SELECT 1")
 
 
 @dataclass(frozen=True)
@@ -189,3 +194,14 @@ class LoginRequests:
         async with self._database.session() as session, session.begin():
             result = await session.execute(_SENT_SINCE, {"username_key": username_key, "since": now - RETENTION})
             return result.scalar_one()
+
+    async def sent_times_in_last_hour(self, username_key: str, now: datetime) -> list[datetime]:
+        """Return when the codes of the username were sent, less than an hour before ``now``, oldest first."""
+        async with self._database.session() as session, session.begin():
+            result = await session.execute(_SENT_TIMES, {"username_key": username_key, "since": now - RETENTION})
+            return list(result.scalars())
+
+    async def pad(self) -> None:
+        """Run one empty transaction, so a request for an unknown username costs as many round trips."""
+        async with self._database.session() as session, session.begin():
+            await session.execute(_PAD)
