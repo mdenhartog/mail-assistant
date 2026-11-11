@@ -10,8 +10,11 @@ from app import routers
 from app.clock import Clock
 from app.codes import CodeSource
 from app.config import Settings, get_settings
+from app.errors import install_error_handlers
 from app.ids import IdSource
+from app.limit_guard import NoopLimitGuard
 from app.mailer import Mailer
+from app.middleware import HttpSurfaceMiddleware
 from app.startup import validate_startup
 
 API_PREFIX = "/api"
@@ -65,6 +68,9 @@ def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSou
     app.state.ids = ids
     app.state.codes = codes
     app.state.mailer = mailer
+    app.state.limit_guard = NoopLimitGuard()  # replaced by the real guard in U-web-settings-24
+    install_error_handlers(app)
+    app.add_middleware(HttpSurfaceMiddleware, ids=ids)
     for mounted in discover_routers():
         app.include_router(mounted.router, prefix=mounted.prefix)
     return app

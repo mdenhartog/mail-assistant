@@ -19,9 +19,20 @@ class NoopLimitGuard:
 
     async def check(self, bucket: str, request: Request) -> None:
         """Do nothing."""
-        raise NotImplementedError
 
 
 def limit(bucket: str) -> Callable[[Request], Awaitable[None]]:
-    """Return a FastAPI dependency that checks the application's guard for the bucket."""
-    raise NotImplementedError
+    """Return a FastAPI dependency that checks the application's guard for the bucket.
+
+    Args:
+        bucket: Name of the limit bucket the route counts against.
+
+    Returns:
+        A dependency to put in ``dependencies=[Depends(limit("..."))]``.
+    """
+
+    async def dependency(request: Request) -> None:
+        guard: LimitGuard = request.app.state.limit_guard
+        await guard.check(bucket, request)
+
+    return dependency
