@@ -40,12 +40,14 @@ GRANT SELECT ON settings.settings_change TO mail_triage_runtime;
 REVOKE ALL ON SCHEMA web_auth FROM mail_triage_runtime;
 REVOKE ALL ON ALL TABLES IN SCHEMA web_auth FROM mail_triage_runtime;
 GRANT USAGE ON SCHEMA web_auth TO mail_triage_runtime;
-GRANT SELECT, INSERT, UPDATE ON web_auth.web_lock TO mail_triage_runtime;
+-- A row means locked; only a Telegram command lifts the lock, by deleting the row (no truncate).
+GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.web_lock TO mail_triage_runtime;
 -- A token is created with a notice, read when "Undo" is tapped, and removed once used or expired.
 GRANT SELECT, INSERT, UPDATE, DELETE ON web_notice_token TO mail_triage_runtime;
 
 -- The web role (ADR-0033): per table and per column, nothing on public and nothing on settings.settings_change. The
 -- role is created by the migrate job; where it does not exist yet (before U-web-settings-08) this block is skipped.
+-- U-web-settings-08 removes the DO guard once the migrate job creates the role, so a missing role fails loudly.
 DO $web$
 BEGIN
     IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'web_settings_runtime') THEN
