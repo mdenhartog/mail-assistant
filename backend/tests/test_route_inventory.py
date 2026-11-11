@@ -61,6 +61,12 @@ def test_given_the_r1_build_when_the_allow_list_is_read_then_it_is_exactly_the_d
     assert set(ROUTE_ALLOW_LIST) == R1_PATHS
 
 
+def test_given_the_mounted_routes_when_read_then_the_paths_equal_the_allow_list_but_settings() -> None:
+    mounted = {path for path, _ in _routes()}
+
+    assert mounted == set(ROUTE_ALLOW_LIST) - {"/api/settings"}  # GET /api/settings arrives with U-web-settings-20
+
+
 def test_the_mounted_routes_pass_the_inventory() -> None:
     assert inventory_violations(_routes()) == []
 

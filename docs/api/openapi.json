@@ -1,6 +1,19 @@
 {
   "components": {
     "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Probe result.",
         "properties": {
@@ -14,6 +27,60 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "Place": {
+        "additionalProperties": false,
+        "description": "One selectable time zone.",
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "utcOffsetMinutes": {
+            "title": "Utcoffsetminutes",
+            "type": "integer"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "label",
+          "utcOffsetMinutes"
+        ],
+        "title": "Place",
+        "type": "object"
+      },
+      "PlaceResults": {
+        "additionalProperties": false,
+        "description": "Up to five places, or a near-miss suggestion, or neither.",
+        "properties": {
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "title": "Places",
+            "type": "array"
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion"
+          }
+        },
+        "required": [
+          "places"
+        ],
+        "title": "PlaceResults",
         "type": "object"
       },
       "RequestCodeBody": {
@@ -95,6 +162,46 @@
         ],
         "title": "SessionInfo",
         "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
       }
     }
   },
@@ -104,6 +211,50 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/places": {
+      "get": {
+        "description": "Skeleton: not implemented yet.",
+        "operationId": "search_places_api_places_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceResults"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Places",
+        "tags": [
+          "places"
+        ]
+      }
+    },
     "/api/session": {
       "get": {
         "description": "Return the masked address, the CSRF token and the expiry times of the session.\n\nOnly a same-origin request (``Sec-Fetch-Site`` absent or ``same-origin``) gets the token.\n\nArgs:\n    request: The request.\n    current: The live session.\n\nReturns:\n    The session information.\n\nRaises:\n    ProblemError: 403 (through ``refuse``) for a request that is not same-origin.",
