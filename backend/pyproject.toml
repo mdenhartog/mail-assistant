@@ -8,6 +8,7 @@ dependencies = [
     "pydantic>=2.14.3",
     "pydantic-settings>=2.16.2",
     "schedule-policy",
+    "starlette>=1.10.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
