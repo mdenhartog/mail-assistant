@@ -1,4 +1,6 @@
 import logging
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -206,3 +208,10 @@ def test_given_ci_workflow_when_read_then_backend_job_runs_uv_run_pytest() -> No
     workflows = (BACKEND.parent / ".github" / "workflows").glob("*.y*ml")
 
     assert any("uv run pytest" in path.read_text(encoding="utf-8") for path in workflows)
+
+
+def test_given_app_package_when_vulture_runs_then_no_dead_code_is_reported() -> None:
+    result = subprocess.run([sys.executable, "-m", "vulture"], cwd=BACKEND, capture_output=True, text=True, check=False)
+
+    assert result.stdout == ""
+    assert result.returncode == 0

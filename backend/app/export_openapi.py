@@ -24,7 +24,7 @@ DEFAULT_TARGET = Path(__file__).resolve().parents[2] / "docs" / "api" / "openapi
 class _NoMailer:
     """Mailer for the export: the document is built, no request is served."""
 
-    async def send_code(self, address: str, code: str, expires_at: datetime) -> None:
+    async def send_code(self, _address: str, _code: str, _expires_at: datetime, /) -> None:
         raise NotImplementedError
 
 
