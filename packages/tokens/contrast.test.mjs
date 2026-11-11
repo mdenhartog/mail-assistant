@@ -192,6 +192,16 @@ test("given the generated CSS, when read, then every @font-face URL is relative,
   }
 });
 
+test("given the font faces, when generated, then each swaps in with a system fallback stack", () => {
+  const css = read("tokens.css");
+  for (const face of css.match(/@font-face\s*\{[^}]*\}/g) ?? []) {
+    assert.match(face, /font-display: swap;/);
+    assert.match(face, /format\("woff2"\)/);
+  }
+  assert.match(tokens.font.sans, /system-ui/);
+  assert.match(tokens.font.display, /system-ui/);
+});
+
 test("given apps/web/src, when searched for hex colours, rgb( and arbitrary Tailwind values, then there is no hit outside the tokens package", () => {
   const root = resolve(here, "../../apps/web/src");
   const files = [];
