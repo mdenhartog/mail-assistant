@@ -1,4 +1,7 @@
+import secrets
 from typing import Protocol
+
+_ID_BYTES = 32
 
 
 class IdSource(Protocol):
@@ -26,16 +29,16 @@ class SecretsIdSource:
 
     def token(self, nbytes: int) -> str:
         """Return a URL-safe token made from nbytes random bytes."""
-        raise NotImplementedError
+        return secrets.token_urlsafe(nbytes)
 
     def session_id(self) -> str:
-        """Return a new session id."""
-        raise NotImplementedError
+        """Return a new session id (43 URL-safe characters)."""
+        return self.token(_ID_BYTES)
 
     def login_request_id(self) -> str:
-        """Return a new login request id."""
-        raise NotImplementedError
+        """Return a new login request id (43 URL-safe characters)."""
+        return self.token(_ID_BYTES)
 
     def request_id(self) -> str:
-        """Return a new request id."""
-        raise NotImplementedError
+        """Return a new request id (43 URL-safe characters)."""
+        return self.token(_ID_BYTES)

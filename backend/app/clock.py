@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol
 
 
@@ -15,4 +15,4 @@ class SystemClock:
 
     def now(self) -> datetime:
         """Return the current time as an aware UTC datetime."""
-        raise NotImplementedError
+        return datetime.now(UTC)
