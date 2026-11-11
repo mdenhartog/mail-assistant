@@ -92,9 +92,9 @@ def test_given_the_local_values_when_linted_strictly_then_the_chart_has_no_findi
     [
         ("ingress.tls.enabled=false", "tls"),
         ("ingress.hsts=false", "hsts"),
-        ("ingress.host=app.example.com", "ingress.host"),
-        ("ingress.host=app.localhost.example.com", "ingress.host"),
-        ("ingress.host=localhost", "ingress.host"),
+        ("ingress.host=app.example.com", "host"),
+        ("ingress.host=app.localhost.example.com", "host"),
+        ("ingress.host=localhost", "host"),
         ("ingress.localDomainSuffix=com", "localDomainSuffix"),
         ("ingress.clusterIssuer=letsencrypt-prod", "clusterIssuer"),
     ],
