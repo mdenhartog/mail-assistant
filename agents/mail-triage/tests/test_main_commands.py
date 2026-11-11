@@ -108,3 +108,17 @@ def test_given_the_migrate_command_when_a_secret_reaches_a_log_then_it_is_scrubb
     assert "leaked" in stream.getvalue()
     assert "owner-test-secret" not in stream.getvalue()
     assert MIGRATE_VALID["RUNTIME_ROLE_PASSWORD"] not in stream.getvalue()
+
+
+def test_given_a_missing_web_role_password_when_migrate_starts_then_it_fails_naming_the_key_and_never_connects(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spy = Spy()
+    env = {key: value for key, value in MIGRATE_VALID.items() if key != "WEB_ROLE_PASSWORD"}
+
+    assert main(env, serve=Spy().serve, migrate=spy.migrate, argv=["migrate"]) == EXIT_BAD_CONFIG
+
+    err = capsys.readouterr().err
+    assert "WEB_ROLE_PASSWORD" in err
+    assert not any(value in err for value in MIGRATE_VALID.values())
+    assert spy.calls == []

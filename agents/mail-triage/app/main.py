@@ -59,7 +59,11 @@ def main(
     try:
         if command == "migrate":
             migrate_settings = load_migrate_settings(env)
-            _protect_logs(migrate_settings.database_owner_url, migrate_settings.runtime_role_password)
+            _protect_logs(
+                migrate_settings.database_owner_url,
+                migrate_settings.runtime_role_password,
+                migrate_settings.web_role_password,
+            )
             return asyncio.run(migrate(migrate_settings))
         settings = load_settings(env)
     except SettingsError as error:

@@ -13,7 +13,7 @@ from app.db.migrate import migrate_database
 
 async def _connect(url: str) -> None:
     with contextlib.suppress(ConnectionRefusedError):
-        await migrate_database(url, "unused-runtime-password")
+        await migrate_database(url, {"mail_triage_runtime": "unused", "web_settings_runtime": "unused"})
 
 
 def _spy(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
@@ -55,7 +55,7 @@ async def test_given_an_unknown_ssl_value_when_the_job_connects_then_it_fails_wi
     seen = _spy(monkeypatch)
 
     with pytest.raises(ValueError, match="ssl") as error:
-        await migrate_database(f"postgresql+asyncpg://owner:pw-secret@db:5432/mail?ssl={value}", "unused")
+        await migrate_database(f"postgresql+asyncpg://owner:pw-secret@db:5432/mail?ssl={value}", {})
 
     assert "pw-secret" not in str(error.value)
     assert seen == {}

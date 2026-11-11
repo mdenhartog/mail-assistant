@@ -10,6 +10,7 @@ from tests.test_settings import VALID
 MIGRATE_VALID = {
     "DATABASE_OWNER_URL": "postgresql+asyncpg://owner:owner-test-secret@db:5432/mail",
     "RUNTIME_ROLE_PASSWORD": "runtime-role-test-secret",
+    "WEB_ROLE_PASSWORD": "web-role-test-secret",
 }
 
 
@@ -25,6 +26,7 @@ def test_given_the_owner_url_and_runtime_password_when_migrate_settings_load_the
 
     assert settings.database_owner_url.get_secret_value() == MIGRATE_VALID["DATABASE_OWNER_URL"]
     assert settings.runtime_role_password.get_secret_value() == MIGRATE_VALID["RUNTIME_ROLE_PASSWORD"]
+    assert settings.web_role_password.get_secret_value() == MIGRATE_VALID["WEB_ROLE_PASSWORD"]
     shown = f"{settings!r} {settings!s} {settings.model_dump()} {settings.model_dump_json()}"
     assert not any(value in shown for value in MIGRATE_VALID.values())
 

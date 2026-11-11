@@ -28,7 +28,7 @@ The agent starts in two steps. The first runs once as the database owner, the se
    - creates or updates the login role `mail_triage_runtime` with a SCRAM-SHA-256 verifier that the job computes itself, so the clear password never reaches the server or its log. The job also sets `NOREPLICATION NOBYPASSRLS` and fails if the role is a member of another role;
    - applies `app/db/grants.sql`.
 
-   It can be run again safely. It reads only `DATABASE_OWNER_URL` and `RUNTIME_ROLE_PASSWORD` (both secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6. The `?ssl=` setting of the owner URL is honoured (`verify-full`, and so on).
+   It can be run again safely. It reads only `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` and `WEB_ROLE_PASSWORD` (all secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6. The `?ssl=` setting of the owner URL is honoured (`verify-full`, and so on).
 2. `python -m app` (= `serve`) runs the agent as the runtime role, which owns nothing and cannot run DDL. It does not migrate: at start it only checks that the schema is at the Alembic head of its image, and otherwise exits with code 5 ("run the migrate job"). The agent never receives the owner URL.
 
 `python -m app.consent` (the one-time Gmail consent) no longer creates tables either. It stops and names the migrate job when the schema is not current, so run the migrate job first.
@@ -45,8 +45,9 @@ The agent starts in two steps. The first runs once as the database owner, the se
 |---|---|---|
 | `.env` (compose) | `MAIL_TRIAGE_DATABASE_URL` | Optional. Leave empty locally; compose then builds the runtime URL from `MAIL_TRIAGE_RUNTIME_PASSWORD`. In production, a full URL of the runtime role |
 | `.env` (compose) | `MAIL_TRIAGE_RUNTIME_PASSWORD` | Password of `mail_triage_runtime`; the migrate job passes it to the job as `RUNTIME_ROLE_PASSWORD` |
+| `.env` (compose) | `WEB_ROLE_PASSWORD` | Password of `web_settings_runtime`, the role of the web app; the migrate job creates the role with it |
 | `.env` (compose) | `MAIL_TRIAGE_DATABASE_OWNER_URL` | Optional override of the owner URL; compose otherwise connects as the database's bootstrap user with `POSTGRES_PASSWORD` |
-| migrate job | `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` | What the job reads (secrets; in Kubernetes the migration Secret) |
+| migrate job | `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD`, `WEB_ROLE_PASSWORD` | What the job reads (secrets; in Kubernetes the migration Secret) |
 | agent | `DATABASE_URL` | What the agent reads (runtime role) |
 
 Locally, `docker compose --profile dev up` (or `--profile components`) starts `mail-triage-migrate` first; `mail-triage` starts when it has completed successfully. The migrate service is not in `prod-like`, because `up --wait` counts a container that has exited as failed.
