@@ -289,6 +289,9 @@ def test_given_the_e2e_job_when_read_then_it_checks_the_edge_with_curl() -> None
     assert "/auth/anything-unknown" in steps
     assert "logs" in steps
     assert "edge" in steps  # the log line has the path only
+    # compose only knows services of an active profile, so every compose call of the job names it
+    calls = re.findall(r"docker compose (?!--profile prod-like)(?!up|run)(\w+)", steps)
+    assert calls == []
 
 
 def test_given_the_playwright_config_when_read_then_the_base_url_is_the_edge_and_certificates_stay_verified() -> None:
