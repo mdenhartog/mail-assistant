@@ -34,6 +34,12 @@ def public() -> None:
 
 session = require_session  # the dependency routes declare: a live session or 401, fail closed
 
+
+def csrf() -> None:
+    """Skeleton of the CSRF dependency (marker only)."""
+
+
+setattr(csrf, AUTH_DEPENDENCY_MARKER, "csrf")
 setattr(public, AUTH_DEPENDENCY_MARKER, "public")  # marker read by the route inventory test
 setattr(session, AUTH_DEPENDENCY_MARKER, "session")
 

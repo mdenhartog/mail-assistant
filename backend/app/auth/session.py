@@ -172,6 +172,11 @@ def session_cookie(value: str) -> str:
     return morsel.OutputString()
 
 
+def clear_session_cookie() -> str:
+    """Build the ``Set-Cookie`` value that ends the session cookie in the browser."""
+    raise NotImplementedError
+
+
 def attach_sessions(app: FastAPI, store: SessionStore, events: SecurityEvents) -> None:
     """Give the app its session store and event store.
 
