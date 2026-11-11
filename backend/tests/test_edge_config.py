@@ -63,6 +63,9 @@ def resolve(path: str) -> str:
         body = table[(False, max(prefixes, key=len))]
     if "return 404" in body:
         return "404"
+    page = re.search(r"rewrite\s+\^\s+(/index\.html)\s+break;", body)
+    if page is not None:
+        return f"serve {page.group(1)}"
     served = re.search(r"try_files\s+(\S+)\s+=404", body)
     return "unknown" if served is None else f"serve {served.group(1)}"
 
@@ -114,6 +117,14 @@ def test_given_a_page_location_when_read_then_it_carries_the_csp_nosniff_and_no_
     assert "default-src 'self'" in body
     assert 'X-Content-Type-Options "nosniff"' in body
     assert 'Cache-Control "no-cache"' in body
+
+
+@pytest.mark.parametrize("key", [(True, "/"), (True, "/login"), (True, "/settings")])
+def test_given_a_page_location_when_read_then_the_index_is_served_by_a_rewrite_in_place(key: tuple[bool, str]) -> None:
+    body = locations()[key]
+
+    assert "rewrite ^ /index.html break;" in body
+    assert "try_files" not in body  # try_files may re-enter location matching and hit the 404
 
 
 def test_given_the_assets_location_when_read_then_it_is_immutable_with_nosniff() -> None:
