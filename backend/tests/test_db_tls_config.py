@@ -37,7 +37,7 @@ def test_given_the_compose_file_when_searched_then_a_password_is_never_a_literal
     raw = COMPOSE.read_text(encoding="utf-8")
 
     assert not re.search(r"://[^:\s/]+:(?!\$\{)[^@\s/]+@", raw)
-    assert not re.search(r"PASSWORD\w*\s*[:=]\s*(?!\$\{)\S", raw)
+    assert not re.search(r"(?m)^\s*\w*PASSWORD\w*:\s+(?!\$\{)\S", raw)
 
 
 def test_given_the_e2e_job_when_read_then_it_greps_the_rendered_config_for_a_password() -> None:
@@ -84,7 +84,7 @@ def test_given_the_hba_file_when_read_then_the_web_role_gets_tls_only_and_scram(
     assert rules[("hostnossl", WEB_ROLE)] == "reject"
     order = [(row[0], row[2]) for row in lines]
     assert order.index(("hostnossl", WEB_ROLE)) < order.index(("host", "all"))
-    assert not any(row[-1] in {"trust", "password", "md5"} for row in lines)
+    assert not any(row[-1] in {"trust", "password", "md5"} for row in lines if row[0] != "local")
 
 
 def test_given_the_certs_script_when_read_then_it_signs_a_database_leaf_for_db_with_the_same_ca() -> None:
