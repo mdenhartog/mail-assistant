@@ -233,15 +233,15 @@ async def test_given_a_wrong_format_code_when_posted_to_a_decoy_and_a_real_reque
 async def test_given_decoys_when_requests_are_counted_then_the_hourly_cap_and_signin_limit_apply_like_real(
     api: Api,
 ) -> None:
-    for name in (UNKNOWN, USERNAME):
-        for _ in range(5):
+    for _ in range(5):
+        for name in (UNKNOWN, USERNAME):
             assert (await api.request_code(name)).status_code == 200
-            api.clock.advance(timedelta(seconds=60))
+        api.clock.advance(timedelta(seconds=60))
     unknown_sixth = await api.request_code(UNKNOWN)
     known_sixth = await api.request_code(USERNAME)
 
     assert unknown_sixth.status_code == known_sixth.status_code == 429
-    assert unknown_sixth.headers["retry-after"] == known_sixth.headers["retry-after"] == "3000"
+    assert unknown_sixth.headers["retry-after"] == known_sixth.headers["retry-after"] == "3300"
     assert api.guard.buckets == ["signin"] * 12
     assert len(api.mailer.sent) == 5
 

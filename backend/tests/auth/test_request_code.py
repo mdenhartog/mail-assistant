@@ -14,7 +14,7 @@ from fastapi import Request
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient, Response
 
-from app.auth import decoy_rules, login_requests
+from app.auth import code_hash, login_requests
 from app.auth.login_requests import LoginRequests, Ok
 from app.auth.request_code import attach_request_code
 from app.auth.request_code_rules import username_key
@@ -157,7 +157,7 @@ async def test_given_both_cases_when_the_work_is_counted_then_the_same_steps_run
         return wrapper
 
     monkeypatch.setattr(login_requests, "hash_code", count_hash(login_requests.hash_code))
-    monkeypatch.setattr(decoy_rules, "hash_code", count_hash(decoy_rules.hash_code))
+    monkeypatch.setattr(code_hash, "hash_code", count_hash(code_hash.hash_code))
     # mark_sent runs after the answer; a decoy is stored by create_decoy, a real request by create
     for name, step in (
         ("last_requested_at", "last"),

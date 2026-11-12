@@ -98,7 +98,7 @@ async def test_given_the_limit_is_exceeded_when_the_database_is_read_then_no_log
         assert (await api.request_code("test-user" if n % 2 else f"someone-{n}")).status_code == 429
     verify = await api.http.post("/auth/verify-code", content=b"{}", headers={"Origin": ORIGIN})
 
-    assert written == 1
+    assert written == 30  # the real one and 29 decoys (ADR-0038); the refused ones add nothing
     assert await _rows(owner) == written
     assert verify.status_code == 429
 

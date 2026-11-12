@@ -2,8 +2,7 @@
 
 import pytest
 
-from app.auth.code_hash import CODE_PATTERN, hash_code, verify_code
-from app.auth.decoy_rules import DECOY_INPUT, decoy_hash
+from app.auth.code_hash import CODE_PATTERN, DECOY_INPUT, decoy_hash, hash_code, verify_code
 
 KEY = b"k" * 32
 REQUEST_ID = "r" * 32
