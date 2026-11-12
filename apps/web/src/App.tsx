@@ -10,7 +10,7 @@ import { ClockContext, systemClock } from "@/pages/clock";
 import type { Clock } from "@/pages/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFound } from "@/pages/NotFound";
-import { SettingsPage } from "@/pages/SettingsPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 import { paths } from "@/router/paths";
 import { LoginGate, ProtectedShell } from "@/session/SessionRoutes";
 

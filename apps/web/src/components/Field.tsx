@@ -10,8 +10,8 @@ interface FieldControlProps {
 
 export interface FieldProps {
   label: string;
-  hint?: string;
-  error?: string;
+  hint?: string | undefined;
+  error?: string | undefined;
   children: (control: FieldControlProps) => ReactNode;
 }
 
