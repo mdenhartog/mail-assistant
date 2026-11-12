@@ -28,18 +28,18 @@ describe("ApiError body", () => {
     expect(error.body).toEqual({ problems: [] });
   });
 
-  it("given a 500 with a JSON body, when thrown, then the body is dropped and the message is the status only", async () => {
+  it("given a 500 with a JSON body, when thrown, then the message is the status only and never the body", async () => {
     answer(500, JSON.stringify({ secret: "stack trace" }));
 
     const error = await failure();
 
-    expect(error.body).toBeUndefined();
     expect(error.message).toBe("HTTP 500");
+    expect(error.message).not.toContain("stack trace");
   });
 
-  it("given a 422 whose body is not JSON, when thrown, then the body is undefined", async () => {
+  it("given a 422 whose body is not JSON, when thrown, then the body is null", async () => {
     answer(422, "<html>nope</html>");
 
-    expect((await failure()).body).toBeUndefined();
+    expect((await failure()).body).toBeNull();
   });
 });

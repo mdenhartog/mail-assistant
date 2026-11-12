@@ -1,26 +1,21 @@
 /**
- * A non-2xx answer from the API. The message is the status only. `body` is the parsed JSON of a 409
- * or a 422 (the current settings, the refused fields) and is `undefined` for every other answer.
+ * A non-2xx answer from the API. The message is the status only; the parsed JSON body (or `null`)
+ * is there for callers that read one field from a refusal, such as the tries left on a wrong code.
  */
 export class ApiError extends Error {
   public constructor(
     public readonly status: number,
-    public readonly body?: unknown,
+    public readonly body: unknown = null,
   ) {
     super(`HTTP ${String(status)}`);
   }
 }
 
-const STATUSES_WITH_BODY = new Set([409, 422]);
-
 async function readBody(response: Response): Promise<unknown> {
-  if (!STATUSES_WITH_BODY.has(response.status)) {
-    return undefined;
-  }
   try {
     return await response.json();
   } catch {
-    return undefined;
+    return null;
   }
 }
 
