@@ -31,7 +31,20 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
-function withSession(extra: Handler = () => new Response(null, { status: 404 })): Handler {
+const SETTINGS = {
+  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00" },
+  version: 1,
+  updatedAt: null,
+  updatedVia: null,
+};
+
+/** The settings page loads its values; every other path is unknown unless the test says otherwise. */
+function settingsOrNotFound(request: Request): Response {
+  const isLoad = request.method === "GET" && new URL(request.url).pathname === "/api/settings";
+  return isLoad ? json(SETTINGS) : new Response(null, { status: 404 });
+}
+
+function withSession(extra: Handler = settingsOrNotFound): Handler {
   return (request) => (new URL(request.url).pathname === "/api/session" ? json(SESSION) : extra(request));
 }
 
@@ -48,6 +61,10 @@ function dump(storage: Storage): string {
 
 async function settingsShown(): Promise<void> {
   await screen.findByRole("heading", { level: 1, name: "Settings" });
+}
+
+async function settingsLoaded(): Promise<void> {
+  await screen.findByLabelText("Time zone");
 }
 
 beforeEach(() => {
@@ -152,11 +169,12 @@ describe("csrf token", () => {
     stubFetch(
       withSession((request) => {
         seen.push(request);
-        return json({});
+        return request.method === "GET" ? json(SETTINGS) : json({});
       }),
     );
     setup("/settings");
-    await settingsShown();
+    await settingsLoaded();
+    seen.length = 0;
 
     await apiFetch("/api/settings");
     await apiFetch("/api/settings", { method: "PUT", body: "{}" });
@@ -200,7 +218,8 @@ describe("failures", () => {
       expect(router.state.location.pathname + router.state.location.search).toBe("/login?notice=expired");
     });
     const settingsCalls = mock.mock.calls.filter(([url]) => url === "/api/settings");
-    expect(settingsCalls).toHaveLength(2);
+    // The page's own load, the write and the refetch: each request once, none repeated.
+    expect(settingsCalls).toHaveLength(3);
   });
 
   it("given a 403, when received, then the refusal page replaces the app and no settings value stays in the DOM", async () => {
@@ -260,9 +279,13 @@ describe("session errors", () => {
 
 describe("sign out", () => {
   it("given Sign out fails, when pressed, then an alert is shown and the user stays signed in", async () => {
-    stubFetch(withSession(() => new Response(null, { status: 500 })));
+    stubFetch(
+      withSession((request) =>
+        new URL(request.url).pathname === "/auth/logout" ? new Response(null, { status: 500 }) : settingsOrNotFound(request),
+      ),
+    );
     setup("/settings");
-    await settingsShown();
+    await settingsLoaded();
 
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
 

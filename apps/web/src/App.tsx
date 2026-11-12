@@ -8,7 +8,7 @@ import { onApiRefusal, setCsrfToken } from "@/api/client";
 import { AccessRefused } from "@/pages/AccessRefused";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFound } from "@/pages/NotFound";
-import { SettingsPage } from "@/pages/SettingsPage";
+import { SettingsPage } from "@/features/settings/SettingsPage";
 import { paths } from "@/router/paths";
 import { LoginGate, ProtectedShell } from "@/session/SessionRoutes";
 
