@@ -64,7 +64,7 @@ describe("last-change line", () => {
   it("says from the web", () => {
     stubSession(5);
     renderFeedback({ settings: { ...FROM_TELEGRAM, updatedVia: "web" }, values: AMS });
-    expect(screen.getByText(/Last changed from the web at 14:02/)).toBeInTheDocument();
+    expect(screen.getByText(/Last changed from the web at/)).toHaveTextContent("at 14:02");
   });
 
   it("says the defaults are used at version 0", () => {
@@ -91,7 +91,7 @@ describe("saved banner", () => {
           "A message with an Undo button follows on Telegram within about 5 minutes.",
       );
     });
-    expect(screen.getByText(/Last changed from the web at 21:42/)).toBeInTheDocument();
+    expect(screen.getByText(/Last changed from the web at/)).toHaveTextContent("at 21:42");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
@@ -100,7 +100,9 @@ describe("saved banner", () => {
     renderFeedback({ settings: saved, values: BKK, saved });
     const banner = await screen.findByRole("status");
     expect(banner).toHaveTextContent("Saved at 21:42. Quiet hours are 23:00 to 07:00 (Bangkok time).");
-    expect(banner).toHaveTextContent("A message with an Undo button follows on Telegram shortly.");
+    await vi.waitFor(() => {
+      expect(banner).toHaveTextContent("A message with an Undo button follows on Telegram shortly.");
+    });
   });
 
   it("shows no banner before a save", () => {
