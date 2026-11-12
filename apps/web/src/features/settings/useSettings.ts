@@ -9,10 +9,12 @@ export type SettingsValues = components["schemas"]["SettingsValues"];
 export type Problem = components["schemas"]["ProblemItem"];
 export type FieldKey = keyof SettingsValues;
 
-/** The 409 answer: the settings as they are now, and what the user had typed. */
+/** The 409 answer: the settings as they are now, what the user had typed and what that was based on. */
 export interface ConflictState {
   current: Settings;
   mine: SettingsValues;
+  /** The stored values the typed ones started from; a field differs from these only if the user edited it. */
+  base: SettingsValues;
 }
 
 /** What a failed save means for the page. */

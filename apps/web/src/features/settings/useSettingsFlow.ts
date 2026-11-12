@@ -84,7 +84,7 @@ export function useSettingsFlow(settings: Settings): SettingsFlow {
     if (Object.keys(mapped).length > 0) {
       show(mapped);
     } else if (outcome.kind === "conflict") {
-      setResult({ ...NO_RESULT, conflict: { current: outcome.current, mine: draft } });
+      setResult({ ...NO_RESULT, conflict: { current: outcome.current, mine: draft, base: settings.values } });
     } else {
       setResult({ ...NO_RESULT, failure: outcome.kind === "failed" ? "failed" : "refused" });
     }
