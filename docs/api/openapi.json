@@ -301,7 +301,7 @@
             "$ref": "#/components/schemas/SettingsValues"
           },
           "version": {
-            "minimum": 0,
+            "minimum": 0.0,
             "title": "Version",
             "type": "integer"
           }
@@ -453,6 +453,81 @@
           }
         },
         "summary": "Read Settings",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "description": "Validate the whole row and store it if it is still at the version the change is based on.\n\nArgs:\n    body: The new values and the version they are based on.\n    request: The request, whose app holds the database access.\n    current: The live session; its keyed digest is the actor of the change.\n\nReturns:\n    The stored settings at the next version, or a 409 with the current settings, or a 422 with the problems.",
+        "operationId": "write_settings_api_settings_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict409"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict409"
+                }
+              }
+            },
+            "description": "The settings changed since the version sent; carries the current"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem422"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem422"
+                }
+              }
+            },
+            "description": "A value is refused; the field, rule, value and an example"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          },
+          "500": {
+            "description": "The change could not be stored"
+          }
+        },
+        "summary": "Write Settings",
         "tags": [
           "settings"
         ]
