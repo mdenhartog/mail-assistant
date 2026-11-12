@@ -39,3 +39,15 @@ jobs:
       - run: uv run cr-rate "$RUNNER_TEMP/schedule-policy.sqlite" --fail-over 15
       - if: always()  # a failing rating must not hide which mutants survived
         run: uv run cr-report "$RUNNER_TEMP/schedule-policy.sqlite" --show-pending --surviving-only --show-diff
+
+  backend:
+    # backend/app: every module with the marker "# pure module (mutation-gated)", listed in backend/cosmic-ray.toml (U-web-settings-44)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      # one session per module; annotation mutants are skipped; the job fails when a module has more than 15 % survivors
+      - run: uv run python mutation/run.py --all --session-dir "$RUNNER_TEMP/backend-mutation"
