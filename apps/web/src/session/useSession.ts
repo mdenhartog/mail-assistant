@@ -6,7 +6,8 @@ import type { components } from "@/api/schema";
 
 export type SessionInfo = components["schemas"]["SessionInfo"];
 
-const sessionKey = ["session"] as const;
+/** Query key of the session; sign-in invalidates it so the new session is read. */
+export const sessionKey = ["session"] as const;
 
 function isSessionInfo(value: unknown): value is SessionInfo {
   if (typeof value !== "object" || value === null) {

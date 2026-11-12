@@ -1,7 +1,21 @@
-/** A non-2xx answer from the API; carries the status only, never the body. */
+/**
+ * A non-2xx answer from the API. The message is the status only; the parsed JSON body (or `null`)
+ * is there for callers that read one field from a refusal, such as the tries left on a wrong code.
+ */
 export class ApiError extends Error {
-  public constructor(public readonly status: number) {
+  public constructor(
+    public readonly status: number,
+    public readonly body: unknown = null,
+  ) {
     super(`HTTP ${String(status)}`);
+  }
+}
+
+async function readBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return null;
   }
 }
 
@@ -70,7 +84,7 @@ export async function apiFetch(path: string, init: RequestInit = {}, options: Ap
   const response = await fetch(path, { ...init, method, headers: buildHeaders(method, init), credentials: "same-origin" });
   if (!response.ok) {
     notify(response.status, options);
-    throw new ApiError(response.status);
+    throw new ApiError(response.status, await readBody(response));
   }
   return response;
 }

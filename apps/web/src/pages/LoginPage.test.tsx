@@ -100,6 +100,11 @@ async function submitCode(user: ReturnType<typeof userEvent.setup>, code: string
   await user.click(screen.getByRole("button", { name: "Sign in" }));
 }
 
+/** The page markup with the generated ids replaced, so two renders can be compared. */
+function pageMarkup(): string {
+  return screen.getByRole("main").innerHTML.replace(/_r_\w+_/g, "id");
+}
+
 beforeEach(() => {
   window.localStorage.clear();
   window.sessionStorage.clear();
@@ -181,6 +186,23 @@ describe("step 1: username", () => {
   });
 });
 
+describe("an unusable answer", () => {
+  it("given a 200 without a masked address, when shown, then it counts as a failed request", async () => {
+    const pending = stubPending();
+    const user = userEvent.setup();
+    setup();
+
+    await user.type(await screen.findByLabelText("Username"), "marco");
+    await user.click(screen.getByRole("button", { name: "Send me a code" }));
+    await act(async () => {
+      pending.release(json({ unexpected: true }));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not ask for a code.");
+  });
+});
+
 describe("step 2: code", () => {
   it("given the same answer for a known and an unknown username, when step 2 appears, then focus is in the code field and the pages are identical", async () => {
     stubApi();
@@ -197,14 +219,14 @@ describe("step 2: code", () => {
     expect(screen.getByRole("button", { name: "Use another username" })).toBeInTheDocument();
     expect(screen.getByText(`Code sent to ${MASKED}. It is valid for 10 minutes.`)).toHaveAttribute("role", "status");
     await expectNoAxeViolations(document.body);
-    const known = document.body.innerHTML;
+    const known = pageMarkup();
     first.unmount();
 
     stubApi();
     setup();
     await askForCode(userEvent.setup(), "nobody-by-that-name");
 
-    expect(document.body.innerHTML).toBe(known);
+    expect(pageMarkup()).toBe(known);
   });
 
   it("given a pasted code with a space, when submitted, then the digits are posted and letters are not accepted", async () => {

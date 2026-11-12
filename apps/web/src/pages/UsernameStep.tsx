@@ -1,12 +1,80 @@
-import type { ReactElement } from "react";
+import { useRef, useState } from "react";
+import type { ReactElement, SyntheticEvent } from "react";
+
+import { Banner } from "@/components/Banner";
+import { Button } from "@/components/Button";
+import { Field } from "@/components/Field";
 
 export interface UsernameStepProps {
   sending: boolean;
+  /** The last request was refused or failed. */
   failed: boolean;
   onSubmit: (username: string) => void;
 }
 
-/** Step 1 of the login page. */
-export function UsernameStep(): ReactElement {
-  return <></>;
+const CONTROL =
+  "min-h-11 w-full rounded-control border border-border bg-surface-raised px-3 text-text " +
+  "aria-invalid:border-2 aria-invalid:border-danger read-only:opacity-80";
+
+/**
+ * Step 1 of the login page: the username and the button that asks for a code.
+ *
+ * @example
+ * <UsernameStep failed={false} onSubmit={ask} sending={false} />
+ */
+export function UsernameStep({ sending, failed, onSubmit }: UsernameStepProps): ReactElement {
+  const [username, setUsername] = useState("");
+  const [missing, setMissing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  const submit = (event: SyntheticEvent): void => {
+    event.preventDefault();
+    if (sending) {
+      return;
+    }
+    const trimmed = username.trim();
+    setMissing(trimmed === "");
+    if (trimmed === "") {
+      input.current?.focus();
+      return;
+    }
+    onSubmit(trimmed);
+  };
+
+  return (
+    <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
+      {failed ? (
+        <Banner kind="danger" title="Could not ask for a code.">
+          Check the username and try again.
+        </Banner>
+      ) : null}
+      <Field label="Username" {...(missing ? { error: "Enter your username." } : {})}>
+        {(control) => (
+          <input
+            {...control}
+            autoCapitalize="none"
+            autoComplete="username"
+            className={CONTROL}
+            onChange={(event) => {
+              setUsername(event.target.value);
+            }}
+            readOnly={sending}
+            ref={input}
+            spellCheck={false}
+            type="text"
+            value={username}
+          />
+        )}
+      </Field>
+      <div>
+        <Button loading={sending} loadingLabel="Sending..." type="submit" variant="primary">
+          Send me a code
+        </Button>
+      </div>
+      <p className="text-sm text-text-muted">
+        We send a one-time code to the e-mail address on file for this username. This page never asks for access to
+        your mail or calendar.
+      </p>
+    </form>
+  );
 }
