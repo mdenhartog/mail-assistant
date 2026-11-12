@@ -1,0 +1,27 @@
+# Mutation gate of the pure security modules (ADR-0030 item 4, U-web-settings-44), read by mutation/run.py.
+# Every module that carries the marker `# pure module (mutation-gated)` must be listed:
+# tests/test_mutation_config.py fails when the list and the marker disagree.
+# Run: uv run python mutation/run.py --all   (or one module: uv run python mutation/run.py app/auth/mask.py)
+[mutation]
+modules = [
+    "app/auth/code_hash.py",
+    "app/auth/code_rules.py",
+    "app/auth/csrf.py",
+    "app/auth/digest.py",
+    "app/auth/event_rules.py",
+    "app/auth/expiry.py",
+    "app/auth/mask.py",
+    "app/auth/request_code_rules.py",
+    "app/auth/return_to.py",
+    "app/auth/verify_code_rules.py",
+    "app/clientaddr.py",
+    "app/limits.py",
+]
+# Tests that must kill the mutants (no database, no network).
+tests = ["tests/auth", "tests/test_limits.py", "tests/test_pure_modules.py"]
+# Percent of surviving mutants: the job fails above max (workflow: cr-rate --fail-over 15); the target keeps
+# a margin of at least 5 points, like packages/schedule-policy.
+max-survived-percent = 15
+target-survived-percent = 10
+# CPython 3.14 evaluates annotations lazily, so a mutant inside an annotation is equivalent; it is skipped.
+skip-annotations = true

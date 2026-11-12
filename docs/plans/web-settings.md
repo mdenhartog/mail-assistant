@@ -1137,7 +1137,10 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 Filled in while building, in the manner of `adjustable-quiet-hours`. Carried over as rules:
 
 - Anything found by the challenge round (phase 6) gets its own fix unit `U-web-settings-<nn>` with the source of the finding named, and runs in parallel only when it shares no file with another.
-- The first mutation run of U-44 is recorded here with run id and scores.
+- First mutation run of U-44 (2026-11-12), all 12 marked pure modules, cosmic-ray 8.7.0, annotation mutants skipped (equivalent on CPython 3.14), gate 15 % survivors, target 10 %:
+  - Linux, workflow `mutation` run 43319415821 (manual start, one job per module on CPython 3.14): 0.00 % survived for every module. Skipped annotation mutants: csrf 33, clientaddr 55, verify_code_rules 22, request_code_rules 22, code_rules 11, return_to 11, the others 0. The slowest job (`limits.py`) took 59 minutes of the 120 minute limit.
+  - Windows, local foreground runs of `uv run python mutation/run.py <module>` (CPython 3.13.14): 0.00 % survived for every module (`code_hash`, `code_rules`, `csrf`, `digest`, `event_rules`, `expiry`, `mask`, `request_code_rules`, `return_to`, `verify_code_rules`, `clientaddr`, `limits`). No survivor, so the exclusion list `backend/mutation/code_rules.exclusions` stays empty.
+  - The first attempt (run 43297283455, all modules serial in one job) hit the 120 minute job timeout and was cancelled; the workflow now has a `backend-matrix` job that reads the module list from `backend/cosmic-ray.toml` and a `backend` job per module.
 - Migration numbers are checked against `main` before each merge.
 
 Follow-ups found while building (2026-11-12), each to be handled by the named unit or a fix unit:
@@ -1149,7 +1152,7 @@ Follow-ups found while building (2026-11-12), each to be handled by the named un
 - `login_request.id` is `VARCHAR(32)`; U-16 uses `ids.token(24)`; later units use the id returned in `LoginRequest`.
 - U-26 selects only `db_role='web_settings_runtime'` notices; the cursor is null at migration, which avoids a first-run flood.
 - `UNBUILT_PATHS` in the route inventory test was removed in U-18; the inventory is exact again.
-- U-10 and U-11 mutation approaches differ; U-44 unifies them, and `verify_code_rules.py`, `request_code_rules.py` and `event_rules.py` are to be listed in `PURE_MODULES` and the cosmic-ray configuration there.
+- U-10 and U-11 mutation approaches differ; U-44 (done) unifies them: `backend/cosmic-ray.toml` is the single list (12 modules, also read by `tests/test_pure_modules.py`), `mutation/run.py` runs one module or `--all`, and `tests/test_mutation_config.py` fails when a marked module is not listed.
 - Duplicate `RETENTION` constants (`login_requests.py` and `startup.py`); the 503 body in readiness differs from the U-05 error model; the CSP also applies to dev-only `/docs`.
 - Open before staging: ingress-controller vocabulary is ingress-nginx while kind uses Traefik; the api PodDisruptionBudget default `minAvailable: 1` with one replica.
 - Tooling: the worktree isolation of the Agent tool refuses a primary working directory spelled `c:\` against `C:/`; builders create their own worktree with `git worktree add` under `.claude/worktrees/`.

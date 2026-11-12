@@ -39,3 +39,41 @@ jobs:
       - run: uv run cr-rate "$RUNNER_TEMP/schedule-policy.sqlite" --fail-over 15
       - if: always()  # a failing rating must not hide which mutants survived
         run: uv run cr-report "$RUNNER_TEMP/schedule-policy.sqlite" --show-pending --surviving-only --show-diff
+
+  backend-matrix:
+    # the modules come from backend/cosmic-ray.toml, so the workflow cannot go stale (U-web-settings-44)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      modules: ${{ steps.modules.outputs.modules }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: modules
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, tomllib
+          with open("backend/cosmic-ray.toml", "rb") as handle:
+              print("modules=" + json.dumps(tomllib.load(handle)["mutation"]["modules"]))
+          PY
+
+  backend:
+    # one job per pure module of the backend (marker "# pure module (mutation-gated)"); each fails above 15 % survivors
+    needs: backend-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJSON(needs.backend-matrix.outputs.modules) }}
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run python -u mutation/run.py "$MODULE" --session-dir "$RUNNER_TEMP/backend-mutation"
+        env:
+          MODULE: ${{ matrix.module }}
+      - if: always()  # a failing rating must not hide which mutants survived
+        run: uv run cr-report "$RUNNER_TEMP/backend-mutation/$(basename "$MODULE" .py).sqlite" --show-pending --surviving-only --show-diff
+        env:
+          MODULE: ${{ matrix.module }}
