@@ -1,4 +1,4 @@
-"""Read access to ``settings.schedule`` as the web role (U-web-settings-20); the write part is U-web-settings-21."""
+"""Read and write access to ``settings.schedule`` as the web role (U-web-settings-20 and U-web-settings-21)."""
 
 from dataclasses import dataclass
 from datetime import datetime, time
@@ -28,8 +28,17 @@ def _clock(minute_of_day: int) -> time:
     return time(minute_of_day // 60, minute_of_day % 60)
 
 
+class VersionConflict(Exception):  # noqa: N818  # a state of the row, not a fault of the caller
+    """The row is not at the version the writer based its change on; carries the row as it is now."""
+
+    def __init__(self, current: StoredSettings) -> None:
+        """Keep the current row (the defaults at version 0 when there is none)."""
+        super().__init__("settings version conflict")
+        self.current = current
+
+
 class SettingsRepository:
-    """Reads the single schedule row; never the actor column."""
+    """Reads and writes the single schedule row; never reads the actor column."""
 
     def __init__(self, database: Database) -> None:
         """Keep the database access."""
@@ -53,3 +62,7 @@ class SettingsRepository:
             remind_at=_clock(row.remind_at),
         )
         return StoredSettings(policy, row.version, row.updated_at, row.updated_via)
+
+    async def write(self, policy: TimePolicy, expected_version: int, username_hash: str) -> StoredSettings:
+        """Store the policy if the row is still at the expected version (skeleton)."""
+        raise NotImplementedError
