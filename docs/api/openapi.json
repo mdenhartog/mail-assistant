@@ -520,6 +520,71 @@
         ]
       }
     },
+    "/auth/verify-code": {
+      "post": {
+        "description": "Check the code and sign in; every failure is the same 400.\n\nThe body is read here and checked by the use case, so a malformed body gets the same 400 as a wrong code.\n\nArgs:\n    request: The request, with the ``__Host-login`` cookie.\n\nReturns:\n    204 with the session cookie, or the generic 400.",
+        "operationId": "verify_code_auth_verify_code_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "description": "The posted code and where the visitor wanted to go; the path is checked against an allow-list.",
+                "properties": {
+                  "code": {
+                    "title": "Code",
+                    "type": "string"
+                  },
+                  "returnTo": {
+                    "anyOf": [
+                      {
+                        "maxLength": 2048,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "title": "Returnto"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "title": "VerifyCodeBody",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Signed in: the session cookie is set; the path to go to is in the X-Return-To header",
+            "headers": {
+              "X-Return-To": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The one generic refusal; attemptsLeft only while the login cookie names a live request"
+          },
+          "403": {
+            "description": "Wrong or missing Origin"
+          },
+          "429": {
+            "description": "Too many attempts; see Retry-After"
+          }
+        },
+        "summary": "Verify Code",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "description": "Report that the process is alive.\n\nReturns:\n    A fixed ``ok`` status.",

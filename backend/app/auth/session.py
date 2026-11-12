@@ -25,9 +25,11 @@ COOKIE_NAME: Final = "__Host-session"
 _UNKNOWN_CLIENT: Final = "unknown"  # until the client key of U-web-settings-24 exists
 _LOCKED = text("SELECT 1 FROM web_auth.web_lock LIMIT 1")
 _DELETE_ALL = text("DELETE FROM web_auth.session")
-_INSERT = text(
+_INSERT = text(  # one statement, so a lock set meanwhile cannot be missed: no lock row, no insert
     "INSERT INTO web_auth.session (id_hash, username_hash, last_seen_at, absolute_expires_at) "
-    "VALUES (:id_hash, :username_hash, :now, :absolute_expires_at)"
+    "SELECT CAST(:id_hash AS text), CAST(:username_hash AS text), CAST(:now AS timestamptz), "
+    "CAST(:absolute_expires_at AS timestamptz) "
+    "WHERE NOT EXISTS (SELECT 1 FROM web_auth.web_lock) RETURNING id_hash"
 )
 _SELECT = text("SELECT username_hash, last_seen_at, absolute_expires_at FROM web_auth.session WHERE id_hash = :id_hash")
 _DELETE_ONE = text("DELETE FROM web_auth.session WHERE id_hash = :id_hash")
@@ -82,11 +84,14 @@ class SessionStore:
 
         Returns:
             The cookie value (the only place the id exists) and the stored session.
+
+        Raises:
+            WebLocked: The web lock is set; nothing was stored.
         """
         cookie_value = self._ids.session_id()
         session = Session(_hash_id(cookie_value), username_hash, now, now + ABSOLUTE)
         async with self._database.session() as connection, connection.begin():
-            await connection.execute(
+            inserted = await connection.execute(
                 _INSERT,
                 {
                     "id_hash": session.id_hash,
@@ -95,6 +100,8 @@ class SessionStore:
                     "absolute_expires_at": session.absolute_expires_at,
                 },
             )
+        if inserted.first() is None:
+            raise WebLocked
         return cookie_value, session
 
     async def get(self, cookie_value: str | None, now: datetime) -> Session | None:

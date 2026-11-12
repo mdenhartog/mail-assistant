@@ -1,15 +1,19 @@
 """Sign-in routes under ``/auth``."""
 
 from datetime import datetime
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from pydantic.alias_generators import to_camel
 
-from app.auth.request_code import CodeRequests, client_of, login_cookie, require_signin_origin
+from app.auth.request_code import LOGIN_COOKIE_NAME, CodeRequests, client_of, login_cookie, require_signin_origin
+from app.auth.verify_code import VerifyCodeBody
 from app.core.security import public
 from app.limit_guard import limit
+
+if TYPE_CHECKING:
+    from app.auth.verify_code import VerifyCode
 
 ROUTER_PREFIX = ""  # the sign-in routes live under /auth, outside /api
 router = APIRouter(tags=["auth"])
@@ -78,3 +82,42 @@ async def request_code(
         expires_at=issued.expires_at,
         resend_after_seconds=issued.resend_after_seconds,
     )
+
+
+# ---- verify-code (U-web-settings-18) -----------------------------------------------------------------------------
+
+
+@router.post(
+    "/auth/verify-code",
+    status_code=204,
+    dependencies=[Depends(public), Depends(require_signin_origin), Depends(limit("signin"))],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": VerifyCodeBody.model_json_schema(by_alias=True)}},
+        }
+    },
+    responses={
+        204: {
+            "description": "Signed in: the session cookie is set; the path to go to is in the X-Return-To header",
+            "headers": {"X-Return-To": {"schema": {"type": "string"}}},
+        },
+        400: {"description": "The one generic refusal; attemptsLeft only while the login cookie names a live request"},
+        403: {"description": "Wrong or missing Origin"},
+        429: {"description": "Too many attempts; see Retry-After"},
+    },
+)
+async def verify_code(request: Request) -> Response:
+    """Check the code and sign in; every failure is the same 400.
+
+    The body is read here and checked by the use case, so a malformed body gets the same 400 as a wrong code.
+
+    Args:
+        request: The request, with the ``__Host-login`` cookie.
+
+    Returns:
+        204 with the session cookie, or the generic 400.
+    """
+    service: VerifyCode = request.app.state.verify_code
+    cookie = request.cookies.get(LOGIN_COOKIE_NAME)
+    return await service.verify(await request.body(), cookie, client_of(request), request.state.request_id)

@@ -278,3 +278,15 @@ async def test_given_an_unknown_cookie_when_deleted_then_no_event_is_recorded(
     await store.delete("unknown", "req-1", CLIENT)
 
     assert await _events(owner, "session_end") == []
+
+
+async def test_given_web_lock_set_when_a_session_is_created_then_it_raises_and_nothing_is_stored(
+    store: SessionStore,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await owner.execute("insert into web_auth.web_lock (id, locked_at) values (1, $1)", T0)
+
+    with pytest.raises(WebLocked):
+        await store.create(USER, T0)
+
+    assert await _rows(owner) == []
