@@ -36,3 +36,15 @@ def limit(bucket: str) -> Callable[[Request], Awaitable[None]]:
         await guard.check(bucket, request)
 
     return dependency
+
+
+class InProcessLimitGuard:
+    """The real guard: fixed windows in memory, one counter per client and bucket (ADR-0034)."""
+
+    def __init__(self, limit_per_window: int, window_seconds: int) -> None:
+        """Keep the limit and the window length from the settings."""
+        raise NotImplementedError
+
+    async def check(self, bucket: str, request: Request) -> None:
+        """Count the request against the bucket."""
+        raise NotImplementedError

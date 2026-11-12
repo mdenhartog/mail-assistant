@@ -215,3 +215,29 @@ def test_given_app_package_when_vulture_runs_then_no_dead_code_is_reported() -> 
 
     assert result.stdout == ""
     assert result.returncode == 0
+
+
+# U-web-settings-24: the limit and proxy settings are checked at start
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"trusted_proxy_cidrs": ["not-a-cidr"]},
+        {"trusted_proxy_cidrs": ["10.0.0.0/8", "10.0.0.0/99"]},
+        {"trusted_proxy_hops": 0},
+        {"rate_limit_per_minute": 0},
+        {"rate_window_seconds": 0},
+        {"body_limit_bytes": 0},
+    ],
+)
+def test_given_a_wrong_limit_or_proxy_setting_when_checked_then_start_is_refused(
+    overrides: dict[str, object],
+) -> None:
+    fields = refused_fields(**overrides)
+
+    assert fields == (next(iter(overrides)),)
+
+
+def test_given_valid_proxy_cidrs_when_checked_then_no_error() -> None:
+    validate_startup(make_settings(trusted_proxy_cidrs=["10.42.0.0/16", "fd00::/8"], trusted_proxy_hops=2))
