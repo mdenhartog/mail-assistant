@@ -6,6 +6,7 @@ interface SaveFeedbackProps {
   settings: Settings;
   values: SettingsValues;
   saved: Settings | null;
+  now?: () => Date;
 }
 
 /**
