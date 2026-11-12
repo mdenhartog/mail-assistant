@@ -6,6 +6,8 @@ import type { RouteObject } from "react-router";
 
 import { onApiRefusal, setCsrfToken } from "@/api/client";
 import { AccessRefused } from "@/pages/AccessRefused";
+import { ClockContext, systemClock } from "@/pages/clock";
+import type { Clock } from "@/pages/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFound } from "@/pages/NotFound";
 import { SettingsPage } from "@/features/settings/SettingsPage";
@@ -62,6 +64,8 @@ export const routes: RouteObject[] = [
 export interface AppProps {
   router: Parameters<typeof RouterProvider>[0]["router"];
   queryClient?: QueryClient;
+  /** Source of time for countdowns; tests pass their own. */
+  clock?: Clock;
 }
 
 /**
@@ -70,13 +74,15 @@ export interface AppProps {
  * @example
  * <App router={createBrowserRouter(routes)} />
  */
-export function App({ router, queryClient }: AppProps): ReactElement {
+export function App({ router, queryClient, clock }: AppProps): ReactElement {
   const [fallbackClient] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }),
   );
   return (
     <QueryClientProvider client={queryClient ?? fallbackClient}>
-      <RouterProvider router={router} />
+      <ClockContext value={clock ?? systemClock}>
+        <RouterProvider router={router} />
+      </ClockContext>
     </QueryClientProvider>
   );
 }
