@@ -73,3 +73,7 @@ jobs:
       - run: uv run python -u mutation/run.py "$MODULE" --session-dir "$RUNNER_TEMP/backend-mutation"
         env:
           MODULE: ${{ matrix.module }}
+      - if: always()  # a failing rating must not hide which mutants survived
+        run: uv run cr-report "$RUNNER_TEMP/backend-mutation/$(basename "$MODULE" .py).sqlite" --show-pending --surviving-only --show-diff
+        env:
+          MODULE: ${{ matrix.module }}
