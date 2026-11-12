@@ -971,6 +971,22 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   7. Given the purge, When logs are captured, Then only the counts of removed rows are logged (type: security; level: db).
   8. Given the purge run twice, When repeated, Then the second removes nothing (type: edge; level: db).
 
+### U-web-settings-50: Decoy login requests for unknown usernames (R1; release gate; ADR-0038)
+
+- Layer: backend
+- Contract: a request for an unknown username creates a decoy login request (same row, `__Host-login` cookie, expiry, attempt counter and cooldown as a real one; no code is sent and no matching hash is stored); verify-code counts attempts and answers `attemptsLeft` for a decoy exactly as for a real request; a wrong-format code is handled the same way for both.
+- Files: `backend/app/auth/request_code.py`, `backend/app/auth/verify_code.py`, `backend/app/auth/login_requests.py`, `backend/tests/auth/test_decoy_requests.py`
+- Depends on: U-web-settings-17, U-web-settings-18, U-web-settings-24
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic
+- Criteria:
+  1. Given an unknown and a known username, When a code is requested, Then both answers, cookies and cooldowns are the same and only the known one sends a mail (W-2) (type: security; level: api).
+  2. Given a decoy request, When wrong codes are posted, Then `attemptsLeft` counts 4, 3, 2, 1 and the fifth kills the request and clears the cookie, as for a real one (type: security; level: api).
+  3. Given a decoy request, When any code is posted, Then it is refused with the generic answer and no session is created (type: security; level: api).
+  4. Given a wrong-format code on a decoy and on a real request, When posted, Then the two answers have the same shape and number (type: security; level: api).
+  5. Given decoys, When requests are counted, Then they use the cooldown, the hourly cap and the in-process limits like real requests and expire with the existing retention (type: edge; level: db).
+  6. Given the two paths, When timed over many runs, Then the medians differ by no more than the noise bound set in the test (type: security; level: api).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1104,7 +1120,8 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-8 `updatedAt` and `updatedVia` are null at version 0 (U-20).
 - D-11 a failed send starts the 60 second cooldown but does not count towards the 5-codes-per-hour cap, so a mail outage cannot lock Marco out (ADR-0036, spec AC-29 and AC-31; U-06, U-11, U-16, U-17).
 - D-12 a locked web gives the same generic refusal as any other refused request, with no explanation of the lock; the screens document has no locked state (U-18, U-31, U-43).
-- Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body only for a live login request cookie.
+- D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
+- Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
 
 ## Open points
 
@@ -1113,7 +1130,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 49 units (44 in R1, 5 in R2), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 50 units (45 in R1, 5 in R2), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 
@@ -1122,3 +1139,16 @@ Filled in while building, in the manner of `adjustable-quiet-hours`. Carried ove
 - Anything found by the challenge round (phase 6) gets its own fix unit `U-web-settings-<nn>` with the source of the finding named, and runs in parallel only when it shares no file with another.
 - The first mutation run of U-44 is recorded here with run id and scores.
 - Migration numbers are checked against `main` before each merge.
+
+Follow-ups found while building (2026-11-12), each to be handled by the named unit or a fix unit:
+
+- U-38 must remove the temporary legacy `create_app()`, add `smtp_from` (the chart already passes `APP_SMTP_FROM`), verify the chart env names against `backend/app/config.py`, and call `attach_database`, `attach_sessions`, `attach_request_code` and `attach_verify_code` in the production factory; until then readiness is fail-open and `app.state.verify_code` does not exist in the running app.
+- U-18 returns 204 for a successful verify-code and the validated path in an `X-Return-To` header, because 204 has no body; the login page always goes to `/settings` (U-31).
+- `security_events.username_hash` is `CHAR(64)` and holds a 32-character digest, so it is space padded on read; compare with the padding stripped, or change the column in a later migration.
+- `login_request.id` is `VARCHAR(32)`; U-16 uses `ids.token(24)`; later units use the id returned in `LoginRequest`.
+- U-26 selects only `db_role='web_settings_runtime'` notices; the cursor is null at migration, which avoids a first-run flood.
+- `UNBUILT_PATHS` in the route inventory test was removed in U-18; the inventory is exact again.
+- U-10 and U-11 mutation approaches differ; U-44 unifies them, and `verify_code_rules.py`, `request_code_rules.py` and `event_rules.py` are to be listed in `PURE_MODULES` and the cosmic-ray configuration there.
+- Duplicate `RETENTION` constants (`login_requests.py` and `startup.py`); the 503 body in readiness differs from the U-05 error model; the CSP also applies to dev-only `/docs`.
+- Open before staging: ingress-controller vocabulary is ingress-nginx while kind uses Traefik; the api PodDisruptionBudget default `minAvailable: 1` with one replica.
+- Tooling: the worktree isolation of the Agent tool refuses a primary working directory spelled `c:\` against `C:/`; builders create their own worktree with `git worktree add` under `.claude/worktrees/`.
