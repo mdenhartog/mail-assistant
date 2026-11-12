@@ -1,10 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-test("home shows the project heading", async ({ page }) => {
+test("home sends a visitor without a session to the sign-in page", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { level: 1, name: "Mail Assistant" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
 });
 
 test("home has no serious accessibility violations", async ({ page }) => {

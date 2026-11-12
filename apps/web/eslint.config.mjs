@@ -35,6 +35,11 @@ export default tseslint.config(
     },
   },
   {
+    // The API layer is the one place that may call fetch.
+    files: ["src/api/**/*.ts"],
+    rules: { "no-restricted-globals": "off" },
+  },
+  {
     files: ["**/*.test.{ts,tsx}", "e2e/**/*.ts"],
     rules: { "max-lines-per-function": "off", "no-restricted-globals": "off" },
   },

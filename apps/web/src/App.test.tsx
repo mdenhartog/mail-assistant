@@ -5,7 +5,7 @@ import { createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { App, routes } from "@/App";
-import { apiFetch } from "@/api/client";
+import { apiFetch, setCsrfToken } from "@/api/client";
 import { expectNoAxeViolations } from "@/test/axe";
 
 const SESSION = {
@@ -37,7 +37,7 @@ function withSession(extra: Handler = () => new Response(null, { status: 404 }))
 
 function setup(path: string): { router: TestRouter; client: QueryClient } {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
-  const client = new QueryClient();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(<App router={router} queryClient={client} />);
   return { router, client };
 }
@@ -56,6 +56,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setCsrfToken(null);
   vi.unstubAllGlobals();
 });
 
@@ -169,7 +170,14 @@ describe("csrf token", () => {
 
 describe("failures", () => {
   it("given a 401 on a write and on a background refetch, when received, then each goes to the expired login, nothing retried", async () => {
-    const mock = stubFetch(withSession(() => new Response(null, { status: 401 })));
+    let expired = false;
+    const mock = stubFetch((request) => {
+      if (new URL(request.url).pathname === "/api/session") {
+        return expired ? new Response(null, { status: 401 }) : json(SESSION);
+      }
+      expired = true;
+      return new Response(null, { status: 401 });
+    });
     const { router, client } = setup("/settings");
     await settingsShown();
 
@@ -180,7 +188,7 @@ describe("failures", () => {
       expect(router.state.location.pathname + router.state.location.search).toBe("/login?notice=expired");
     });
     await act(async () => {
-      await router.navigate("/settings");
+      await router.navigate("/login");
     });
     await act(async () => {
       await client
@@ -189,7 +197,7 @@ describe("failures", () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).toBe("?notice=expired");
+      expect(router.state.location.pathname + router.state.location.search).toBe("/login?notice=expired");
     });
     const settingsCalls = mock.mock.calls.filter(([url]) => url === "/api/settings");
     expect(settingsCalls).toHaveLength(2);
@@ -212,7 +220,56 @@ describe("failures", () => {
   });
 });
 
+describe("session errors", () => {
+  it("given the session answer is not valid, when /settings is opened, then an alert asks for a reload", async () => {
+    stubFetch(() => json({ nonsense: true }));
+
+    setup("/settings");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your session");
+  });
+
+  it("given the session answer is not valid, when /login is opened, then the sign-in page is shown", async () => {
+    stubFetch(() => new Response(null, { status: 500 }));
+
+    setup("/login");
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Sign in" })).toBeInTheDocument();
+  });
+
+  it("given the refusal page, when Back to sign in is pressed, then the sign-in page is shown", async () => {
+    let refused = true;
+    stubFetch((request) => {
+      if (new URL(request.url).pathname === "/api/session") {
+        return refused ? json(SESSION) : new Response(null, { status: 401 });
+      }
+      return new Response(null, { status: 403 });
+    });
+    setup("/settings");
+    await settingsShown();
+    await act(async () => {
+      await apiFetch("/api/settings", { method: "PUT", body: "{}" }).catch(() => undefined);
+    });
+    refused = false;
+
+    await userEvent.click(await screen.findByRole("link", { name: "Back to sign in" }));
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Sign in" })).toBeInTheDocument();
+  });
+});
+
 describe("sign out", () => {
+  it("given Sign out fails, when pressed, then an alert is shown and the user stays signed in", async () => {
+    stubFetch(withSession(() => new Response(null, { status: 500 })));
+    setup("/settings");
+    await settingsShown();
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not sign out. Try again.");
+    expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
+  });
+
   it("given Sign out, when pressed, then POST /auth/logout carries the token and the app shows /login", async () => {
     const seen: Request[] = [];
     stubFetch((request) => {

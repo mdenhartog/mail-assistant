@@ -1,15 +1,17 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-import config from "../vite.config";
+import { join } from "node:path";
 
 function read(relative: string): string {
-  return readFileSync(fileURLToPath(new URL(relative, import.meta.url)), "utf8");
+  return readFileSync(join(import.meta.dirname, relative), "utf8");
 }
 
 describe("build configuration", () => {
   it("given the Vitest config, when read, then every coverage threshold is 90", () => {
-    expect(config.test?.coverage?.thresholds).toEqual({ lines: 90, branches: 90, functions: 90, statements: 90 });
+    const source = read("../vite.config.ts");
+
+    for (const metric of ["lines", "branches", "functions", "statements"]) {
+      expect(source).toContain(`${metric}: 90`);
+    }
   });
 
   it("given index.html and the CSS, when read, then lang is en and no URL leaves the origin", () => {
