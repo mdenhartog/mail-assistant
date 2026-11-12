@@ -66,13 +66,20 @@ def test_target_keeps_a_margin_under_the_ci_threshold() -> None:
     assert gate.target_survived_percent <= gate.max_survived_percent - MARGIN_POINTS
 
 
-def test_the_gate_threshold_is_the_one_the_workflow_uses() -> None:
+def test_workflow_runs_one_job_per_module_from_the_config() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
-    backend = text.split("\n  backend:", 1)[1]
-    assert "mutation/run.py --all" in backend
-    assert "working-directory: backend" in backend
     assert re.search(r"^\s+schedule:", text, re.MULTILINE)
     assert re.search(r"^\s+workflow_dispatch:", text, re.MULTILINE)
+    before_backend, backend = text.split("\n  backend:\n", 1)
+    matrix_job = before_backend.split("\n  backend-matrix:\n", 1)[1]
+    # the module list comes from backend/cosmic-ray.toml, never from a second list in the workflow
+    assert "cosmic-ray.toml" in matrix_job
+    assert "needs: backend-matrix" in backend
+    assert "fromJSON(needs.backend-matrix.outputs.modules)" in backend
+    assert "fail-fast: false" in backend
+    assert "working-directory: backend" in backend
+    assert "mutation/run.py" in backend
+    assert "app/" not in backend
 
 
 @pytest.mark.parametrize(
