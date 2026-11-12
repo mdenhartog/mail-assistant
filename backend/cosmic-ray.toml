@@ -1,0 +1,6 @@
+[mutation]
+modules = []
+tests = []
+max-survived-percent = 15
+target-survived-percent = 10
+skip-annotations = true

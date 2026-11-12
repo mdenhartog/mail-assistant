@@ -21,6 +21,7 @@ dev = [
     "alembic>=1.20.1",
     "asyncpg-stubs>=0.31.2",
     "bandit>=1.9.4",
+    "cosmic-ray>=8.7.0",
     "cryptography>=50.0.2",
     "deptry>=0.25.1",
     "diff-cover>=11.0.1",

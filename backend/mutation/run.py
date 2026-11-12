@@ -17,15 +17,48 @@ import shutil
 import subprocess  # the runner only starts cosmic-ray with fixed argument lists
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 Position = tuple[int, int]
 Range = tuple[Position, Position]
 
+GATE_CONFIG = Path(__file__).resolve().parents[1] / "cosmic-ray.toml"
 DEFAULT_TESTS = ("tests/auth", "tests/test_pure_modules.py")
 TEST_TIMEOUT_SECONDS = 30
 PASS_THRESHOLD_PERCENT = 85.0
+
+
+@dataclass(frozen=True)
+class Gate:
+    """The mutation gate read from cosmic-ray.toml."""
+
+    modules: tuple[str, ...]
+    tests: tuple[str, ...]
+    max_survived_percent: float
+    target_survived_percent: float
+    skip_annotations: bool
+
+
+def load_gate(path: Path = GATE_CONFIG) -> Gate:
+    """Read the gate from the config file."""
+    raise NotImplementedError
+
+
+def missing_from_gate(gate: Gate, marked: set[str]) -> set[str]:
+    """Return the marked modules the gate does not list."""
+    raise NotImplementedError
+
+
+def survival_percent(output: str) -> float:
+    """Read the percentage of surviving mutants from the cr-rate output."""
+    raise NotImplementedError
+
+
+def verdict(gate: Gate, survived_percent: float) -> str:
+    """Return pass, above-target or fail for a module score."""
+    raise NotImplementedError
 
 
 def annotation_ranges(source: str) -> list[Range]:
