@@ -2,6 +2,17 @@
 @import "@mail-assistant/tokens/tokens.css";
 
 :focus-visible {
-  outline: 2px solid var(--color-focus);
+  outline: 3px solid var(--color-focus);
   outline-offset: 2px;
+}
+
+@theme inline {
+  --animate-rise: rise var(--duration-enter) ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
 }
