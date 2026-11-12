@@ -12,10 +12,10 @@ from app.codes import CodeSource
 from app.config import Settings, get_settings
 from app.errors import install_error_handlers
 from app.ids import IdSource
-from app.limit_guard import NoopLimitGuard
+from app.limit_guard import InProcessLimitGuard
 from app.logging_setup import configure_logging
 from app.mail.sender import MailSender
-from app.middleware import HttpSurfaceMiddleware
+from app.middleware import BodyLimitMiddleware, HttpSurfaceMiddleware
 from app.settings_models import declare_write_schemas
 from app.startup import validate_startup
 
@@ -71,9 +71,10 @@ def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSou
     app.state.ids = ids
     app.state.codes = codes
     app.state.mailer = mailer
-    app.state.limit_guard = NoopLimitGuard()  # replaced by the real guard in U-web-settings-24
+    app.state.limit_guard = InProcessLimitGuard(settings)
     install_error_handlers(app)
-    app.add_middleware(HttpSurfaceMiddleware, ids=ids)
+    app.add_middleware(BodyLimitMiddleware, limit_bytes=settings.body_limit_bytes)
+    app.add_middleware(HttpSurfaceMiddleware, ids=ids)  # added last, so it is the outermost
     for mounted in discover_routers():
         app.include_router(mounted.router, prefix=mounted.prefix)
     declare_write_schemas(app)

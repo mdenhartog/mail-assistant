@@ -89,16 +89,17 @@ async def test_given_the_limit_is_exceeded_when_the_database_is_read_then_no_log
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    for n in range(30):
+    await api.request_code("test-user")
+    for n in range(1, 30):
         await api.request_code(f"someone-{n}")
     written = await _rows(owner)
 
     for n in range(30, 50):
-        assert (await api.request_code(f"someone-{n}")).status_code == 429
+        assert (await api.request_code("test-user" if n % 2 else f"someone-{n}")).status_code == 429
     verify = await api.http.post("/auth/verify-code", content=b"{}", headers={"Origin": ORIGIN})
 
-    assert written == 30
-    assert await _rows(owner) == 30
+    assert written == 1
+    assert await _rows(owner) == written
     assert verify.status_code == 429
 
 

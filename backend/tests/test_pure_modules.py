@@ -16,6 +16,8 @@ PURE_MODULES = [
     "auth/return_to.py",
     "auth/event_rules.py",
     "auth/csrf.py",
+    "limits.py",
+    "clientaddr.py",
 ]
 
 

@@ -7,7 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from pydantic.alias_generators import to_camel
 
-from app.auth.request_code import LOGIN_COOKIE_NAME, CodeRequests, client_of, login_cookie, require_signin_origin
+from app.auth.request_code import LOGIN_COOKIE_NAME, CodeRequests, login_cookie, require_signin_origin
+from app.auth.session import client_key
 from app.auth.verify_code import VerifyCodeBody
 from app.core.security import public
 from app.limit_guard import limit
@@ -73,7 +74,7 @@ async def request_code(
     Returns:
         The masked address, the expiry and the wait before the next request.
     """
-    issued = await service.request(body.username, client_of(request), request.state.request_id)
+    issued = await service.request(body.username, client_key(request), request.state.request_id)
     response.headers.append("set-cookie", login_cookie(issued.login_request_id))
     if issued.delivery is not None:
         background.add_task(service.deliver, issued.delivery)
@@ -120,4 +121,4 @@ async def verify_code(request: Request) -> Response:
     """
     service: VerifyCode = request.app.state.verify_code
     cookie = request.cookies.get(LOGIN_COOKIE_NAME)
-    return await service.verify(await request.body(), cookie, client_of(request), request.state.request_id)
+    return await service.verify(await request.body(), cookie, client_key(request), request.state.request_id)

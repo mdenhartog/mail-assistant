@@ -14,15 +14,15 @@ from typing import Final
 from fastapi import FastAPI, Request
 from sqlalchemy import text
 
+from app import clientaddr
 from app.auth.expiry import ABSOLUTE, absolute_expired, idle_expired
-from app.config import SESSION_COOKIE_MAX_AGE_SECONDS
+from app.config import SESSION_COOKIE_MAX_AGE_SECONDS, Settings
 from app.db import Database
 from app.errors import ProblemError
 from app.ids import IdSource
 from app.security_events import SecurityEvents
 
 COOKIE_NAME: Final = "__Host-session"
-_UNKNOWN_CLIENT: Final = "unknown"  # until the client key of U-web-settings-24 exists
 _LOCKED = text("SELECT 1 FROM web_auth.web_lock LIMIT 1")
 _DELETE_ALL = text("DELETE FROM web_auth.session")
 _INSERT = text(  # one statement, so a lock set meanwhile cannot be missed: no lock row, no insert
@@ -198,15 +198,18 @@ def clear_session_cookie() -> str:
 
 
 def client_key(request: Request) -> str:
-    """Return the client key for events: the peer address until the client key of U-web-settings-24 exists.
+    """Return the client key of the request: the address the last trusted proxy appended, else the peer's own.
 
     Args:
-        request: The request.
+        request: The request; the app settings name the trusted proxies.
 
     Returns:
-        The address of the peer, or ``unknown``.
+        The client key (see ``app.clientaddr``).
     """
-    return request.client.host if request.client else _UNKNOWN_CLIENT
+    settings: Settings = request.app.state.settings
+    forwarded = ",".join(request.headers.getlist("x-forwarded-for")) or None
+    peer = request.client.host if request.client else None
+    return clientaddr.client_key(peer, forwarded, settings.trusted_proxy_cidrs, settings.trusted_proxy_hops)
 
 
 def attach_sessions(app: FastAPI, store: SessionStore, events: SecurityEvents) -> None:

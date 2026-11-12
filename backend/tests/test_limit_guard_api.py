@@ -49,8 +49,9 @@ def _build(**overrides: object) -> tuple[FastAPI, FakeClock, RecordingEvents]:
 
     @app.post("/t/raw", dependencies=[Depends(public)])
     async def raw(request: Request) -> dict[str, int]:
+        length = len(await request.body())
         calls.append(1)
-        return {"length": len(await request.body())}
+        return {"length": length}
 
     return app, clock, events
 
