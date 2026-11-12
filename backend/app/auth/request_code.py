@@ -32,7 +32,6 @@ from app.security_events import SecurityEvents
 logger = logging.getLogger(__name__)
 
 LOGIN_COOKIE_NAME: Final = "__Host-login"
-UNKNOWN_CLIENT: Final = "unknown"  # until the client key of U-web-settings-24 exists
 _ID_BYTES: Final = 24  # the login request id is 32 characters
 _HOUR: Final = timedelta(hours=1)
 _MAX_UNKNOWN_KEYS: Final = 1000
@@ -101,11 +100,6 @@ def login_cookie(value: str) -> str:
     morsel["path"] = "/"
     morsel["max-age"] = str(LOGIN_COOKIE_MAX_AGE_SECONDS)
     return morsel.OutputString()
-
-
-def client_of(request: Request) -> str:
-    """Return the client key of the request (the peer address until U-web-settings-24)."""
-    return request.client.host if request.client else UNKNOWN_CLIENT
 
 
 class CodeRequests:

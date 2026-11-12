@@ -1,8 +1,9 @@
-"""Response headers, request id and the last-resort 500 answer."""
+"""Response headers, request id, the body limit and the last-resort 500 answer."""
 
 import logging
 
-from starlette.datastructures import MutableHeaders
+from starlette.datastructures import Headers, MutableHeaders
+from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.errors import problem_response
@@ -65,3 +66,42 @@ class HttpSurfaceMiddleware:
             if started:
                 raise
             await problem_response(500)(scope, receive, send_with_headers)
+
+
+class BodyLimitMiddleware:
+    """Pure ASGI middleware: a body over the limit is refused with 413 before it is parsed (AC-16).
+
+    A declared ``Content-Length`` over the limit is refused without calling the app. A body without a length
+    (chunked) is counted as it is read and refused with 413 the moment it passes the limit.
+    """
+
+    def __init__(self, app: ASGIApp, *, limit_bytes: int) -> None:
+        """Keep the next app and the limit from the settings."""
+        self._app = app
+        self._limit = limit_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Serve one request, refusing it when its body is too big."""
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
+        declared = Headers(scope=scope).get("content-length")
+        if declared is not None:
+            if not declared.isascii() or not declared.isdigit():
+                await problem_response(400)(scope, receive, send)
+                return
+            if int(declared) > self._limit:
+                await problem_response(413)(scope, receive, send)
+                return
+        received = 0
+
+        async def counting_receive() -> Message:
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > self._limit:
+                    raise HTTPException(status_code=413)
+            return message
+
+        await self._app(scope, counting_receive, send)

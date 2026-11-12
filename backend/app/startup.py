@@ -3,6 +3,7 @@
 Errors and log lines name fields, never values.
 """
 
+import ipaddress
 import logging
 import re
 from collections.abc import AsyncGenerator, Iterator
@@ -90,6 +91,22 @@ def _database_problems(settings: Settings) -> Iterator[str]:
         yield "database_url"
 
 
+def _limit_problems(settings: Settings) -> Iterator[str]:
+    try:
+        for cidr in settings.trusted_proxy_cidrs:
+            ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        yield "trusted_proxy_cidrs"
+    if settings.trusted_proxy_hops < 1:
+        yield "trusted_proxy_hops"
+    if settings.rate_limit_per_minute < 1:
+        yield "rate_limit_per_minute"
+    if settings.rate_window_seconds < 1:
+        yield "rate_window_seconds"
+    if settings.body_limit_bytes < 1:
+        yield "body_limit_bytes"
+
+
 def validate_startup(settings: Settings) -> None:
     """Refuse a wrong configuration, whatever the environment.
 
@@ -99,7 +116,12 @@ def validate_startup(settings: Settings) -> None:
     Raises:
         ConfigurationError: Naming every offending field, never a value.
     """
-    problems = (*_text_problems(settings), *_key_problems(settings), *_database_problems(settings))
+    problems = (
+        *_text_problems(settings),
+        *_key_problems(settings),
+        *_database_problems(settings),
+        *_limit_problems(settings),
+    )
     fields = tuple(dict.fromkeys(problems))
     if fields:
         logger.error("startup.refused fields=%s", ", ".join(fields))
