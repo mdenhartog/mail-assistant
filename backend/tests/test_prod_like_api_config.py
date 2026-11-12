@@ -47,7 +47,8 @@ def test_given_the_api_service_when_read_then_every_sensitive_value_is_a_referen
     assert {"APP_SMTP_PASSWORD", "APP_CODE_HASH_KEY", "APP_CSRF_KEY", "APP_USERNAME_HASH_KEY"} <= set(sensitive)
     for name, value in sensitive.items():
         assert REFERENCE.search(value), name
-        assert not re.sub(r"\$\{[^}]*\}", "", value).strip("/@:"), f"{name} has a literal part"
+        if name != "APP_DATABASE_URL":  # the URL keeps its scheme, role and host; its password is the reference
+            assert not re.sub(r"\$\{[^}]*\}", "", value), f"{name} has a literal part"
 
 
 def test_given_the_api_service_when_read_then_it_points_at_the_catcher_and_trusts_the_internal_ca() -> None:
@@ -86,11 +87,11 @@ def test_given_the_default_and_dev_profiles_when_read_then_the_raised_limits_are
             assert limit not in text, f"{name} sets {limit}"
 
 
-def test_given_the_services_without_a_profile_when_read_then_the_api_is_not_one_of_them() -> None:
+def test_given_the_services_without_a_profile_when_read_then_only_the_database_runs_by_default() -> None:
     always = {name for name, service in services().items() if not service.get("profiles")}
 
-    assert {"db", "mail"} <= always
-    assert "api" not in always
+    assert "db" in always
+    assert not {"api", "mail"} & always  # the catcher belongs to prod-like
 
 
 # --- the mail catcher ---
@@ -115,7 +116,7 @@ def test_given_the_mail_service_when_read_then_it_requires_starttls_with_the_ca_
 def test_given_the_compose_file_when_searched_then_no_credential_is_a_literal() -> None:
     raw = COMPOSE.read_text(encoding="utf-8")
 
-    assert not re.search(r"(?m)^\s*(\w*PASSWORD\w*|\w*_KEY|MP_SMTP_AUTH):\s+(?!\$\{|\")\S", raw)
+    assert not re.search(r"(?m)^\s*(\w*PASSWORD\w*|\w*_KEY|MP_SMTP_AUTH):\s+(?!\$\{|\"|/certs/)\S", raw)
 
 
 def test_given_the_certs_script_when_read_then_it_makes_the_mail_leaf_through_mail_tls() -> None:

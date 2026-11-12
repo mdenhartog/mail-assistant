@@ -39,7 +39,7 @@ class SmtpMailSender:
             MailError: Sending failed for any reason; the error carries no cause, address, code or secret.
         """
         settings = self._settings
-        message = build_message(settings.smtp_user, address, code, expires_at, self._clock.now())
+        message = build_message(settings.smtp_from, address, code, expires_at, self._clock.now())
         timeout = settings.smtp_timeout_seconds
         failure: str | None = None
         try:

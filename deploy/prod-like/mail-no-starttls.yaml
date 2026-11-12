@@ -1,0 +1,9 @@
+# Test only (backend/tests/e2e/test_mail_tls.py): the catcher without a certificate, so it offers no STARTTLS and the api's
+# send must fail. Used as a second -f file; the e2e test brings the normal catcher back afterwards.
+services:
+  mail:
+    environment:
+      MP_SMTP_TLS_CERT: ""
+      MP_SMTP_TLS_KEY: ""
+      MP_SMTP_REQUIRE_STARTTLS: "false"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
