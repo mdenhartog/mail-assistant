@@ -285,15 +285,6 @@ async def test_given_sent_codes_when_their_times_are_read_then_only_those_of_the
     ]
 
 
-async def test_given_the_pad_when_run_then_it_writes_nothing(
-    store: LoginRequests,
-    owner: asyncpg.Connection,  # noqa: F811
-) -> None:
-    await store.pad()
-
-    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 0
-
-
 async def test_given_requests_in_every_state_when_attempts_left_is_read_then_only_a_live_one_has_a_number(
     store: LoginRequests,
     owner: asyncpg.Connection,  # noqa: F811

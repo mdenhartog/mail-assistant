@@ -1,12 +1,13 @@
 """Login request store (U-web-settings-16): persistence of the e-mailed sign-in code in ``web_auth.login_request``."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
 from sqlalchemy import text
 
-from app.auth.code_hash import hash_code, verify_code
+from app.auth.code_hash import decoy_hash, hash_code, verify_code
 from app.auth.code_rules import attempts_exhausted, code_expired, register_wrong
 from app.db import Database
 from app.ids import IdSource
@@ -27,8 +28,8 @@ _KILL_LIVE = text(
     "UPDATE web_auth.login_request SET dead_at = :now WHERE username_key = :username_key AND dead_at IS NULL"
 )
 _INSERT = text(
-    "INSERT INTO web_auth.login_request (id, username_key, code_hash, expires_at, created_at) "
-    "VALUES (:id, :username_key, :code_hash, :expires_at, :created_at)"
+    "INSERT INTO web_auth.login_request (id, username_key, code_hash, expires_at, created_at, sent_at) "
+    "VALUES (:id, :username_key, :code_hash, :expires_at, :created_at, :sent_at)"
 )
 _LOCK_ROW = text(
     "SELECT code_hash, created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id FOR UPDATE"
@@ -45,7 +46,6 @@ _SENT_TIMES = text(
     "SELECT sent_at FROM web_auth.login_request "
     "WHERE username_key = :username_key AND sent_at > :since ORDER BY sent_at"
 )
-_PAD = text("SELECT 1")
 
 
 @dataclass(frozen=True)
@@ -120,8 +120,35 @@ class LoginRequests:
         Raises:
             LoginRequestCapReached: Too many open requests; nothing was written.
         """
+        return await self._store(
+            username_key, now, cap, lambda request_id: hash_code(self._key, request_id, code), sent_at=None
+        )
+
+    async def create_decoy(self, username_key: str, now: datetime, cap: int) -> LoginRequest:
+        """Store a decoy request of an unknown username (ADR-0038): the same row, the same rules as ``create``.
+
+        No code exists. The stored hash is one no code can match, and the row counts as sent at once so the hourly
+        cap treats it like a sent code. Nothing marks the row as a decoy.
+
+        Args:
+            username_key: The keyed digest of the username (64 characters).
+            now: The request time (starts the cooldown).
+            cap: The maximum number of open requests.
+
+        Returns:
+            The new request.
+
+        Raises:
+            LoginRequestCapReached: Too many open requests; nothing was written.
+        """
+        return await self._store(
+            username_key, now, cap, lambda request_id: decoy_hash(self._key, request_id), sent_at=now
+        )
+
+    async def _store(
+        self, username_key: str, now: datetime, cap: int, code_hash: Callable[[str], bytes], *, sent_at: datetime | None
+    ) -> LoginRequest:
         request_id = self._ids.token(_ID_BYTES)
-        code_hash = hash_code(self._key, request_id, code).hex()
         expires_at = now + self._ttl
         async with self._database.session() as session, session.begin():
             await session.execute(_SERIALIZE_CREATE)
@@ -137,9 +164,10 @@ class LoginRequests:
                 {
                     "id": request_id,
                     "username_key": username_key,
-                    "code_hash": code_hash,
+                    "code_hash": code_hash(request_id).hex(),
                     "expires_at": expires_at,
                     "created_at": now,
+                    "sent_at": sent_at,
                 },
             )
         return LoginRequest(id=request_id, created_at=now, expires_at=expires_at)
@@ -225,8 +253,3 @@ class LoginRequests:
         async with self._database.session() as session, session.begin():
             result = await session.execute(_SENT_TIMES, {"username_key": username_key, "since": now - RETENTION})
             return list(result.scalars())
-
-    async def pad(self) -> None:
-        """Run one empty transaction, so a request for an unknown username costs as many round trips."""
-        async with self._database.session() as session, session.begin():
-            await session.execute(_PAD)

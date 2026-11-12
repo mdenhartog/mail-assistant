@@ -4,9 +4,12 @@
 import hashlib
 import hmac
 import re
+from typing import Final
 
 CODE_PATTERN = re.compile(r"[0-9]{6}")
 _LENGTH_BYTES = 4
+# The marker hashed for a decoy login request (ADR-0038). It is not six digits, so no posted code hashes to it.
+DECOY_INPUT: Final = "decoy"
 
 
 def hash_code(key: bytes, request_id: str, code: str) -> bytes:
@@ -21,3 +24,8 @@ def verify_code(key: bytes, request_id: str, code: str, stored_hash: bytes) -> b
     if CODE_PATTERN.fullmatch(code) is None:
         return False
     return hmac.compare_digest(hash_code(key, request_id, code), stored_hash)
+
+
+def decoy_hash(key: bytes, request_id: str) -> bytes:
+    """Return the hash stored for a decoy login request: it costs what a code hash costs and no code matches it."""
+    return hash_code(key, request_id, DECOY_INPUT)

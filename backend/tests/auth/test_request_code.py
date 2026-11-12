@@ -14,9 +14,9 @@ from fastapi import Request
 from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient, Response
 
-from app.auth import login_requests, request_code
+from app.auth import code_hash, login_requests
 from app.auth.login_requests import LoginRequests, Ok
-from app.auth.request_code import RecentRequests, attach_request_code
+from app.auth.request_code import attach_request_code
 from app.auth.request_code_rules import username_key
 from app.core.security import inventory_violations
 from app.db import Database
@@ -140,7 +140,7 @@ async def test_given_the_configured_and_an_unknown_username_when_requested_then_
     assert len(known_value) == len(unknown_value)
     assert known_value != unknown_value
     assert [sent[1] for sent in api.mailer.sent] == ["111111"]
-    assert await _rows(owner) == 1
+    assert await _rows(owner) == 2  # the unknown username has a decoy row (ADR-0038)
 
 
 async def test_given_both_cases_when_the_work_is_counted_then_the_same_steps_run(
@@ -157,11 +157,17 @@ async def test_given_both_cases_when_the_work_is_counted_then_the_same_steps_run
         return wrapper
 
     monkeypatch.setattr(login_requests, "hash_code", count_hash(login_requests.hash_code))
-    monkeypatch.setattr(request_code, "hash_code", count_hash(request_code.hash_code))
-    for name in ("last_requested_at", "sent_times_in_last_hour", "create", "pad"):  # mark_sent runs after the answer
+    monkeypatch.setattr(code_hash, "hash_code", count_hash(code_hash.hash_code))
+    # mark_sent runs after the answer; a decoy is stored by create_decoy, a real request by create
+    for name, step in (
+        ("last_requested_at", "last"),
+        ("sent_times_in_last_hour", "sent"),
+        ("create", "store"),
+        ("create_decoy", "store"),
+    ):
         original = getattr(api.store, name)
 
-        def spy(*args: Any, _name: str = name, _original: Callable[..., Awaitable[Any]] = original) -> Awaitable[Any]:
+        def spy(*args: Any, _name: str = step, _original: Callable[..., Awaitable[Any]] = original) -> Awaitable[Any]:
             steps.append(_name)
             return _original(*args)
 
@@ -360,15 +366,3 @@ async def test_given_the_route_when_the_inventory_is_read_then_it_is_public_and_
     await api.request()
 
     assert api.guard.buckets == ["signin"]
-
-
-def test_given_many_usernames_when_recorded_then_the_oldest_are_dropped_and_old_times_age_out() -> None:
-    recent = RecentRequests(max_keys=3)
-    for index in range(5):
-        recent.record(f"key{index}", T0 + timedelta(seconds=index))
-
-    assert recent.times("key0", T0 + timedelta(seconds=5)) == []
-    assert recent.times("key1", T0 + timedelta(seconds=5)) == []
-    assert recent.times("key4", T0 + timedelta(seconds=5)) == [T0 + timedelta(seconds=4)]
-    assert recent.times("key2", T0 + timedelta(seconds=3599)) == [T0 + timedelta(seconds=2)]
-    assert recent.times("key2", T0 + timedelta(seconds=3602)) == []
