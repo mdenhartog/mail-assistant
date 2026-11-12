@@ -1,38 +1,34 @@
 import type { ReactElement } from "react";
 
 import { Field } from "@/components/Field";
+import { ZoneCombobox } from "@/features/settings/ZoneCombobox";
 
 interface ZoneFieldProps {
   value: string;
   onChange: (value: string) => void;
   readOnly: boolean;
   error: string | undefined;
+  /** The zone as stored; the second Escape puts it back. Defaults to the current value. */
+  savedValue?: string | undefined;
+  /** The clock for the live local time. Defaults to the system clock. */
+  now?: (() => Date) | undefined;
 }
 
-const CONTROL =
-  "min-h-11 w-full min-w-0 rounded-control border border-border bg-surface-raised px-3 text-text " +
-  "aria-invalid:border-2 aria-invalid:border-danger read-only:opacity-80";
+function systemNow(): Date {
+  return new Date();
+}
 
-/**
- * Slot of U-web-settings-33, which rebuilds this file as a combobox with the same props. Here: a
- * plain text input for the zone name. The label "Time zone" and the hint stay.
- */
-export function ZoneField({ value, onChange, readOnly, error }: ZoneFieldProps): ReactElement {
+/** The Time zone field: label, hint and the zone combobox. */
+export function ZoneField({ value, onChange, readOnly, error, savedValue, now }: ZoneFieldProps): ReactElement {
   return (
     <Field error={error} hint="The times below are local times in this zone." label="Time zone">
       {(control) => (
-        <input
-          {...control}
-          autoCapitalize="none"
-          autoComplete="off"
-          className={CONTROL}
-          maxLength={64}
-          onChange={(event) => {
-            onChange(event.target.value);
-          }}
+        <ZoneCombobox
+          control={control}
+          now={now ?? systemNow}
+          onChange={onChange}
           readOnly={readOnly}
-          spellCheck={false}
-          type="text"
+          savedValue={savedValue ?? value}
           value={value}
         />
       )}
