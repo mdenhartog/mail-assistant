@@ -44,11 +44,11 @@ async def test_given_the_database_is_down_when_readyz_then_503_and_the_log_has_c
         assert "canary-db" not in text
 
 
-async def test_given_an_app_without_a_database_when_readyz_then_200_as_the_legacy_factory_expects() -> None:
+async def test_given_an_app_without_a_database_when_readyz_then_503_not_fail_open() -> None:
     app = make_app()
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get("/readyz")).status_code == 200
+        assert (await client.get("/readyz")).status_code == 503
 
 
 async def test_given_settings_with_a_dead_database_when_a_session_is_used_then_it_is_unavailable() -> None:

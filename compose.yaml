@@ -2,7 +2,7 @@
 #   dev       — hot reload backend + Vite dev server
 #   prod-like — the production images (read-only, non-root) for e2e, ZAP and demos
 #   test      — runs the backend and web test suites in containers, like CI
-# db and mail always run. The IdP (Keycloak) is added once identity-architecture decides on it.
+# db always runs; mail (the STARTTLS catcher) belongs to prod-like. The IdP (Keycloak) is added once identity-architecture decides on it.
 name: mail-assistant
 include:
   - agents/mail-triage/compose.yaml
@@ -15,6 +15,21 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   cap_drop: ["ALL"]
   tmpfs: ["/tmp"]
+
+# Settings both api services share, by reference: the .env file holds the values, nothing sensitive is written here.
+# An unset reference is empty, and the api then refuses to start naming the field (AC-4).
+x-api-environment: &api-environment
+  APP_USERNAME: ${E2E_USERNAME:-e2e-owner}
+  APP_EMAIL_ADDRESS: ${E2E_EMAIL_ADDRESS:-owner@example.test}
+  APP_SMTP_HOST: mail
+  APP_SMTP_PORT: "1025"
+  APP_SMTP_FROM: ${MAIL_SMTP_FROM:-assistant@example.test}
+  APP_SMTP_USER: ${MAIL_SMTP_USER:-send-only}
+  APP_SMTP_PASSWORD: ${MAIL_SMTP_PASSWORD:-}
+  APP_CODE_HASH_KEY: ${APP_CODE_HASH_KEY:-}
+  APP_CSRF_KEY: ${APP_CSRF_KEY:-}
+  APP_USERNAME_HASH_KEY: ${APP_USERNAME_HASH_KEY:-}
+  APP_DATABASE_URL: postgresql+asyncpg://web_settings_runtime:${WEB_ROLE_PASSWORD:-}@db:5432/app
 
 services:
   db:
@@ -38,17 +53,37 @@ services:
       interval: 5s
       retries: 10
 
+  # The mail catcher (prod-like only: no other profile sends mail). SMTP on 1025 inside the network accepts STARTTLS only,
+  # with the certificate for the host name `mail` that deploy/prod-like/mail-tls.sh signed with the private CA, and a
+  # send-only login. The web interface on 8025 is published on the loopback for the e2e mailbox helper.
   mail:
+    profiles: ["prod-like"]
+    <<: *hardening
     image: axllent/mailpit:v1.32.0
+    environment:
+      MP_SMTP_TLS_CERT: /certs/mail.crt
+      MP_SMTP_TLS_KEY: /certs/mail.key
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+      MP_SMTP_AUTH: ${MAIL_SMTP_USER:-send-only}:${MAIL_SMTP_PASSWORD:-}
     ports: ["127.0.0.1:${MAIL_PORT:-8025}:8025"]
+    volumes:
+      - ./deploy/prod-like/certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      retries: 10
 
   api-dev:
     profiles: ["dev"]
     build: { context: ., dockerfile: backend/Dockerfile, target: build }
-    command: ["uv", "run", "--frozen", "uvicorn", "app.main:create_app", "--factory", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uv", "run", "--frozen", "uvicorn", "app.production:create_production_app", "--factory", "--reload", "--host", "0.0.0.0", "--port", "8000"]
     working_dir: /srv/backend
     environment:
+      <<: *api-environment
       APP_ENVIRONMENT: development
+      # No TLS database and no mail catcher in this profile: readiness reports 503 and a send fails, the app runs.
+      APP_DATABASE_SSL: require
+      APP_PUBLIC_ORIGIN: https://localhost:${WEB_DEV_PORT:-5173}
     volumes: ["./backend/app:/srv/backend/app"]
     ports: ["127.0.0.1:${API_DEV_PORT:-8000}:8000"]
     depends_on: { db: { condition: service_healthy } }
@@ -67,19 +102,31 @@ services:
     image: mail-assistant-api:local
     build: { context: ., dockerfile: backend/Dockerfile }
     environment:
+      <<: *api-environment
       APP_ENVIRONMENT: production
       # The web role over TLS with the host name checked against the private CA (asyncpg `ssl`, not libpq `sslmode`).
       # The role and its password are made by the migrate service (WEB_ROLE_PASSWORD); the owner credentials stay there.
-      APP_DATABASE_URL: postgresql+asyncpg://web_settings_runtime:${WEB_ROLE_PASSWORD:-}@db:5432/app
       APP_DATABASE_SSL: verify-full
       APP_DATABASE_CA_FILE: /certs/ca.crt
+      # The same private CA verifies the mail catcher's STARTTLS certificate (compose only; the chart has no such setting).
+      SSL_CERT_FILE: /certs/ca.crt
+      APP_PUBLIC_ORIGIN: https://mail-assistant.localhost:${EDGE_HTTPS_PORT:-8443}
+      # The edge is the one proxy in front of the api; private ranges cover the compose network.
+      APP_TRUSTED_PROXY_CIDRS: '["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]'
+      # Raised limits for the e2e runs only (this profile); the defaults of the spec apply everywhere else.
+      APP_RATE_LIMIT_PER_MINUTE: "1000"
+      APP_RESEND_COOLDOWN_SECONDS: "1"
+      APP_CODES_PER_HOUR: "1000"
+      APP_OPEN_LOGIN_REQUEST_CAP: "1000"
     volumes:
       - ./deploy/prod-like/certs/ca.crt:/certs/ca.crt:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
       interval: 5s
       retries: 10
-    depends_on: { db: { condition: service_healthy } }
+    depends_on:
+      db: { condition: service_healthy }
+      mail: { condition: service_healthy }
 
   web:
     profiles: ["prod-like"]

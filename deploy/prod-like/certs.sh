@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Creates the private CA, the edge certificate and the database certificate for the prod-like stack (ADR-0037, guardrail-tls-certificates).
 # Output goes to deploy/prod-like/certs/ (git-ignored): ca.crt (trust this one), server.crt, server.key (edge),
-# db.crt, db.key (PostgreSQL, host name `db`, served through db-tls.sh).
+# db.crt, db.key (PostgreSQL, host name `db`, served through db-tls.sh), mail.crt, mail.key (mail catcher, host name `mail`).
 # Usage: deploy/prod-like/certs.sh [output-dir]
 # The CA key never leaves this script: it is deleted after the leaf is signed. Everything expires after 30 days.
 set -euo pipefail
@@ -34,6 +34,9 @@ printf 'subjectAltName=DNS:db\nbasicConstraints=critical,CA:FALSE\nkeyUsage=crit
 openssl x509 -req -in "$work/db.csr" -CA "$out/ca.crt" -CAkey "$work/ca.key" -CAcreateserial \
   -days "$days" -sha256 -extfile "$work/db.ext" -out "$out/db.crt"
 
+# The mail catcher leaf: the same CA, the one name the api sends to (host name `mail`), made by mail-tls.sh.
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mail-tls.sh" "$out/ca.crt" "$work/ca.key" "$out"
+
 # The edge runs as a non-root user without capabilities, so it needs read access; the files are throwaway and local.
-chmod 0644 "$out/ca.crt" "$out/server.crt" "$out/server.key" "$out/db.crt" "$out/db.key"
-echo "wrote $out/ca.crt, $out/server.crt, $out/server.key for $host and $out/db.crt, $out/db.key for db"
+chmod 0644 "$out/ca.crt" "$out/server.crt" "$out/server.key" "$out/db.crt" "$out/db.key" "$out/mail.crt" "$out/mail.key"
+echo "wrote $out/ca.crt, $out/server.crt, $out/server.key for $host, $out/db.crt, $out/db.key for db and $out/mail.crt, $out/mail.key for mail"

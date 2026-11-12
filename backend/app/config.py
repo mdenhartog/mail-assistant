@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # Mail sender: STARTTLS is required (W-14).
     smtp_host: str = ""
     smtp_port: int | None = None
+    smtp_from: str = ""
     smtp_user: str = ""
     smtp_password: SecretStr = SecretStr("")
     smtp_starttls: bool = True

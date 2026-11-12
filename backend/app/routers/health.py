@@ -42,7 +42,7 @@ async def liveness() -> HealthResponse:
 async def readiness(request: Request) -> HealthResponse:
     """Report that the service can accept traffic: the database answers and speaks the expected contract.
 
-    An app without a database (the legacy factory until U-web-settings-38) has nothing to check and reports ok.
+    An app without a database is not ready: readiness is never fail-open.
 
     Args:
         request: The request, whose app holds the database access.
@@ -55,7 +55,7 @@ async def readiness(request: Request) -> HealthResponse:
     """
     database: Database | None = getattr(request.app.state, "database", None)
     if database is None:
-        return HealthResponse(status="ok")
+        raise HTTPException(status_code=503, detail="Service unavailable")
     try:
         version = await read_contract_version(database)
     except DatabaseUnavailable:

@@ -53,6 +53,8 @@ def _smtp_problems(settings: Settings) -> Iterator[str]:
         yield "smtp_host"
     if settings.smtp_port is None or not 0 < settings.smtp_port < 65536:  # noqa: PLR2004
         yield "smtp_port"
+    if _EMAIL.fullmatch(settings.smtp_from) is None:
+        yield "smtp_from"
     if not settings.smtp_user:
         yield "smtp_user"
     if not settings.smtp_password.get_secret_value():

@@ -262,7 +262,9 @@ def test_given_the_compose_file_when_read_then_there_is_no_literal_secret() -> N
     literal = [
         line.strip()
         for line in text.splitlines()
-        if re.search(r"(PASSWORD|SECRET|TOKEN|KEY)\w*\s*:", line) and "${" not in line
+        if re.search(r"(PASSWORD|SECRET|TOKEN|KEY)\w*\s*:", line)
+        and "${" not in line
+        and not re.search(r":\s+/certs/\S+$", line)  # the path of a key file is not a secret
     ]
     assert literal == []
 
