@@ -151,6 +151,14 @@ describe("ZoneCombobox", () => {
     expect(screen.getByText("3 places found").closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
   });
 
+  it("given the options are listed, when read, then each visible text contains its accessible name (WCAG 2.5.3, U-36 finding)", async () => {
+    const { user, input } = setup({ initial: "Asia/Bangkok" });
+    await typeAndWait(user, input, "bang");
+    for (const option of screen.getAllByRole("option")) {
+      expect(option.textContent).toBe(option.getAttribute("aria-label"));
+    }
+  });
+
   it("given another day than the saved zone, when listed, then the option says tomorrow (C-7)", async () => {
     const { user, input } = setup();
     await typeAndWait(user, input, "bangk");

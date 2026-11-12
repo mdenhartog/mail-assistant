@@ -175,6 +175,13 @@ describe("loaded (criteria 2 and 3)", () => {
     await expectNoAxeViolations(container);
   });
 
+  it("given a narrow window or large text, when the cards are laid out, then one shrinkable column holds them (AC-22, U-36 finding)", async () => {
+    await loaded();
+
+    const grid = screen.getByLabelText("Time zone").closest(".grid");
+    expect(grid).toHaveClass("grid-cols-1", "sm:grid-cols-2");
+  });
+
   it("given nothing changed, when viewed, then Save is disabled; after an edit it is enabled; undoing the edit disables it again", async () => {
     await loaded();
     expect(save()).toBeDisabled();
