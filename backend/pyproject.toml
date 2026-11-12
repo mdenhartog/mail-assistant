@@ -102,7 +102,7 @@ omit = ["app/__main__.py"]
 exclude_dirs = ["tests", ".venv"]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["uvicorn", "schedule-policy", "asyncpg"]  # asyncpg: the driver SQLAlchemy loads by name; uvicorn: the server in the Dockerfile; schedule-policy: no code imports it yet (U-web-settings-03+)
+DEP002 = ["uvicorn", "asyncpg"]  # asyncpg: the driver SQLAlchemy loads by name; uvicorn: the server in the Dockerfile
 
 [tool.vulture]
 paths = ["app"]

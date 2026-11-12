@@ -1,6 +1,36 @@
 {
   "components": {
     "schemas": {
+      "Conflict409": {
+        "additionalProperties": false,
+        "description": "The 409 body of the write route: the current settings.",
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "status": {
+            "const": 409,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "current"
+        ],
+        "title": "Conflict409",
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Probe result.",
         "properties": {
@@ -68,6 +98,70 @@
           "places"
         ],
         "title": "PlaceResults",
+        "type": "object"
+      },
+      "Problem422": {
+        "additionalProperties": false,
+        "description": "The 422 body of the write route.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemItem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "problems"
+        ],
+        "title": "Problem422",
+        "type": "object"
+      },
+      "ProblemItem": {
+        "additionalProperties": false,
+        "description": "One refused field.",
+        "properties": {
+          "example": {
+            "title": "Example",
+            "type": "string"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "rule",
+          "value",
+          "example"
+        ],
+        "title": "ProblemItem",
         "type": "object"
       },
       "RequestCodeBody": {
@@ -149,6 +243,115 @@
         ],
         "title": "SessionInfo",
         "type": "object"
+      },
+      "Settings": {
+        "additionalProperties": false,
+        "description": "What ``GET /api/settings`` returns; never the actor.",
+        "properties": {
+          "updatedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedat"
+          },
+          "updatedVia": {
+            "anyOf": [
+              {
+                "enum": [
+                  "telegram",
+                  "web"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updatedvia"
+          },
+          "values": {
+            "$ref": "#/components/schemas/SettingsValues"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "values",
+          "version",
+          "updatedAt",
+          "updatedVia"
+        ],
+        "title": "Settings",
+        "type": "object"
+      },
+      "SettingsUpdate": {
+        "additionalProperties": false,
+        "description": "The body of the write route (U-web-settings-22): new values and the version they were based on.",
+        "properties": {
+          "values": {
+            "$ref": "#/components/schemas/SettingsValues"
+          },
+          "version": {
+            "minimum": 0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "values",
+          "version"
+        ],
+        "title": "SettingsUpdate",
+        "type": "object"
+      },
+      "SettingsValues": {
+        "additionalProperties": false,
+        "description": "The five values of the schedule; times are ``HH:MM`` wall-clock times in ``time_zone``.",
+        "properties": {
+          "overviewAt": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Overviewat",
+            "type": "string"
+          },
+          "quietEnd": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Quietend",
+            "type": "string"
+          },
+          "quietStart": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Quietstart",
+            "type": "string"
+          },
+          "remindAt": {
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "title": "Remindat",
+            "type": "string"
+          },
+          "timeZone": {
+            "maxLength": 64,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timeZone",
+          "quietStart",
+          "quietEnd",
+          "overviewAt",
+          "remindAt"
+        ],
+        "title": "SettingsValues",
+        "type": "object"
       }
     }
   },
@@ -224,6 +427,34 @@
         "summary": "Read Session",
         "tags": [
           "session"
+        ]
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "description": "Return the stored settings, or the defaults at version 0 when nothing is stored yet.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The settings; the actor of the last change is never part of it.",
+        "operationId": "read_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Settings",
+        "tags": [
+          "settings"
         ]
       }
     },

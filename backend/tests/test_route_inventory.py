@@ -27,7 +27,7 @@ R1_PATHS = {
 
 # Allow-listed paths whose routes other R1 units add (U-web-settings-18 verify-code, -20 settings). Each unit removes
 # its path here; the last one leaves the set empty, and the mounted routes then equal the allow-list exactly.
-UNBUILT_PATHS = {"/auth/verify-code", "/api/settings"}
+UNBUILT_PATHS = {"/auth/verify-code"}
 
 SIGN_IN_PATHS = {"/auth/request-code", "/auth/verify-code"}
 
