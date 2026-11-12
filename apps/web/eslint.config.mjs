@@ -7,7 +7,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "playwright-report", "test-results"] },
+  { ignores: ["src/api/schema.d.ts", "dist", "coverage", "playwright-report", "test-results"] },
   ...tseslint.configs.strictTypeChecked,
   ...pluginQuery.configs["flat/recommended"],
   react.configs.flat.recommended,
@@ -33,6 +33,11 @@ export default tseslint.config(
       "no-console": ["error", { allow: ["warn", "error"] }],
       "no-restricted-globals": ["error", { name: "fetch", message: "Use the API layer in src/api (guardrail-tanstack-query)." }],
     },
+  },
+  {
+    // The API layer is the one place that may call fetch.
+    files: ["src/api/**/*.ts"],
+    rules: { "no-restricted-globals": "off" },
   },
   {
     files: ["**/*.test.{ts,tsx}", "e2e/**/*.ts"],
