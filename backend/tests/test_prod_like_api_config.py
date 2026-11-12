@@ -1,7 +1,7 @@
 """U-web-settings-38: file-level checks of the prod-like api service, the mail catcher and the chart env names.
 
 What only a running stack proves (STARTTLS on the wire, the refused STARTTLS, the missing setting in the image) is
-checked by ``tests/e2e/test_mail_tls.py`` in the `e2e` CI job.
+checked by ``tests/e2e/test_mail_tls.py`` in the `prod-like` CI job.
 """
 
 import re
@@ -180,8 +180,8 @@ def test_given_the_chart_when_compared_with_the_settings_then_every_required_set
 # --- the CI job ---
 
 
-def test_given_the_e2e_job_when_read_then_the_env_file_carries_the_new_references_and_the_catcher_tests_run() -> None:
-    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["e2e"]
+def test_given_the_prod_like_job_when_read_then_the_env_has_the_new_references_and_catcher_tests_run() -> None:
+    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["prod-like"]
     steps = "\n".join(str(step.get("run", "")) for step in job["steps"])
 
     for name in ("MAIL_SMTP_PASSWORD", "APP_CODE_HASH_KEY", "APP_CSRF_KEY", "APP_USERNAME_HASH_KEY"):

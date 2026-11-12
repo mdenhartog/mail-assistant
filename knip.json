@@ -6,12 +6,17 @@
         "commitlint.config.mjs",
         "scripts/**/*.mjs"
       ],
-      "ignoreBinaries": ["uv"]
+      "ignoreBinaries": [
+        "uv"
+      ]
     },
     "apps/web": {
       "project": [
         "src/**/*.{ts,tsx}",
         "e2e/**/*.ts"
+      ],
+      "entry": [
+        "e2e/setup.ts"
       ]
     },
     "packages/tokens": {}
