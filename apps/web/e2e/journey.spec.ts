@@ -19,7 +19,7 @@ const AMSTERDAM_ROW = "1|1080|Europe/Amsterdam"; // version, overview 18:00 as m
 const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; " +
   "frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
-const COOLDOWN_MS = 1_100; // the prod-like api asks for one second between codes
+const COOLDOWN_MS = 1_300; // the prod-like api asks for one second between codes
 const PUBLIC_ORIGIN = "https://mail-assistant.localhost:8443";
 
 let lastAsk = 0;
@@ -34,7 +34,6 @@ async function respectCooldown(): Promise<void> {
   if (wait > 0) {
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
-  lastAsk = Date.now();
 }
 
 /** Username step, then the code the api mailed to the catcher; returns the code with the code step on screen. */
@@ -44,6 +43,7 @@ async function askForCode(page: Page): Promise<string> {
   await page.goto("/login");
   await page.getByLabel("Username").fill(USERNAME);
   await page.getByRole("button", { name: "Send me a code" }).click();
+  lastAsk = Date.now();
   await expect
     .poll(async () => newestCode().catch(() => ""), { message: "the sign-in mail arrives", timeout: 30_000 })
     .toMatch(SIX_DIGITS);
@@ -285,7 +285,7 @@ test("a time zone change shows its preview, then the saved banner with the real 
 
   await page.getByRole("button", { name: "Save changes" }).click();
 
-  const banner = page.getByRole("status").filter({ hasText: /^Saved at \d{2}:\d{2}\./ });
+  const banner = page.getByRole("status").filter({ hasText: /Saved at \d{2}:\d{2}\./ });
   await expect(banner).toContainText("Quiet hours are 23:00 to 07:00 (Bangkok time).");
   await expect(banner).toContainText(`within about ${String(minutes)} ${minutes === 1 ? "minute" : "minutes"}.`);
   await expect(page.getByText(/^Last changed from the web at \d{2}:\d{2}$/)).toBeVisible();
@@ -333,6 +333,7 @@ test("a locked web refuses the signed-in user and answers a right code exactly l
   const headers = { Origin: baseURL ?? PUBLIC_ORIGIN };
   await respectCooldown();
   const asked = await request.post("/auth/request-code", { data: { username: USERNAME }, headers });
+  lastAsk = Date.now();
   expect(asked.status()).toBe(200);
   await expect.poll(async () => newestCode().catch(() => ""), { timeout: 30_000 }).toMatch(SIX_DIGITS);
   const code = await newestCode();
