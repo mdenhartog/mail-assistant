@@ -282,6 +282,24 @@ describe("asking too soon (429)", () => {
   });
 });
 
+describe("a new code that could not be sent", () => {
+  it("given the request fails with a 500, when shown, then a danger banner says so and the button stays usable", async () => {
+    const stub = stubApi();
+    const clock = testClock();
+    const user = await toCodeStep(clock);
+    for (let second = 0; second < 60; second += 1) {
+      clock.tick(1);
+    }
+    stub.request.next = () => new Response(null, { status: 500 });
+
+    await user.click(resendButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not send a new code. Try again.");
+    expect(resendButton()).toBeEnabled();
+    await expectNoAxeViolations(document.body);
+  });
+});
+
 describe("too many codes this hour (429)", () => {
   it.each([
     ["1500", "25"],
