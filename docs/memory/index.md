@@ -36,4 +36,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0035 · Web design system: the Pebble direction (supersedes ADR-0031) · area:design-system · tags:design,tokens,web,pebble · decisions/ADR-0035-web-design-pebble.md
 - ADR-0036 · Web sign-in: username and a one-time code sent by e-mail (supersedes ADR-0024) · area:identity · tags:authentication,web,one-time-code,smtp,mail-triage · decisions/ADR-0036-web-signin-email-code.md
 - ADR-0037 · The web settings page is reachable only locally (supersedes ADR-0032) · area:hosting · tags:web,ingress,tls,exposure,local,mail-triage · decisions/ADR-0037-web-local-only.md
+- ADR-0038 · Web sign-in: unknown usernames get a decoy login request with the same counters · area:identity · tags:authentication,web,enumeration,one-time-code,mail-triage · decisions/ADR-0038-web-signin-decoy-requests.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
