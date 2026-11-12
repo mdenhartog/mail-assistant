@@ -1,7 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { App } from "@/App";
+import { createBrowserRouter } from "react-router";
+
+import { App, routes } from "@/App";
 
 import "./index.css";
 
@@ -12,6 +14,6 @@ if (container === null) {
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <App router={createBrowserRouter(routes)} />
   </StrictMode>,
 );
