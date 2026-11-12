@@ -144,6 +144,10 @@ class LoginRequests:
             )
         return LoginRequest(id=request_id, created_at=now, expires_at=expires_at)
 
+    async def create_decoy(self, username_key: str, now: datetime, cap: int) -> LoginRequest:
+        """Store a decoy login request of an unknown username (ADR-0038); see ``create`` for the rules."""
+        raise NotImplementedError
+
     async def check(self, request_id: str | None, code: str, now: datetime) -> Verdict:
         """Check a code: the row is locked, so two checks of one request run one after the other.
 

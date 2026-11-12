@@ -11,6 +11,7 @@ APP = Path(__file__).resolve().parents[1] / "app"
 FORBIDDEN = {"fastapi", "starlette", "sqlalchemy", "httpx", "httpcore", "aiosmtplib", "requests", "socket", "ssl"}
 PURE_MODULES = [
     "auth/code_hash.py",
+    "auth/decoy_rules.py",
     "auth/mask.py",
     "auth/digest.py",
     "auth/return_to.py",
