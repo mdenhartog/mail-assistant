@@ -31,3 +31,6 @@ docs/tutorials/videos/
 
 # Prod-like TLS material (made by deploy/prod-like/certs.sh)
 deploy/prod-like/certs/
+
+# Saved browser session of the Playwright setup project (U-web-settings-42)
+playwright/.auth/

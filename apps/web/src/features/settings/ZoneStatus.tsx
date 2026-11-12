@@ -15,8 +15,8 @@ export function ZoneStatus({ announcement, live, savedValue }: ZoneStatusProps):
       <p aria-live="polite" className="sr-only">
         {announcement}
       </p>
-      <p className="text-sm text-text-muted">{`Currently: ${savedValue}`}</p>
-      <p aria-live="polite" className="text-sm text-text">
+      <p className="text-sm text-text-muted wrap-anywhere">{`Currently: ${savedValue}`}</p>
+      <p aria-live="polite" className="text-sm text-text wrap-anywhere">
         {live}
       </p>
       <p className="text-sm text-text-muted">

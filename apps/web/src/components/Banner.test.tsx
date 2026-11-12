@@ -15,6 +15,16 @@ const KINDS: [BannerKind, string, string][] = [
 ];
 
 describe("Banner", () => {
+  it("given large text in a narrow window, when a word does not fit beside the mark, then the text may shrink and break (AC-22, U-36 finding)", () => {
+    render(
+      <Banner kind="success" title="Saved.">
+        Quiet hours are 23:00 to 07:00 (Amsterdam time).
+      </Banner>,
+    );
+    const text = screen.getByRole("status").querySelector("strong")?.parentElement;
+    expect(text).toHaveClass("min-w-0", "wrap-anywhere");
+  });
+
   it.each(KINDS)("given kind %s, when rendered, then role %s, a title and the marker %s", (kind, role, mark) => {
     render(
       <Banner kind={kind} title="Heads up.">

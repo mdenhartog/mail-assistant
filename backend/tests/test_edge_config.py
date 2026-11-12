@@ -2,7 +2,7 @@
 
 File-level and config-level checks: nginx.conf, compose.yaml, the Caddyfile and the CI workflow are parsed as files.
 What only a running stack proves (redirect, HSTS on the wire, the 404 matrix through the edge, the log line) is
-checked in the `e2e` CI job.
+checked in the `prod-like` CI job.
 """
 
 import re
@@ -79,7 +79,7 @@ def caddy() -> str:
 
 
 def e2e_steps(key: str) -> str:
-    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["e2e"]
+    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["prod-like"]
     return "\n".join(str(step.get(key, "")) for step in job["steps"])
 
 
@@ -272,7 +272,7 @@ def test_given_the_compose_file_when_read_then_there_is_no_literal_secret() -> N
 # --- CI and Playwright (criterion 1) ---
 
 
-def test_given_the_e2e_job_when_read_then_it_makes_the_certs_trusts_the_ca_and_runs_through_the_edge() -> None:
+def test_given_the_prod_like_job_when_read_then_it_makes_the_certs_trusts_the_ca_and_runs_through_the_edge() -> None:
     steps = e2e_steps("run") + e2e_steps("env")
 
     assert "deploy/prod-like/certs.sh" in steps
@@ -282,7 +282,7 @@ def test_given_the_e2e_job_when_read_then_it_makes_the_certs_trusts_the_ca_and_r
     assert steps.index("certs.sh") < steps.index("up -d --build --wait")
 
 
-def test_given_the_e2e_job_when_read_then_it_checks_the_edge_with_curl() -> None:
+def test_given_the_prod_like_job_when_read_then_it_checks_the_edge_with_curl() -> None:
     steps = e2e_steps("run")
 
     assert "Strict-Transport-Security" in steps
@@ -301,3 +301,38 @@ def test_given_the_playwright_config_when_read_then_the_base_url_is_the_edge_and
 
     assert f"https://{HOST}:8443" in text
     assert "ignoreHTTPSErrors" not in text
+
+
+# --- U-web-settings-42: the setup project, the smoke projects and the log check ---
+
+
+def test_given_the_playwright_config_when_read_then_a_setup_project_signs_in_and_smoke_reuses_it() -> None:
+    text = PLAYWRIGHT.read_text(encoding="utf-8")
+
+    assert 'name: "setup"' in text
+    assert "testMatch: /setup" in text
+    for project in ("smoke-375", "smoke-1280"):
+        assert f'name: "{project}"' in text
+    assert text.count("storageState: STORAGE_STATE") == 2  # both smoke projects start signed in
+    assert 'dependencies: ["setup"]' in text
+    assert 'dependencies: ["smoke-375"]' in text  # one after the other: both save the one settings row
+    assert "width: 375" in text
+    assert "width: 1280" in text
+
+
+def test_given_the_session_state_file_when_checked_into_git_then_it_is_ignored() -> None:
+    assert "playwright/.auth/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_given_the_log_check_when_read_then_it_greps_the_logs_and_prints_no_secret() -> None:
+    script = (ROOT / "scripts" / "prodlike-checks.sh").read_text(encoding="utf-8")
+
+    assert script.startswith("#!/usr/bin/env bash")
+    assert "set -euo pipefail" in script
+    for service in ("api", "web", "edge", "db"):
+        assert service in script
+    assert "migrate.log" in script
+    for kind in ("sign-in-code", "canary", "smtp-password", "session-cookie"):
+        assert kind in script
+    assert "code=" in script
+    assert 'echo "$value"' not in script  # a hit names the kind and the file, never the value

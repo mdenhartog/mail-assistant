@@ -73,7 +73,7 @@ export function Banner({ kind, title, children, action, focusOnMount = false }: 
       >
         {look.mark}
       </span>
-      <div>
+      <div className="min-w-0 wrap-anywhere">
         <strong className="font-bold">{title}</strong>
         {children ? <> {children}</> : null}
         {action ? (
