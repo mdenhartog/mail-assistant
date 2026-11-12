@@ -12,6 +12,8 @@ interface SettingsFieldsProps {
   values: SettingsValues;
   errors: FieldErrors;
   readOnly: boolean;
+  /** The zone as stored; Escape in the zone field puts it back. */
+  savedZone: string;
   setField: (field: FieldKey, value: string) => void;
 }
 
@@ -109,7 +111,7 @@ function QuietHours({ values, errors, readOnly, setField }: SettingsFieldsProps)
 
 /** The four settings in the order of the screens document: Time zone first, then the three times. */
 export function SettingsFields(props: SettingsFieldsProps): ReactElement {
-  const { values, errors, readOnly, setField } = props;
+  const { values, errors, readOnly, savedZone, setField } = props;
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Card>
@@ -119,6 +121,7 @@ export function SettingsFields(props: SettingsFieldsProps): ReactElement {
             setField("timeZone", value);
           }}
           readOnly={readOnly}
+          savedValue={savedZone}
           value={values.timeZone}
         />
       </Card>
