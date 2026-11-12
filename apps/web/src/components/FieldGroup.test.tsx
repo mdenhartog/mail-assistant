@@ -36,7 +36,7 @@ describe("FieldGroup", () => {
     for (const name of ["From", "Until"]) {
       expect(screen.getByLabelText(name)).toHaveAttribute("aria-invalid", "true");
       expect(screen.getByLabelText(name)).toHaveAccessibleDescription(
-        "Alerts wait until it ends. ! Quiet hours can be 1 to 12 hours.",
+        "Alerts wait until it ends. Quiet hours can be 1 to 12 hours.",
       );
     }
     await expectNoAxeViolations(container);

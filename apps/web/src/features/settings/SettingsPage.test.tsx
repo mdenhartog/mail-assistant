@@ -148,6 +148,10 @@ describe("loading (criterion 1)", () => {
 });
 
 describe("loaded (criteria 2 and 3)", () => {
+  beforeEach(() => {
+    wire();
+  });
+
   it("given loaded settings, when rendered, then the four fields come in order with their values and hints", async () => {
     const container = await loaded();
 
@@ -275,7 +279,7 @@ describe("validation error (criterion 5)", () => {
     ] as const) {
       const input = screen.getByLabelText(label);
       expect(input).toHaveAttribute("aria-invalid", "true");
-      expect(input).toHaveAccessibleDescription(`${hint} ! ${text}`);
+      expect(input).toHaveAccessibleDescription(`${hint} ${text}`);
       expect(screen.getByText(text).closest("[role='alert']")).toHaveTextContent("!");
     }
     expect(screen.getByLabelText("Time zone")).not.toHaveAttribute("aria-invalid");

@@ -1,7 +1,26 @@
-/** A non-2xx answer from the API; carries the status only, never the body. */
+/**
+ * A non-2xx answer from the API. The message is the status only. `body` is the parsed JSON of a 409
+ * or a 422 (the current settings, the refused fields) and is `undefined` for every other answer.
+ */
 export class ApiError extends Error {
-  public constructor(public readonly status: number, public readonly body?: unknown) {
+  public constructor(
+    public readonly status: number,
+    public readonly body?: unknown,
+  ) {
     super(`HTTP ${String(status)}`);
+  }
+}
+
+const STATUSES_WITH_BODY = new Set([409, 422]);
+
+async function readBody(response: Response): Promise<unknown> {
+  if (!STATUSES_WITH_BODY.has(response.status)) {
+    return undefined;
+  }
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
   }
 }
 
@@ -70,7 +89,7 @@ export async function apiFetch(path: string, init: RequestInit = {}, options: Ap
   const response = await fetch(path, { ...init, method, headers: buildHeaders(method, init), credentials: "same-origin" });
   if (!response.ok) {
     notify(response.status, options);
-    throw new ApiError(response.status);
+    throw new ApiError(response.status, await readBody(response));
   }
   return response;
 }

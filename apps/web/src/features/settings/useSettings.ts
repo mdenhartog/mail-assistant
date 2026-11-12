@@ -1,6 +1,7 @@
-/* eslint-disable @typescript-eslint/no-unused-vars -- skeleton, replaced by the implementation commit */
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 
+import { ApiError, apiFetch } from "@/api/client";
 import type { components } from "@/api/schema";
 
 export type Settings = components["schemas"]["Settings"];
@@ -14,6 +15,7 @@ export interface ConflictState {
   mine: SettingsValues;
 }
 
+/** What a failed save means for the page. */
 export type SaveOutcome =
   | { kind: "invalid"; problems: Problem[] }
   | { kind: "conflict"; current: Settings }
@@ -25,14 +27,85 @@ interface SaveVariables {
   version: number;
 }
 
-export function classifySaveError(_error: unknown): SaveOutcome {
+const settingsKey = ["settings"] as const;
+/** The five values in the order of the form. */
+export const FIELD_KEYS: readonly FieldKey[] = ["timeZone", "quietStart", "quietEnd", "overviewAt", "remindAt"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isValues(value: unknown): value is SettingsValues {
+  return isRecord(value) && FIELD_KEYS.every((key) => typeof value[key] === "string");
+}
+
+function isSettings(value: unknown): value is Settings {
+  return isRecord(value) && isValues(value["values"]) && typeof value["version"] === "number";
+}
+
+function isProblem(value: unknown): value is Problem {
+  return isRecord(value) && ["field", "rule", "value", "example"].every((key) => typeof value[key] === "string");
+}
+
+function problemsOf(body: unknown): Problem[] {
+  const list = isRecord(body) ? body["problems"] : undefined;
+  return Array.isArray(list) ? (list as unknown[]).filter(isProblem) : [];
+}
+
+async function readSettings(response: Response): Promise<Settings> {
+  const body: unknown = await response.json();
+  if (!isSettings(body)) {
+    throw new Error("Unexpected settings answer");
+  }
+  return body;
+}
+
+/** Tells a 422 with problems, a 409 with the current settings and any other failure apart. */
+export function classifySaveError(error: unknown): SaveOutcome {
+  if (!(error instanceof ApiError)) {
+    return { kind: "failed" };
+  }
+  const body = error.body;
+  if (error.status === 409 && isRecord(body) && isSettings(body["current"])) {
+    return { kind: "conflict", current: body["current"] };
+  }
+  if (error.status === 422) {
+    const list = problemsOf(body);
+    return list.length > 0 ? { kind: "invalid", problems: list } : { kind: "refused" };
+  }
   return { kind: "failed" };
 }
 
+/**
+ * The stored settings. Kept until a save changes them: a refetch while the user types would
+ * replace the form under their hands.
+ *
+ * @example
+ * const { data } = useSettings();
+ */
 export function useSettings(): UseQueryResult<Settings> {
-  throw new Error("not built");
+  return useQuery({
+    queryKey: settingsKey,
+    queryFn: async () => readSettings(await apiFetch("/api/settings")),
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
 }
 
+/** Saves the whole row on the version it was based on; the answer, or the 409's current, becomes the stored copy. */
 export function useSaveSettings(): UseMutationResult<Settings, Error, SaveVariables> {
-  throw new Error("not built");
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (variables: SaveVariables) =>
+      readSettings(await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify(variables) })),
+    onSuccess: (saved) => {
+      queryClient.setQueryData(settingsKey, saved);
+    },
+    onError: (error) => {
+      const outcome = classifySaveError(error);
+      if (outcome.kind === "conflict") {
+        queryClient.setQueryData(settingsKey, outcome.current);
+      }
+    },
+  });
 }
