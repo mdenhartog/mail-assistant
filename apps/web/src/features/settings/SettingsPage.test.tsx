@@ -182,6 +182,15 @@ describe("loaded (criteria 2 and 3)", () => {
     expect(grid).toHaveClass("grid-cols-1", "sm:grid-cols-2");
   });
 
+  it("given the time fields are wider than a narrow card, when laid out, then they may shrink instead of pushing the page wide (AC-22, U-36 finding)", async () => {
+    await loaded();
+
+    const from = screen.getByLabelText("From");
+    expect(from).toHaveClass("max-w-full");
+    expect(from.parentElement).toHaveClass("min-w-0", "max-w-full");
+    expect(from.parentElement?.parentElement).toHaveClass("min-w-0", "max-w-full");
+  });
+
   it("given nothing changed, when viewed, then Save is disabled; after an edit it is enabled; undoing the edit disables it again", async () => {
     await loaded();
     expect(save()).toBeDisabled();

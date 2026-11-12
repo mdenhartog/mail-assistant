@@ -155,8 +155,15 @@ describe("ZoneCombobox", () => {
     const { user, input } = setup({ initial: "Asia/Bangkok" });
     await typeAndWait(user, input, "bang");
     for (const option of screen.getAllByRole("option")) {
-      expect(option.textContent).toBe(option.getAttribute("aria-label"));
+      const words = (text: string | null): string => (text ?? "").replace(/[^\p{L}\p{N}+:]+/gu, " ").trim();
+      expect(words(option.textContent)).toBe(words(option.getAttribute("aria-label")));
     }
+  });
+
+  it("given a long zone id at large text, when shown under the field, then it may break anywhere instead of widening the card (AC-22, U-36 finding)", () => {
+    setup({ initial: "America/Argentina/Buenos_Aires" });
+    expect(screen.getByText("Currently: America/Argentina/Buenos_Aires")).toHaveClass("wrap-anywhere");
+    expect(screen.getByText(/right now\./)).toHaveClass("wrap-anywhere");
   });
 
   it("given another day than the saved zone, when listed, then the option says tomorrow (C-7)", async () => {

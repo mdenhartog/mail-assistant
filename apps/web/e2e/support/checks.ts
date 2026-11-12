@@ -9,7 +9,7 @@ export const VIEWPORTS = [
   { width: 1280, height: 800, touch: false },
 ] as const;
 
-export type Viewport = (typeof VIEWPORTS)[number];
+
 
 export const SCHEMES = ["light", "dark"] as const;
 

@@ -4,12 +4,12 @@ import type { Page, Route } from "@playwright/test";
  * A stubbed API for the `ui-states` project: every request the app makes is answered with
  * `route.fulfill`, so no backend runs. A handler answers one endpoint; `n` counts its calls from 0.
  */
-export interface StubState {
+interface StubState {
   /** True once a code was accepted (or from the start for the settings states). */
   signedIn: boolean;
 }
 
-export interface StubCall {
+interface StubCall {
   n: number;
   state: StubState;
 }
@@ -41,7 +41,7 @@ export const STORED = {
   values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00" },
 } as const;
 
-export const PLACES = {
+const PLACES = {
   places: [
     { zone: "Asia/Bangkok", label: "Bangkok, Thailand", utcOffsetMinutes: 420 },
     { zone: "Asia/Dhaka", label: "Dhaka, Bangladesh", utcOffsetMinutes: 360 },

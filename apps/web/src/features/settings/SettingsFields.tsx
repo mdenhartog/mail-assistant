@@ -62,7 +62,7 @@ interface LabelledTimeProps {
 function LabelledTime({ label, value, readOnly, control, onChange }: LabelledTimeProps): ReactElement {
   const id = useId();
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex min-w-0 max-w-full flex-col gap-1">
       <label className="text-sm font-semibold text-text" htmlFor={id}>
         {label}
       </label>
@@ -113,7 +113,7 @@ function QuietHours({ values, errors, readOnly, setField }: SettingsFieldsProps)
 export function SettingsFields(props: SettingsFieldsProps): ReactElement {
   const { values, errors, readOnly, savedZone, setField } = props;
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Card>
         <ZoneField
           error={errors.timeZone}
