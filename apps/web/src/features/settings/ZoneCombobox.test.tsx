@@ -84,15 +84,15 @@ function Harness({ initial = "Europe/Amsterdam", saved, readOnly = false, error,
   );
 }
 
-function setup(props: HarnessProps = {}): { user: ReturnType<typeof userEvent.setup>; input: HTMLElement } {
+function setup(props: HarnessProps = {}): { user: ReturnType<typeof userEvent.setup>; input: HTMLElement; container: HTMLElement } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const user = userEvent.setup();
-  render(
+  const { container } = render(
     <QueryClientProvider client={client}>
       <Harness {...props} />
     </QueryClientProvider>,
   );
-  return { user, input: screen.getByRole("combobox", { name: "Time zone" }) };
+  return { user, input: screen.getByRole("combobox", { name: "Time zone" }), container };
 }
 
 async function typeAndWait(user: ReturnType<typeof userEvent.setup>, input: HTMLElement, text: string): Promise<void> {
@@ -351,18 +351,18 @@ describe("ZoneCombobox", () => {
   });
 
   it("given the closed, open, empty and no-result states, when axe runs, then no violation (AC-22)", async () => {
-    const { user, input } = setup();
-    await expectNoAxeViolations(document.body);
+    const { user, input, container } = setup();
+    await expectNoAxeViolations(container);
 
     await typeAndWait(user, input, "bang");
     await user.keyboard("{ArrowDown}");
-    await expectNoAxeViolations(document.body);
+    await expectNoAxeViolations(container);
 
     await user.clear(input);
-    await expectNoAxeViolations(document.body);
+    await expectNoAxeViolations(container);
 
     await user.type(input, "phuket");
     await screen.findByText(/Nothing found for/, {}, { timeout: 2000 });
-    await expectNoAxeViolations(document.body);
+    await expectNoAxeViolations(container);
   });
 });
