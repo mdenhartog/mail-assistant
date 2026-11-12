@@ -6,10 +6,8 @@ from collections.abc import Sequence
 
 UNKNOWN_CLIENT = "unknown"
 
-type _Address = ipaddress.IPv4Address | ipaddress.IPv6Address
 
-
-def _parse(text: str) -> _Address | None:
+def _parse(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     """Return the address of a text, with an IPv4-mapped IPv6 address as the IPv4 address, or None."""
     try:
         address = ipaddress.ip_address(text.strip())
@@ -20,7 +18,7 @@ def _parse(text: str) -> _Address | None:
     return address
 
 
-def _trusted(address: _Address, cidrs: Sequence[str]) -> bool:
+def _trusted(address: ipaddress.IPv4Address | ipaddress.IPv6Address, cidrs: Sequence[str]) -> bool:
     return any(address in ipaddress.ip_network(cidr, strict=False) for cidr in cidrs)
 
 

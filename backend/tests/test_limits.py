@@ -209,3 +209,24 @@ def test_given_hops_below_one_when_keyed_then_the_peer_is_the_key() -> None:
 
 def test_given_spaces_around_the_entries_when_keyed_then_they_are_trimmed() -> None:
     assert client_key(PROXY, "  1.1.1.1 ,   203.0.113.9  ", PROXIES, 1) == "203.0.113.9"
+
+
+def test_given_odd_and_even_windows_when_retry_after_is_asked_then_it_counts_to_the_next_window_start() -> None:
+    assert retry_after(T0 + 60 + 20.0) == 40
+    assert retry_after(T0 + 120 + 20.0) == 40
+    assert retry_after(T0 + 180 + 45.0) == 15
+
+
+def test_given_a_gap_of_several_windows_when_counted_then_everything_older_than_two_windows_is_dropped() -> None:
+    limiter = FixedWindowLimiter(limit=5, window_seconds=60)
+    limiter.hit("a", "api", T0)
+    limiter.hit("a", "api", T0 + 60)
+
+    limiter.hit("a", "api", T0 + 60 * 10)
+
+    assert limiter.tracked_windows() == 1
+    assert limiter.tracked_entries() == 1
+
+
+def test_given_a_cidr_written_with_host_bits_when_keyed_then_it_still_trusts_the_network() -> None:
+    assert client_key("10.42.1.7", "203.0.113.9", ["10.42.1.7/16"], 1) == "203.0.113.9"
