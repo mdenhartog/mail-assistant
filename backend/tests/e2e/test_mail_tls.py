@@ -107,7 +107,7 @@ def test_given_a_catcher_without_starttls_when_a_code_is_requested_then_nothing_
     assert response.status_code == 200
     assert held == []
     assert "mail send failed" in logs
-    assert not CODE.search(response.text)
+    assert "code" not in response.text.lower()  # the answer carries no code (a timestamp has six digits, too)
 
 
 @pytest.mark.parametrize("missing", SMTP_FIELDS)
