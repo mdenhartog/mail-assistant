@@ -452,27 +452,57 @@ def test_given_the_prod_like_profile_when_compose_renders_then_it_holds_no_one_s
     assert "mail-triage" not in services  # the agent needs real Gmail, Telegram and Anthropic credentials
 
 
-def test_given_the_ci_workflow_when_read_then_a_job_migrates_and_runs_the_role_checks_against_the_stack() -> None:
-    commands = run_steps(ci_jobs()["runtime-role"])
+def test_given_the_ci_workflow_when_read_then_one_prod_like_job_replaces_the_e2e_and_runtime_role_jobs() -> None:
+    jobs = ci_jobs()
 
-    assert "docker compose --profile prod-like up -d --build --wait" in commands
-    assert "docker compose run --rm --build mail-triage-migrate" in commands
-    assert commands.index("up -d --build --wait") < commands.index("mail-triage-migrate")  # the stack first
-    assert commands.index("mail-triage-migrate") < commands.index("tests/e2e")  # the role exists before it is checked
+    assert "prod-like" in jobs
+    assert "e2e" not in jobs
+    assert "runtime-role" not in jobs
+
+
+def test_given_the_prod_like_job_when_read_then_it_runs_the_stated_sequence_once() -> None:
+    commands = run_steps(ci_jobs()["prod-like"])
+    in_order = [
+        "up -d --wait db mail",  # the database and the mail catcher first
+        "docker compose run --rm --build mail-triage-migrate",  # then the migration, apart from `up --wait`
+        "docker compose --profile prod-like up -d --build --wait",
+        "readyz",
+        "backend/tests/e2e",  # TLS database, mail catcher, log canaries
+        "agents/mail-triage/tests/e2e",  # the agent role and the web role
+        "pnpm --filter web e2e",  # setup project, smoke test
+        "scripts/prodlike-checks.sh logs",  # the log grep comes last
+    ]
+    positions = [commands.index(part) for part in in_order]
+
+    assert positions == sorted(positions)
+    assert commands.count("mail-triage-migrate") == 1
     assert "MAIL_TRIAGE_RUNTIME_PASSWORD=" in commands  # the migrate job stops without it (exit code 2)
     assert "WEB_ROLE_PASSWORD=" in commands  # the job stops without this one too (U-web-settings-08)
 
 
+def test_given_the_prod_like_job_when_it_ends_then_the_reports_and_logs_are_uploaded_and_stack_goes_down() -> None:
+    steps = ci_jobs()["prod-like"]["steps"]
+    uploads = [step for step in steps if "upload-artifact" in str(step.get("uses", ""))]
+
+    assert {step["with"]["name"] for step in uploads} == {"playwright-report", "prod-like-logs"}
+    assert all(step.get("if") in {"failure()", "always()"} for step in uploads)
+    assert any("down --volumes" in str(step.get("run", "")) and step.get("if") == "always()" for step in steps)
+
+
+def test_given_the_prod_like_job_when_the_migration_fails_then_it_stops_before_the_stack_and_keeps_the_log() -> None:
+    steps = ci_jobs()["prod-like"]["steps"]
+    migrate = next(i for i, step in enumerate(steps) if "mail-triage-migrate" in str(step.get("run", "")))
+    up = next(i for i, step in enumerate(steps) if "up -d --build --wait" in str(step.get("run", "")))
+    uploads = [step for step in steps if "prod-like-logs" in str(step.get("with", ""))]
+
+    assert migrate < up  # a failed migration stops the job before the stack is started
+    assert "set -o pipefail" in steps[migrate]["run"]  # the pipe into tee must not hide the failure
+    assert "prodlike-logs/migrate.log" in steps[migrate]["run"]
+    assert [step["with"]["path"] for step in uploads] == ["prodlike-logs"]  # the log is uploaded from a failed run
+
+
 def test_given_the_gxp_job_when_read_then_it_does_not_run_the_migration() -> None:
     assert "mail-triage-migrate" not in run_steps(ci_jobs()["gxp"])
-
-
-def test_given_the_e2e_job_when_read_then_it_migrates_once_before_the_stack_comes_up() -> None:
-    # The web role must exist, with its password, before the api connects to the TLS database (U-web-settings-39).
-    commands = run_steps(ci_jobs()["e2e"])
-
-    assert commands.count("mail-triage-migrate") == 1
-    assert commands.index("mail-triage-migrate") < commands.index("up -d --build --wait")
 
 
 def test_given_the_ci_workflow_when_read_then_the_mail_triage_image_is_scanned_for_high_and_critical() -> None:

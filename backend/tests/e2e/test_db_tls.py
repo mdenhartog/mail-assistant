@@ -1,6 +1,6 @@
 """U-web-settings-39 (W-8, W-9, AC-17): the TLS database of the running prod-like stack.
 
-Image level, run by the `e2e` CI job after ``deploy/prod-like/certs.sh``, the migrate service and
+Image level, run by the `prod-like` CI job after ``deploy/prod-like/certs.sh``, the migrate service and
 ``docker compose --profile prod-like up -d --build --wait``:
 
     uv run --project backend pytest --no-cov backend/tests/e2e

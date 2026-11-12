@@ -1,10 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { STORAGE_STATE } from "./e2e/support/session";
+
 // E2E runs against the prod-like TLS edge (docker compose --profile prod-like, after deploy/prod-like/certs.sh) or a PR
 // preview. The browser must trust deploy/prod-like/certs/ca.crt (certificate checks stay on).
+//
+// `setup` signs in once through the real login page (the code is read from the mail catcher) and saves the session.
+// `smoke-375` and `smoke-1280` start from that state, one after the other because both save the one settings row.
+// The three viewport projects have no session: they check the public page, the headers and the mailbox helper.
+const SMOKE = /smoke\.spec\.ts/;
+const GXP = "**/*.gxp.spec.ts"; // GAMP 5 scenarios run via playwright.gxp.config.ts
+
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["**/*.gxp.spec.ts"], // GAMP 5 scenarios run via playwright.gxp.config.ts
+  testIgnore: [GXP],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
@@ -15,8 +24,26 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   projects: [
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
-    { name: "tablet", use: { ...devices["Galaxy Tab S9"] } },
-    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
+    { name: "setup", testMatch: /setup\.ts/, use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "smoke-375",
+      testMatch: SMOKE,
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"], viewport: { width: 375, height: 812 }, storageState: STORAGE_STATE },
+    },
+    {
+      name: "smoke-1280",
+      testMatch: SMOKE,
+      dependencies: ["smoke-375"],
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, storageState: STORAGE_STATE },
+    },
+    { name: "mobile", testIgnore: [GXP, SMOKE], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
+    { name: "tablet", testIgnore: [GXP, SMOKE], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
+    {
+      name: "desktop",
+      testIgnore: [GXP, SMOKE],
+      dependencies: ["setup"],
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
+    },
   ],
 });
