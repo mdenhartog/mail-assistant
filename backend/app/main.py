@@ -16,7 +16,6 @@ from app.limit_guard import InProcessLimitGuard
 from app.logging_setup import configure_logging
 from app.mail.sender import MailSender
 from app.middleware import BodyLimitMiddleware, HttpSurfaceMiddleware
-from app.settings_models import declare_write_schemas
 from app.startup import validate_startup
 
 API_PREFIX = "/api"
@@ -77,7 +76,6 @@ def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSou
     app.add_middleware(HttpSurfaceMiddleware, ids=ids)  # added last, so it is the outermost
     for mounted in discover_routers():
         app.include_router(mounted.router, prefix=mounted.prefix)
-    declare_write_schemas(app)
     return app
 
 

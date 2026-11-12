@@ -184,7 +184,7 @@ def test_given_a_204_route_without_a_response_model_when_the_inventory_runs_then
 def test_given_the_mounted_write_routes_when_read_then_each_has_the_session_and_csrf_markers() -> None:
     writes = [(p, r) for p, r in _routes() if (r.methods or set()) & {"POST", "PUT"} and p not in SIGN_IN_PATHS]
 
-    assert [p for p, _ in writes] == ["/auth/logout"]
+    assert sorted(p for p, _ in writes) == ["/api/settings", "/auth/logout"]
     assert inventory_violations(writes) == []
 
 

@@ -1,12 +1,10 @@
 """Request and response models of the settings API (U-web-settings-20)."""
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
-from fastapi import FastAPI
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
-from pydantic.json_schema import models_json_schema
 
 from app.settings_repo import StoredSettings
 
@@ -103,29 +101,3 @@ class Conflict409(BaseModel):
     title: str
     status: Literal[409]
     current: Settings
-
-
-def declare_write_schemas(app: FastAPI) -> None:
-    """Add the schemas of the write route to the OpenAPI document before that route exists (U-web-settings-22).
-
-    ``SettingsUpdate``, ``Problem422`` and ``Conflict409`` are part of the contract the web client types are generated
-    from. Once the write route uses them FastAPI emits them itself and this hook can go.
-
-    Args:
-        app: The application whose document is extended.
-    """
-    generate = app.openapi
-
-    def openapi() -> dict[str, Any]:
-        schema = generate()
-        schemas: dict[str, Any] = schema.setdefault("components", {}).setdefault("schemas", {})
-        if "SettingsUpdate" not in schemas:
-            _, extra = models_json_schema(
-                [(SettingsUpdate, "validation"), (Problem422, "serialization"), (Conflict409, "serialization")],
-                ref_template="#/components/schemas/{model}",
-            )
-            for name, definition in extra.get("$defs", {}).items():
-                schemas.setdefault(name, definition)
-        return schema
-
-    app.openapi = openapi

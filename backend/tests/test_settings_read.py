@@ -304,8 +304,9 @@ def test_given_the_exported_document_when_read_then_each_settings_schema_forbids
     assert _schemas()[name]["additionalProperties"] is False
 
 
-def test_given_the_exported_document_when_read_then_settings_has_get_only() -> None:
-    assert list(_document()["paths"]["/api/settings"]) == ["get"]
+def test_given_the_exported_document_when_read_then_settings_has_get_and_put_and_no_reset() -> None:
+    assert list(_document()["paths"]["/api/settings"]) == ["get", "put"]
+    assert "/api/settings/reset" not in _document()["paths"]
 
 
 def test_given_the_exported_document_when_read_then_times_are_hhmm_and_no_actor_is_exposed() -> None:
