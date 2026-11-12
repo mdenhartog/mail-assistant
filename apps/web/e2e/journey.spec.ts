@@ -28,17 +28,22 @@ test.beforeEach(() => {
   resetState();
 });
 
-/** Username step, then the code the api mailed to the catcher; returns the code with the code step on screen. */
-async function askForCode(page: Page): Promise<string> {
+/** The api refuses a second code within a second of the last one (429); wait out what is left of it. */
+async function respectCooldown(): Promise<void> {
   const wait = lastAsk + COOLDOWN_MS - Date.now();
   if (wait > 0) {
-    await page.waitForTimeout(wait);
+    await new Promise((resolve) => setTimeout(resolve, wait));
   }
+  lastAsk = Date.now();
+}
+
+/** Username step, then the code the api mailed to the catcher; returns the code with the code step on screen. */
+async function askForCode(page: Page): Promise<string> {
+  await respectCooldown();
   await clearMailbox();
   await page.goto("/login");
   await page.getByLabel("Username").fill(USERNAME);
   await page.getByRole("button", { name: "Send me a code" }).click();
-  lastAsk = Date.now();
   await expect
     .poll(async () => newestCode().catch(() => ""), { message: "the sign-in mail arrives", timeout: 30_000 })
     .toMatch(SIX_DIGITS);
@@ -186,8 +191,12 @@ test("an expired session found by a background refetch sends the browser to sign
   await page.clock.install();
   await page.clock.fastForward(61_000);
   await page.evaluate(() => {
-    document.dispatchEvent(new Event("visibilitychange"));
-    window.dispatchEvent(new Event("focus"));
+    const show = (state: "hidden" | "visible"): void => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => state });
+      window.dispatchEvent(new Event("visibilitychange")); // TanStack Query's focus manager listens on the window
+    };
+    show("hidden");
+    show("visible");
   });
 
   await expect(page).toHaveURL(/\/login\?notice=expired$/);
@@ -269,7 +278,7 @@ test("a time zone change shows its preview, then the saved banner with the real 
   const session = (await (await page.request.get("/api/session")).json()) as { noticeIntervalMinutes: number };
   const minutes = session.noticeIntervalMinutes;
 
-  await page.getByRole("combobox", { name: "Time zone" }).fill("bangk");
+  await page.getByRole("combobox", { name: "Time zone" }).fill("Bangkok");
   await page.getByRole("option", { name: /Bangkok/ }).first().click();
 
   await expect(page.getByText(/^Quiet hours will now be 23:00 to 07:00 Bangkok time \(.* Amsterdam time\)\.$/)).toBeVisible();
@@ -322,6 +331,7 @@ test("a locked web refuses the signed-in user and answers a right code exactly l
   expect((await page.request.get("/api/settings")).status()).toBe(401);
 
   const headers = { Origin: baseURL ?? PUBLIC_ORIGIN };
+  await respectCooldown();
   const asked = await request.post("/auth/request-code", { data: { username: USERNAME }, headers });
   expect(asked.status()).toBe(200);
   await expect.poll(async () => newestCode().catch(() => ""), { timeout: 30_000 }).toMatch(SIX_DIGITS);
