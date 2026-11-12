@@ -14,7 +14,7 @@ export interface TimeFieldProps {
 }
 
 const CONTROL =
-  "min-h-11 min-w-0 rounded-control border border-border bg-surface-raised px-3 text-text tabular-nums " +
+  "min-h-11 min-w-0 max-w-full rounded-control border border-border bg-surface-raised px-3 text-text tabular-nums " +
   "aria-invalid:border-2 aria-invalid:border-danger read-only:opacity-80";
 
 const GRID: string[] = Array.from({ length: 96 }, (_, i) => {
@@ -50,7 +50,7 @@ export function TimeField({ value, onChange, readOnly = false, native, ...aria }
     }
   };
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-3 gap-y-1">
       {useNative ? (
         <input
           {...aria}

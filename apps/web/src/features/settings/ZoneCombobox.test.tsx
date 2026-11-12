@@ -151,6 +151,21 @@ describe("ZoneCombobox", () => {
     expect(screen.getByText("3 places found").closest("[aria-live]")).toHaveAttribute("aria-live", "polite");
   });
 
+  it("given the options are listed, when read, then each visible text contains its accessible name (WCAG 2.5.3, U-36 finding)", async () => {
+    const { user, input } = setup({ initial: "Asia/Bangkok" });
+    await typeAndWait(user, input, "bang");
+    for (const option of screen.getAllByRole("option")) {
+      const words = (text: string | null): string => (text ?? "").replace(/[^\p{L}\p{N}+:]+/gu, " ").trim();
+      expect(words(option.textContent)).toBe(words(option.getAttribute("aria-label")));
+    }
+  });
+
+  it("given a long zone id at large text, when shown under the field, then it may break anywhere instead of widening the card (AC-22, U-36 finding)", () => {
+    setup({ initial: "America/Argentina/Buenos_Aires" });
+    expect(screen.getByText("Currently: America/Argentina/Buenos_Aires")).toHaveClass("wrap-anywhere");
+    expect(screen.getByText(/right now\./)).toHaveClass("wrap-anywhere");
+  });
+
   it("given another day than the saved zone, when listed, then the option says tomorrow (C-7)", async () => {
     const { user, input } = setup();
     await typeAndWait(user, input, "bangk");

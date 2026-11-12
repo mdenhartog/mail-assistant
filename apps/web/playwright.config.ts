@@ -10,6 +10,13 @@ import { STORAGE_STATE } from "./e2e/support/session";
 // The three viewport projects have no session: they check the public page, the headers and the mailbox helper.
 const SMOKE = /smoke\.spec\.ts/;
 const GXP = "**/*.gxp.spec.ts"; // GAMP 5 scenarios run via playwright.gxp.config.ts
+const UI_STATES = /ui-states\.spec\.ts/;
+
+// `ui-states` renders every login and settings state against a stubbed API (route.fulfill, no backend, no setup)
+// on a local preview of the built app. The web job runs it with `--project=ui-states`; the prod-like job sets
+// E2E_BASE_URL, which leaves this project and its preview server out.
+const UI_STATES_URL = "http://127.0.0.1:4173";
+const stubbed = process.env.E2E_BASE_URL === undefined;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -37,13 +44,26 @@ export default defineConfig({
       dependencies: ["smoke-375"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, storageState: STORAGE_STATE },
     },
-    { name: "mobile", testIgnore: [GXP, SMOKE], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
-    { name: "tablet", testIgnore: [GXP, SMOKE], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
+    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
+    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
     {
       name: "desktop",
-      testIgnore: [GXP, SMOKE],
+      testIgnore: [GXP, SMOKE, UI_STATES],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
+    ...(stubbed
+      ? [{ name: "ui-states", testMatch: UI_STATES, use: { ...devices["Desktop Chrome"], baseURL: UI_STATES_URL } }]
+      : []),
   ],
+  ...(stubbed
+    ? {
+        webServer: {
+          command: "pnpm exec vite build && pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort",
+          url: UI_STATES_URL,
+          reuseExistingServer: !process.env.CI,
+          timeout: 180_000,
+        },
+      }
+    : {}),
 });

@@ -47,6 +47,7 @@ export function ZoneOptions({ id, places, activeIndex, expanded, reference, at, 
             role="option"
           >
             <span>{text.name}</span>
+            {" "}
             <span className="text-sm tabular-nums">{text.detail}</span>
           </li>
         );
