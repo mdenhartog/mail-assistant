@@ -42,3 +42,9 @@ export function attemptsLeftOf(error: unknown): number | null {
   const value = (error.body as Record<string, unknown>)["attemptsLeft"];
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
+
+/** Seconds from a `Retry-After` header on a refusal, or `null` when it is missing or not a whole number. */
+export function retryAfterSecondsOf(error: unknown): number | null {
+  const value = error instanceof ApiError ? error.headers.get("Retry-After") : null;
+  return value !== null && /^\d+$/.test(value) ? Number(value) : null;
+}

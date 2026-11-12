@@ -55,13 +55,15 @@ export function LoginPage(): ReactElement {
           {statusText(signIn)}
         </div>
         {maskedAddress === null ? (
-          <UsernameStep failed={signIn.requestFailed} onSubmit={signIn.requestCode} sending={signIn.sending} />
+          <UsernameStep failure={signIn.requestFailure} onSubmit={signIn.requestCode} sending={signIn.sending} />
         ) : (
           <CodeStep
+            codeKey={signIn.codeKey}
             failure={signIn.failure}
             maskedAddress={maskedAddress}
             onSubmit={signIn.verifyCode}
             onUseAnotherUsername={signIn.useAnotherUsername}
+            resend={signIn.resend}
             verifying={signIn.verifying}
           />
         )}

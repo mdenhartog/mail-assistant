@@ -4,11 +4,13 @@ import type { ReactElement, SyntheticEvent } from "react";
 import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { RefusalBanner } from "@/pages/refusals";
+import type { RequestFailure } from "@/pages/refusals";
 
 export interface UsernameStepProps {
   sending: boolean;
-  /** The last request was refused or failed. */
-  failed: boolean;
+  /** Why the last request gave no code; null when it did not fail. */
+  failure: RequestFailure | null;
   onSubmit: (username: string) => void;
 }
 
@@ -20,9 +22,9 @@ const CONTROL =
  * Step 1 of the login page: the username and the button that asks for a code.
  *
  * @example
- * <UsernameStep failed={false} onSubmit={ask} sending={false} />
+ * <UsernameStep failure={null} onSubmit={ask} sending={false} />
  */
-export function UsernameStep({ sending, failed, onSubmit }: UsernameStepProps): ReactElement {
+export function UsernameStep({ sending, failure, onSubmit }: UsernameStepProps): ReactElement {
   const [username, setUsername] = useState("");
   const [missing, setMissing] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -43,11 +45,12 @@ export function UsernameStep({ sending, failed, onSubmit }: UsernameStepProps): 
 
   return (
     <form className="flex flex-col gap-4" noValidate onSubmit={submit}>
-      {failed ? (
+      {failure?.kind === "failed" ? (
         <Banner kind="danger" title="Could not ask for a code.">
           Check the username and try again.
         </Banner>
       ) : null}
+      {failure && failure.kind !== "failed" ? <RefusalBanner refusal={failure} /> : null}
       <Field label="Username" {...(missing ? { error: "Enter your username." } : {})}>
         {(control) => (
           <input
