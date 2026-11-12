@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { Link } from "react-router";
 
+import { Layout } from "@/components/Layout";
 import { usePageTitle } from "@/pages/usePageTitle";
 import { paths } from "@/router/paths";
 
@@ -12,7 +13,8 @@ interface AccessRefusedProps {
 export function AccessRefused({ onBack }: AccessRefusedProps): ReactElement {
   usePageTitle("Not allowed");
   return (
-    <main className="mx-auto max-w-xl px-6 py-12">
+    <Layout>
+      <div className="mx-auto max-w-xl px-6 py-12">
       <h1 className="font-display text-2xl text-text">Access refused</h1>
       <p className="mt-3 text-text">This request was not allowed.</p>
       <Link
@@ -22,6 +24,7 @@ export function AccessRefused({ onBack }: AccessRefusedProps): ReactElement {
       >
         Back to sign in
       </Link>
-    </main>
+    </div>
+    </Layout>
   );
 }
