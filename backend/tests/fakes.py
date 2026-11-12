@@ -89,6 +89,7 @@ def make_settings(**overrides: object) -> Settings:
         "email_address": "marco@example.test",
         "smtp_host": "smtp.example.test",
         "smtp_port": 587,
+        "smtp_from": "assistant@example.test",
         "smtp_user": "test-smtp-user",
         "smtp_password": SecretStr("test-smtp-password"),
         "code_hash_key": SecretStr("a" * 32),

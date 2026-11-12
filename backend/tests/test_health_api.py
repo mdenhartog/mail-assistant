@@ -10,11 +10,10 @@ async def test_given_running_app_when_get_healthz_then_status_ok(client: AsyncCl
     assert response.json() == {"status": "ok"}
 
 
-async def test_given_running_app_when_get_readyz_then_status_ok(client: AsyncClient) -> None:
+async def test_given_app_without_database_when_get_readyz_then_503_and_not_ready(client: AsyncClient) -> None:
     response = await client.get("/readyz")
 
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.status_code == 503
 
 
 async def test_given_unknown_path_when_requested_then_404(client: AsyncClient) -> None:
