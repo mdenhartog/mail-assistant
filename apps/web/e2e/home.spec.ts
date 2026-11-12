@@ -1,10 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-test("home shows the project heading", async ({ page }) => {
-  await page.goto("/");
+// The api image still runs the health-only app (U-web-settings-38 swaps it), so /api/session cannot answer 401 yet;
+// /login shows the sign-in page whatever the session lookup says.
+test("the sign-in page shows its heading", async ({ page }) => {
+  await page.goto("/login");
 
-  await expect(page.getByRole("heading", { level: 1, name: "Mail Assistant" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
 });
 
 test("home has no serious accessibility violations", async ({ page }) => {

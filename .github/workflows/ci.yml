@@ -95,6 +95,7 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: node packages/tokens/build.mjs --check
+      - run: pnpm --filter web gen:api:check
       - run: pnpm -r lint
       - run: pnpm -r typecheck
       - run: pnpm -r test
