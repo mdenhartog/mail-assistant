@@ -1,7 +1,7 @@
 """U-web-settings-39: file-level checks of the prod-like TLS database (W-8, W-9, AC-17).
 
 What only a running stack proves (TLS on the wire, host name and CA rejection, the plain refusal) is checked by
-``tests/e2e/test_db_tls.py`` in the `e2e` CI job, which also greps the rendered `docker compose config` for a password.
+``tests/e2e/test_db_tls.py`` in the `prod-like` CI job, which also greps `docker compose config` for a password.
 Here the compose file, the scripts and the workflow are parsed as files.
 """
 
@@ -26,7 +26,7 @@ def services() -> dict[str, Any]:
 
 
 def e2e_run_text() -> str:
-    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["e2e"]
+    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["prod-like"]
     return "\n".join(str(step.get("run", "")) for step in job["steps"])
 
 
@@ -40,7 +40,7 @@ def test_given_the_compose_file_when_searched_then_a_password_is_never_a_literal
     assert not re.search(r"(?m)^\s*\w*PASSWORD\w*:\s+(?!\$\{)\S", raw)
 
 
-def test_given_the_e2e_job_when_read_then_it_greps_the_rendered_config_for_a_password() -> None:
+def test_given_the_prod_like_job_when_read_then_it_greps_the_rendered_config_for_a_password() -> None:
     steps = e2e_run_text()
 
     assert "--profile prod-like config" in steps
@@ -123,7 +123,7 @@ def test_given_the_runtime_services_when_read_then_none_has_the_owner_credential
 # --- the CI job ---
 
 
-def test_given_the_e2e_job_when_read_then_it_migrates_before_up_and_then_runs_the_image_level_tests() -> None:
+def test_given_the_prod_like_job_when_read_then_it_migrates_before_up_and_then_runs_the_image_level_tests() -> None:
     steps = e2e_run_text()
 
     assert "WEB_ROLE_PASSWORD" in steps
