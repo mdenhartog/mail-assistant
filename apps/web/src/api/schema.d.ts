@@ -221,7 +221,7 @@ export interface paths {
          * Readiness
          * @description Report that the service can accept traffic: the database answers and speaks the expected contract.
          *
-         *     An app without a database (the legacy factory until U-web-settings-38) has nothing to check and reports ok.
+         *     An app without a database is not ready: readiness is never fail-open.
          *
          *     Args:
          *         request: The request, whose app holds the database access.
