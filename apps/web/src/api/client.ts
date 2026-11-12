@@ -1,6 +1,6 @@
 /** A non-2xx answer from the API; carries the status only, never the body. */
 export class ApiError extends Error {
-  public constructor(public readonly status: number) {
+  public constructor(public readonly status: number, public readonly body?: unknown) {
     super(`HTTP ${String(status)}`);
   }
 }

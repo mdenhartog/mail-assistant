@@ -2,7 +2,6 @@ import type { ReactElement } from "react";
 
 import { usePageTitle } from "@/pages/usePageTitle";
 
-/** Placeholder until the settings form arrives (U-web-settings-32). */
 export function SettingsPage(): ReactElement {
   usePageTitle("Settings");
   return (
