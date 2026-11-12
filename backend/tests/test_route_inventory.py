@@ -25,10 +25,6 @@ R1_PATHS = {
 }
 
 
-# Allow-listed paths whose routes other R1 units add (U-web-settings-18 verify-code, -20 settings). Each unit removes
-# its path here; the last one leaves the set empty, and the mounted routes then equal the allow-list exactly.
-UNBUILT_PATHS = {"/api/settings"}
-
 SIGN_IN_PATHS = {"/auth/request-code", "/auth/verify-code"}
 
 
@@ -65,10 +61,10 @@ def test_given_the_r1_build_when_the_allow_list_is_read_then_it_is_exactly_the_d
     assert set(ROUTE_ALLOW_LIST) == R1_PATHS
 
 
-def test_given_the_mounted_routes_when_read_then_the_paths_equal_the_allow_list_but_the_unbuilt_ones() -> None:
+def test_given_the_mounted_routes_when_read_then_the_paths_equal_the_allow_list() -> None:
     mounted = {path for path, _ in _routes()}
 
-    assert mounted == set(ROUTE_ALLOW_LIST) - UNBUILT_PATHS
+    assert mounted == set(ROUTE_ALLOW_LIST)
 
 
 def test_the_mounted_routes_pass_the_inventory() -> None:
