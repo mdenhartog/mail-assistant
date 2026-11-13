@@ -19,17 +19,17 @@ if TYPE_CHECKING:
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
-WEB_PASSWORD = "web-test-only"  # noqa: S105  # a throwaway role in a throwaway container
+WEB_PASSWORD = "web-test-password"  # noqa: S105  # the shared throwaway password of the web role
 AGENT_ROLE = "mail_triage_runtime"
-AGENT_PASSWORD = "agent-test-only"  # noqa: S105  # a throwaway role in a throwaway container
+AGENT_PASSWORD = "runtime-test-only"  # noqa: S105  # the shared throwaway password of the agent role
 CLIENT = "203.0.113.7"
 
 _OLD_ROW = (
-    "insert into web_auth.security_event (kind, result, request_id, client_key, \"window\") "
+    'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
     "values ('{kind}', 'refused', 'r-{window}', '{client}', {window})"
 )
 _NEW_ROW = (
-    "insert into web_auth.security_event (kind, result, request_id, client_key, \"window\", count) "
+    'insert into web_auth.security_event (kind, result, request_id, client_key, "window", count) '
     "values ('code_refused', 'refused', 'r-1', '{client}', 1, {count})"
 )
 _CREATE_ROLES = f"""
