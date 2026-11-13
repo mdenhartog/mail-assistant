@@ -5,7 +5,7 @@ check is the second wall: after the run, the junit report must show at least ``M
 ``tests/db`` that ran (passed; a skip does not count). ``tests/db/test_start_policy.py`` needs no database and is not
 counted.
 
-How the number is kept current: it is about 95 % of what ran when it was last set (64 in U-web-settings-62). The
+How the number is kept current: it is about 95 % of what ran when it was last set (70 after U-web-settings-54). The
 check also fails when more than ``CEILING_FACTOR`` times the floor ran, and says which number to set, so a floor that
 no longer matches the suite cannot go unnoticed in either direction.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Final
 from xml.etree import ElementTree  # the report is written by pytest in the same job, not input from outside
 
-MINIMUM_DB_TESTS: Final = 60
+MINIMUM_DB_TESTS: Final = 66
 CEILING_FACTOR: Final = 1.25
 _DB_PREFIX: Final = "tests.db."
 _NO_DATABASE: Final = frozenset({"tests.db.test_start_policy"})
