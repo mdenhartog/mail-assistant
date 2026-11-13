@@ -109,7 +109,7 @@ async def test_given_the_right_code_at_10_00_when_checked_then_dead(store: Login
 
     verdict = await store.check(request.id, RIGHT, T0 + timedelta(minutes=10))
 
-    assert verdict == Dead()
+    assert verdict == Dead(existing=True)
     assert request.expires_at == T0 + TTL
 
 
@@ -121,7 +121,7 @@ async def test_given_five_wrong_codes_when_checked_then_attempts_left_count_down
     verdicts = [await store.check(request.id, WRONG, T0) for _ in range(5)]
     after = await store.check(request.id, RIGHT, T0)
 
-    assert verdicts == [Wrong(4), Wrong(3), Wrong(2), Wrong(1), Dead()]
+    assert verdicts == [Wrong(4), Wrong(3), Wrong(2), Wrong(1), Dead(existing=True)]
     assert after == Dead()
 
 

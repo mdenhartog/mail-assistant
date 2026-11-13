@@ -8,6 +8,7 @@ from datetime import datetime
 WINDOW_SECONDS = 60
 _RESULTS = {
     "code_refused": "refused",
+    "code_invalid": "refused",
     "code_request_refused": "refused",
     "mail_failed": "failed",
     "session_start": "ok",
@@ -35,7 +36,8 @@ def result_for(kind: str) -> str:
 def counts_repeats(kind: str) -> bool:
     """Return True when a repeat of the kind in one window is counted; False when it is dropped.
 
-    Wrong codes are counted: the alert adds them up (SEC-04). Every other kind is a flood answer, which must write
+    Wrong codes against an existing login request are counted: the alert adds them up (SEC-04). ``code_invalid`` (no
+    request, malformed body, dead request) is not. Every other kind is a flood answer, which must write
     no more than one row a window however many requests come.
     """
     result_for(kind)
