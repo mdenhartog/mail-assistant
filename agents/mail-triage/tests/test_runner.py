@@ -203,7 +203,7 @@ async def test_given_a_failing_web_notice_when_a_cycle_runs_then_the_mail_steps_
 
     await run.mail_cycle()
 
-    assert steps.calls[1:] == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls[2:] == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
     assert "step web_notice failed kind=RuntimeError" in caplog.text
     assert "very private" not in caplog.text
 

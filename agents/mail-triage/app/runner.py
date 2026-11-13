@@ -74,6 +74,14 @@ class WebNoticePort(Protocol):
         ...
 
 
+class CodeAlertPort(Protocol):
+    """Warns about repeated wrong sign-in codes on the web (INT-002, ADR-0039)."""
+
+    async def run(self, now: datetime) -> None:
+        """Send one notice when five wrong or expired codes came in ten minutes."""
+        ...
+
+
 class PurgePort(Protocol):
     """Clears old mail content."""
 
@@ -136,6 +144,7 @@ class Runner:
         snooze: SnoozePort,
         overview: OverviewPort,
         web_notice: WebNoticePort,
+        code_alert: CodeAlertPort,
         store: PurgePort,
         inbox: InboxPort,
         router: RouterPort,
@@ -150,6 +159,7 @@ class Runner:
         self._snooze = snooze
         self._overview = overview
         self._web_notice = web_notice
+        self._code_alert = code_alert
         self._store = store
         self._inbox = inbox
         self._router = router
@@ -160,11 +170,13 @@ class Runner:
         self._failed: dict[int, int] = {}
 
     async def mail_cycle(self) -> None:
-        """Announce web changes, release due alerts, read new mail, catch up, send alerts and the overview, purge, beat.
+        """Announce web changes, warn about wrong codes, release due alerts, read mail, catch up, send, purge, beat.
 
-        The web notice goes first and takes no part in quiet hours: a change from someone else must reach Marco soon.
+        The web notice and the wrong-code alert go first and take no part in quiet hours: a change from someone else,
+        or someone guessing codes, must reach Marco soon.
         """
         await self._guard("web_notice", self._web_notice.run(self._now()))
+        await self._guard("code_alert", self._code_alert.run(self._now()))
         await self._guard("release_due", self._snooze.release_due())
         await self._guard("pipeline", self._pipeline.run_once())
         await self._guard("catchup", self._catchup.run_once())  # after new mail, so new mail always comes first

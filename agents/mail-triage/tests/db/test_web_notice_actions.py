@@ -204,9 +204,15 @@ async def test_given_the_agent_role_when_the_lock_and_the_undo_run_then_no_other
     assert await owner.fetchval("select count(*) from web_auth.web_lock") == 1
     for table in ("session", "login_request", "security_event"):
         assert await owner.fetchval(f"select count(*) from web_auth.{table}") == 0
+    for table in ("session", "login_request"):
         assert not await owner.fetchval(
             "select has_table_privilege($1, $2, 'select, insert, update, delete')", AGENT, f"web_auth.{table}"
         )
+    # the alert of U-web-settings-48 reads the events; it never writes them
+    assert await owner.fetchval("select has_table_privilege($1, 'web_auth.security_event', 'select')", AGENT)
+    assert not await owner.fetchval(
+        "select has_table_privilege($1, 'web_auth.security_event', 'insert, update, delete, truncate')", AGENT
+    )
 
 
 async def test_given_the_first_saved_row_when_undo_is_tapped_then_nothing_is_written(

@@ -8,6 +8,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass
+from datetime import UTC
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
@@ -335,3 +336,14 @@ _WEB_LOCK_NOTE = f"Web sign-in is locked. Send {WEB_UNLOCK_COMMAND} to allow it 
 def web_locked(outcome: str) -> str:
     """The answer to "Undo and lock web sign-in": what happened to the values, then that sign-in is locked."""
     return f"{outcome} {_WEB_LOCK_NOTE}"
+
+
+# ---- the notice for wrong sign-in codes (spec AC-20; W-13, W-15): a count and a time, never who or what was typed ----
+
+
+def code_alert(count: int, at: datetime) -> str:
+    """The notice after wrong or expired codes in ten minutes: the number, the time in UTC, nothing else."""
+    return (
+        f"{count} wrong or expired web sign-in codes in the last 10 minutes. "
+        f"Time: {at.astimezone(UTC):%Y-%m-%d %H:%M} UTC."
+    )

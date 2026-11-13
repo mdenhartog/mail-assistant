@@ -35,13 +35,16 @@ GRANT SELECT, INSERT, UPDATE ON settings.schedule TO mail_triage_runtime;
 GRANT SELECT ON settings.settings_change TO mail_triage_runtime;
 
 -- Web sign-in and settings (INT-002, ADR-0033). The agent role gets the web lock (it sets it from "Undo and lock" and
--- lifts it again), the notice token record and, through poll_state above, the notice cursor. It gets nothing else in
--- web_auth: the sessions, login requests and security events belong to the web role alone.
+-- lifts it again), the notice token record and, through poll_state above, the notice cursor. It may also read the
+-- security events, to warn about wrong codes (U-web-settings-48, ADR-0039). It gets nothing else in web_auth: the
+-- sessions and login requests belong to the web role alone, and it never writes an event.
 REVOKE ALL ON SCHEMA web_auth FROM mail_triage_runtime;
 REVOKE ALL ON ALL TABLES IN SCHEMA web_auth FROM mail_triage_runtime;
 GRANT USAGE ON SCHEMA web_auth TO mail_triage_runtime;
 -- A row means locked; only a Telegram command lifts the lock, by deleting the row (no truncate).
 GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.web_lock TO mail_triage_runtime;
+-- The wrong-code alert adds up the counts of the code_refused events; read only (no insert, update or delete).
+GRANT SELECT ON web_auth.security_event TO mail_triage_runtime;
 -- A token is created with a notice, read when "Undo" is tapped, and removed once used or expired.
 GRANT SELECT, INSERT, UPDATE, DELETE ON web_notice_token TO mail_triage_runtime;
 
