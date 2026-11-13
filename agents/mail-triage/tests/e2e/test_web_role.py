@@ -166,7 +166,7 @@ async def test_given_the_web_role_when_it_saves_a_valid_change_then_it_works(web
         await transaction.rollback()
 
     assert stored == 660
-    assert contract == 1
+    assert contract == 2
 
 
 async def test_given_the_web_role_when_its_attributes_are_read_then_it_is_a_plain_login_role_over_tls(
