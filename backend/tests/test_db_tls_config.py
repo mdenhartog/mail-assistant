@@ -76,14 +76,14 @@ def test_given_the_db_wrapper_when_read_then_it_turns_tls_on_with_a_private_key_
     assert "BEGIN" not in text
 
 
-def test_given_the_hba_file_when_read_then_the_web_role_gets_tls_only_and_scram() -> None:
+def test_given_the_hba_file_when_read_then_every_role_gets_tls_only_and_scram() -> None:
     lines = [ln.split() for ln in HBA.read_text(encoding="utf-8").splitlines() if ln.strip() and ln[0] != "#"]
     rules = {(row[0], row[2]): row[-1] for row in lines}
 
-    assert rules[("hostssl", WEB_ROLE)] == "scram-sha-256"
-    assert rules[("hostnossl", WEB_ROLE)] == "reject"
-    order = [(row[0], row[2]) for row in lines]
-    assert order.index(("hostnossl", WEB_ROLE)) < order.index(("host", "all"))
+    # No rule names a role (U-web-settings-58): the web role, the agent role and the owner all take these two.
+    assert rules[("hostssl", "all")] == "scram-sha-256"
+    assert rules[("hostnossl", "all")] == "reject"
+    assert not any(row[0] == "host" for row in lines)  # `host` would also match a plain connection
     assert not any(row[-1] in {"trust", "password", "md5"} for row in lines if row[0] != "local")
 
 
