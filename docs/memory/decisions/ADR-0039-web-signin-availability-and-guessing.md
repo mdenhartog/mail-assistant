@@ -45,3 +45,11 @@ Marco decided on 2026-11-13:
 - Accept the lock-out as a risk (R-3 only): no code change, but any device on the network could deny sign-in at no cost. Not chosen.
 - Limit per client only: does not stop several devices together or the known-username kill. Not chosen.
 - A daily cap on codes per username instead of the lock: gives a guesser a way to keep Marco out for 24 hours without his knowledge. Not chosen.
+
+## Amendment 2026-11-13 (phase 6, round 2)
+
+The second round (red team and security review of `main` 6a53669) changed three points:
+
+- **What the lock counts.** The automatic lock and the 5-in-10-minutes notice count only a well-formed wrong, expired or exhausting code against a login request that exists (real or decoy). A request without a login cookie, with a malformed body, or for a dead or unknown request is recorded as `code_invalid` and never counts. Before this change 15 garbage requests from one device, without the username, set the lock and could do it again after every unlock (SEC2-01, RT2-01).
+- **Accepted: one device with the username can use up the hourly budget (R-4).** A person who knows the username can request 5 codes an hour from one device and so keep Marco from requesting a code. Marco accepted this on 2026-11-13 instead of limiting each device to a share of the 5 codes, because a share does not stop several devices and a separate budget per device would raise the guessing budget above 25 attempts an hour. The effects are visible (code mails, security events) and Telegram stays available. The consequence text above ("One device can no longer lock Marco out ... by his username") is replaced by this paragraph. Reviewed on 2027-05-10 with R-1.
+- **Retention is part of R1.** The purge (U-49: 90 days for security events, one year for audit) and an index on `(kind, at)` move into R1 and are a gate before production.

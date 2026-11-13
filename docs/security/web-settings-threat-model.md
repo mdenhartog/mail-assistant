@@ -119,3 +119,14 @@ Caused by ADR-0036 (replaces ADR-0024) and ADR-0037 (replaces ADR-0032).
 | W-7 | Limits are per client (IPv6 per /64) and bounded; the chart sets trusted proxies and production refuses an empty list; session routes are limited before the lookup; decoys never count against the configured username and a request from another client does not replace his live request. Fixed by U-51 to U-54. |
 | W-13 | Wrong-code events are counted, not deduplicated; the alert (U-48) is R1; 15 wrong codes in 24 hours set the web lock (U-55); client keys are stored as digests. |
 | R-3 | Accepted: a guesser who knows the username can force the web lock with 15 wrong codes a day, and a group of devices can use the 5 codes an hour of the username. Telegram stays available, Marco unlocks with `/web_unlock`, the events show it. Reviewed on 2027-05-10 with R-1. |
+
+## Delta 2026-11-13 (phase 6, round 2)
+
+| id | change |
+| --- | --- |
+| W-7 | A full decoy class no longer refuses where the owner would not (U-64); a request replaces a live one only with the same login cookie; the limiter evicts old keys instead of refusing the owner. A neighbour device in the same IPv6 /64 or behind the same NAT shares one client key; this is part of R-4. |
+| W-8 | The web role may only increment `count` by one (trigger, U-65); the agent role reads only `id`, `kind`, `at`, `count`; `/readyz` is 503 on a database that does not match the api contract version. |
+| W-13 | The lock and the notice count only wrong codes against an existing login request; no-cookie, malformed and dead-request refusals are `code_invalid` (U-63). Retention: 90 days for security events and one year for audit in R1 (U-49, gate before production); an index on `(kind, at)` (U-65). |
+| R-3 | Restated: a person who sends 15 well-formed wrong codes against existing login requests in 24 hours (which needs a username and a live request) can force the web lock; Telegram stays available and `/web_unlock` lifts it. |
+| R-4 | Accepted: a person who knows the username can use up the 5 codes an hour from one device and keep Marco from requesting a code; the code mails and the security events show it. Reviewed on 2027-05-10 with R-1 (ADR-0039 amendment). |
+| Data | Added: the client digest on login requests and security events, `count`, and the `code_invalid` kind; stored as keyed digests, never the clear address. |
