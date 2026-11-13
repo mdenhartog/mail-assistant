@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import itertools
 import logging
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 
@@ -102,7 +103,7 @@ async def test_given_a_later_burst_when_an_older_undo_is_tapped_then_it_is_refus
     later = FakeNoticeStore([change(5, old_start=21, new_start=20)], cursor=4)
     await WebNotice(later, RecordingChat(), Tokens()).run(setup.rig.clock.now())
     setup.records.append(
-        NoticeToken("L" * 22, 5, later.tokens[0].before, AT, AT + timedelta(hours=24)),
+        NoticeToken("L" * 22, 5, later.tokens[0].before, AT, AT + timedelta(hours=24), "later", 5),
     )
     setup.row.version = 5
 
@@ -123,10 +124,7 @@ async def test_given_the_first_saved_row_when_undo_is_tapped_then_it_says_there_
 
 async def test_given_a_before_that_is_no_longer_allowed_when_undo_is_tapped_then_nothing_is_written() -> None:
     setup = await burst()
-    setup.records[:] = [
-        NoticeToken(r.token, r.version, {**r.before, "zone": "Not/AZone"}, r.created_at, r.expires_at)
-        for r in setup.records
-    ]
+    setup.records[:] = [replace(r, before={**r.before, "zone": "Not/AZone"}) for r in setup.records]
 
     await setup.router.handle(tap(f"webundo:{setup.token(5)}"))
 
@@ -139,10 +137,7 @@ async def test_given_a_token_record_with_unreadable_minutes_when_undo_is_tapped_
     broken: object,
 ) -> None:
     setup = await burst()
-    setup.records[:] = [
-        NoticeToken(r.token, r.version, {**r.before, "quiet_end": broken}, r.created_at, r.expires_at)
-        for r in setup.records
-    ]
+    setup.records[:] = [replace(r, before={**r.before, "quiet_end": broken}) for r in setup.records]
 
     await setup.router.handle(tap(f"webundo:{setup.token(5)}"))
 

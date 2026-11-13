@@ -212,7 +212,7 @@ async def test_given_the_agent_role_when_the_lock_and_the_undo_run_then_no_other
 async def test_given_the_first_saved_row_when_undo_is_tapped_then_nothing_is_written(
     web: asyncpg.Connection, owner: asyncpg.Connection, agent_engine: AsyncEngine
 ) -> None:
-    token = NoticeToken("T" * 22, 1, {}, NOW, NOW + timedelta(hours=1))
+    token = NoticeToken("T" * 22, 1, {}, NOW, NOW + timedelta(hours=1), "B" * 22, 1)
     await _web_changes_up_to(web, 1)
     rig = Rig(agent_engine)
     await rig.notices.record_token(token)

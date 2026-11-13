@@ -125,6 +125,7 @@ async def test_given_revision_0007_with_settings_data_when_migrated_then_the_web
     assert [tuple(r.values()) for r in rows] == [(1, "telegram", "42", 600)]
     assert len(await _fetch(database_url, "select 1 from settings.settings_change")) == 1
 
+    await _migrate(database_url, "head")  # the model is the head; later migrations add to these tables
     engine = create_async_engine(database_url)
     try:
         async with engine.connect() as connection:
@@ -340,8 +341,8 @@ async def test_given_the_notice_token_record_when_the_same_token_is_inserted_twi
     migrated_url: str,
 ) -> None:
     sql = (
-        "insert into web_notice_token (token, version, before, created_at, expires_at) "
-        "values ('t1', 2, '{}'::jsonb, now(), now())"
+        "insert into web_notice_token (token, version, before, created_at, expires_at, burst_id, first_version) "
+        "values ('t1', 2, '{}'::jsonb, now(), now(), 'b1', 2)"
     )
     connection = await asyncpg.connect(_plain(migrated_url))
     try:

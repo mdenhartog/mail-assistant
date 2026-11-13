@@ -264,8 +264,8 @@ async def test_given_the_agent_role_when_it_works_the_notice_token_and_the_curso
     await agent.execute("insert into poll_state (id, history_id) values (1, '1')")
     await agent.execute("update poll_state set web_notice_version = 4")
     await agent.execute(
-        "insert into web_notice_token (token, version, before, created_at, expires_at) "
-        "values ('t1', 2, '{}', now(), now())"
+        "insert into web_notice_token (token, version, before, created_at, expires_at, burst_id, first_version) "
+        "values ('t1', 2, '{}', now(), now(), 'b1', 2)"
     )
     await agent.execute("update web_notice_token set version = 3")
 

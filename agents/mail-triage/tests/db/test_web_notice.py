@@ -133,7 +133,15 @@ async def test_given_the_agent_role_when_it_writes_the_cursor_and_the_token_then
     await store.advance(10)
     await store.advance(9)  # the cursor never goes back
     await store.record_token(
-        NoticeToken("T" * 22, 10, {"zone": "Europe/Amsterdam", "quiet_start": 600}, NOW, NOW + timedelta(hours=24))
+        NoticeToken(
+            "T" * 22,
+            10,
+            {"zone": "Europe/Amsterdam", "quiet_start": 600},
+            NOW,
+            NOW + timedelta(hours=24),
+            "B" * 22,
+            10,
+        )
     )
 
     assert await store.last_announced() == 10

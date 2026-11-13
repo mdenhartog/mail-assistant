@@ -16,11 +16,12 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import PollState, SettingsChange, WebNoticeToken
 from app.db.pg_update_cursor import POLL_ROW
-from app.usecases.web_notice import NoticeToken, WebChange
+from app.usecases.web_notice import NoticeToken, OpenBurst, WebChange
 from schedule_policy.policy import TimePolicy
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -78,6 +79,8 @@ class PgWebNotice:
             before=token.before,
             created_at=token.created_at,
             expires_at=token.expires_at,
+            burst_id=token.burst_id,
+            first_version=token.first_version,
         )
         async with self._sessions.begin() as session:
             session.add(record)
@@ -88,11 +91,27 @@ class PgWebNotice:
             row = await session.get(WebNoticeToken, token)
         if row is None:
             return None
-        return NoticeToken(row.token, row.version, dict(row.before), row.created_at, row.expires_at)
+        return NoticeToken(
+            row.token, row.version, dict(row.before), row.created_at, row.expires_at, row.burst_id, row.first_version
+        )
 
-    async def burst_end(self, before: dict[str, object]) -> int:
-        """The highest announced version among the tokens that restore the same ``before`` (0 when none)."""
-        statement = select(func.max(WebNoticeToken.version)).where(WebNoticeToken.before == before)
+    async def open_burst(self, after: int, now: datetime) -> OpenBurst | None:
+        """The burst of the lowest unexpired token record above version ``after``; ``None`` when there is none."""
+        statement = (
+            select(WebNoticeToken.burst_id, WebNoticeToken.first_version, WebNoticeToken.before)
+            .where(WebNoticeToken.version > after, WebNoticeToken.expires_at > now)
+            .order_by(WebNoticeToken.version, WebNoticeToken.created_at)
+            .limit(1)
+        )
+        async with self._sessions() as session:
+            row = (await session.execute(statement)).first()
+        return None if row is None else OpenBurst(row.burst_id, row.first_version, dict(row.before))
+
+    async def burst_end(self, burst_id: str, first_version: int) -> int:
+        """The highest announced version among the tokens of the burst ``burst_id`` (0 when none)."""
+        statement = select(func.max(WebNoticeToken.version)).where(
+            WebNoticeToken.burst_id == burst_id, WebNoticeToken.version >= first_version
+        )
         async with self._sessions() as session:
             return (await session.execute(statement)).scalar_one() or 0
 
