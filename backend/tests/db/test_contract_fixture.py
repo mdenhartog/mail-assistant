@@ -14,11 +14,14 @@ from app.settings_repo import SettingsRepository
 from schedule_policy.policy import TimePolicy
 
 CASES_FILE = Path(__file__).resolve().parents[3] / "packages" / "schedule-policy" / "contract" / "settings_cases.json"
-CASES: list[dict[str, Any]] = json.loads(CASES_FILE.read_text("utf-8"))["cases"]
+ALL_CASES: list[dict[str, Any]] = json.loads(CASES_FILE.read_text("utf-8"))["cases"]
 # Rules the migration's CHECK constraints also enforce; the others need code (known zone) or cannot be stored.
 DATABASE_RULES = {"quiet_window_empty", "quiet_window_length", "overview_in_quiet_hours", "remind_in_quiet_hours"}
 MALFORMED_TIME_RULES = {"time_not_whole_minute", "time_has_zone"}
 ACTOR = "0123456789abcdef0123456789abcdef"
+# Malformed times cannot be stored as minutes, so those cases never reach this test; filtering here, not skipping in
+# the test, keeps a skip from ever hiding a failure of this file (CR-12).
+CASES: list[dict[str, Any]] = [case for case in ALL_CASES if not set(case["rules"]) & MALFORMED_TIME_RULES]
 
 
 @pytest.mark.parametrize("case", CASES, ids=[case["id"] for case in CASES])
@@ -26,8 +29,6 @@ async def test_given_a_contract_case_when_written_through_the_repository_then_th
     case: dict[str, Any], web_database: Database
 ) -> None:
     rules = set(case["rules"])
-    if rules & MALFORMED_TIME_RULES:
-        pytest.skip("malformed times cannot be stored as minutes")
     raw = case["policy"]
     policy = TimePolicy(
         raw["zone"],
