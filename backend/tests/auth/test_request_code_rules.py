@@ -7,7 +7,16 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.auth import request_code_rules
-from app.auth.request_code_rules import origin_allowed, same_key, username_key, wait_seconds
+from app.auth.request_code_rules import (
+    RequestFacts,
+    RequestLimits,
+    client_hash,
+    origin_allowed,
+    request_wait,
+    same_key,
+    username_key,
+    wait_until_below,
+)
 
 T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
 COOLDOWN = timedelta(seconds=60)
@@ -17,6 +26,35 @@ ORIGIN = "https://settings.example.test"
 
 def _sent(*offsets: int) -> list[datetime]:
     return [T0 + timedelta(seconds=offset) for offset in offsets]
+
+
+def _limits(**overrides: int | timedelta) -> RequestLimits:
+    values: dict[str, int | timedelta] = {
+        "cooldown": COOLDOWN,
+        "codes_per_hour": CAP,
+        "live_per_username": 3,
+        "open_per_client": 10,
+        "requests_per_client_per_hour": 20,
+        "class_open_cap": 100,
+    }
+    values.update(overrides)
+    return RequestLimits(**values)  # pyright: ignore[reportArgumentType]
+
+
+def wait_seconds(
+    last_requested_at: datetime | None, created: list[datetime], now: datetime, cooldown: timedelta, cap: int
+) -> int:
+    """The username rules alone: the cooldown from the newest request and the hourly cap over every created row."""
+    facts = RequestFacts(
+        username_created=created
+        if last_requested_at is None or last_requested_at in created
+        else [*created, last_requested_at],
+        username_live=[],
+        client_created=[],
+        client_live=[],
+        class_live=[],
+    )
+    return request_wait(facts, now, _limits(cooldown=cooldown, codes_per_hour=cap))
 
 
 @pytest.mark.parametrize(
@@ -131,7 +169,7 @@ def test_given_unsorted_sent_codes_when_asked_then_the_order_does_not_matter() -
 
 
 def test_given_the_cooldown_is_longer_than_the_cap_wait_when_asked_then_the_longer_wait_counts() -> None:
-    sent = _sent(0, 60, 120, 180, 240)
+    sent = _sent(0, 60, 120, 180, 3598)
     now = T0 + timedelta(seconds=3599)
 
     assert wait_seconds(T0 + timedelta(seconds=3598), sent, now, COOLDOWN, CAP) == 59
@@ -150,3 +188,123 @@ def test_given_a_cap_of_one_and_one_sent_code_when_asked_then_the_wait_is_until_
 def test_given_a_naive_time_when_asked_then_it_is_refused() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         wait_seconds(None, [], datetime(2026, 3, 1, 14, 0, 0), COOLDOWN, CAP)  # noqa: DTZ001
+
+
+# ---- U-web-settings-53 ---------------------------------------------------------------------------------------------
+
+
+def _facts(**overrides: list[datetime]) -> RequestFacts:
+    values: dict[str, list[datetime]] = {
+        "username_created": [],
+        "username_live": [],
+        "client_created": [],
+        "client_live": [],
+        "class_live": [],
+    }
+    values.update(overrides)
+    return RequestFacts(**values)
+
+
+def test_given_a_client_key_when_hashed_then_it_is_a_keyed_hmac_with_its_own_label() -> None:
+    expected = hmac.new(b"k" * 32, b"client:10.0.0.1", hashlib.sha256).hexdigest()
+
+    assert client_hash(b"k" * 32, "10.0.0.1") == expected
+    assert len(expected) == 64
+
+
+def test_given_other_keys_or_clients_when_hashed_then_the_result_differs_and_is_not_the_username_key() -> None:
+    base = client_hash(b"k" * 32, "10.0.0.1")
+
+    assert client_hash(b"j" * 32, "10.0.0.1") != base
+    assert client_hash(b"k" * 32, "10.0.0.2") != base
+    assert client_hash(b"k" * 32, "10.0.0.1") == base
+    assert username_key(b"k" * 32, "10.0.0.1") != base  # a username typed like an address cannot collide
+
+
+def test_given_fewer_held_than_the_limit_when_asked_then_no_wait() -> None:
+    assert wait_until_below(_sent(100, 200), T0, 3) == 0
+    assert wait_until_below([], T0, 1) == 0
+
+
+def test_given_the_limit_reached_when_asked_then_the_wait_is_until_the_earliest_release() -> None:
+    assert wait_until_below(_sent(600, 700, 800), T0 + timedelta(seconds=100), 3) == 500
+    assert wait_until_below(_sent(800, 600, 700), T0 + timedelta(seconds=100), 3) == 500  # order does not matter
+
+
+def test_given_more_held_than_the_limit_when_asked_then_enough_must_be_released() -> None:
+    # four held, limit two: two must be released, the second earliest (700) frees the slot.
+    assert wait_until_below(_sent(600, 700, 800, 900), T0 + timedelta(seconds=100), 2) == 600
+
+
+def test_given_releases_in_the_past_when_asked_then_they_are_not_held() -> None:
+    assert wait_until_below(_sent(50, 100, 700), T0 + timedelta(seconds=100), 2) == 0
+    assert wait_until_below(_sent(101, 200), T0 + timedelta(seconds=100), 2) == 1
+
+
+def test_given_a_release_part_of_a_second_away_when_asked_then_the_wait_rounds_up() -> None:
+    assert wait_until_below([T0 + timedelta(seconds=10, milliseconds=1)], T0, 1) == 11
+
+
+def test_given_a_naive_time_when_the_wait_is_asked_then_it_is_refused() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        wait_until_below([datetime(2026, 3, 1, 14, 0, 0)], T0, 1)  # noqa: DTZ001
+    with pytest.raises(ValueError, match="timezone-aware"):
+        wait_until_below([T0], datetime(2026, 3, 1, 14, 0, 0), 1)  # noqa: DTZ001
+
+
+def test_given_no_facts_when_asked_then_no_wait() -> None:
+    assert request_wait(_facts(), T0, _limits()) == 0
+
+
+def test_given_live_requests_of_the_username_at_the_limit_when_asked_then_the_wait_is_the_earliest_expiry() -> None:
+    facts = _facts(username_live=_sent(600, 650, 700))
+
+    assert request_wait(facts, T0 + timedelta(seconds=200), _limits(live_per_username=3)) == 400
+    assert request_wait(facts, T0 + timedelta(seconds=200), _limits(live_per_username=4)) == 0
+
+
+def test_given_the_client_hourly_number_reached_when_asked_then_the_wait_is_until_the_oldest_leaves_the_hour() -> None:
+    facts = _facts(client_created=_sent(0, 100, 200))
+    now = T0 + timedelta(seconds=300)
+
+    assert request_wait(facts, now, _limits(requests_per_client_per_hour=3)) == 3300
+    assert request_wait(facts, now, _limits(requests_per_client_per_hour=4)) == 0
+
+
+def test_given_the_client_open_number_reached_when_asked_then_the_wait_is_the_earliest_expiry() -> None:
+    facts = _facts(client_live=_sent(600, 650))
+
+    assert request_wait(facts, T0, _limits(open_per_client=2)) == 600
+    assert request_wait(facts, T0, _limits(open_per_client=3)) == 0
+
+
+def test_given_the_class_cap_reached_when_asked_then_the_wait_is_the_earliest_expiry() -> None:
+    facts = _facts(class_live=_sent(630, 600, 640))
+
+    assert request_wait(facts, T0 + timedelta(seconds=10), _limits(class_open_cap=3)) == 590
+    assert request_wait(facts, T0 + timedelta(seconds=10), _limits(class_open_cap=4)) == 0
+
+
+def test_given_several_limits_when_asked_then_the_longest_wait_counts() -> None:
+    facts = _facts(
+        username_created=_sent(0),  # cooldown: 60
+        username_live=_sent(600),  # live limit 1: 600
+        client_live=_sent(700),  # open limit 1: 700
+        class_live=_sent(500),  # class cap 1: 500
+    )
+    limits = _limits(live_per_username=1, open_per_client=1, class_open_cap=1)
+
+    assert request_wait(facts, T0, limits) == 700
+    assert request_wait(facts, T0, _limits(live_per_username=1, open_per_client=9, class_open_cap=1)) == 600
+    assert request_wait(facts, T0, _limits(live_per_username=9, open_per_client=9, class_open_cap=1)) == 500
+    assert request_wait(facts, T0, _limits(live_per_username=9, open_per_client=9, class_open_cap=9)) == 60
+
+
+def test_given_the_hourly_cap_of_the_username_and_the_client_when_asked_then_each_counts_from_created_at() -> None:
+    username = _facts(username_created=_sent(0, 10, 20))
+    client = _facts(client_created=_sent(0, 10, 20))
+    now = T0 + timedelta(seconds=100)
+
+    assert request_wait(username, now, _limits(codes_per_hour=3, cooldown=timedelta(0))) == 3500
+    assert request_wait(client, now, _limits(requests_per_client_per_hour=3)) == 3500
+    assert request_wait(username, now, _limits(codes_per_hour=4, cooldown=timedelta(0))) == 0

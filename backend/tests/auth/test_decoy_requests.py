@@ -69,8 +69,14 @@ class Api:
     requests: CodeRequests
     guard: RecordingGuard
 
-    async def request_code(self, username: str) -> Response:
-        return await self.http.post(REQUEST_CODE, json={"username": username}, headers={"Origin": ORIGIN})
+    async def request_code(self, username: str, *, client: str | None = None, cookie: str | None = None) -> Response:
+        # The test peer 127.0.0.1 is a trusted proxy, so X-Forwarded-For names the client (ADR-0034).
+        headers = {"Origin": ORIGIN}
+        if client is not None:
+            headers["X-Forwarded-For"] = client
+        if cookie is not None:
+            headers["Cookie"] = f"__Host-login={cookie}"
+        return await self.http.post(REQUEST_CODE, json={"username": username}, headers=headers)
 
     async def issue(self, username: str) -> str:
         response = await self.request_code(username)
@@ -84,11 +90,13 @@ class Api:
 
 
 @pytest.fixture
-async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
+async def api(web_database: Database, request: pytest.FixtureRequest) -> AsyncIterator[Api]:  # noqa: F811
     clock = FakeClock(T0)
     mailer = FakeMailer()
     ids = SecretsIdSource()
-    app = build_app(make_settings(), clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=mailer)
+    overrides: dict[str, object] = getattr(request, "param", {})
+    settings = make_settings(trusted_proxy_cidrs=["127.0.0.1/32"], **overrides)
+    app = build_app(settings, clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=mailer)
     events = SecurityEvents(web_database, clock)
     logins = LoginRequests(web_database, ids, hash_key=b"a" * 32, ttl=timedelta(seconds=600), max_attempts=5)
     sessions = SessionStore(web_database, ids, events)
@@ -291,9 +299,9 @@ async def test_given_decoys_up_to_the_open_cap_when_one_more_is_requested_then_i
     api: Api,
 ) -> None:
     for index in range(CAP):
-        assert (await api.request_code(f"name-{index}")).status_code == 200
+        assert (await api.request_code(f"name-{index}", client=_client(index))).status_code == 200
 
-    response = await api.request_code(UNKNOWN)
+    response = await api.request_code(UNKNOWN, client=_client(CAP))
 
     assert response.status_code == 429
 
@@ -309,6 +317,10 @@ async def test_given_a_second_request_for_an_unknown_name_when_stored_then_the_f
 
     assert "attemptsLeft" not in old.json()
     assert new.json()["attemptsLeft"] == 4
+
+
+def _client(index: int) -> str:
+    return f"10.1.{index // 250}.{index % 250 + 1}"
 
 
 def _within_noise(first: float, second: float) -> bool:
@@ -332,7 +344,7 @@ async def test_given_the_two_paths_when_a_code_is_requested_many_times_then_the_
             api.clock.advance(timedelta(hours=2))
             api.mailer.sent.clear()
             # the answer only; the mail goes out after it (see CodeRequests.deliver)
-            elapsed = await _timed(lambda name=name: api.requests.request(name, "client", "request-id"))
+            elapsed = await _timed(lambda name=name: api.requests.request(name, "client", "request-id", None))
             if index >= WARM_UP:
                 samples.append(elapsed)
 
@@ -361,3 +373,159 @@ def test_given_the_noise_bound_when_medians_are_compared_then_a_big_gap_fails_an
     assert _within_noise(0.001, 0.005)
     assert not _within_noise(0.010, 0.030)
     assert not _within_noise(0.001, 0.0061)
+
+
+# ---- U-web-settings-53 ---------------------------------------------------------------------------------------------
+
+
+# Criterion 1 (RT-01, AC-16)
+async def test_given_100_open_decoys_from_100_clients_when_the_owner_asks_from_another_client_then_200_and_a_mail(
+    api: Api,
+) -> None:
+    for index in range(CAP):
+        assert (await api.request_code(f"name-{index}", client=_client(index))).status_code == 200
+
+    owner_answer = await api.request_code(USERNAME, client="10.9.9.9")
+    one_more_decoy = await api.request_code(UNKNOWN, client="10.9.9.8")
+
+    assert owner_answer.status_code == 200
+    assert [sent[1] for sent in api.mailer.sent] == ["111111"]
+    assert one_more_decoy.status_code == 429  # the decoys have their own cap and it is full
+    assert one_more_decoy.headers["retry-after"] == "600"
+
+
+# Criterion 1 and 2
+async def test_given_one_client_when_it_asks_for_many_names_then_it_stops_at_the_per_client_number_not_at_the_cap(
+    api: Api,
+) -> None:
+    for index in range(10):
+        assert (await api.request_code(f"name-{index}", client="10.7.7.7")).status_code == 200
+
+    refused = await api.request_code("name-10", client="10.7.7.7")
+    owner_answer = await api.request_code(USERNAME, client="10.8.8.8")
+
+    assert refused.status_code == 429
+    assert refused.headers["retry-after"] == "600"
+    assert owner_answer.status_code == 200
+    assert len(api.mailer.sent) == 1
+
+
+# Criterion 2 (W-7)
+@pytest.mark.parametrize("api", [{"login_requests_per_client_per_hour": 3}], indirect=True)
+async def test_given_one_client_over_its_hourly_number_when_it_asks_then_429_while_another_client_gets_200(
+    api: Api,
+) -> None:
+    for index in range(3):
+        assert (await api.request_code(f"name-{index}", client="10.7.7.7")).status_code == 200
+        api.clock.advance(timedelta(minutes=11))  # each request has expired before the next
+
+    refused = await api.request_code("name-3", client="10.7.7.7")
+    other = await api.request_code("name-3", client="10.8.8.8")
+
+    assert refused.status_code == 429
+    assert refused.headers["retry-after"] == str(60 * 60 - 33 * 60)
+    assert other.status_code == 200
+
+
+# Criterion 3 (RT-04)
+async def test_given_the_owners_live_request_in_browser_a_when_another_client_asks_then_the_code_of_a_still_verifies(
+    api: Api,
+) -> None:
+    cookie_a = await api.issue(USERNAME)
+    api.clock.advance(timedelta(seconds=60))
+
+    other = await api.request_code(USERNAME, client="10.9.9.9")
+    verified = await api.verify("111111", cookie_a)
+
+    assert other.status_code == 200
+    assert verified.status_code == 204
+    assert [sent[1] for sent in api.mailer.sent] == ["111111", "122222"]
+
+
+# Criterion 3
+async def test_given_the_owners_live_request_when_its_cookie_comes_from_another_client_then_it_is_replaced(
+    api: Api,
+) -> None:
+    cookie_a = await api.issue(USERNAME)
+    api.clock.advance(timedelta(seconds=60))
+
+    replacement = await api.request_code(USERNAME, client="10.9.9.9", cookie=cookie_a)
+    old = await api.verify("111111", cookie_a)
+    new = await api.verify("122222", _cookie(replacement))
+
+    assert replacement.status_code == 200
+    assert old.status_code == 400
+    assert new.status_code == 204
+
+
+# Criterion 3
+async def test_given_a_live_request_when_the_same_client_asks_again_without_the_cookie_then_it_replaces_it(
+    api: Api,
+) -> None:
+    cookie_a = await api.issue(USERNAME)
+    api.clock.advance(timedelta(seconds=60))
+
+    second = await api.issue(USERNAME)
+
+    assert (await api.verify("111111", cookie_a)).status_code == 400
+    assert (await api.verify("122222", second)).status_code == 204
+
+
+# Criterion 3 (the number of live requests of one username is 3)
+async def test_given_three_live_requests_of_a_username_when_a_fourth_client_asks_then_429_until_the_oldest_expires(
+    api: Api,
+) -> None:
+    for index in range(3):
+        assert (await api.request_code(USERNAME, client=_client(index))).status_code == 200
+        api.clock.advance(timedelta(seconds=60))
+
+    refused = await api.request_code(USERNAME, client=_client(3))
+
+    assert refused.status_code == 429
+    assert refused.headers["retry-after"] == "420"  # the first of the three expires at T0 + 600, now is T0 + 180
+    assert len(api.mailer.sent) == 3
+
+
+# Criterion 4
+async def test_given_a_refused_request_when_the_clock_moves_then_retry_after_follows_the_real_remaining_wait(
+    api: Api,
+) -> None:
+    for index in range(CAP):
+        await api.request_code(f"name-{index}", client=_client(index))
+
+    waits = []
+    for seconds in (0, 100, 599):
+        api.clock.set(T0 + timedelta(seconds=seconds))
+        refused = await api.request_code(UNKNOWN, client="10.9.9.8")
+        waits.append((refused.status_code, refused.headers["retry-after"]))
+    api.clock.set(T0 + timedelta(seconds=600))
+    freed = await api.request_code(UNKNOWN, client="10.9.9.8")
+
+    assert waits == [(429, "600"), (429, "500"), (429, "1")]
+    assert freed.status_code == 200
+
+
+# Criterion 5 (AC-30)
+@pytest.mark.parametrize("fail", [False, True])
+async def test_given_five_requests_then_a_sixth_when_known_and_unknown_then_status_and_retry_after_are_identical(
+    api: Api, fail: bool
+) -> None:
+    if fail:
+        api.mailer.fail()
+    for _ in range(5):
+        for name in (UNKNOWN, USERNAME):
+            assert (await api.request_code(name)).status_code == 200
+        api.clock.advance(timedelta(seconds=60))
+
+    unknown_sixth = await api.request_code(UNKNOWN)
+    known_sixth = await api.request_code(USERNAME)
+    api.clock.set(T0 + timedelta(seconds=3599))
+    unknown_late = await api.request_code(UNKNOWN)
+    known_late = await api.request_code(USERNAME)
+
+    assert unknown_sixth.status_code == known_sixth.status_code == 429
+    assert unknown_sixth.headers["retry-after"] == known_sixth.headers["retry-after"] == "3300"
+    assert unknown_sixth.json() == known_sixth.json()
+    assert unknown_late.status_code == known_late.status_code == 429
+    assert unknown_late.headers["retry-after"] == known_late.headers["retry-after"] == "1"
+    assert len(api.mailer.sent) == (0 if fail else 5)
