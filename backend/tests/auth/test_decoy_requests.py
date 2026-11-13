@@ -16,7 +16,7 @@ from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy import text
 
 from app.auth.code_hash import hash_code
-from app.auth.login_requests import RETENTION, Applicant, LoginRequest, LoginRequests
+from app.auth.login_requests import LOGIN_REQUEST_RETENTION, Applicant, LoginRequest, LoginRequests
 from app.auth.request_code import CodeRequests, attach_request_code
 from app.auth.request_code_rules import RequestLimits, username_key
 from app.auth.session import SessionStore, attach_sessions
@@ -283,7 +283,7 @@ async def test_given_old_decoys_when_a_later_request_is_stored_then_the_retentio
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     await api.issue(UNKNOWN)
-    api.clock.advance(RETENTION - timedelta(seconds=1))
+    api.clock.advance(LOGIN_REQUEST_RETENTION - timedelta(seconds=1))
     await api.issue("another-name")
     assert await _rows(owner) == 2
     api.clock.advance(timedelta(seconds=2))

@@ -27,8 +27,6 @@ waits at most an hour for the oldest request to leave it, and every failure is r
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from http.cookies import SimpleCookie
-from typing import Final
 
 from fastapi import FastAPI, Request
 from sqlalchemy.exc import SQLAlchemyError
@@ -38,15 +36,13 @@ from app.auth.mask import mask_address
 from app.auth.request_code_rules import RequestLimits, client_hash, origin_allowed, same_key, username_key
 from app.clock import Clock
 from app.codes import CodeSource
-from app.config import LOGIN_COOKIE_MAX_AGE_SECONDS, Settings
+from app.config import Settings
 from app.db import DatabaseUnavailable
 from app.errors import ProblemError, RateLimited
 from app.mail.sender import MailError, MailSender
 from app.security_events import SecurityEvents
 
 logger = logging.getLogger(__name__)
-
-LOGIN_COOKIE_NAME: Final = "__Host-login"
 
 
 @dataclass(frozen=True)
@@ -70,26 +66,6 @@ class Issued:
     expires_at: datetime
     resend_after_seconds: int
     delivery: Delivery | None
-
-
-def login_cookie(value: str) -> str:
-    """Return the ``Set-Cookie`` value of the login request cookie.
-
-    Args:
-        value: The login request id.
-
-    Returns:
-        The header value.
-    """
-    jar: SimpleCookie = SimpleCookie()
-    jar[LOGIN_COOKIE_NAME] = value
-    morsel = jar[LOGIN_COOKIE_NAME]
-    morsel["httponly"] = True
-    morsel["secure"] = True
-    morsel["samesite"] = "Lax"
-    morsel["path"] = "/"
-    morsel["max-age"] = str(LOGIN_COOKIE_MAX_AGE_SECONDS)
-    return morsel.OutputString()
 
 
 class CodeRequests:

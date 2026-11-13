@@ -17,7 +17,7 @@ from app.ids import IdSource
 # The column `id` is VARCHAR(32) (migration 0008): 24 random bytes are exactly 32 URL-safe characters.
 _ID_BYTES: Final = 24
 # Rows are kept for an hour after the request so the hourly caps can still be counted from created_at.
-RETENTION: Final = timedelta(hours=1)
+LOGIN_REQUEST_RETENTION: Final = timedelta(hours=1)
 _SERIALIZE_CREATE = text("SELECT pg_advisory_xact_lock(hashtext('web_auth.login_request'))")
 _REMOVE_OLD = text("DELETE FROM web_auth.login_request WHERE created_at < :since")
 # A new request kills the live requests of the username that come from its client or carry its cookie, and only those.
@@ -184,7 +184,7 @@ class LoginRequests:
     ) -> LoginRequest:
         request_id = self._ids.token(_ID_BYTES)
         expires_at = now + self._ttl
-        since = now - RETENTION
+        since = now - LOGIN_REQUEST_RETENTION
         async with self._database.session() as session, session.begin():
             await session.execute(_SERIALIZE_CREATE)
             await session.execute(_REMOVE_OLD, {"since": since})

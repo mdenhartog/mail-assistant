@@ -7,11 +7,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, StringConstraints
 from pydantic.alias_generators import to_camel
 
-from app.auth.request_code import LOGIN_COOKIE_NAME, CodeRequests, login_cookie, require_signin_origin
-from app.auth.session import client_key
+from app.auth.cookies import LOGIN_COOKIE_NAME, login_cookie
+from app.auth.request_code import CodeRequests, require_signin_origin
 from app.auth.verify_code import VerifyCodeBody
 from app.core.security import public
 from app.limit_guard import limit
+from app.request_client import client_key
 
 if TYPE_CHECKING:
     from app.auth.verify_code import VerifyCode
@@ -105,7 +106,12 @@ async def request_code(
             "description": "Signed in: the session cookie is set; the path to go to is in the X-Return-To header",
             "headers": {"X-Return-To": {"schema": {"type": "string"}}},
         },
-        400: {"description": "The one generic refusal; attemptsLeft only while the login cookie names a live request"},
+        400: {
+            "description": (
+                "The one generic refusal; attemptsLeft is present whenever the login cookie names a real or decoy "
+                "login request"
+            )
+        },
         403: {"description": "Wrong or missing Origin"},
         429: {"description": "Too many attempts; see Retry-After"},
     },

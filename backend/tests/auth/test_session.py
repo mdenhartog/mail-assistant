@@ -12,8 +12,9 @@ import pytest
 from fastapi import Depends, FastAPI
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.cookies import COOKIE_NAME, session_cookie
 from app.auth.digest import username_digest
-from app.auth.session import COOKIE_NAME, SessionStore, WebLocked, attach_sessions, session_cookie
+from app.auth.session import SessionStore, WebLocked, attach_sessions
 from app.core.security import session
 from app.db import Database
 from app.ids import SecretsIdSource

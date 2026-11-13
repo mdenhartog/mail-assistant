@@ -11,13 +11,15 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from app.auth.cookies import COOKIE_NAME, clear_session_cookie
 from app.auth.csrf import csrf_token, fetch_site_ok
 from app.auth.csrf_guard import refuse
 from app.auth.expiry import next_idle_expiry
 from app.auth.mask import mask_address
-from app.auth.session import COOKIE_NAME, Session, SessionStore, clear_session_cookie, client_key
+from app.auth.session import Session, SessionStore
 from app.core.security import csrf, session
 from app.limit_guard import limit
+from app.request_client import client_key
 
 if TYPE_CHECKING:
     from app.config import Settings

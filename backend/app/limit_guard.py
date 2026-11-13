@@ -5,11 +5,11 @@ from typing import Protocol
 
 from fastapi import Request
 
-from app.auth.session import client_key
 from app.config import Settings
 from app.core.security import AUTH_DEPENDENCY_MARKER, LIMIT_KIND
 from app.errors import RateLimited
 from app.limits import FixedWindowLimiter
+from app.request_client import client_key
 
 
 class LimitGuard(Protocol):
