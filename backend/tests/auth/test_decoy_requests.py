@@ -582,7 +582,6 @@ async def test_given_a_known_and_an_unknown_username_when_a_wrong_code_is_posted
     api: Api, recorder: StepRecorder
 ) -> None:
     real = await api.issue(USERNAME)
-    api.clock.advance(timedelta(hours=2))
     decoy = await api.issue(UNKNOWN)
     recorder.take()
 
