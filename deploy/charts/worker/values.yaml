@@ -3,6 +3,17 @@
 # Ingress and no PodDisruptionBudget, and it always runs as exactly one copy that is never started next to the old one.
 nameOverride: ""
 image: { repository: ghcr.io/OWNER/mail-assistant/worker, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
+# production (the default) holds the database connection to verify-full; development and test may use a weaker mode.
+environment: production
+# Database TLS (SEC-10, W-8, W-9). The worker and the migration Job connect with this mode and check the server
+# certificate and host name against the CA in the ConfigMap named here (an existing ConfigMap with the key ca.crt; the CA
+# certificate is public, no secret). Required for verify-ca and verify-full. The database URL in the Secrets carries no
+# ssl value: it is ignored.
+database:
+  tls:
+    sslMode: verify-full
+    caConfigMap: ""
+    caMountPath: /etc/db-ca
 # Plain settings. Secrets never go here: name an existing Secret in envFromSecret (created by your secret store).
 env: {}
 envFromSecret: ""

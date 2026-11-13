@@ -195,10 +195,10 @@ jobs:
         run: |
           mkdir -p prodlike-logs
           docker compose --profile prod-like up -d --wait db mail
-      - name: migrate (owner credentials; creates both roles; a one-shot service cannot be part of `up --wait`)
+      - name: migrate (owner credentials; creates both roles; over verify-full TLS as in production; a one-shot service cannot be part of `up --wait`)
         run: |
           set -o pipefail
-          docker compose run --rm --build mail-triage-migrate 2>&1 | tee prodlike-logs/migrate.log
+          docker compose run --rm --build -e ENVIRONMENT=production -e DATABASE_SSL=verify-full mail-triage-migrate 2>&1 | tee prodlike-logs/migrate.log
       - run: docker compose --profile prod-like up -d --build --wait
       - name: database over TLS (verify-full, host name, CA, plain refusal, roles), the catcher, the log canaries and /readyz of the api
         run: |

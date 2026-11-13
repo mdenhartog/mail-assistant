@@ -16,6 +16,9 @@ All values come from the environment (`.env` locally, a Kubernetes secret in pro
 | `MODEL_SMALL`, `MODEL_LARGE` | Model ids; never literals in code |
 | `DATABASE_URL` | PostgreSQL connection string of the **runtime role** `mail_triage_runtime` (contains the password) |
 | `POLL_INTERVAL_SECONDS` | Optional; default 60 |
+| `ENVIRONMENT` | Optional; `production` (default), `development` or `test`. Production refuses a `DATABASE_SSL` other than `verify-full` |
+| `DATABASE_SSL` | Optional; `verify-full` (default), `verify-ca`, `require` or `disable`. Also read by the migrate command |
+| `DATABASE_CA_FILE` | Optional; PEM file with the CA of the database certificate; empty uses the system trust store |
 
 These are the names the process reads. In `.env` and `.env.example` the same values carry the prefix `MAIL_TRIAGE_` where compose maps them (see the table below).
 
@@ -28,7 +31,7 @@ The agent starts in two steps. The first runs once as the database owner, the se
    - creates or updates the login role `mail_triage_runtime` with a SCRAM-SHA-256 verifier that the job computes itself, so the clear password never reaches the server or its log. The job also sets `NOREPLICATION NOBYPASSRLS` and fails if the role is a member of another role;
    - applies `app/db/grants.sql`.
 
-   It can be run again safely. It reads only `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` and `WEB_ROLE_PASSWORD` (all secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6. The `?ssl=` setting of the owner URL is honoured (`verify-full`, and so on).
+   It can be run again safely. It reads only `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` and `WEB_ROLE_PASSWORD` (all secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6. TLS comes from `DATABASE_SSL` and `DATABASE_CA_FILE`, not from the URL (an `ssl` value inside it is ignored).
 2. `python -m app` (= `serve`) runs the agent as the runtime role, which owns nothing and cannot run DDL. It does not migrate: at start it only checks that the schema is at the Alembic head of its image, and otherwise exits with code 5 ("run the migrate job"). The agent never receives the owner URL.
 
 `python -m app.consent` (the one-time Gmail consent) no longer creates tables either. It stops and names the migrate job when the schema is not current, so run the migrate job first.

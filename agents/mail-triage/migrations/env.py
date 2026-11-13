@@ -18,7 +18,9 @@ def _migrate(connection) -> None:  # noqa: ANN001
 
 
 async def _run() -> None:
-    engine = create_async_engine(config.get_main_option("sqlalchemy.url") or "")
+    engine = create_async_engine(
+        config.get_main_option("sqlalchemy.url") or "", connect_args=config.attributes.get("connect_args", {})
+    )
     async with engine.connect() as connection:
         await connection.run_sync(_migrate)
     await engine.dispose()

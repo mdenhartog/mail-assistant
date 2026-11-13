@@ -120,7 +120,15 @@ def test_given_a_tls_setting_in_the_plain_env_when_rendered_then_the_chart_refus
 def test_given_the_rendered_chart_when_searched_then_no_database_url_or_password_is_in_it() -> None:
     assert HELM is not None
     result = subprocess.run(  # noqa: S603
-        [HELM, "template", "mail-triage", str(CHART), "-f", str(LOCAL_VALUES), *[a for s in BASE for a in ("--set", s)]],
+        [
+            HELM,
+            "template",
+            "mail-triage",
+            str(CHART),
+            "-f",
+            str(LOCAL_VALUES),
+            *[a for s in BASE for a in ("--set", s)],
+        ],
         capture_output=True,
         text=True,
         check=True,
@@ -162,7 +170,8 @@ def test_given_the_agent_compose_file_when_read_then_both_services_set_environme
     for name in ("mail-triage", "mail-triage-migrate"):
         environment = services[name]["environment"]
         assert {"ENVIRONMENT", "DATABASE_SSL", "DATABASE_CA_FILE"} <= set(environment), name
-        assert "MAIL_TRIAGE_DATABASE_SSL" in environment["DATABASE_SSL"]
+        assert environment["ENVIRONMENT"] == "development"  # production is asked for per run (CI), never by default
+        assert environment["DATABASE_CA_FILE"] == "/certs/ca.crt"
         assert any("deploy/prod-like/certs" in volume and ":ro" in volume for volume in services[name]["volumes"]), name
 
 
@@ -171,8 +180,8 @@ def test_given_the_ci_prod_like_job_when_read_then_the_migrate_step_runs_in_prod
     steps = workflow["jobs"]["prod-like"]["steps"]
     migrate = next(step for step in steps if "mail-triage-migrate" in step.get("run", ""))
 
-    assert migrate["env"]["MAIL_TRIAGE_ENVIRONMENT"] == "production"
-    assert migrate["env"]["MAIL_TRIAGE_DATABASE_SSL"] == "verify-full"
+    assert "-e ENVIRONMENT=production" in migrate["run"]
+    assert "-e DATABASE_SSL=verify-full" in migrate["run"]
 
 
 def test_given_the_prod_like_checks_when_listed_then_the_agent_role_has_a_plain_connection_refusal_check() -> None:

@@ -58,7 +58,9 @@ async def test_given_the_owner_role_connecting_without_tls_when_it_tries_then_th
 
 
 async def test_given_the_agent_role_with_verify_full_and_the_ca_when_it_connects_then_the_session_uses_tls() -> None:
-    connection = await _connect(AGENT_ROLE, _require("MAIL_TRIAGE_RUNTIME_PASSWORD"), ssl_argument("verify-full", str(CA)))
+    connection = await _connect(
+        AGENT_ROLE, _require("MAIL_TRIAGE_RUNTIME_PASSWORD"), ssl_argument("verify-full", str(CA))
+    )
     try:
         row = await connection.fetchrow("select ssl, version from pg_stat_ssl where pid = pg_backend_pid()")
     finally:

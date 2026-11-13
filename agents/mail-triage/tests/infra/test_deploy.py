@@ -29,7 +29,17 @@ needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render t
 
 def render(*sets: str) -> list[dict[str, Any]]:
     assert HELM is not None
-    command = [HELM, "template", "mail-triage", str(CHART), "--set", "image.repository=registry.example/mail-triage"]
+    command = [
+        HELM,
+        "template",
+        "mail-triage",
+        str(CHART),
+        "--set",
+        "image.repository=registry.example/mail-triage",
+        "--set",
+        "database.tls.caConfigMap=mail-triage-db-ca",
+    ]
+    command += ["--set", "database.tls.caConfigMap=mail-triage-db-ca"]  # production needs the CA (SEC-10)
     for item in sets:
         command += ["--set", item]
     result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=60)  # noqa: S603
@@ -47,7 +57,15 @@ def container(docs: list[dict[str, Any]]) -> dict[str, Any]:
 @needs_helm
 def test_given_the_chart_when_linted_then_it_has_no_errors() -> None:
     result = subprocess.run(  # noqa: S603
-        [HELM or "", "lint", str(CHART), "--set", "image.repository=registry.example/mail-triage"],
+        [
+            HELM or "",
+            "lint",
+            str(CHART),
+            "--set",
+            "image.repository=registry.example/mail-triage",
+            "--set",
+            "database.tls.caConfigMap=mail-triage-db-ca",
+        ],
         capture_output=True,
         text=True,
         timeout=60,
@@ -223,7 +241,16 @@ def test_given_the_migration_is_off_when_rendered_then_there_is_no_job() -> None
 @needs_helm
 def test_given_the_chart_with_the_migration_when_linted_strictly_then_it_has_no_findings() -> None:
     result = subprocess.run(  # noqa: S603
-        [HELM or "", "lint", "--strict", str(CHART), "--set", "image.repository=registry.example/mail-triage"]
+        [
+            HELM or "",
+            "lint",
+            "--strict",
+            str(CHART),
+            "--set",
+            "image.repository=registry.example/mail-triage",
+            "--set",
+            "database.tls.caConfigMap=mail-triage-db-ca",
+        ]
         + [arg for item in MIGRATION for arg in ("--set", item)],
         capture_output=True,
         text=True,
@@ -315,6 +342,8 @@ def test_given_the_migration_without_a_secret_name_when_rendered_then_it_fails_n
             "--set",
             "image.repository=r/x",
             "--set",
+            "database.tls.caConfigMap=mail-triage-db-ca",
+            "--set",
             "migration.enabled=true",
         ],
         capture_output=True,
@@ -359,7 +388,7 @@ def test_given_the_compose_file_when_read_then_a_one_shot_migrate_service_uses_t
     assert migrate["cap_drop"] == ["ALL"]
     assert "no-new-privileges:true" in migrate["security_opt"]
     assert "ports" not in migrate
-    assert set(migrate["environment"]) == set(OWNER_KEYS)
+    assert set(migrate["environment"]) == {*OWNER_KEYS, "ENVIRONMENT", "DATABASE_SSL", "DATABASE_CA_FILE"}
     assert "app:${POSTGRES_PASSWORD" in migrate["environment"]["DATABASE_OWNER_URL"]  # the bootstrap owner of the db
 
 
@@ -464,7 +493,8 @@ def test_given_the_prod_like_job_when_read_then_it_runs_the_stated_sequence_once
     commands = run_steps(ci_jobs()["prod-like"])
     in_order = [
         "up -d --wait db mail",  # the database and the mail catcher first
-        "docker compose run --rm --build mail-triage-migrate",  # then the migration, apart from `up --wait`
+        # then the migration, apart from `up --wait`, over verify-full TLS as in production (U-web-settings-58)
+        "docker compose run --rm --build -e ENVIRONMENT=production -e DATABASE_SSL=verify-full mail-triage-migrate",
         "docker compose --profile prod-like up -d --build --wait",
         "readyz",
         "backend/tests/e2e",  # TLS database, mail catcher, log canaries

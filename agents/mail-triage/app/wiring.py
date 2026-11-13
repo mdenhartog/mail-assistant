@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.adapters.gmail_read import GmailReader
 from app.adapters.gmail_send import GmailSender
@@ -26,6 +26,7 @@ from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
+from app.db.engine import make_engine
 from app.db.migrate import ROLES, RuntimeRoleNotSafe, SchemaNotReady, check_schema, migrate_database
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
@@ -58,11 +59,6 @@ if TYPE_CHECKING:
     from app.settings import MigrateSettings, Settings
 
 logger = logging.getLogger(__name__)
-
-
-def make_engine(url: str) -> AsyncEngine:
-    """The one database engine; bound parameters (a stored time zone, a typed answer) never reach an error or a log."""
-    return create_async_engine(url, hide_parameters=True)
 
 
 HEARTBEAT = Path("/tmp/heartbeat")  # noqa: S108  # nosec B108 - the container's own tmpfs; the probe reads it
@@ -198,7 +194,7 @@ async def migrate(settings: MigrateSettings) -> int:
     """The migrate command: schema, runtime role and grants, as the owner role. Returns an exit code."""
     try:
         passwords = {role.name: getattr(settings, role.password_setting).get_secret_value() for role in ROLES}
-        await migrate_database(settings.database_owner_url.get_secret_value(), passwords)
+        await migrate_database(settings.database_owner_url.get_secret_value(), passwords, settings.database_tls)
     except RuntimeRoleNotSafe as error:
         logger.error("migration failed: %s", error)  # names the role only, never a password or a URL
         return EXIT_MIGRATION_FAILED
@@ -214,7 +210,7 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
     from google.oauth2.credentials import Credentials  # noqa: PLC0415
     from googleapiclient.discovery import build  # noqa: PLC0415
 
-    engine = make_engine(settings.database_url.get_secret_value())
+    engine = make_engine(settings.database_url.get_secret_value(), settings.database_tls)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.connect() as lock_connection:
         if not await repos.try_lock(lock_connection):
