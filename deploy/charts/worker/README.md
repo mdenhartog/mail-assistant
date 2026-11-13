@@ -67,3 +67,6 @@ name are checked against a CA. The chart sets three variables on both pods and m
   with a weaker `DATABASE_SSL`. Set `environment: development` (or `test`) to use `disable`, `require` or `verify-ca`.
 - A `ssl` value inside the database URL is ignored: the settings decide. `ENVIRONMENT`, `DATABASE_SSL` and
   `DATABASE_CA_FILE` cannot be set through `env`.
+- `environment: production` (the default) also needs `image.digest` (`sha256:` plus 64 hex characters): `values.schema.json`
+  refuses the render without it. `development` and `test` may use `image.tag`; `deploy/envs/local/mail-triage.yaml` says
+  `development` for that reason.
