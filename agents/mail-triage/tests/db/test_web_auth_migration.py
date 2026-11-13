@@ -300,25 +300,25 @@ async def test_given_the_web_tables_when_their_columns_are_inspected_then_they_a
             )
         with pytest.raises(asyncpg.DataError):
             await connection.execute(
-                "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at) "
-                "values ('a', $1, $1, now(), now())",
+                "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
+                "values ('a', $1, $1, $1, now(), now())",
                 "short" * 20,
             )
         await connection.execute(
-            "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at, attempts) "
-            "values ('a', $1, $1, now(), now(), 5)",
+            "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at, attempts) "
+            "values ('a', $1, $1, $1, now(), now(), 5)",
             HASH,
         )
         with pytest.raises(asyncpg.CheckViolationError):
             await connection.execute(
-                "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at, attempts) "
-                "values ('b', $1, $1, now(), now(), 6)",
+                "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at, attempts) "
+                "values ('b', $1, $1, $1, now(), now(), 6)",
                 HASH,
             )
         with pytest.raises(asyncpg.CheckViolationError):
             await connection.execute(
-                "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at, attempts) "
-                "values ('c', $1, $1, now(), now(), -1)",
+                "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at, attempts) "
+                "values ('c', $1, $1, $1, now(), now(), -1)",
                 HASH,
             )
     finally:

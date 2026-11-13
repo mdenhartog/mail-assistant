@@ -63,8 +63,8 @@ async def test_given_expired_and_valid_rows_when_the_app_starts_then_only_the_ex
     clock = FakeClock()
     now = clock.now()
     login = (
-        "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at) "
-        "values ($1, $2, $2, $3, $4)"
+        "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
+        "values ($1, $2, $2, $2, $3, $4)"
     )
     # Old and expired: gone. Expired a little ago: kept an hour so the hourly cap can still count it. Open: kept.
     await owner.execute(login, "old", A64, now - timedelta(hours=2) + timedelta(minutes=10), now - timedelta(hours=2))

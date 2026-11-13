@@ -493,7 +493,7 @@ async def test_given_a_refused_request_when_the_clock_moves_then_retry_after_fol
     for index in range(CAP):
         await api.request_code(f"name-{index}", client=_client(index))
 
-    waits = []
+    waits: list[tuple[int, str]] = []
     for seconds in (0, 100, 599):
         api.clock.set(T0 + timedelta(seconds=seconds))
         refused = await api.request_code(UNKNOWN, client="10.9.9.8")

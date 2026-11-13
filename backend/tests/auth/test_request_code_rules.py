@@ -1,8 +1,9 @@
 """U-web-settings-17, unit level: the pure rules of the request-code endpoint."""
 
+import dataclasses
 import hashlib
 import hmac
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 
 import pytest
 
@@ -232,8 +233,8 @@ def test_given_the_limit_reached_when_asked_then_the_wait_is_until_the_earliest_
 
 
 def test_given_more_held_than_the_limit_when_asked_then_enough_must_be_released() -> None:
-    # four held, limit two: two must be released, the second earliest (700) frees the slot.
-    assert wait_until_below(_sent(600, 700, 800, 900), T0 + timedelta(seconds=100), 2) == 600
+    # four held, limit two: three must be released, the third earliest (800) frees the slot.
+    assert wait_until_below(_sent(600, 700, 800, 900), T0 + timedelta(seconds=100), 2) == 700
 
 
 def test_given_releases_in_the_past_when_asked_then_they_are_not_held() -> None:
@@ -308,3 +309,32 @@ def test_given_the_hourly_cap_of_the_username_and_the_client_when_asked_then_eac
     assert request_wait(username, now, _limits(codes_per_hour=3, cooldown=timedelta(0))) == 3500
     assert request_wait(client, now, _limits(requests_per_client_per_hour=3)) == 3500
     assert request_wait(username, now, _limits(codes_per_hour=4, cooldown=timedelta(0))) == 0
+
+
+def test_given_an_equal_but_separate_origin_string_when_checked_then_it_passes() -> None:
+    assert origin_allowed("".join(["https://settings", ".example.test"]), ORIGIN) is True
+
+
+def test_given_a_release_exactly_now_when_asked_then_it_is_no_wait_and_does_not_hold_a_slot() -> None:
+    now = T0 + timedelta(seconds=100)
+
+    assert wait_until_below([now], now, 1) == 0
+    assert wait_until_below([now, now + timedelta(seconds=7)], now, 1) == 7
+    assert wait_until_below([now - timedelta(seconds=1), now + timedelta(seconds=7)], now, 2) == 0
+
+
+def test_given_the_limits_and_facts_when_changed_then_they_are_frozen() -> None:
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        _limits().cooldown = timedelta(0)  # pyright: ignore[reportAttributeAccessIssue]
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        _facts().username_created = []  # pyright: ignore[reportAttributeAccessIssue]
+
+
+class _NoOffset(tzinfo):
+    def utcoffset(self, dt: datetime | None) -> timedelta | None:
+        return None
+
+
+def test_given_a_time_with_a_zone_that_has_no_offset_when_asked_then_it_is_refused() -> None:
+    with pytest.raises(ValueError, match="timezone-aware"):
+        wait_until_below([T0], datetime(2026, 3, 1, 14, 0, 0, tzinfo=_NoOffset()), 1)

@@ -1,10 +1,23 @@
-"""Request-code endpoint logic (U-web-settings-17, ADR-0036, ADR-0038).
+"""Request-code endpoint logic (U-web-settings-17, -53, ADR-0036, ADR-0038, ADR-0039).
 
 A request for the configured username and one for any other username take the same steps and give the same answer:
-both read the limits first, both store one login request row, and neither waits for the mail (it is sent after the
-answer). The configured username gets a code and a message. Any other username gets a decoy row: the same cookie,
-expiry, attempt counter and cooldown, no code and no message, so the cooldown, the hourly cap and the attempts
-answer alike.
+both read the limits and store one login request row in one transaction, and neither waits for the mail (it is sent
+after the answer). The configured username gets a code and a message. Any other username gets a decoy row: the same
+cookie, expiry, attempt counter and cooldown, no code and no message, so the cooldown, the hourly cap and the
+attempts answer alike.
+
+Limits (ADR-0039). Decoys have their own cap of open requests and never count against the configured username. Open
+requests and requests an hour are also capped per client (a keyed digest of the client key is stored, never the
+address). A new request replaces a live one only for the same login cookie or the same client, so the owner's live
+request in one browser survives a request from another client; a username holds at most
+``live_requests_per_username`` live requests, and its codes stay capped at ``codes_per_hour``, so the guessing budget
+does not grow. Every refusal carries the real time until its limit frees.
+
+Failed sends (D-11 against AC-30). The hourly caps count rows from ``created_at``, sent or not, for a real and a
+decoy username alike. A decoy has no mailer, so any rule that gave a failed send back to the owner would answer the
+sixth request differently for a real and an unknown username while the mailer is down, and tell anyone which
+username is real. AC-30 wins: a failed send counts toward the cap. The cost is bounded: with the mailer down the owner
+waits at most an hour for the oldest request to leave it, and every failure is recorded as a ``mail_failed`` event.
 """
 
 import logging
@@ -16,9 +29,9 @@ from typing import Final
 from fastapi import FastAPI, Request
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.auth.login_requests import LoginRequestCapReached, LoginRequests
+from app.auth.login_requests import Applicant, LoginRequestRefused, LoginRequests
 from app.auth.mask import mask_address
-from app.auth.request_code_rules import origin_allowed, same_key, username_key, wait_seconds
+from app.auth.request_code_rules import RequestLimits, client_hash, origin_allowed, same_key, username_key
 from app.clock import Clock
 from app.codes import CodeSource
 from app.config import LOGIN_COOKIE_MAX_AGE_SECONDS, Settings
@@ -100,41 +113,49 @@ class CodeRequests:
         self._cooldown = timedelta(seconds=settings.resend_cooldown_seconds)
         self._ttl = timedelta(seconds=settings.code_ttl_seconds)
 
-    async def request(self, username: str, client: str, request_id: str) -> Issued:
+    async def request(self, username: str, client: str, request_id: str, cookie: str | None) -> Issued:
         """Answer a code request.
 
         Args:
             username: The username as typed.
             client: The client key.
             request_id: The id of this HTTP request.
+            cookie: The value of the ``__Host-login`` cookie of the request, if any.
 
         Returns:
             The answer, and the message to send after it for the configured username.
 
         Raises:
-            RateLimited: The cooldown or the hourly cap holds; nothing was written.
+            RateLimited: A limit holds; nothing was written. It carries the real wait.
         """
         now = self._clock.now()
         key = username_key(self._username_hash_key, username)
         known = same_key(key, self._configured)
-        stored_last = await self._store.last_requested_at(key)
-        sent = await self._store.sent_times_in_last_hour(key, now)
-        wait = wait_seconds(stored_last, sent, now, self._cooldown, self._settings.codes_per_hour)
-        if wait > 0:
-            await self._refuse(key, client, request_id)
-            raise RateLimited(wait)
+        who = Applicant(key, self._configured, client_hash(self._username_hash_key, client), cookie, known=known)
         try:
             if known:
                 code = self._codes.six_digits()
-                created = await self._store.create(key, code, now, self._settings.open_login_request_cap)
+                created = await self._store.create(who, code, now, self._limits(known=True))
                 delivery = Delivery(created.id, code, created.expires_at, key, client, request_id)
             else:
-                created = await self._store.create_decoy(key, now, self._settings.open_login_request_cap)
+                created = await self._store.create_decoy(who, now, self._limits(known=False))
                 delivery = None
-        except LoginRequestCapReached:
+        except LoginRequestRefused as refused:
             await self._refuse(key, client, request_id)
-            raise RateLimited(self._settings.resend_cooldown_seconds) from None
+            raise RateLimited(refused.wait_seconds) from None
         return self._issued(created.id, created.expires_at, delivery)
+
+    def _limits(self, *, known: bool) -> RequestLimits:
+        settings = self._settings
+        return RequestLimits(
+            cooldown=self._cooldown,
+            codes_per_hour=settings.codes_per_hour,
+            live_per_username=settings.live_requests_per_username,
+            open_per_client=settings.open_login_requests_per_client,
+            requests_per_client_per_hour=settings.login_requests_per_client_per_hour,
+            # The owner's class is its own rows, bounded by the live number; the decoys share one cap.
+            class_open_cap=settings.live_requests_per_username if known else settings.open_login_request_cap,
+        )
 
     async def deliver(self, delivery: Delivery) -> None:
         """Send the message; a failure is logged and recorded, and changes nothing the visitor sees."""

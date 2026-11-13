@@ -228,7 +228,8 @@ async def test_given_a_second_request_at_59_and_60_seconds_when_requested_then_4
     assert "set-cookie" not in early.headers
     assert on_time.status_code == 200
     assert await api.store.check(first_cookie, "111111", api.clock.now()) != Ok()
-    assert await api.store.check(_cookie(on_time)[0], "222222", api.clock.now()) == Ok()
+    # the refused request drew a code too (222222) and threw it away, so the issued one is the third
+    assert await api.store.check(_cookie(on_time)[0], "333333", api.clock.now()) == Ok()
 
 
 async def test_given_five_sent_codes_in_an_hour_when_a_sixth_is_requested_then_429_until_the_oldest_falls_out(

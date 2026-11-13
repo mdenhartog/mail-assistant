@@ -74,7 +74,9 @@ async def request_code(
     Returns:
         The masked address, the expiry and the wait before the next request.
     """
-    issued = await service.request(body.username, client_key(request), request.state.request_id)
+    issued = await service.request(
+        body.username, client_key(request), request.state.request_id, request.cookies.get(LOGIN_COOKIE_NAME)
+    )
     response.headers.append("set-cookie", login_cookie(issued.login_request_id))
     if issued.delivery is not None:
         background.add_task(service.deliver, issued.delivery)

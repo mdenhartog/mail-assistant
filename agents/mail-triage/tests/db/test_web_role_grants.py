@@ -170,8 +170,8 @@ async def test_given_the_web_role_when_it_works_the_web_auth_tables_then_it_has_
     web: asyncpg.Connection,
 ) -> None:
     await web.execute(
-        "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at) "
-        f"values ('r1', '{'a' * 64}', '{'b' * 64}', now(), now())"
+        "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
+        f"values ('r1', '{'a' * 64}', '{'e' * 64}', '{'b' * 64}', now(), now())"
     )
     await web.execute("update web_auth.login_request set attempts = 1")
     await web.execute(
