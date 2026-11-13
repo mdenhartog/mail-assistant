@@ -28,12 +28,11 @@ test.beforeEach(() => {
   resetState();
 });
 
-/** The api refuses a second code within a second of the last one (429); wait out what is left of it. */
+/** The api refuses a second code within a second of the last one (429); poll until the cooldown has passed. */
 async function respectCooldown(): Promise<void> {
-  const wait = lastAsk + COOLDOWN_MS - Date.now();
-  if (wait > 0) {
-    await new Promise((resolve) => setTimeout(resolve, wait));
-  }
+  await expect
+    .poll(() => Date.now() - lastAsk, { intervals: [100], timeout: COOLDOWN_MS + 1_000 })
+    .toBeGreaterThanOrEqual(COOLDOWN_MS);
 }
 
 /** Username step, then the code the api mailed to the catcher; returns the code with the code step on screen. */
@@ -214,8 +213,9 @@ test("an injected inline script and an external script do not run, the browser r
   const response = await page.goto("/login");
   expect(response?.headers()["content-security-policy"]).toBe(CSP);
 
-  const outcome = await page.evaluate(async () => {
+  await page.evaluate(() => {
     const violations: string[] = [];
+    Object.assign(window, { cspViolations: violations });
     document.addEventListener("securitypolicyviolation", (event) => {
       violations.push(event.violatedDirective);
     });
@@ -225,11 +225,15 @@ test("an injected inline script and an external script do not run, the browser r
     const external = document.createElement("script");
     external.src = "https://cdn.example.test/injected.js";
     document.head.append(external);
-    for (let wait = 0; wait < 40 && violations.length < 2; wait += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    return { violations, inlineRan: "inlineRan" in window };
   });
+  // The browser reports a violation as an event; poll for both instead of waiting a fixed time.
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations.length))
+    .toBe(2);
+  const outcome = await page.evaluate(() => ({
+    violations: (window as unknown as { cspViolations: string[] }).cspViolations,
+    inlineRan: "inlineRan" in window,
+  }));
 
   expect(outcome.inlineRan).toBe(false);
   expect(outcome.violations).toHaveLength(2);
