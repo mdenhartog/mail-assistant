@@ -78,14 +78,15 @@ def _route_violations(path: str, route: APIRoute) -> Iterator[str]:
         yield f"{path}: declares neither public nor session"
     if route.response_model is None and route.status_code != HTTP_204_NO_CONTENT:
         yield f"{path}: no response_model"
-    if kinds & AUTH_KINDS and path not in PROBE_PATHS:
-        yield from _limit_violations(path, order)
+    yield from _limit_violations(path, order)
     is_write = bool((route.methods or set()) & WRITE_METHODS)
     if is_write and path not in PUBLIC_WRITE_PATHS and not {"session", "csrf"} <= kinds:
         yield f"{path}: a write without the session and csrf markers"
 
 
 def _limit_violations(path: str, order: list[str | None]) -> Iterator[str]:
+    if path in PROBE_PATHS or not set(order) & AUTH_KINDS:
+        return
     if LIMIT_KIND not in order:
         yield f"{path}: no limit marker"
     elif "session" in order and order.index(LIMIT_KIND) > order.index("session"):
