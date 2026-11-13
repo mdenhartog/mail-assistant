@@ -43,8 +43,10 @@ REVOKE ALL ON ALL TABLES IN SCHEMA web_auth FROM mail_triage_runtime;
 GRANT USAGE ON SCHEMA web_auth TO mail_triage_runtime;
 -- A row means locked; only a Telegram command lifts the lock, by deleting the row (no truncate).
 GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.web_lock TO mail_triage_runtime;
--- The wrong-code alert adds up the counts of the code_refused events; read only (no insert, update or delete).
-GRANT SELECT ON web_auth.security_event TO mail_triage_runtime;
+-- The wrong-code alert adds up the counts of the code_refused events; read only (no insert, update or delete), and
+-- only the four columns it uses: the username digest, the client key and the request id stay with the web role
+-- (SEC2-03).
+GRANT SELECT (id, kind, at, count) ON web_auth.security_event TO mail_triage_runtime;
 -- A token is created with a notice, read when "Undo" is tapped, and removed once used or expired.
 GRANT SELECT, INSERT, UPDATE, DELETE ON web_notice_token TO mail_triage_runtime;
 
