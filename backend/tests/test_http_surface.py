@@ -190,7 +190,7 @@ async def test_given_a_request_when_handled_then_the_request_id_is_in_request_st
 # 6
 @pytest.mark.parametrize("path", ["/docs", "/redoc", "/openapi.json"])
 async def test_given_production_when_docs_requested_then_404_problem(path: str) -> None:
-    app = make_app(make_settings(environment="production"))
+    app = make_app(make_settings(environment="production", trusted_proxy_cidrs=["10.244.0.0/16"]))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(path)

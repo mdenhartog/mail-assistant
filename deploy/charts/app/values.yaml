@@ -10,6 +10,10 @@ api:
     username: owner
     emailAddress: owner@home.arpa
     publicOrigin: https://app.home.arpa
+    # The addresses of the ingress controller pods, as a JSON list in the env. Required while ingress.enabled: without
+    # them every client shares one rate-limit bucket (ADR-0039). Set per environment to the controller's pod network.
+    trustedProxyCidrs: []
+    trustedProxyHops: 1 # proxies in front of the api; the client is the address the last trusted one appended
     noticeIntervalMinutes: 1 # must equal the agent run interval, rounded up to whole minutes
     smtp:
       host: smtp.home.arpa

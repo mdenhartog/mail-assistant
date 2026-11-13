@@ -94,6 +94,9 @@ def _database_problems(settings: Settings) -> Iterator[str]:
 
 
 def _limit_problems(settings: Settings) -> Iterator[str]:
+    # Without a trusted proxy every client shares the proxy's address and so one rate-limit bucket (RT-02, SEC-01).
+    if settings.environment == "production" and not settings.trusted_proxy_cidrs:
+        yield "trusted_proxy_cidrs"
     try:
         for cidr in settings.trusted_proxy_cidrs:
             ipaddress.ip_network(cidr, strict=False)
