@@ -2,15 +2,20 @@
 
 import json
 import logging
+from pathlib import Path
 
 import pytest
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.routing import APIRoute
 from httpx import ASGITransport, AsyncClient, Response
 
-from app.core.security import public, session
+from app.config import Settings
+from app.core.security import AUTH_DEPENDENCY_MARKER, public, session
 from app.errors import PROBLEM_MEDIA_TYPE, ProblemError, RateLimited
 from app.limit_guard import limit
+from app.main import discover_routers
+from app.routers import settings as settings_router
 from tests.fakes import make_app, make_settings
 
 SECURITY_HEADERS = {
@@ -18,7 +23,12 @@ SECURITY_HEADERS = {
     "x-content-type-options": "nosniff",
     "referrer-policy": "no-referrer",
 }
-CSP_DIRECTIVES = {"script-src 'self'", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"}
+API_CSP = "default-src 'none'; frame-ancestors 'none'"
+ISOLATION_HEADERS = {
+    "content-security-policy": API_CSP,
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
+}
 
 
 class CanaryFailureError(Exception):
@@ -145,21 +155,106 @@ async def test_given_429_when_inspected_then_security_headers_are_present(surfac
         assert response.headers[name] == value, name
 
 
-# 4
-async def test_given_html_response_when_inspected_then_csp_has_exactly_the_four_directives(
-    surface: AsyncClient,
+# 4 (U-web-settings-59: one policy for every response, html or not)
+@pytest.mark.parametrize("path", ["/t/html", "/healthz"])
+async def test_given_any_content_type_when_inspected_then_the_csp_is_the_one_api_policy(
+    surface: AsyncClient, path: str
 ) -> None:
-    response = await surface.get("/t/html")
+    response = await surface.get(path)
 
+    assert response.headers["content-security-policy"] == API_CSP
+
+
+@pytest.mark.parametrize(
+    ("path", "status"),
+    [("/healthz", 200), ("/t/problem/400", 400), ("/t/problem/401", 401), ("/nowhere", 404), ("/t/boom", 500)],
+)
+async def test_given_any_response_when_inspected_then_csp_coop_and_corp_are_present(
+    surface: AsyncClient, path: str, status: int
+) -> None:
+    response = await surface.get(path)
+
+    assert response.status_code == status
+    for name, value in ISOLATION_HEADERS.items():
+        assert response.headers[name] == value, name
+
+
+async def test_given_429_when_inspected_then_csp_coop_and_corp_are_present(surface_app: FastAPI) -> None:
+    surface_app.state.limit_guard = _RaisingGuard(30)
+    async with AsyncClient(transport=ASGITransport(app=surface_app), base_url="http://test") as client:
+        response = await client.get("/t/limited")
+
+    assert response.status_code == 429
+    for name, value in ISOLATION_HEADERS.items():
+        assert response.headers[name] == value, name
+
+
+@pytest.mark.parametrize("path", ["/docs", "/docs/oauth2-redirect"])
+async def test_given_development_when_the_docs_are_served_then_they_have_their_own_csp(path: str) -> None:
+    app = make_app(make_settings(environment="development"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(path)
+
+    assert response.status_code == 200
     csp = response.headers["content-security-policy"]
-    assert {part.strip() for part in csp.split(";")} == CSP_DIRECTIVES
-    assert "unsafe-inline" not in csp
+    assert csp != API_CSP
+    assert csp.startswith("default-src 'none'")
+    assert "frame-ancestors 'none'" in csp
+    assert "script-src 'self' https://cdn.jsdelivr.net" in csp
+    assert response.headers["cross-origin-opener-policy"] == "same-origin"
+    assert response.headers["cross-origin-resource-policy"] == "same-origin"
 
 
-async def test_given_json_response_when_inspected_then_no_csp(surface: AsyncClient) -> None:
-    response = await surface.get("/healthz")
+async def test_given_development_when_the_openapi_document_is_served_then_it_has_the_api_policy() -> None:
+    app = make_app(make_settings(environment="development"))
 
-    assert "content-security-policy" not in response.headers
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/openapi.json")
+
+    assert response.status_code == 200
+    assert response.headers["content-security-policy"] == API_CSP
+
+
+# Criterion 1 of U-web-settings-59
+def test_given_no_environment_variable_when_settings_load_then_production_rules_apply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("APP_ENVIRONMENT", raising=False)
+
+    settings = Settings()
+
+    assert settings.environment == "production"
+    assert settings.docs_enabled is False
+
+
+@pytest.mark.parametrize("value", ["development", "test"])
+def test_given_an_explicit_environment_when_settings_load_then_it_is_kept(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("APP_ENVIRONMENT", value)
+
+    assert Settings().environment == value
+
+
+# U-web-settings-59: session is declared once on PUT /api/settings
+def test_given_the_settings_write_route_when_inspected_then_session_is_declared_once_after_the_limit() -> None:
+    route = next(
+        r
+        for m in discover_routers()
+        for r in m.router.routes
+        if isinstance(r, APIRoute) and r.path == "/settings" and "PUT" in (r.methods or set())
+    )
+    calls = [dep.call for dep in route.dependant.dependencies]
+
+    assert calls.count(session) == 1
+    assert [getattr(c, AUTH_DEPENDENCY_MARKER, None) for c in calls].index("limit") < calls.index(session)
+
+
+def test_given_the_settings_router_source_when_read_then_it_has_no_noqa() -> None:
+    source = Path(settings_router.__file__).read_text(encoding="utf-8")
+
+    assert "noqa" not in source
 
 
 # 5
