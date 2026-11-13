@@ -3,7 +3,7 @@
 # Build context: the repository root (docker build -f backend/Dockerfile .), because the backend depends on the shared
 # package packages/schedule-policy (a uv path dependency, ../packages/schedule-policy). The directory layout below mirrors
 # the repository so that the relative path in pyproject.toml and uv.lock resolves.
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS build
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /srv/backend
 COPY packages/schedule-policy/pyproject.toml /srv/packages/schedule-policy/pyproject.toml
@@ -12,7 +12,7 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
 COPY backend/app ./app
 
-FROM python:3.13-slim-bookworm AS runtime
+FROM python:3.13-slim-bookworm@sha256:a5a7017efc5969e00ae2b91c8eb0631049a569652aa4ffc4501769049ae45c72 AS runtime
 # python:slim-bookworm is Debian and may carry a system /usr/share/zoneinfo, which zoneinfo reads before the `tzdata` wheel.
 # PYTHONTZPATH points at a directory that does not exist, so the pinned wheel (uv.lock, ADR-0028) is the only source.
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONTZPATH=/nonexistent-zoneinfo PATH="/srv/backend/.venv/bin:$PATH"

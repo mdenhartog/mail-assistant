@@ -60,6 +60,13 @@ The database host name must be in the server certificate. The CA that signed it 
 
 `certAlert.enabled=true` renders a `PrometheusRule` that fires when the ingress certificate (`<release>-tls`) has less than `certAlert.daysAhead` days left (at least 14). It is off by default and needs the Prometheus operator and cert-manager metrics; it is a gate for production (D-7).
 
+## Environment gates (U-web-settings-57)
+
+- `environment` is `local`, `staging` or `production` and defaults to `production`. Production values are refused by the schema unless `certAlert.enabled` is true and `api.image.digest` and `web.image.digest` are set (`sha256:` plus 64 hex characters).
+- `ingress.hstsAnnotation.key` must not be empty: the schema refuses `hsts: true` without a named mechanism. The controller stays an open point (D-7), so the key and the redirect and TLS minimum settings come from the environment values.
+- The tests in `agents/mail-triage/tests/infra/test_ingress_gates.py` render every `deploy/envs/*/values.yaml` and name what is missing: an HSTS directive, an HTTP redirect or a TLS minimum of 1.2.
+- Base images in both Dockerfiles are pinned with `@sha256`; Renovate keeps the pins current (`docker:pinDigests`).
+
 ## Checks
 
 ```sh

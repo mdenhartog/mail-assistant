@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "required": [
+    "environment",
     "api",
     "web",
     "ingress",
@@ -134,6 +135,13 @@
     }
   },
   "properties": {
+    "environment": {
+      "enum": [
+        "local",
+        "staging",
+        "production"
+      ]
+    },
     "api": {
       "allOf": [
         {
@@ -240,7 +248,8 @@
         "localDomainSuffix",
         "clusterIssuer",
         "tls",
-        "hsts"
+        "hsts",
+        "hstsAnnotation"
       ],
       "allOf": [
         {
@@ -376,7 +385,9 @@
           "additionalProperties": false,
           "properties": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^\\S+$",
+              "description": "The annotation that carries the HSTS header; the mechanism is controller specific and must not be empty."
             },
             "format": {
               "type": "string",
@@ -385,7 +396,11 @@
                 "pattern": "includeSubDomains|preload"
               }
             }
-          }
+          },
+          "required": [
+            "key",
+            "format"
+          ]
         },
         "annotations": {
           "type": "object",
@@ -526,6 +541,62 @@
                 "properties": {
                   "trustedProxyCidrs": {
                     "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "environment"
+        ],
+        "properties": {
+          "environment": {
+            "const": "production"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "certAlert"
+        ],
+        "properties": {
+          "certAlert": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "api": {
+            "properties": {
+              "image": {
+                "required": [
+                  "digest"
+                ],
+                "properties": {
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          },
+          "web": {
+            "properties": {
+              "image": {
+                "required": [
+                  "digest"
+                ],
+                "properties": {
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
                   }
                 }
               }
