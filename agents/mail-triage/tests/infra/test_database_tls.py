@@ -23,7 +23,12 @@ COMPOSE = ROOT / "agents" / "mail-triage" / "compose.yaml"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
-BASE = ("image.repository=registry.example/mail-triage", "migration.secretName=mail-triage-migration")
+DIGEST = "sha256:" + "d" * 64  # production needs a digest (U-web-settings-66)
+BASE = (
+    "image.repository=registry.example/mail-triage",
+    f"image.digest={DIGEST}",
+    "migration.secretName=mail-triage-migration",
+)
 CA_CONFIG_MAP = "database.tls.caConfigMap=mail-triage-db-ca"
 
 
@@ -70,7 +75,7 @@ def test_given_the_local_values_when_rendered_then_runtime_and_migrate_job_have_
     env = env_of(spec)
 
     assert env["DATABASE_SSL"] == "verify-full"
-    assert env["ENVIRONMENT"] == "production"
+    assert env["ENVIRONMENT"] == "development"  # the local values say so; production needs a digest
     ca_path = env["DATABASE_CA_FILE"]
     mounts = spec["containers"][0]["volumeMounts"]
     mount = next(item for item in mounts if ca_path.startswith(item["mountPath"].rstrip("/") + "/"))

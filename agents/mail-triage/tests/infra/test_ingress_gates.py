@@ -6,6 +6,7 @@ the rendered Ingress annotations and the declared controller config say, not whi
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import shutil
@@ -209,6 +210,41 @@ def test_given_the_local_values_when_rendered_then_they_say_local_and_need_no_di
     assert json.dumps(values).count("sha256:") == 0
 
 
+SKIP_DIRS = {"node_modules", ".venv", ".git", ".claude", "dist", "build"}
+DIGEST_PIN = re.compile(r"@sha256:[a-f0-9]{64}$")
+# Images that are not pulled from a registry by name and tag, so a digest cannot exist (U-web-settings-66, SEC2-05).
+# Every entry needs a reason; the test refuses an exception that no compose file uses any more.
+COMPOSE_EXCEPTIONS = {
+    "mail-assistant-api:local": "built from backend/Dockerfile by the same compose service (build: next to image:)",
+    "mail-assistant-web:local": "built from apps/web/Dockerfile by the same compose service (build: next to image:)",
+}
+# A Dockerfile FROM that is not pinned is listed here with the reason; empty on purpose.
+DOCKERFILE_EXCEPTIONS: dict[str, str] = {}
+
+
+def repo_files(*names: str) -> list[Path]:
+    found = [
+        p
+        for p in ROOT.rglob("*")
+        if p.is_file()
+        and not SKIP_DIRS & set(p.relative_to(ROOT).parts)
+        and any(fnmatch.fnmatch(p.name, n) for n in names)
+    ]
+    return sorted(found)
+
+
+def dockerfiles() -> list[Path]:
+    return repo_files("Dockerfile", "Dockerfile.*", "*.Dockerfile")
+
+
+def compose_files() -> list[Path]:
+    return repo_files("compose.y*ml", "docker-compose*.y*ml")
+
+
+def display(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+
+
 def dockerfile_froms(path: Path) -> list[str]:
     stages: set[str] = set()
     problems: list[str] = []
@@ -217,19 +253,86 @@ def dockerfile_froms(path: Path) -> list[str]:
         if not match:
             continue
         image, alias = match.groups()
-        if image not in stages and not re.search(r"@sha256:[a-f0-9]{64}$", image):
-            problems.append(f"{path.relative_to(ROOT)}:{number} FROM {image} has no @sha256 digest")
+        where = f"{display(path)}:{number}"
+        if image not in stages and not DIGEST_PIN.search(image) and where not in DOCKERFILE_EXCEPTIONS:
+            problems.append(f"{where} FROM {image} has no @sha256 digest")
         if alias:
             stages.add(alias)
     return problems
 
 
-@pytest.mark.parametrize("dockerfile", [ROOT / "backend" / "Dockerfile", ROOT / "apps" / "web" / "Dockerfile"])
-def test_given_a_dockerfile_when_linted_then_every_from_is_pinned_by_digest(dockerfile: Path) -> None:
-    assert dockerfile_froms(dockerfile) == []
+def compose_images(path: Path) -> list[str]:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    images = [svc["image"] for svc in (doc.get("services") or {}).values() if isinstance(svc, dict) and "image" in svc]
+    return [str(i) for i in images]
+
+
+def unpinned_compose_images() -> list[str]:
+    return [
+        f"{path.relative_to(ROOT).as_posix()}: image {image} has no @sha256 digest"
+        for path in compose_files()
+        for image in compose_images(path)
+        if not DIGEST_PIN.search(image) and image not in COMPOSE_EXCEPTIONS
+    ]
+
+
+def test_given_the_repository_when_scanned_then_every_dockerfile_and_compose_file_is_found() -> None:
+    names = {p.relative_to(ROOT).as_posix() for p in dockerfiles()}
+    assert {
+        "backend/Dockerfile",
+        "apps/web/Dockerfile",
+        "agents/mail-triage/Dockerfile",
+        "agents/assistant/Dockerfile",
+        "channels/chat-gateway/Dockerfile",
+        "mcp-servers/tools/Dockerfile",
+    } <= names
+    assert ROOT / "compose.yaml" in compose_files()
+
+
+def test_given_every_dockerfile_in_the_repo_when_linted_then_every_from_is_pinned_by_digest() -> None:
+    problems = [problem for dockerfile in dockerfiles() for problem in dockerfile_froms(dockerfile)]
+
+    assert problems == []
+
+
+def test_given_every_compose_image_in_the_repo_when_linted_then_each_has_a_digest_or_a_documented_exception() -> None:
+    assert unpinned_compose_images() == []
+
+
+def test_given_the_compose_exceptions_when_listed_then_each_is_used_built_locally_and_explained() -> None:
+    used = {image for path in compose_files() for image in compose_images(path)}
+
+    assert set(COMPOSE_EXCEPTIONS) <= used, "an exception that no compose file uses any more must be removed"
+    assert all(len(reason) > 20 for reason in COMPOSE_EXCEPTIONS.values())
+    doc = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))
+    for image in COMPOSE_EXCEPTIONS:
+        service = next(s for s in doc["services"].values() if s.get("image") == image)
+        assert "build" in service, f"{image} is exempt only because the same service builds it"
+
+
+def test_given_an_unpinned_from_when_linted_then_the_linter_names_the_line(tmp_path: Path) -> None:
+    dockerfile = tmp_path / "Dockerfile"
+    pinned = "caddy:2@sha256:" + "b" * 64
+    lines = ["FROM python:3.13-slim AS a", "FROM a AS b", f"FROM {pinned}"]
+    dockerfile.write_text(chr(10).join(lines), encoding="utf-8")
+
+    problems = dockerfile_froms(dockerfile)
+
+    assert len(problems) == 1
+    assert ":1 FROM python:3.13-slim has no @sha256 digest" in problems[0]
 
 
 def test_given_the_renovate_config_when_read_then_it_keeps_the_digest_pins_up_to_date() -> None:
     config = json.loads((ROOT / "renovate.json").read_text(encoding="utf-8"))
 
     assert "docker:pinDigests" in config["extends"]
+
+
+def test_given_the_renovate_config_when_read_then_compose_files_and_dockerfiles_stay_in_its_managers() -> None:
+    config = json.loads((ROOT / "renovate.json").read_text(encoding="utf-8"))
+    enabled = config.get("enabledManagers")
+    disabled = [r for r in config.get("packageRules", []) if r.get("enabled") is False]
+
+    assert "config:recommended" in config["extends"]
+    assert enabled is None or {"dockerfile", "docker-compose"} <= set(enabled)
+    assert not [r for r in disabled if {"dockerfile", "docker-compose"} & set(r.get("matchManagers", []))]
