@@ -29,7 +29,7 @@ def test_given_settings_when_app_created_then_app_name_is_the_title() -> None:
 
 
 def test_given_production_when_app_created_then_docs_disabled() -> None:
-    app = make_app(make_settings(environment="production"))
+    app = make_app(make_settings(environment="production", trusted_proxy_cidrs=["10.244.0.0/16"]))
 
     assert app.docs_url is None
     assert app.openapi_url is None

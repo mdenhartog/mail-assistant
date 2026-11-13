@@ -35,6 +35,7 @@ ENVIRONMENT = {
     "APP_PUBLIC_ORIGIN": "https://settings.example.test",
     "APP_DATABASE_URL": "postgresql+asyncpg://web:factory-db-password@127.0.0.1:1/app",
     "APP_DATABASE_SSL": "verify-full",
+    "APP_TRUSTED_PROXY_CIDRS": '["10.244.0.0/16"]',
 }
 
 
