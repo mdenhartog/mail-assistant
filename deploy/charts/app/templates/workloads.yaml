@@ -41,7 +41,7 @@ spec:
             - { name: http, containerPort: {{ $c.port }} }
           {{- if eq $name "api" }}
           {{- $cfg := $c.config }}
-          {{- $plain := dict "APP_USERNAME" $cfg.username "APP_EMAIL_ADDRESS" $cfg.emailAddress "APP_SMTP_HOST" $cfg.smtp.host "APP_SMTP_PORT" ($cfg.smtp.port | toString) "APP_SMTP_FROM" $cfg.smtp.from "APP_PUBLIC_ORIGIN" $cfg.publicOrigin "APP_NOTICE_INTERVAL_MINUTES" ($cfg.noticeIntervalMinutes | toString) }}
+          {{- $plain := dict "APP_USERNAME" $cfg.username "APP_EMAIL_ADDRESS" $cfg.emailAddress "APP_SMTP_HOST" $cfg.smtp.host "APP_SMTP_PORT" ($cfg.smtp.port | toString) "APP_SMTP_FROM" $cfg.smtp.from "APP_PUBLIC_ORIGIN" $cfg.publicOrigin "APP_NOTICE_INTERVAL_MINUTES" ($cfg.noticeIntervalMinutes | toString) "APP_TRUSTED_PROXY_CIDRS" ($cfg.trustedProxyCidrs | toJson) "APP_TRUSTED_PROXY_HOPS" ($cfg.trustedProxyHops | toString) }}
           {{- $plain = merge $plain (default dict $c.env) }}
           {{- $secrets := dict "APP_DATABASE_URL" "database-url" "APP_CODE_HASH_KEY" "code-hash-key" "APP_CSRF_KEY" "csrf-key" "APP_USERNAME_HASH_KEY" "username-hash-key" "APP_SMTP_USER" "smtp-user" "APP_SMTP_PASSWORD" "smtp-password" }}
           env:
