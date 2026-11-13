@@ -798,3 +798,21 @@ def test_given_the_chart_readme_when_read_then_it_names_the_web_password_key_and
     assert "WEB_ROLE_PASSWORD" in text
     assert "--from-literal=" not in text
     assert "--from-env-file=/dev/stdin" in text
+
+
+# --- U-web-settings-49: the purge runs inside the migrate Job; nothing else holds the owner secret (AC-21, W-13) ---
+
+
+@needs_helm
+def test_given_the_chart_when_searched_then_no_cron_job_and_only_the_migrate_job_holds_the_owner_secret() -> None:
+    docs = render(*MIGRATION, "envFromSecret=mail-triage-secrets")
+
+    assert "CronJob" not in {doc["kind"] for doc in docs}
+    holders = [doc for doc in docs if "mail-triage-migration" in yaml.safe_dump(doc)]
+    assert [(doc["kind"], doc["metadata"]["name"]) for doc in holders] == [
+        ("Job", migration_job(docs)["metadata"]["name"])
+    ]
+    for doc in docs:
+        if doc["kind"] != "Job":
+            assert not any(key in yaml.safe_dump(doc) for key in OWNER_KEYS)
+    assert job_container(docs)["command"] == ["python", "-m", "app", "migrate"]  # the purge is a step of this command

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from app.obs.redaction import RedactionFilter, Redactor
 from app.settings import SettingsError, load_migrate_settings, load_settings
 from app.wiring import migrate as run_migration
+from app.wiring import purge as run_purge
 from app.wiring import serve as run_agent
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ def main(
     serve: Callable[[Settings], Coroutine[Any, Any, int]] = run_agent,
     migrate: Callable[[MigrateSettings], Coroutine[Any, Any, int]] = run_migration,
     argv: Sequence[str] = (),
+    purge: Callable[[MigrateSettings], Coroutine[Any, Any, int]] = run_purge,
 ) -> int:
     """Return the process exit code."""
     command = argv[0] if argv else "serve"

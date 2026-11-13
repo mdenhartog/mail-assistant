@@ -37,6 +37,7 @@ from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
 from app.db.pg_web_lock import PgWebLock
 from app.db.pg_web_notice import PgWebNotice
+from app.db.purge import purge_database
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
 from app.usecases.code_alert import CodeAlert
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
+    from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
 
 logger = logging.getLogger(__name__)
@@ -207,6 +209,12 @@ async def migrate(settings: MigrateSettings) -> int:
         return EXIT_MIGRATION_FAILED
     logger.info("migration finished; the database is at the head this build expects")
     return EXIT_OK
+
+
+async def purge(settings: MigrateSettings, clock: Clock | None = None) -> int:
+    """Stub."""
+    _ = (purge_database, clock, settings)
+    raise NotImplementedError
 
 
 async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real Google, Telegram and database
