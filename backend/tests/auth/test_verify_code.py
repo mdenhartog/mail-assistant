@@ -64,9 +64,10 @@ class Api:
     guard: RecordingGuard
     logins: LoginRequests
 
-    async def issue(self, username: str = USERNAME) -> str:
-        """Ask for a code and return the value of the login cookie."""
-        response = await self.http.post(REQUEST_CODE, json={"username": username}, headers={"Origin": ORIGIN})
+    async def issue(self, username: str = USERNAME, *, cookie: str | None = None) -> str:
+        """Ask for a code, as a browser that holds the login cookie, and return the new login cookie value."""
+        headers = {"Origin": ORIGIN} | ({"Cookie": f"__Host-login={cookie}"} if cookie is not None else {})
+        response = await self.http.post(REQUEST_CODE, json={"username": username}, headers=headers)
         assert response.status_code == 200
         jar: SimpleCookie = SimpleCookie()
         jar.load(response.headers["set-cookie"])
@@ -263,7 +264,7 @@ async def test_given_an_old_code_after_a_new_one_when_posted_then_the_generic_40
 ) -> None:
     old = await api.issue()
     api.clock.advance(timedelta(seconds=61))
-    await api.issue()
+    await api.issue(cookie=old)
 
     response = await api.verify(FIRST, old)
 

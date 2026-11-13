@@ -1,7 +1,7 @@
 """Login request store (U-web-settings-16): persistence of the e-mailed sign-in code in ``web_auth.login_request``."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Final
 
@@ -20,11 +20,12 @@ _ID_BYTES: Final = 24
 LOGIN_REQUEST_RETENTION: Final = timedelta(hours=1)
 _SERIALIZE_CREATE = text("SELECT pg_advisory_xact_lock(hashtext('web_auth.login_request'))")
 _REMOVE_OLD = text("DELETE FROM web_auth.login_request WHERE created_at < :since")
-# A new request kills the live requests of the username that come from its client or carry its cookie, and only those.
+# A new request kills the live request of the username that carries its cookie, and only that one: the client alone
+# never replaces, because a neighbour in the same /64 or behind the same NAT shares the client key (RT2-04).
 _KILL_REPLACED = text(
     "UPDATE web_auth.login_request SET dead_at = :now "
     "WHERE username_key = :username_key AND dead_at IS NULL AND expires_at > :now "
-    "AND (client_hash = :client_hash OR id = :cookie)"
+    "AND id = :cookie"
 )
 _USERNAME_CREATED = text(
     "SELECT created_at FROM web_auth.login_request WHERE username_key = :username_key AND created_at > :since"
@@ -67,7 +68,7 @@ class LoginRequest:
     id: str
     created_at: datetime
     expires_at: datetime
-    stored: bool = True  # False while the web lock is set: the answer is the usual one, but no row exists
+    stored: bool = True  # False while the web lock is set or the decoy class is full: the usual answer, no row
 
 
 @dataclass(frozen=True)
@@ -134,8 +135,8 @@ class LoginRequests:
     async def create(self, who: Applicant, code: str, now: datetime, limits: RequestLimits) -> LoginRequest:
         """Store the request of the configured username, in one transaction under every limit.
 
-        Rows older than an hour go. The live requests that come from the same client or carry the same cookie are
-        replaced; the others stay. Then the limits are read and, if one holds, nothing is kept (not even the
+        Rows older than an hour go. The live request that carries the same cookie is replaced, never one that only
+        shares the client; the others stay. Then the limits are read and, if one holds, nothing is kept (not even the
         replacement). Creation is serialised so the limits hold under concurrency.
 
         Args:
@@ -190,7 +191,7 @@ class LoginRequests:
             await session.execute(_REMOVE_OLD, {"since": since})
             await session.execute(
                 _KILL_REPLACED,
-                {"now": now, "username_key": who.username_key, "client_hash": who.client_hash, "cookie": who.cookie},
+                {"now": now, "username_key": who.username_key, "cookie": who.cookie},
             )
             facts = RequestFacts(
                 username_created=await _times(session, _USERNAME_CREATED, username_key=who.username_key, since=since),
@@ -200,7 +201,10 @@ class LoginRequests:
                 class_live=await _times(session, _CLASS_LIVE, owner_key=who.owner_key, known=who.known, now=now),
             )
             locked = (await session.execute(_WEB_LOCKED)).first() is not None
-            wait = request_wait(facts, now, limits)
+            # A full decoy class never refuses (RT2-03): the owner's class cannot be full from decoys, so a refusal
+            # there would tell that the username is unknown. The decoy gets the usual answer and no row.
+            invisible = not who.known and len(facts.class_live) >= limits.class_open_cap
+            wait = request_wait(facts if who.known else replace(facts, class_live=()), now, limits)
             if wait > 0:
                 raise LoginRequestRefused(wait)
             # Every step above and the hash below run locked or not, for a real and a decoy username alike (AC-30).
@@ -213,9 +217,10 @@ class LoginRequests:
                 "created_at": now,
                 "sent_at": sent_at,
             }
-            if not locked:  # the web lock is set: the request is answered but leaves no row (AC-27)
+            stored = not locked and not invisible  # the web lock or a full decoy class: answered, but no row (AC-27)
+            if stored:
                 await session.execute(_INSERT, row)
-        return LoginRequest(id=request_id, created_at=now, expires_at=expires_at, stored=not locked)
+        return LoginRequest(id=request_id, created_at=now, expires_at=expires_at, stored=stored)
 
     async def check(self, request_id: str | None, code: str, now: datetime) -> Verdict:
         """Check a code: the row is locked, so two checks of one request run one after the other.

@@ -86,6 +86,13 @@ class Api:
         assert response.status_code == 200
         return _cookie(response)
 
+    async def ask_as_a_browser(self, username: str, jar: dict[str, str]) -> Response:
+        """Ask with the login cookie the browser holds for this username, and keep the new one."""
+        response = await self.request_code(username, cookie=jar.get(username))
+        if response.status_code == 200:
+            jar[username] = _cookie(response)
+        return response
+
     async def verify(self, code: object, cookie: str) -> Response:
         return await self.http.post(
             VERIFY, json={"code": code}, headers={"Origin": ORIGIN, "Cookie": f"__Host-login={cookie}"}
@@ -244,12 +251,13 @@ async def test_given_a_wrong_format_code_when_posted_to_a_decoy_and_a_real_reque
 async def test_given_decoys_when_requests_are_counted_then_the_hourly_cap_and_signin_limit_apply_like_real(
     api: Api,
 ) -> None:
+    jar: dict[str, str] = {}
     for _ in range(5):
         for name in (UNKNOWN, USERNAME):
-            assert (await api.request_code(name)).status_code == 200
+            assert (await api.ask_as_a_browser(name, jar)).status_code == 200
         api.clock.advance(timedelta(seconds=60))
-    unknown_sixth = await api.request_code(UNKNOWN)
-    known_sixth = await api.request_code(USERNAME)
+    unknown_sixth = await api.ask_as_a_browser(UNKNOWN, jar)
+    known_sixth = await api.ask_as_a_browser(USERNAME, jar)
 
     assert unknown_sixth.status_code == known_sixth.status_code == 429
     assert unknown_sixth.headers["retry-after"] == known_sixth.headers["retry-after"] == "3300"
@@ -551,16 +559,16 @@ async def test_given_three_live_requests_of_a_username_when_a_fourth_client_asks
 async def test_given_a_refused_request_when_the_clock_moves_then_retry_after_follows_the_real_remaining_wait(
     api: Api,
 ) -> None:
-    for index in range(CAP):
-        await api.request_code(f"name-{index}", client=_client(index))
+    for index in range(10):  # the per-client number of open requests
+        await api.request_code(f"name-{index}", client="10.7.7.7")
 
     waits: list[tuple[int, str]] = []
     for seconds in (0, 100, 599):
         api.clock.set(T0 + timedelta(seconds=seconds))
-        refused = await api.request_code(UNKNOWN, client="10.9.9.8")
+        refused = await api.request_code(UNKNOWN, client="10.7.7.7")
         waits.append((refused.status_code, refused.headers["retry-after"]))
     api.clock.set(T0 + timedelta(seconds=600))
-    freed = await api.request_code(UNKNOWN, client="10.9.9.8")
+    freed = await api.request_code(UNKNOWN, client="10.7.7.7")
 
     assert waits == [(429, "600"), (429, "500"), (429, "1")]
     assert freed.status_code == 200
@@ -573,16 +581,17 @@ async def test_given_five_requests_then_a_sixth_when_known_and_unknown_then_stat
 ) -> None:
     if fail:
         api.mailer.fail()
+    jar: dict[str, str] = {}
     for _ in range(5):
         for name in (UNKNOWN, USERNAME):
-            assert (await api.request_code(name)).status_code == 200
+            assert (await api.ask_as_a_browser(name, jar)).status_code == 200
         api.clock.advance(timedelta(seconds=60))
 
-    unknown_sixth = await api.request_code(UNKNOWN)
-    known_sixth = await api.request_code(USERNAME)
+    unknown_sixth = await api.ask_as_a_browser(UNKNOWN, jar)
+    known_sixth = await api.ask_as_a_browser(USERNAME, jar)
     api.clock.set(T0 + timedelta(seconds=3599))
-    unknown_late = await api.request_code(UNKNOWN)
-    known_late = await api.request_code(USERNAME)
+    unknown_late = await api.ask_as_a_browser(UNKNOWN, jar)
+    known_late = await api.ask_as_a_browser(USERNAME, jar)
 
     assert unknown_sixth.status_code == known_sixth.status_code == 429
     assert unknown_sixth.headers["retry-after"] == known_sixth.headers["retry-after"] == "3300"
