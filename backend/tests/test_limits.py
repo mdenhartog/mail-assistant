@@ -48,7 +48,7 @@ def test_given_another_window_length_when_retry_after_is_asked_then_it_is_used()
 
 
 def test_given_the_limit_when_one_more_arrives_then_it_is_refused_with_the_wait_to_the_next_window() -> None:
-    limiter = FixedWindowLimiter(limit=3, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=3, window_seconds=60)
 
     decisions = [limiter.hit("1.2.3.4", "signin", T0 + 10) for _ in range(4)]
 
@@ -58,7 +58,7 @@ def test_given_the_limit_when_one_more_arrives_then_it_is_refused_with_the_wait_
 
 
 def test_given_a_refused_flood_when_hit_again_then_only_the_first_refusal_is_flagged() -> None:
-    limiter = FixedWindowLimiter(limit=2, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=2, window_seconds=60)
 
     decisions = [limiter.hit("1.2.3.4", "api", T0) for _ in range(6)]
 
@@ -66,7 +66,7 @@ def test_given_a_refused_flood_when_hit_again_then_only_the_first_refusal_is_fla
 
 
 def test_given_the_last_second_of_a_window_when_the_next_window_starts_then_the_count_restarts() -> None:
-    limiter = FixedWindowLimiter(limit=1, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=1, window_seconds=60)
 
     assert limiter.hit("c", "signin", T0 + 59.9).allowed
     assert not limiter.hit("c", "signin", T0 + 59.9).allowed
@@ -75,7 +75,7 @@ def test_given_the_last_second_of_a_window_when_the_next_window_starts_then_the_
 
 
 def test_given_a_refusal_in_a_window_when_the_next_window_refuses_again_then_it_is_flagged_again() -> None:
-    limiter = FixedWindowLimiter(limit=1, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=1, window_seconds=60)
     for _ in range(3):
         limiter.hit("c", "signin", T0)
 
@@ -85,7 +85,7 @@ def test_given_a_refusal_in_a_window_when_the_next_window_refuses_again_then_it_
 
 
 def test_given_two_buckets_and_two_clients_when_one_is_exhausted_then_the_others_are_unaffected() -> None:
-    limiter = FixedWindowLimiter(limit=1, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=1, window_seconds=60)
     assert limiter.hit("a", "api", T0).allowed
     assert not limiter.hit("a", "api", T0).allowed
 
@@ -94,15 +94,15 @@ def test_given_two_buckets_and_two_clients_when_one_is_exhausted_then_the_others
 
 
 def test_given_different_limits_when_hit_then_each_limiter_uses_its_own() -> None:
-    low = FixedWindowLimiter(limit=1, window_seconds=60)
-    high = FixedWindowLimiter(limit=2, window_seconds=60)
+    low = FixedWindowLimiter(max_counters=1000, limit=1, window_seconds=60)
+    high = FixedWindowLimiter(max_counters=1000, limit=2, window_seconds=60)
 
     assert [low.hit("c", "api", T0).allowed for _ in range(2)] == [True, False]
     assert [high.hit("c", "api", T0).allowed for _ in range(3)] == [True, True, False]
 
 
 def test_given_a_shorter_window_when_the_time_passes_it_then_the_count_restarts() -> None:
-    limiter = FixedWindowLimiter(limit=1, window_seconds=10)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=1, window_seconds=10)
 
     assert limiter.hit("c", "api", T0).allowed
     assert not limiter.hit("c", "api", T0 + 9.9).allowed
@@ -110,7 +110,7 @@ def test_given_a_shorter_window_when_the_time_passes_it_then_the_count_restarts(
 
 
 def test_given_many_clients_and_windows_when_counted_then_old_windows_go_and_the_size_is_bounded() -> None:
-    limiter = FixedWindowLimiter(limit=5, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=5, window_seconds=60)
 
     for minute in range(50):
         for client in range(20):
@@ -121,7 +121,7 @@ def test_given_many_clients_and_windows_when_counted_then_old_windows_go_and_the
 
 
 def test_given_a_previous_window_when_the_next_one_is_counted_then_the_previous_one_is_still_held() -> None:
-    limiter = FixedWindowLimiter(limit=5, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=5, window_seconds=60)
     limiter.hit("a", "api", T0)
     limiter.hit("a", "api", T0 + 60)
 
@@ -135,7 +135,7 @@ def test_given_a_previous_window_when_the_next_one_is_counted_then_the_previous_
 
 
 def test_given_a_fresh_limiter_when_asked_then_nothing_is_tracked() -> None:
-    limiter = FixedWindowLimiter(limit=5, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=5, window_seconds=60)
 
     assert limiter.tracked_windows() == 0
     assert limiter.tracked_entries() == 0
@@ -189,8 +189,8 @@ def test_given_a_peer_that_is_not_an_address_when_keyed_then_it_is_kept_as_it_is
 
 
 def test_given_ipv6_addresses_when_keyed_then_they_are_written_in_one_canonical_form() -> None:
-    assert client_key("fd00::1", "2001:DB8:0:0:0:0:0:1", ["fd00::/8"], 1) == "2001:db8::1"
-    assert client_key("2001:DB8:0:0:0:0:0:2", None, [], 1) == "2001:db8::2"
+    assert client_key("fd00::1", "2001:DB8:0:1:0:0:0:1", ["fd00::/8"], 1) == "2001:db8:0:1::/64"
+    assert client_key("2001:DB8:0:2:0:0:0:2", None, [], 1) == "2001:db8:0:2::/64"
 
 
 def test_given_an_ipv4_mapped_peer_when_keyed_then_it_matches_the_ipv4_cidr() -> None:
@@ -218,7 +218,7 @@ def test_given_odd_and_even_windows_when_retry_after_is_asked_then_it_counts_to_
 
 
 def test_given_a_gap_of_several_windows_when_counted_then_everything_older_than_two_windows_is_dropped() -> None:
-    limiter = FixedWindowLimiter(limit=5, window_seconds=60)
+    limiter = FixedWindowLimiter(max_counters=1000, limit=5, window_seconds=60)
     limiter.hit("a", "api", T0)
     limiter.hit("a", "api", T0 + 60)
 
@@ -230,3 +230,97 @@ def test_given_a_gap_of_several_windows_when_counted_then_everything_older_than_
 
 def test_given_a_cidr_written_with_host_bits_when_keyed_then_it_still_trusts_the_network() -> None:
     assert client_key("10.42.1.7", "203.0.113.9", ["10.42.1.7/16"], 1) == "203.0.113.9"
+
+
+# ---- U-web-settings-51: IPv6 per /64 (criterion 2) ----
+
+
+def test_given_31_addresses_of_one_slash_64_when_keyed_and_counted_then_the_31st_is_refused() -> None:
+    limiter = FixedWindowLimiter(limit=30, window_seconds=60, max_counters=1000)
+
+    decisions = [limiter.hit(client_key(f"2001:db8:0:1:{n:x}::{n:x}", None, [], 1), "signin", T0) for n in range(1, 32)]
+
+    assert [d.allowed for d in decisions] == [True] * 30 + [False]
+
+
+def test_given_two_slash_64_networks_when_keyed_then_the_buckets_are_separate() -> None:
+    first = client_key("2001:db8:0:1::5", None, [], 1)
+    second = client_key("2001:db8:0:2::5", None, [], 1)
+
+    assert first == "2001:db8:0:1::/64"
+    assert second == "2001:db8:0:2::/64"
+    assert first != second
+
+
+def test_given_the_last_bit_of_the_64_prefix_when_keyed_then_it_splits_the_networks() -> None:
+    assert client_key("2001:db8:0:0:ffff:ffff:ffff:ffff", None, [], 1) == "2001:db8::/64"
+    assert client_key("2001:db8:0:1::", None, [], 1) == "2001:db8:0:1::/64"
+
+
+def test_given_a_forwarded_ipv6_address_when_keyed_then_it_is_the_slash_64_of_that_address() -> None:
+    assert client_key("fd00::1", "9::9, 2001:db8:0:3:aaaa::1", ["fd00::/8"], 1) == "2001:db8:0:3::/64"
+
+
+def test_given_an_ipv4_address_when_keyed_then_it_stays_itself() -> None:
+    assert client_key("203.0.113.9", None, [], 1) == "203.0.113.9"
+    assert client_key("::ffff:203.0.113.9", None, [], 1) == "203.0.113.9"
+
+
+def test_given_a_trusted_ipv6_peer_without_a_header_when_keyed_then_the_peer_slash_64_is_the_key() -> None:
+    assert client_key("fd00:0:0:5::7", None, ["fd00::/8"], 1) == "fd00:0:0:5::/64"
+
+
+# ---- U-web-settings-51: bounded counters (criterion 3) ----
+
+
+def test_given_more_keys_than_the_bound_when_another_arrives_then_it_is_refused_and_not_stored() -> None:
+    limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=3)
+
+    first = [limiter.hit(f"c{n}", "api", T0) for n in range(3)]
+    over = limiter.hit("c3", "api", T0 + 10)
+
+    assert all(d.allowed for d in first)
+    assert not over.allowed
+    assert not over.first_refusal
+    assert over.retry_after == 50
+    assert limiter.tracked_entries() == 3
+
+
+def test_given_the_bound_is_reached_when_a_known_key_hits_again_then_it_is_still_counted() -> None:
+    limiter = FixedWindowLimiter(limit=2, window_seconds=60, max_counters=2)
+    limiter.hit("a", "api", T0)
+    limiter.hit("b", "api", T0)
+
+    again = [limiter.hit("a", "api", T0) for _ in range(2)]
+
+    assert [d.allowed for d in again] == [True, False]
+    assert [d.first_refusal for d in again] == [False, True]
+    assert limiter.tracked_entries() == 2
+
+
+def test_given_one_client_with_two_buckets_when_counted_then_each_pair_is_one_counter() -> None:
+    limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=2)
+
+    assert limiter.hit("a", "api", T0).allowed
+    assert limiter.hit("a", "signin", T0).allowed
+    assert not limiter.hit("a", "other", T0).allowed
+    assert not limiter.hit("b", "api", T0).allowed
+
+
+def test_given_a_full_window_when_the_next_window_starts_then_new_keys_are_counted_again() -> None:
+    limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=1)
+    assert limiter.hit("a", "api", T0).allowed
+    assert not limiter.hit("b", "api", T0).allowed
+
+    assert limiter.hit("b", "api", T0 + 60).allowed
+    assert not limiter.hit("a", "api", T0 + 60).allowed
+    assert limiter.tracked_entries() == 2
+
+
+def test_given_a_flood_of_distinct_keys_when_counted_then_memory_stays_at_the_bound() -> None:
+    limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=50)
+
+    for n in range(5000):
+        limiter.hit(f"k{n}", "api", T0 + n * 0.01)
+
+    assert limiter.tracked_entries() == 50
