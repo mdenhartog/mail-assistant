@@ -14,7 +14,7 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, NoReturn
 
 import asyncpg
 import pytest
@@ -23,7 +23,7 @@ from testcontainers.community.postgres import PostgresContainer
 from app.db import Database
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator, Iterator, Mapping
 
 AGENT_ROOT = Path(__file__).resolve().parents[3] / "agents" / "mail-triage"
 GRANTS = AGENT_ROOT / "app" / "db" / "grants.sql"
@@ -80,6 +80,14 @@ class DbEndpoint:
     owner_url: str
     web_url: str
     agent_url: str
+
+
+def start_failure_outcome(error: BaseException, *, ci: bool) -> Literal["skip", "fail"]:
+    raise NotImplementedError
+
+
+def report_start_failure(error: BaseException, image: str, env: Mapping[str, str]) -> NoReturn:
+    raise NotImplementedError
 
 
 @pytest.fixture(scope="session")
