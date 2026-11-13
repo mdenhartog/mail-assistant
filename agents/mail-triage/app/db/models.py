@@ -18,6 +18,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Identity,
+    Index,
     Integer,
     LargeBinary,
     SmallInteger,
@@ -279,7 +280,9 @@ class SecurityEvent(Base):
             "kind IN (" + ", ".join(f"'{kind}'" for kind in _SECURITY_EVENT_KINDS) + ")", name="ck_security_event_kind"
         ),
         CheckConstraint("result IN ('ok', 'refused', 'failed')", name="ck_security_event_result"),
+        CheckConstraint("count >= 1", name="ck_security_event_count"),
         UniqueConstraint("kind", "client_key", "window", name="uq_security_event_kind_client_window"),
+        Index("ix_security_event_kind_at", "kind", "at"),  # the alert query: one kind, newer than a time
         {"schema": "web_auth"},
     )
 
