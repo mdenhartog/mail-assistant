@@ -396,7 +396,7 @@ def test_given_the_prod_like_job_when_read_then_it_checks_the_security_headers_o
     script = (ROOT / "scripts" / "prodlike-checks.sh").read_text(encoding="utf-8")
 
     assert "scripts/prodlike-checks.sh headers" in steps
-    assert "headers)" in script
+    assert '"$mode" = "headers"' in script
     for name in ("content-security-policy", "cross-origin-opener-policy", "cross-origin-resource-policy"):
         assert name in script
     for path in ("/settings", "/assets/", "/api/settings", "/anything"):
