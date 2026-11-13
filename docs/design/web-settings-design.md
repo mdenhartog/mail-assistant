@@ -21,10 +21,10 @@ Revision 2 followed the round table (security, UX, QA, product owner) and the de
 | --- | --- | --- |
 | Sign-in | Username and e-mailed code, start-up configuration check (AC-2 to AC-7, AC-24, AC-29 to AC-31) | |
 | Page | View and save the four values, last-change line, zone combobox, conflict (AC-1, AC-9 to AC-11, C-7); an expired session sends Marco to sign in and back to `/settings` with the stored values (first half of AC-12) | Reset to defaults (AC-25); typed values kept across session expiry (second half of AC-12) |
-| Safety | CSRF and Origin, CSP, headers, route allow-list, 404 for internals, HTTPS and HSTS, limits (AC-8, AC-14 to AC-16, AC-18, AC-19); the web role (AC-17); the Telegram notice with Undo and lock (AC-13, ADR-0033); one security log entry per refusal (first half of AC-20) | The Telegram alert after 5 wrong or expired codes (second half of AC-20); audit retention (AC-21) |
+| Safety | CSRF and Origin, CSP, headers, route allow-list, 404 for internals, HTTPS and HSTS, limits (AC-8, AC-14 to AC-16, AC-18, AC-19); the web role (AC-17); the Telegram notice with Undo and lock (AC-13, ADR-0033); one security log entry per refusal (first half of AC-20); the retention purge (AC-21, D-19) | The Telegram alert after 5 wrong or expired codes (second half of AC-20) |
 | Delivery | Accessibility and responsive states (AC-22, AC-23), contract fixture (AC-26), prod-like edge with the mail catcher, chart, local ingress, NetworkPolicy, secrets | |
 
-AC-12 (second half), AC-20 (second half), AC-21 and AC-25 move to R2 by decision of Marco. The retention purge has nothing to delete before November 2027.
+AC-12 (second half), AC-20 (second half) and AC-25 move to R2 by decision of Marco. AC-21 (the retention purge) came back into R1 on 2026-11-13 (D-19): it is a gate before production.
 
 ## Facts in the existing code that shape the design
 
@@ -44,7 +44,7 @@ AC-12 (second half), AC-20 (second half), AC-21 and AC-25 move to R2 by decision
 | B2 | PostgreSQL role `web_settings_runtime` | Schema `web_auth` and a limited write on `settings.schedule` |
 | B3 | SMTP relay (the local mail catcher in dev and prod-like) | Delivers the code; reached only over SMTP with STARTTLS from `api` |
 | App | `mail-triage` agent | Telegram, web notices, Undo and lock (ADR-0033) |
-| Owner | Migrate Job | DDL, grants (the retention purge joins it in R2) |
+| Owner | Migrate Job | DDL, grants, the retention purge (last step) |
 
 **Sign-in (two steps, ADR-0036).** `POST /auth/request-code` with the username checks the limits first (client bucket, then the per-username cooldown and hourly cap), then answers the same body, status and timing class whether or not the username is known ("If this username is known, a code has been sent"). For the one configured username it removes the open login request of that username (a new code replaces the old one), generates a six-digit code from the injected code source (a cryptographically secure generator in production), stores a `web_auth.login_request` row (request id, HMAC-SHA-256 hash of the code, expiry 10 minutes, attempts, creation time; capped number of open rows, expired rows removed on insert), sets the request id in `__Host-login` (`HttpOnly`, `Secure`, `SameSite=Lax`, 10 minutes) and hands the message to the mail sender. The answer carries the masked address (`m***@example.com`) and the time the code expires. For an unknown username a dummy hash and the same send path timing are used and nothing is sent.
 
@@ -84,7 +84,7 @@ Cookies: `__Host-session` (256-bit random value, `HttpOnly`, `Secure`, `SameSite
 - **Rule to field.** A static map from rule to field (`quiet_window_*` to start and end, `overview_in_quiet_hours`, `remind_in_quiet_hours`, `zone_unknown`). The package exports its list of rules (`RULES`) so a contract test can check the map covers all of them. Malformed times are rejected at the edge.
 - **Database role and migration 0008** (agent chain): schema `web_auth` and its tables (`login_request`, `session`, `security_event`, `web_lock`); the web line in the guard with a check that `updated_by` matches `^web:[0-9a-f]{32}$`; the cursors in `poll_state` for web notices; the notice token record; `settings.contract_version()` which the backend's readiness probe checks instead of the agent's Alembic head. Grants for `web_settings_runtime`: `INSERT` and `UPDATE` on `settings.schedule` limited to `(id,) zone, quiet_start, quiet_end, overview_at, remind_at, version, updated_via, updated_by`, `SELECT` on it, execute on `contract_version()`, the needed rights on the `web_auth` tables, nothing on `public`, nothing on `settings_change`; every new function is `REVOKE`d from `PUBLIC`. The migrate job becomes a list of roles with the SCRAM, no-membership and no-replication rules of ADR-0030; its Secret gains the web role password. The web role's database URL uses `sslmode=verify-full`.
 - **Shared package in the image.** The backend image gets `schedule-policy` as a path dependency and `PYTHONTZPATH` as in the agent image (ADR-0028); the build context becomes the repository root. Dependencies added: `sqlalchemy[asyncio]`, `asyncpg` and an async SMTP client (for example `aiosmtplib`, chosen when the unit is built); no OIDC library.
-- **Retention (R2).** `python -m app purge` becomes a step of the migrate job (owner role). Expired `login_request` and `session` rows are removed by the web role itself on insert and at start-up. There is no CronJob with owner credentials.
+- **Retention (R1, D-19).** `python -m app purge` is the last step of the migrate job (owner role, after migrate and grants; U-49). It deletes `settings.settings_change` rows older than one year and `web_auth.security_event` rows older than 90 days (strictly older than the cutoff), and expired `login_request` and `session` rows (the web role also removes those itself on insert and at start-up). The runtime roles still cannot delete from `settings_change`; the owner purge is its one delete path. There is no CronJob with owner credentials.
 
 ## Agent side
 

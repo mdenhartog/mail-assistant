@@ -16,6 +16,10 @@ membership, no replication) and applies their grants. A migration Secret without
 nothing, cannot run DDL) and exits with code 5 if the schema is not at the head its image expects. A failed Job (exit 6)
 stops the sync, so the old worker keeps running.
 
+The Job also runs the retention purge as its last step (`settings_change` older than one year, security events older than
+90 days, expired login requests and sessions); a failing purge fails the Job like a failing migration. The chart renders
+no `CronJob`, and no workload other than this Job references the migration Secret.
+
 ### Operator step: create two Secrets before the first sync
 
 The chart only **references** Secrets by name; it never creates one and no value belongs in a values file.
