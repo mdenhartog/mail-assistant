@@ -281,3 +281,64 @@ async def test_given_the_alert_query_on_a_large_table_when_explained_then_it_use
 
     assert "ix_security_event_kind_at" in plan
     assert "Seq Scan" not in plan
+
+
+# The kind code_invalid (U-web-settings-63) and old rows
+_INVALID = (
+    'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
+    f"values ('code_invalid', 'refused', 'req-9', '{CLIENT}', 9)"
+)
+
+
+async def test_given_0012_when_the_web_role_inserts_a_code_invalid_event_then_it_works_and_the_trigger_allows_it(
+    owner: asyncpg.Connection,
+) -> None:
+    async with _as(owner, WEB_ROLE) as web:
+        await web.execute(_INVALID)
+        assert await web.fetchval("select count from web_auth.security_event where kind = 'code_invalid'") == 1
+
+
+async def test_given_0011_when_a_code_invalid_event_is_inserted_then_the_check_refuses_it(database_url: str) -> None:
+    await _migrate(database_url, "0011")
+    connection = await asyncpg.connect(_plain(database_url))
+    try:
+        with pytest.raises(asyncpg.CheckViolationError):
+            await connection.execute(_INVALID)
+    finally:
+        await connection.close()
+
+
+async def test_given_a_code_invalid_row_when_0012_runs_down_and_up_then_the_row_goes_and_the_check_is_restored(
+    database_url: str,
+) -> None:
+    await _migrate(database_url, "0012")
+    connection = await asyncpg.connect(_plain(database_url))
+    try:
+        await connection.execute(_INVALID)
+        await connection.execute(_ROW.format(count=2))
+    finally:
+        await connection.close()
+
+    await _downgrade(database_url, "0011")
+
+    kinds = await _names(database_url, "select kind from web_auth.security_event")
+    assert kinds == ["code_refused"]  # the code_invalid row is deleted, the others stay
+    await _migrate(database_url, "0012")
+    assert await _names(database_url, "select kind from web_auth.security_event") == ["code_refused"]
+
+
+async def test_given_old_rows_with_a_count_below_one_when_0012_runs_then_they_are_raised_to_one(
+    database_url: str,
+) -> None:
+    await _migrate(database_url, "0011")
+    connection = await asyncpg.connect(_plain(database_url))
+    try:
+        await connection.execute(_ROW.format(count=0))
+    finally:
+        await connection.close()
+
+    await _migrate(database_url, "0012")
+
+    counts = await _names(database_url, "select count::text from web_auth.security_event")
+    assert counts == ["1"]
+    assert len(await _names(database_url, _TRIGGERS)) == 1
