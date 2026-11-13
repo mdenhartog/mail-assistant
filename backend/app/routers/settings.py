@@ -1,6 +1,6 @@
 """Settings routes: ``GET`` (U-web-settings-20) and ``PUT /api/settings`` (U-web-settings-22)."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
@@ -69,7 +69,7 @@ def _problem_json(body: Problem422 | Conflict409) -> JSONResponse:
 @router.put(
     "/settings",
     response_model=Settings,
-    dependencies=[Depends(limit("api")), Depends(session), Depends(csrf), Depends(require_json)],
+    dependencies=[Depends(limit("api")), Depends(csrf), Depends(require_json)],
     responses={
         401: {"description": "No live session"},
         403: {"description": "Missing or wrong token, wrong Origin or cross-site request"},
@@ -91,7 +91,7 @@ def _problem_json(body: Problem422 | Conflict409) -> JSONResponse:
 async def write_settings(
     body: SettingsUpdate,
     request: Request,
-    current: Session = Depends(session),  # noqa: B008
+    current: Annotated[Session, Depends(session)],
 ) -> Settings | JSONResponse:
     """Validate the whole row and store it if it is still at the version the change is based on.
 

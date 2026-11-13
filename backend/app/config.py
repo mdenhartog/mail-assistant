@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", extra="forbid")
 
     app_name: str = "Mail Assistant"
-    environment: Literal["development", "test", "production"] = "development"
+    # Production unless set otherwise: a missing variable must never switch the docs or the TLS rules off (ADR-0039).
+    environment: Literal["development", "test", "production"] = "production"
 
     # The one user and where the code goes (C-1).
     username: str = ""

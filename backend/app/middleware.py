@@ -12,11 +12,22 @@ from app.ids import IdSource
 logger = logging.getLogger(__name__)
 access_logger = logging.getLogger("app.access")
 
-CONTENT_SECURITY_POLICY = "script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+# The API serves data only: nothing may load or frame from it.
+API_CONTENT_SECURITY_POLICY = "default-src 'none'; frame-ancestors 'none'"
+# The interactive docs (development and test only) load Swagger UI from a CDN and run an inline script.
+DOCS_CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
+    "style-src https://cdn.jsdelivr.net 'unsafe-inline'; img-src data: https://fastapi.tiangolo.com; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+)
+DOCS_PAGE_PATHS = frozenset({"/docs", "/docs/oauth2-redirect"})
 _FIXED_HEADERS = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",
 }
 
 
@@ -31,10 +42,11 @@ def _log_request(scope: Scope, status: int, request_id: str) -> None:
 class HttpSurfaceMiddleware:
     """Pure ASGI middleware: request id, security headers on every response and the generic 500."""
 
-    def __init__(self, app: ASGIApp, *, ids: IdSource) -> None:
-        """Keep the next app and the id source."""
+    def __init__(self, app: ASGIApp, *, ids: IdSource, docs_enabled: bool) -> None:
+        """Keep the next app, the id source and whether the docs pages exist (they need their own policy)."""
         self._app = app
         self._ids = ids
+        self._docs_pages = DOCS_PAGE_PATHS if docs_enabled else frozenset[str]()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Serve one request; a client ``X-Request-Id`` is never read."""
@@ -44,6 +56,7 @@ class HttpSurfaceMiddleware:
         request_id = self._ids.request_id()
         scope.setdefault("state", {})["request_id"] = request_id
         started = False
+        policy = DOCS_CONTENT_SECURITY_POLICY if scope["path"] in self._docs_pages else API_CONTENT_SECURITY_POLICY
 
         async def send_with_headers(message: Message) -> None:
             nonlocal started
@@ -54,8 +67,7 @@ class HttpSurfaceMiddleware:
                 for name, value in _FIXED_HEADERS.items():
                     headers[name] = value
                 headers["X-Request-Id"] = request_id
-                if headers.get("content-type", "").startswith("text/html"):
-                    headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
+                headers["Content-Security-Policy"] = policy
             await send(message)
 
         try:
