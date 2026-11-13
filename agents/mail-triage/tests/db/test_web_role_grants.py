@@ -243,7 +243,6 @@ async def test_given_the_agent_role_when_it_inserts_and_updates_the_web_lock_the
     [
         "select * from web_auth.session",
         "select * from web_auth.login_request",
-        "select * from web_auth.security_event",
         'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
         "values ('session_start', 'ok', 'q1', 'k1', 1)",
         "delete from web_auth.session",

@@ -63,7 +63,7 @@ async def burst(
     return Setup(rig, store.tokens, row, FakeLock())
 
 
-# ---- criteria 1 to 3: Undo goes back to before the burst, guarded by the version ------------------------------------
+# ---- criteria 1 to 3: Undo goes back to before the burst, guarded by the version -----
 
 
 async def test_given_changes_3_4_5_when_undo_of_notice_5_is_tapped_then_the_values_before_change_3_are_back() -> None:
@@ -145,7 +145,7 @@ async def test_given_a_token_record_with_unreadable_minutes_when_undo_is_tapped_
     assert setup.rig.chat.edited == [(9, settings_text.UNDO_REFUSED)]
 
 
-# ---- criteria 4 and 5: Undo and lock ---------------------------------------------------------------------------------
+# ---- criteria 4 and 5: Undo and lock -----
 
 
 async def test_given_undo_and_lock_when_tapped_then_the_lock_is_set_and_the_values_are_back() -> None:
@@ -203,7 +203,7 @@ async def test_given_the_lock_cannot_be_written_when_undo_and_lock_is_tapped_the
     assert setup.tokens.records  # the token is kept, so the tap can be handled again
 
 
-# ---- criterion 6: /web_unlock ---------------------------------------------------------------------------------------
+# ---- criterion 6: /web_unlock -----
 
 
 async def test_given_a_locked_web_sign_in_when_the_owner_sends_web_unlock_then_it_is_cleared_and_said() -> None:
@@ -244,7 +244,7 @@ async def test_given_another_chat_when_web_unlock_is_sent_then_nothing_happens_a
     assert setup.rig.chat.edited == []
 
 
-# ---- criterion 7: an expired or used token ---------------------------------------------------------------------------
+# ---- criterion 7: an expired or used token -----
 
 
 async def test_given_an_expired_token_when_tapped_then_the_message_says_expired_and_nothing_is_written() -> None:
@@ -302,7 +302,7 @@ async def test_given_a_malformed_web_button_when_tapped_then_it_is_ignored(data:
     assert setup.row.audit == []
 
 
-# ---- criterion 8: only the allowed chat ------------------------------------------------------------------------------
+# ---- criterion 8: only the allowed chat -----
 
 
 async def test_given_a_tap_from_another_chat_with_a_valid_token_when_handled_then_it_is_ignored() -> None:
@@ -317,7 +317,7 @@ async def test_given_a_tap_from_another_chat_with_a_valid_token_when_handled_the
     assert setup.tokens.records  # the token is untouched
 
 
-# ---- criterion 9 (agent level): a pending Telegram dialogue is never replaced ----------------------------
+# ---- criterion 9 (agent level): a pending Telegram dialogue is never replaced -----
 
 
 async def test_given_a_pending_telegram_dialogue_when_web_buttons_are_used_then_the_dialogue_is_unchanged() -> None:
@@ -334,7 +334,7 @@ async def test_given_a_pending_telegram_dialogue_when_web_buttons_are_used_then_
     assert setup.rig.chat.offered == []
 
 
-# ---- criterion 10: no canary in the logs, and no clock or random value ---------------------------------
+# ---- criterion 10: no canary in the logs, and no clock or random value -----
 
 
 async def test_given_a_failure_with_a_canary_zone_and_token_when_a_button_is_tapped_then_no_log_line_holds_it(
@@ -380,3 +380,75 @@ def test_given_the_action_modules_when_parsed_then_none_reads_the_clock_or_makes
     assert not {name for name in called if name in {"datetime.now", "time.time", "uuid4", "uuid.uuid4", "urandom"}}
     assert not {name for name in called if name.split(".")[0] in {"random", "secrets"}}
     assert not {name.split(".")[0] for name in imported} & {"random", "secrets", "uuid"}
+
+
+# ---- U-web-settings-55 criterion 5: /web_lock, the command the sign-in mail names -----
+
+
+def test_given_the_command_when_read_then_it_is_the_one_the_sign_in_mail_names() -> None:
+    assert settings_text.WEB_LOCK_COMMAND == "/web_lock"  # backend/app/mail/message.py LOCK_COMMAND
+
+
+async def test_given_an_open_sign_in_when_the_owner_sends_web_lock_then_it_is_locked_and_said_with_the_way_back() -> (
+    None
+):
+    setup = await burst()
+
+    await setup.router.handle(say("/web_lock"))
+
+    assert setup.lock.locked_at == setup.rig.clock.now()
+    assert setup.rig.chat.said == [settings_text.WEB_LOCKED_NOW]
+    assert "/web_unlock" in settings_text.WEB_LOCKED_NOW
+    assert setup.row.audit == []  # a lock command changes no settings
+
+
+async def test_given_a_locked_sign_in_when_web_lock_is_sent_again_then_nothing_changes_and_it_says_so() -> None:
+    setup = await burst()
+    await setup.router.handle(say("/web_lock"))
+    first = setup.lock.locked_at
+    setup.rig.clock.set(AT + timedelta(hours=1))
+
+    await setup.router.handle(say("/web_lock"))
+
+    assert setup.lock.locked_at == first
+    assert setup.lock.sets == 1
+    assert setup.rig.chat.said == [settings_text.WEB_LOCKED_NOW, settings_text.WEB_ALREADY_LOCKED]
+
+
+async def test_given_the_bot_name_and_extra_words_when_web_lock_is_sent_then_it_is_still_the_command() -> None:
+    setup = await burst()
+
+    await setup.router.handle(say("/web_lock@MailBot now"))
+
+    assert setup.lock.locked_at is not None
+
+
+async def test_given_another_chat_when_web_lock_is_sent_then_nothing_happens_and_nothing_is_answered() -> None:
+    setup = await burst()
+
+    await setup.router.handle(say("/web_lock", STRANGER))
+
+    assert setup.lock.locked_at is None
+    assert setup.rig.chat.said == []
+    assert setup.rig.chat.edited == []
+
+
+async def test_given_a_pending_telegram_dialogue_when_web_lock_is_sent_then_the_dialogue_is_unchanged() -> None:
+    setup = await burst()
+    started = await setup.rig.conversations.start("settings", None, "card", {"k": "v"}, timedelta(minutes=15))
+    starts = setup.rig.conversations.starts
+
+    await setup.router.handle(say("/web_lock"))
+
+    assert await setup.rig.conversations.current() == started
+    assert setup.rig.conversations.starts == starts
+
+
+async def test_given_a_lock_that_cannot_be_written_when_web_lock_is_sent_then_it_never_says_locked() -> None:
+    setup = await burst()
+    setup.lock.fail = True
+
+    with pytest.raises(RuntimeError):
+        await setup.router.handle(say("/web_lock"))
+
+    assert setup.rig.chat.said == []

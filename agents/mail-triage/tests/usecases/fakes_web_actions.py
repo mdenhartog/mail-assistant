@@ -39,19 +39,26 @@ class FakeTokens:
 
 
 class FakeLock:
-    """The single lock row; ``sets`` counts the calls that really created it, ``fail`` makes ``lock`` raise."""
+    """The single lock row; ``sets`` counts the calls that really created it, ``calls`` every write, ``fail`` raises."""
 
     def __init__(self, *, fail: bool = False) -> None:
         self.locked_at: datetime | None = None
         self.sets = 0
+        self.calls = 0
         self.fail = fail
 
-    async def lock(self, now: datetime) -> None:
+    async def is_locked(self) -> bool:
+        return self.locked_at is not None
+
+    async def lock(self, now: datetime) -> bool:
+        self.calls += 1
         if self.fail:
             raise RuntimeError("lock broke for zone Canary/Zone token CANARYTOKEN")
-        if self.locked_at is None:
-            self.locked_at = now
-            self.sets += 1
+        if self.locked_at is not None:
+            return False
+        self.locked_at = now
+        self.sets += 1
+        return True
 
     async def unlock(self) -> bool:
         was = self.locked_at is not None

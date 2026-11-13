@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import WebLock
@@ -28,11 +28,22 @@ class PgWebLock:
         """Keep the session factory."""
         self._sessions = sessions
 
-    async def lock(self, now: datetime) -> None:
-        """Set the lock; when it is already set nothing changes (the first time stays)."""
-        statement = insert(WebLock).values(id=ROW, locked_at=now).on_conflict_do_nothing(index_elements=["id"])
+    async def lock(self, now: datetime) -> bool:
+        """Set the lock; ``True`` when this call set it. When it was already set nothing changes (the time stays)."""
+        statement = (
+            insert(WebLock)
+            .values(id=ROW, locked_at=now)
+            .on_conflict_do_nothing(index_elements=["id"])
+            .returning(WebLock.id)
+        )
         async with self._sessions.begin() as session:
-            await session.execute(statement)
+            created = await session.execute(statement)
+        return created.first() is not None
+
+    async def is_locked(self) -> bool:
+        """``True`` while the lock row exists."""
+        async with self._sessions() as session:
+            return (await session.execute(select(WebLock.id).where(WebLock.id == ROW))).first() is not None
 
     async def unlock(self) -> bool:
         """Delete the lock row; ``True`` when there was one."""

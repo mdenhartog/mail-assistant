@@ -31,6 +31,7 @@ from app.db.migrate import ROLES, RuntimeRoleNotSafe, SchemaNotReady, check_sche
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
+from app.db.pg_security_events import PgSecurityEvents
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
@@ -38,6 +39,7 @@ from app.db.pg_web_lock import PgWebLock
 from app.db.pg_web_notice import PgWebNotice
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
+from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
 from app.usecases.overview import OverviewService
@@ -149,10 +151,11 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now, policy.in_use)
     )
     web_notices = PgWebNotice(sessions)
+    web_lock = PgWebLock(sessions)
     router.register_web_actions(
         WebNoticeActions(
             web_notices,
-            PgWebLock(sessions),
+            web_lock,
             settings_store,
             outbox,
             chat_id=settings.telegram_allowed_chat_id,
@@ -167,6 +170,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),
         web_notice=WebNotice(web_notices, outbox, new_token),
+        code_alert=CodeAlert(PgSecurityEvents(sessions), web_lock, outbox),
         store=store,
         inbox=inbox,
         router=router,

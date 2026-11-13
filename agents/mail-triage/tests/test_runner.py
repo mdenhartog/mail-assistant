@@ -85,6 +85,16 @@ class WebNoticeStep:
         self.ran_at.append(now)
 
 
+class CodeAlertStep:
+    def __init__(self, steps: Steps) -> None:
+        self.steps = steps
+        self.ran_at: list[datetime] = []
+
+    async def run(self, now: datetime) -> None:
+        await self.steps.step("code_alert")
+        self.ran_at.append(now)
+
+
 class Store:
     def __init__(self, steps: Steps) -> None:
         self.steps = steps
@@ -127,6 +137,7 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
     router: Router | None = None,
     now: datetime = NOW,
     web_notice: WebNoticeStep | None = None,
+    code_alert: CodeAlertStep | None = None,
 ) -> tuple[Runner, Store]:
     store = Store(steps)
     web_notice = web_notice or WebNoticeStep(steps)
@@ -138,6 +149,7 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
             snooze=Snooze(steps),
             overview=Overview(steps),
             web_notice=web_notice,
+            code_alert=code_alert or CodeAlertStep(steps),
             store=store,
             inbox=inbox or Inbox([]),
             router=router or Router(),
@@ -157,7 +169,16 @@ async def test_given_a_cycle_when_run_then_due_alerts_are_released_before_mail_i
 
     await run.mail_cycle()
 
-    assert steps.calls == ["web_notice", "release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls == [
+        "web_notice",
+        "code_alert",
+        "release_due",
+        "pipeline",
+        "catchup",
+        "deliver",
+        "overview",
+        "purge",
+    ]
 
 
 async def test_given_a_cycle_when_run_then_web_changes_are_announced_first_with_the_clock_of_the_runner(
@@ -182,7 +203,7 @@ async def test_given_a_failing_web_notice_when_a_cycle_runs_then_the_mail_steps_
 
     await run.mail_cycle()
 
-    assert steps.calls[1:] == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls[2:] == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
     assert "step web_notice failed kind=RuntimeError" in caplog.text
     assert "very private" not in caplog.text
 
@@ -204,7 +225,16 @@ async def test_given_a_failing_step_when_a_cycle_runs_then_the_others_still_run_
 
     await run.mail_cycle()
 
-    assert steps.calls == ["web_notice", "release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls == [
+        "web_notice",
+        "code_alert",
+        "release_due",
+        "pipeline",
+        "catchup",
+        "deliver",
+        "overview",
+        "purge",
+    ]
     assert "very private" not in caplog.text
     assert "RuntimeError" in caplog.text
 
@@ -297,7 +327,16 @@ async def test_given_the_catch_up_fails_when_a_cycle_runs_then_the_later_steps_a
 
     await run.mail_cycle()
 
-    assert steps.calls == ["web_notice", "release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
+    assert steps.calls == [
+        "web_notice",
+        "code_alert",
+        "release_due",
+        "pipeline",
+        "catchup",
+        "deliver",
+        "overview",
+        "purge",
+    ]
     assert (tmp_path / "heartbeat").exists()
 
 
@@ -308,3 +347,28 @@ async def test_given_the_pipeline_fails_when_a_cycle_runs_then_the_catch_up_stil
     await run.mail_cycle()
 
     assert steps.calls.index("catchup") > steps.calls.index("pipeline")
+
+
+async def test_given_a_cycle_when_run_then_the_wrong_code_alert_runs_with_the_clock_of_the_runner(
+    tmp_path: Path,
+) -> None:
+    steps = Steps()
+    code_alert = CodeAlertStep(steps)
+    run, _ = runner(steps, tmp_path, code_alert=code_alert)
+
+    await run.mail_cycle()
+
+    assert code_alert.ran_at == [NOW]
+
+
+async def test_given_a_failing_wrong_code_alert_when_a_cycle_runs_then_the_mail_steps_still_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    steps = Steps(failing={"code_alert"})
+    run, _ = runner(steps, tmp_path)
+
+    await run.mail_cycle()
+
+    assert {"release_due", "pipeline", "deliver"} <= set(steps.calls)
+    assert "step code_alert failed kind=RuntimeError" in caplog.text
+    assert (tmp_path / "heartbeat").exists()
