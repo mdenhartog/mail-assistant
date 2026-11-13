@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import asyncpg
 import pytest
 from alembic import command
-from sqlalchemy.engine import make_url
 
 from tests.db.conftest import alembic_config
 
@@ -20,9 +20,9 @@ if TYPE_CHECKING:
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
-WEB_PASSWORD = "web-test-password"  # noqa: S105  # the shared throwaway password of the web role
+WEB_PASSWORD = "web-test-only"  # noqa: S105  # what the first test to make the shared role used (login request)
 AGENT_ROLE = "mail_triage_runtime"
-AGENT_PASSWORD = "runtime-test-only"  # noqa: S105  # the shared throwaway password of the agent role
+AGENT_PASSWORD = "agent-test-only"  # noqa: S105  # same: roles are cluster-wide and this file sorts first
 CLIENT = "c" * 64
 USER = "u" * 64
 
@@ -84,11 +84,14 @@ async def owner(migrated_url: str) -> AsyncIterator[asyncpg.Connection]:
     await connection.close()
 
 
-async def _as(url: str, role: str, password: str) -> asyncpg.Connection:
-    parts = make_url(url)
-    return await asyncpg.connect(
-        host=parts.host, port=parts.port, user=role, password=password, database=parts.database
-    )
+@asynccontextmanager
+async def _as(connection: asyncpg.Connection, role: str) -> AsyncIterator[asyncpg.Connection]:
+    """Act as a runtime role without logging in as it (the role passwords differ between test files)."""
+    await connection.execute(f"set role {role}")
+    try:
+        yield connection
+    finally:
+        await connection.execute("reset role")
 
 
 # Criterion 5
@@ -145,31 +148,25 @@ async def test_given_0012_when_the_functions_are_inspected_then_none_is_public_a
 
 # Criterion 2
 async def test_given_an_event_when_the_web_role_adds_one_then_it_works(
-    owner: asyncpg.Connection, migrated_url: str
+    owner: asyncpg.Connection,
 ) -> None:
     await owner.execute(_ROW.format(count=1))
-    web = await _as(migrated_url, WEB_ROLE, WEB_PASSWORD)
-    try:
+    async with _as(owner, WEB_ROLE) as web:
         await web.execute("update web_auth.security_event set count = count + 1")
         await web.execute("update web_auth.security_event set count = count + 1")
         assert await web.fetchval("select count from web_auth.security_event") == 3
-    finally:
-        await web.close()
 
 
 @pytest.mark.parametrize("new_count", ["0", "count + 2", "count", "count - 1", "1", "100000"])
 async def test_given_an_event_when_the_web_role_sets_count_to_anything_but_old_plus_one_then_it_is_refused(
-    owner: asyncpg.Connection, migrated_url: str, new_count: str
+    owner: asyncpg.Connection, new_count: str
 ) -> None:
     await owner.execute(_ROW.format(count=5))
-    web = await _as(migrated_url, WEB_ROLE, WEB_PASSWORD)
-    try:
+    async with _as(owner, WEB_ROLE) as web:
         with pytest.raises(asyncpg.PostgresError) as refused:
             await web.execute(f"update web_auth.security_event set count = {new_count}")
         assert refused.value.sqlstate == "42501"
         assert await web.fetchval("select count from web_auth.security_event") == 5
-    finally:
-        await web.close()
 
 
 @pytest.mark.parametrize(
@@ -196,15 +193,12 @@ async def test_given_an_event_when_any_other_column_changes_then_the_trigger_ref
 
 
 async def test_given_the_web_role_when_it_changes_another_column_then_the_grant_refuses_it(
-    owner: asyncpg.Connection, migrated_url: str
+    owner: asyncpg.Connection,
 ) -> None:
     await owner.execute(_ROW.format(count=1))
-    web = await _as(migrated_url, WEB_ROLE, WEB_PASSWORD)
-    try:
+    async with _as(owner, WEB_ROLE) as web:
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
             await web.execute("update web_auth.security_event set kind = 'rate_limited'")
-    finally:
-        await web.close()
 
 
 async def test_given_a_count_below_one_when_an_event_is_inserted_then_the_check_refuses_it(
@@ -227,16 +221,13 @@ async def test_given_the_trigger_when_an_event_is_deleted_then_it_does_not_get_i
 
 # Criterion 3
 async def test_given_the_agent_role_when_it_selects_the_alert_columns_then_it_works(
-    owner: asyncpg.Connection, migrated_url: str
+    owner: asyncpg.Connection,
 ) -> None:
     await owner.execute(_ROW.format(count=4))
-    agent = await _as(migrated_url, AGENT_ROLE, AGENT_PASSWORD)
-    try:
+    async with _as(owner, AGENT_ROLE) as agent:
         assert await agent.fetchval("select sum(count) from web_auth.security_event where kind = 'code_refused'") == 4
         assert await agent.fetchval("select max(id) from web_auth.security_event where at <= now()") >= 1
         assert await agent.fetchval("select count(*) from web_auth.security_event") == 1
-    finally:
-        await agent.close()
 
 
 @pytest.mark.parametrize(
@@ -244,16 +235,13 @@ async def test_given_the_agent_role_when_it_selects_the_alert_columns_then_it_wo
     ["username_hash", "client_key", "request_id", "result", '"window"', "*", "id, kind, at, count, client_key"],
 )
 async def test_given_the_agent_role_when_it_selects_a_private_column_then_42501(
-    owner: asyncpg.Connection, migrated_url: str, select_list: str
+    owner: asyncpg.Connection, select_list: str
 ) -> None:
     await owner.execute(_ROW.format(count=1))
-    agent = await _as(migrated_url, AGENT_ROLE, AGENT_PASSWORD)
-    try:
+    async with _as(owner, AGENT_ROLE) as agent:
         with pytest.raises(asyncpg.PostgresError) as refused:
             await agent.fetch(f"select {select_list} from web_auth.security_event")
         assert refused.value.sqlstate == "42501"
-    finally:
-        await agent.close()
 
 
 async def test_given_the_agent_role_when_privileges_are_read_then_only_four_columns_are_selectable(

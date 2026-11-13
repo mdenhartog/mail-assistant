@@ -38,21 +38,21 @@ async def test_given_another_contract_version_when_readyz_then_503_with_a_generi
 ) -> None:
     await owner.execute(
         "CREATE OR REPLACE FUNCTION settings.contract_version() RETURNS integer "
-        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 3 $$"
+        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 7 $$"
     )
 
     response = await ready_client.get("/readyz")
 
     assert response.status_code == 503
     assert "contract" not in response.text.lower()
-    assert "3" not in response.text
+    assert "7" not in response.text
 
 
 async def test_given_the_web_role_when_it_calls_the_contract_version_then_it_is_allowed_but_owns_nothing(
     web_database: Database,
 ) -> None:
     async with web_database.session() as session:
-        assert (await session.execute(text("select settings.contract_version()"))).scalar_one() == 1
+        assert (await session.execute(text("select settings.contract_version()"))).scalar_one() == 2
         with pytest.raises(Exception, match="permission denied"):
             await session.execute(text("select count(*) from settings.settings_change"))
 

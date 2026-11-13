@@ -76,7 +76,7 @@ async def test_given_a_newer_database_when_readyz_then_503(
 ) -> None:
     await owner.execute(
         "CREATE OR REPLACE FUNCTION settings.contract_version() RETURNS integer "
-        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 3 $$"
+        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 7 $$"
     )
 
     response = await ready_client.get("/readyz")
