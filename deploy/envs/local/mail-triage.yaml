@@ -3,6 +3,9 @@
 # allowed Telegram ids and the model ids) live in the Kubernetes Secret named below, created by your secret store.
 image:
   repository: ghcr.io/OWNER/mail-assistant/mail-triage
+# Local: a tag instead of a digest. Any production release sets environment: production and image.digest (the chart's
+# values.schema.json refuses production without a digest, U-web-settings-66). The connection stays verify-full.
+environment: development
 envFromSecret: mail-triage-secrets
 # The database connection is verify-full against the CA in this ConfigMap (key ca.crt), created by the operator.
 database:

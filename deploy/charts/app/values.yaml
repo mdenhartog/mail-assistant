@@ -6,8 +6,9 @@ api:
   image: { repository: ghcr.io/mdenhartog/mail-assistant/api, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
   replicas: 1 # exactly one (ADR-0034): the sign-in limits and the code store are per process
   port: 8000
-  env:
-    APP_ENVIRONMENT: production
+  # Plain extra settings. The environment, the database, the trusted proxies and every limit are refused here: the chart
+  # sets them from `environment` and `config` (ADR-0039, schema and template).
+  env: {}
   # Plain settings (not secrets). The address is personal data, so it is set per environment, never here.
   config:
     username: owner

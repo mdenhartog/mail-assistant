@@ -64,6 +64,11 @@
           "type": "object",
           "additionalProperties": {
             "type": "string"
+          },
+          "propertyNames": {
+            "not": {
+              "pattern": "^[Aa][Pp][Pp]_([Ee][Nn][Vv][Ii][Rr][Oo][Nn][Mm][Ee][Nn][Tt]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]_.*|[Tt][Rr][Uu][Ss][Tt][Ee][Dd]_[Pp][Rr][Oo][Xx][Yy]_.*|.*_[Pp][Ee][Rr]_.*|[Cc][Oo][Dd][Ee][Ss]_[Pp][Ee][Rr]_[Hh][Oo][Uu][Rr]|[Mm][Aa][Xx]_[Aa][Tt][Tt][Ee][Mm][Pp][Tt][Ss]|[Rr][Aa][Tt][Ee]_.*|[Oo][Pp][Ee][Nn]_[Ll][Oo][Gg][Ii][Nn]_.*|[Ll][Ii][Vv][Ee]_.*|[Ll][Oo][Gg][Ii][Nn]_[Rr][Ee][Qq][Uu][Ee][Ss][Tt][Ss]_.*|[Bb][Oo][Dd][Yy]_[Ll][Ii][Mm][Ii][Tt]_[Bb][Yy][Tt][Ee][Ss]|[Cc][Oo][Dd][Ee]_[Tt][Tt][Ll]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Rr][Ee][Ss][Ee][Nn][Dd]_[Cc][Oo][Oo][Ll][Dd][Oo][Ww][Nn]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Ii][Dd][Ll][Ee]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Aa][Bb][Ss][Oo][Ll][Uu][Tt][Ee]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss])$"
+            }
           }
         },
         "resources": {

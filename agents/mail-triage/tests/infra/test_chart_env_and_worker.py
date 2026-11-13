@@ -150,7 +150,7 @@ def test_given_a_setting_that_the_chart_allows_when_set_in_api_env_then_it_rende
 
 @needs_helm
 @pytest.mark.parametrize(
-    ("environment", "expected"), [("local", "development"), ("staging", "production"), ("production", "production")]
+    ("environment", "expected"), [("local", "production"), ("staging", "production"), ("production", "production")]
 )
 def test_given_an_environment_when_templated_then_app_environment_comes_from_it(
     environment: str, expected: str

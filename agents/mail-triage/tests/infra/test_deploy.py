@@ -25,6 +25,7 @@ SECRET_PATTERNS = (
 )
 HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
+DIGEST = "sha256:" + "d" * 64  # production (the chart default) needs a digest (U-web-settings-66)
 
 
 def render(*sets: str) -> list[dict[str, Any]]:
@@ -36,6 +37,8 @@ def render(*sets: str) -> list[dict[str, Any]]:
         str(CHART),
         "--set",
         "image.repository=registry.example/mail-triage",
+        "--set",
+        "image.digest=" + DIGEST,
         "--set",
         "database.tls.caConfigMap=mail-triage-db-ca",
     ]
@@ -63,6 +66,8 @@ def test_given_the_chart_when_linted_then_it_has_no_errors() -> None:
             str(CHART),
             "--set",
             "image.repository=registry.example/mail-triage",
+            "--set",
+            "image.digest=" + DIGEST,
             "--set",
             "database.tls.caConfigMap=mail-triage-db-ca",
         ],
@@ -249,6 +254,8 @@ def test_given_the_chart_with_the_migration_when_linted_strictly_then_it_has_no_
             "--set",
             "image.repository=registry.example/mail-triage",
             "--set",
+            "image.digest=" + DIGEST,
+            "--set",
             "database.tls.caConfigMap=mail-triage-db-ca",
         ]
         + [arg for item in MIGRATION for arg in ("--set", item)],
@@ -341,6 +348,8 @@ def test_given_the_migration_without_a_secret_name_when_rendered_then_it_fails_n
             str(CHART),
             "--set",
             "image.repository=r/x",
+            "--set",
+            "image.digest=" + DIGEST,
             "--set",
             "database.tls.caConfigMap=mail-triage-db-ca",
             "--set",

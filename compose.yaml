@@ -33,7 +33,7 @@ x-api-environment: &api-environment
 
 services:
   db:
-    image: postgres:18-alpine
+    image: postgres:18-alpine@sha256:1018733457011bf88d81db98cf43aac6d5150afc18787dbe204771fedf80ff95
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
@@ -59,7 +59,7 @@ services:
   mail:
     profiles: ["prod-like"]
     <<: *hardening
-    image: axllent/mailpit:v1.32.0
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
     environment:
       MP_SMTP_TLS_CERT: /certs/mail.crt
       MP_SMTP_TLS_KEY: /certs/mail.key
@@ -90,7 +90,7 @@ services:
 
   web-dev:
     profiles: ["dev"]
-    image: node:24-bookworm-slim
+    image: node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
     working_dir: /repo
     command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm --filter web dev"]
     volumes: [".:/repo", "web-node-modules:/repo/node_modules"]
@@ -99,6 +99,7 @@ services:
   api:
     profiles: ["prod-like"]
     <<: *hardening
+    # Not pinned by digest on purpose: built here from backend/Dockerfile (whose bases are pinned); the lint test lists it.
     image: mail-assistant-api:local
     build: { context: ., dockerfile: backend/Dockerfile }
     environment:
@@ -134,6 +135,7 @@ services:
     profiles: ["prod-like"]
     <<: *hardening
     tmpfs: ["/tmp", "/var/cache/nginx"]
+    # Not pinned by digest on purpose: built here from apps/web/Dockerfile (whose bases are pinned); the lint test lists it.
     image: mail-assistant-web:local
     build: { context: ., dockerfile: apps/web/Dockerfile }
     ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
@@ -144,7 +146,7 @@ services:
   edge:
     profiles: ["prod-like"]
     <<: *hardening
-    image: caddy:2.10.2-alpine
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     user: "10001:10001"
     # The caddy image sets the file capability cap_net_bind_service on /usr/bin/caddy; with the bounding set emptied by
     # cap_drop ALL the kernel refuses to exec it (EPERM, exit 255). Only this one capability is added back, for the exec:
@@ -182,7 +184,7 @@ services:
 
   web-test:
     profiles: ["test"]
-    image: node:24-bookworm-slim
+    image: node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
     working_dir: /repo
     command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm -r test"]
     volumes: [".:/repo", "web-node-modules:/repo/node_modules"]
