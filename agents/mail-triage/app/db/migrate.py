@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import asyncpg
 from alembic import command
@@ -23,12 +23,15 @@ from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
+from app.db.engine import connect_args
 from app.db.scram import verifier_for
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sqlalchemy.ext.asyncio import AsyncEngine
+
+    from app.db.engine import DatabaseTls
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 GRANTS = Path(__file__).resolve().parent / "grants.sql"
@@ -58,15 +61,16 @@ class SchemaNotReady(RuntimeError):  # noqa: N818 - reads as a state, not as an 
     """The database is not at the Alembic head this build expects. The message holds revisions only, never a URL."""
 
 
-def _config(url: str) -> Config:
+def _config(url: str, connect_args: dict[str, Any] | None = None) -> Config:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
     config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    config.attributes["connect_args"] = connect_args or {}  # read by migrations/env.py: the TLS context is no string
     return config
 
 
-def _upgrade(url: str) -> None:
-    command.upgrade(_config(url), "head")
+def _upgrade(url: str, connect_args: dict[str, Any]) -> None:
+    command.upgrade(_config(url, connect_args), "head")
 
 
 def expected_head() -> str:
@@ -91,25 +95,19 @@ async def check_schema(engine: AsyncEngine) -> None:
         )
 
 
-_SSL_MODES = frozenset({"disable", "allow", "prefer", "require", "verify-ca", "verify-full"})
+async def _connect(url: str, tls: DatabaseTls | None) -> asyncpg.Connection:
+    """Connect as the URL says; TLS comes from the settings (``tls``), never from the URL (SEC-10).
 
-
-async def _connect(url: str) -> asyncpg.Connection:
-    """Connect as the URL says, including its TLS setting (``?ssl=``), which SQLAlchemy would otherwise have handled."""
+    ``tls`` is None only for a test database; the job always passes the settings.
+    """
     parsed = make_url(url)
-    options: dict[str, object] = {}
-    ssl = parsed.query.get("ssl")
-    if ssl is not None:
-        if not isinstance(ssl, str) or ssl not in _SSL_MODES:
-            raise ValueError(f"the ssl setting of the owner URL must be one of: {', '.join(sorted(_SSL_MODES))}")
-        options["ssl"] = ssl
     return await asyncpg.connect(
         host=parsed.host,
         port=parsed.port,
         user=parsed.username,
         password=parsed.password,
         database=parsed.database,
-        **options,  # type: ignore[arg-type]
+        **(connect_args(tls) if tls is not None else {}),
     )
 
 
@@ -143,19 +141,20 @@ async def _roles_with_membership(connection: asyncpg.Connection) -> list[str]:
     return [role.name for role in ROLES if role.name in found]
 
 
-async def migrate_database(owner_url: str, passwords: Mapping[str, str]) -> None:
+async def migrate_database(owner_url: str, passwords: Mapping[str, str], tls: DatabaseTls | None = None) -> None:
     """Migrate as the owner, then make the roles of ``ROLES`` and their grants match this build. Safe to run again.
 
-    ``passwords`` maps a role name to its clear password. The roles are hardened and committed first; a role with a
+    ``passwords`` maps a role name to its clear password. ``tls`` is the connection mode of the settings; Alembic and
+    the lock connection use the same one. The roles are hardened and committed first; a role with a
     membership then stops the job (``RuntimeRoleNotSafe``) before the grants are applied.
     """
-    lock = await _connect(owner_url)
+    lock = await _connect(owner_url, tls)
     try:
         missing = [role.name for role in ROLES if not passwords.get(role.name)]
         if missing:  # before anything is changed; names the role, never a value
             raise ValueError(f"no password given for the role(s): {', '.join(missing)}")
         await lock.execute("select pg_advisory_lock($1)", MIGRATION_LOCK_KEY)  # waits for a job that is still running
-        await asyncio.to_thread(_upgrade, owner_url)
+        await asyncio.to_thread(_upgrade, owner_url, connect_args(tls) if tls is not None else {})
         async with lock.transaction():
             for role in ROLES:
                 await _ensure_role(lock, role.name, passwords[role.name])

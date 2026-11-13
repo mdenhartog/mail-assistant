@@ -4,6 +4,10 @@
 image:
   repository: ghcr.io/OWNER/mail-assistant/mail-triage
 envFromSecret: mail-triage-secrets
+# The database connection is verify-full against the CA in this ConfigMap (key ca.crt), created by the operator.
+database:
+  tls:
+    caConfigMap: mail-triage-db-ca
 env:
   POLL_INTERVAL_SECONDS: "60"
 # Migration Job (ADR-0025): runs as a PreSync hook with the OWNER credentials from the Secret named here (a name only;

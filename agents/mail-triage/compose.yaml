@@ -18,9 +18,16 @@ services:
     cap_drop: ["ALL"]
     tmpfs: ["/tmp"]
     environment:
+      # Database TLS (SEC-10). Development runs without it. The prod-like database accepts TLS only: run the service with
+      # `-e ENVIRONMENT=production -e DATABASE_SSL=verify-full` (the CI job does), which the CA below then verifies.
+      ENVIRONMENT: development
+      DATABASE_SSL: disable
+      DATABASE_CA_FILE: /certs/ca.crt
       DATABASE_OWNER_URL: ${MAIL_TRIAGE_DATABASE_OWNER_URL:-postgresql+asyncpg://app:${POSTGRES_PASSWORD:-}@db:5432/app}
       RUNTIME_ROLE_PASSWORD: ${MAIL_TRIAGE_RUNTIME_PASSWORD:-}
       WEB_ROLE_PASSWORD: ${WEB_ROLE_PASSWORD:-}
+    volumes:
+      - ../../deploy/prod-like/certs:/certs:ro
 
   mail-triage:
     profiles: ["components", "dev"]
@@ -40,6 +47,11 @@ services:
       start_period: 60s
       retries: 3
     environment:
+      # Database TLS (SEC-10). Development runs without it. The prod-like database accepts TLS only: run the service with
+      # `-e ENVIRONMENT=production -e DATABASE_SSL=verify-full` (the CI job does), which the CA below then verifies.
+      ENVIRONMENT: development
+      DATABASE_SSL: disable
+      DATABASE_CA_FILE: /certs/ca.crt
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_USER_ID: ${TELEGRAM_ALLOWED_USER_ID:-}
@@ -53,3 +65,5 @@ services:
       POLL_INTERVAL_SECONDS: ${MAIL_TRIAGE_POLL_INTERVAL_SECONDS:-60}
       DAILY_MODEL_BUDGET: ${MAIL_TRIAGE_DAILY_MODEL_BUDGET:-200}
       ALERTS_PER_HOUR: ${MAIL_TRIAGE_ALERTS_PER_HOUR:-5}
+    volumes:
+      - ../../deploy/prod-like/certs:/certs:ro

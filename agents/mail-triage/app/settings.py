@@ -9,10 +9,12 @@ the defaults live in ``schedule_policy.policy``.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import Field, SecretStr, ValidationError
+from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+
+from app.db.engine import DatabaseTls
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -22,7 +24,31 @@ class SettingsError(ValueError):
     """The configuration is incomplete or invalid; the agent must not start. The message never contains a value."""
 
 
-class Settings(BaseSettings):
+class DatabaseTlsSettings(BaseSettings):
+    """How the database is reached, shared by the agent and the migrate job (SEC-10, W-8, W-9).
+
+    ``environment`` defaults to production, so a deployment that forgets it is held to the strict rule: the connection
+    must be ``verify-full``. Development and test may use a weaker mode (a local database without TLS).
+    """
+
+    environment: Literal["production", "development", "test"] = "production"  # must come before database_ssl
+    database_ssl: Literal["disable", "require", "verify-ca", "verify-full"] = "verify-full"
+    database_ca_file: str = ""  # PEM file with the CA of the database certificate; empty uses the system trust store
+
+    @field_validator("database_ssl")
+    @classmethod
+    def _production_verifies_the_host(cls, mode: str, info: ValidationInfo) -> str:
+        if info.data.get("environment", "production") == "production" and mode != "verify-full":
+            raise ValueError("production needs verify-full")
+        return mode
+
+    @property
+    def database_tls(self) -> DatabaseTls:
+        """The mode and the CA file, as the engine and the migrate job take them."""
+        return DatabaseTls(self.database_ssl, self.database_ca_file)
+
+
+class Settings(DatabaseTlsSettings):
     """Everything configurable about the mail-triage agent."""
 
     model_config = SettingsConfigDict(frozen=True, extra="ignore")
@@ -54,7 +80,7 @@ class Settings(BaseSettings):
         return (init_settings,)
 
 
-class MigrateSettings(BaseSettings):
+class MigrateSettings(DatabaseTlsSettings):
     """What the ``migrate`` command needs, and only that (ADR-0025). The running agent never reads these.
 
     The owner role runs the migrations and owns every table; the runtime roles (``mail_triage_runtime`` and
@@ -99,3 +125,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
 def load_migrate_settings(env: Mapping[str, str] | None = None) -> MigrateSettings:
     """Read the owner credentials for the migrate command; same rules as ``load_settings``."""
     return _load(MigrateSettings, env)
+
+
+def load_database_tls(env: Mapping[str, str] | None = None) -> DatabaseTls:
+    """Read only the database TLS settings (the consent command needs no others); same rules as ``load_settings``."""
+    return _load(DatabaseTlsSettings, env).database_tls
