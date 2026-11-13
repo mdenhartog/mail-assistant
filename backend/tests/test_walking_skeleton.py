@@ -15,9 +15,10 @@ import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient, Response
 
+from app.auth.cookies import COOKIE_NAME
 from app.auth.login_requests import LoginRequests
 from app.auth.request_code import attach_request_code
-from app.auth.session import COOKIE_NAME, SessionStore, attach_sessions
+from app.auth.session import SessionStore, attach_sessions
 from app.auth.verify_code import attach_verify_code
 from app.db import Database
 from app.ids import SecretsIdSource

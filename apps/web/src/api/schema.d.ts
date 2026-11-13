@@ -724,7 +724,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The one generic refusal; attemptsLeft only while the login cookie names a live request */
+            /** @description The one generic refusal; attemptsLeft is present whenever the login cookie names a real or decoy login request */
             400: {
                 headers: {
                     [name: string]: unknown;

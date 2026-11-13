@@ -6,29 +6,29 @@ Errors and log lines name fields, never values.
 import ipaddress
 import logging
 import re
-from collections.abc import AsyncGenerator, Iterator
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import SecretStr
 from sqlalchemy import text
 
 from app.auth.expiry import IDLE
+from app.auth.login_requests import LOGIN_REQUEST_RETENTION
 from app.clock import Clock
 from app.config import Settings
 from app.db import Database, DatabaseUnavailable
 
 logger = logging.getLogger(__name__)
 
+PURGE_EVERY = timedelta(hours=1)
 MIN_KEY_BYTES = 32
 _EMAIL = re.compile(r"[^@\s]+@[^@\s.]+(\.[^@\s.]+)+")
 _KEY_FIELDS = ("code_hash_key", "csrf_key", "username_hash_key")
-# A sign-in request is kept dead for an hour after it is made, so the hourly cap of codes can still be counted.
-LOGIN_REQUEST_RETENTION = timedelta(hours=1)
 _PURGE_LOGIN_REQUESTS = text(
     "DELETE FROM web_auth.login_request WHERE expires_at <= :now AND created_at <= :retained_since"
 )
@@ -156,11 +156,44 @@ async def _database_unavailable(_request: Request, _error: Exception) -> JSONRes
     )
 
 
-def attach_database(app: FastAPI, database: Database, clock: Clock, *, idle: timedelta = IDLE) -> None:
-    """Give the app its database: readiness uses it, start-up purges expired rows, shutdown closes the pool.
+class _HourlyPurge:
+    """Runs the purge on the first request of each hour; the start-up purge starts the first hour."""
 
-    A database that cannot serve a request ends that request in 503 with a generic body. A purge that cannot reach the
-    database does not stop the start: readiness reports it.
+    def __init__(self, database: Database, clock: Clock, idle: timedelta) -> None:
+        self._database = database
+        self._clock = clock
+        self._idle = idle
+        self._last: datetime | None = None
+
+    def mark(self, now: datetime) -> None:
+        """Record that a purge ran at ``now``."""
+        self._last = now
+
+    async def run_if_due(self) -> None:
+        """Purge when an hour has passed since the last attempt; a failing purge is logged and never raised.
+
+        The attempt is recorded before the purge runs, so a failing purge is not retried on every request and two
+        requests at the same moment do not purge twice.
+        """
+        now = self._clock.now()
+        if self._last is None:  # no start-up purge was recorded (the app was not started): the hour begins now
+            self._last = now
+            return
+        if now - self._last < PURGE_EVERY:
+            return
+        self._last = now
+        try:
+            await purge_expired(self._database, self._clock, idle=self._idle)
+        except Exception as error:  # the request must go on; only the error type is logged, no detail
+            logger.warning("purge.failed", extra={"error_type": type(error).__name__})
+
+
+def attach_database(app: FastAPI, database: Database, clock: Clock, *, idle: timedelta = IDLE) -> None:
+    """Give the app its database: readiness uses it, expired rows are purged, shutdown closes the pool.
+
+    Expired rows are purged at start-up and again on the first request of each hour. A database that cannot serve a
+    request ends that request in 503 with a generic body. A purge that cannot reach the database stops neither the
+    start nor a request: readiness reports it.
 
     Args:
         app: The application.
@@ -170,6 +203,13 @@ def attach_database(app: FastAPI, database: Database, clock: Clock, *, idle: tim
     """
     app.state.database = database
     app.add_exception_handler(DatabaseUnavailable, _database_unavailable)
+    hourly = _HourlyPurge(database, clock, idle)
+
+    @app.middleware("http")
+    async def purge_hourly(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        await hourly.run_if_due()
+        return await call_next(request)
+
     previous = app.router.lifespan_context
 
     @asynccontextmanager
@@ -178,6 +218,7 @@ def attach_database(app: FastAPI, database: Database, clock: Clock, *, idle: tim
             await purge_expired(database, clock, idle=idle)
         except DatabaseUnavailable:
             logger.warning("startup.purge_skipped")
+        hourly.mark(clock.now())
         try:
             async with previous(application) as state:
                 yield state

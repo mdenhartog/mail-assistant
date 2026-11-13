@@ -5,7 +5,6 @@ live login request. A right code while the web lock is set gets the answer of a 
 explained (AC-27). The code, the cookie value and the username never reach an event or a log.
 """
 
-from http.cookies import SimpleCookie
 from typing import Annotated, Final
 
 from fastapi import FastAPI, Response
@@ -13,11 +12,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic.alias_generators import to_camel
 
+from app.auth.cookies import clear_login_cookie, session_cookie
 from app.auth.digest import username_digest
 from app.auth.login_requests import Dead, LoginRequests, Wrong
-from app.auth.request_code import LOGIN_COOKIE_NAME
 from app.auth.return_to import safe_return_to
-from app.auth.session import SessionStore, WebLocked, session_cookie
+from app.auth.session import SessionStore, WebLocked
 from app.auth.verify_code_rules import code_well_formed, login_id_well_formed, refusal_body
 from app.clock import Clock
 from app.config import Settings
@@ -35,20 +34,6 @@ class VerifyCodeBody(BaseModel):
 
     code: str
     return_to: Annotated[str | None, Field(max_length=_MAX_RETURN_TO)] = None
-
-
-def clear_login_cookie() -> str:
-    """Return the ``Set-Cookie`` value that ends the login cookie in the browser (same attributes, expired now)."""
-    jar: SimpleCookie = SimpleCookie()
-    jar[LOGIN_COOKIE_NAME] = ""
-    morsel = jar[LOGIN_COOKIE_NAME]
-    morsel["httponly"] = True
-    morsel["secure"] = True
-    morsel["samesite"] = "Lax"
-    morsel["path"] = "/"
-    morsel["max-age"] = "0"
-    morsel["expires"] = "Thu, 01 Jan 1970 00:00:00 GMT"
-    return morsel.OutputString()
 
 
 def _parse(raw_body: bytes) -> VerifyCodeBody | None:

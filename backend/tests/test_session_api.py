@@ -9,9 +9,10 @@ import asyncpg
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.cookies import COOKIE_NAME, clear_session_cookie
 from app.auth.csrf import csrf_token
 from app.auth.digest import username_digest
-from app.auth.session import COOKIE_NAME, SessionStore, attach_sessions, clear_session_cookie
+from app.auth.session import SessionStore, attach_sessions
 from app.db import Database
 from app.ids import SecretsIdSource
 from app.security_events import SecurityEvents

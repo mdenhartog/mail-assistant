@@ -13,8 +13,9 @@ import pytest
 from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 
+from app.auth.cookies import COOKIE_NAME
 from app.auth.digest import username_digest
-from app.auth.session import COOKIE_NAME, SessionStore, attach_sessions
+from app.auth.session import SessionStore, attach_sessions
 from app.db import Database
 from app.errors import RateLimited
 from app.export_openapi import DEFAULT_TARGET, build_document

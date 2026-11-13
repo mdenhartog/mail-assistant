@@ -15,11 +15,12 @@ import pytest
 from fastapi import Request
 from httpx import ASGITransport, AsyncClient, Response
 
+from app.auth.cookies import clear_login_cookie
 from app.auth.digest import username_digest
 from app.auth.login_requests import LoginRequests
 from app.auth.request_code import attach_request_code
 from app.auth.session import SessionStore, attach_sessions
-from app.auth.verify_code import attach_verify_code, clear_login_cookie
+from app.auth.verify_code import attach_verify_code
 from app.db import Database
 from app.ids import SecretsIdSource
 from app.main import build_app

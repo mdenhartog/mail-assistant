@@ -5,8 +5,9 @@ from typing import TYPE_CHECKING
 from fastapi import Depends, Request
 
 from app.auth.csrf import fetch_site_ok, origin_ok, token_valid
-from app.auth.session import Session, client_key, require_session
+from app.auth.session import Session, require_session
 from app.errors import ProblemError
+from app.request_client import client_key
 
 if TYPE_CHECKING:
     from app.config import Settings
