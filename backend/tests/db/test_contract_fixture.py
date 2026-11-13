@@ -48,3 +48,10 @@ async def test_given_a_contract_case_when_written_through_the_repository_then_th
         with pytest.raises(DBAPIError):
             await repo.write(policy, 0, ACTOR)
         assert (await repo.read()).version == 0
+
+
+def test_given_the_contract_cases_when_selected_then_the_unstorable_ones_are_left_out_before_the_run_not_skipped() -> (
+    None
+):
+    assert not [case["id"] for case in CASES if set(case["rules"]) & MALFORMED_TIME_RULES]
+    assert CASES  # the filter must not empty the run
