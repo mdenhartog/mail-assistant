@@ -5,7 +5,7 @@ check is the second wall: after the run, the junit report must show at least ``M
 ``tests/db`` that ran (passed; a skip does not count). ``tests/db/test_start_policy.py`` needs no database and is not
 counted.
 
-How the number is kept current: it is about 95 % of what ran when it was last set (63 in U-web-settings-62). The
+How the number is kept current: it is about 95 % of what ran when it was last set (64 in U-web-settings-62). The
 check also fails when more than ``CEILING_FACTOR`` times the floor ran, and says which number to set, so a floor that
 no longer matches the suite cannot go unnoticed in either direction.
 
