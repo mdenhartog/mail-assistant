@@ -92,11 +92,11 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 async def api(web_database: Database, clock: FakeClock) -> AsyncIterator[Api]:  # noqa: F811
-    store = SessionStore(web_database, SecretsIdSource(), SecurityEvents(web_database, clock))
+    store = SessionStore(web_database, SecretsIdSource(), SecurityEvents(web_database, clock, b"e" * 32))
     app = make_app(make_settings())
     app.state.clock = clock
     attach_database(app, web_database, clock)
-    attach_sessions(app, store, SecurityEvents(web_database, clock))
+    attach_sessions(app, store, SecurityEvents(web_database, clock, b"e" * 32))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         yield Api(http, app, store)
 

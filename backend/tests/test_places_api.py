@@ -58,7 +58,7 @@ class Api:
 @pytest.fixture
 async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
     clock = FakeClock(T0)
-    events = SecurityEvents(web_database, clock)
+    events = SecurityEvents(web_database, clock, b"e" * 32)
     store = SessionStore(web_database, SecretsIdSource(), events)
     app = make_app(make_settings())
     app.state.clock = clock

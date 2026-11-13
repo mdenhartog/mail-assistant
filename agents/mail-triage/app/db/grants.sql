@@ -75,5 +75,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.session TO web_settings_runtime
 GRANT SELECT, INSERT, DELETE ON web_auth.login_request TO web_settings_runtime;
 GRANT UPDATE (attempts, sent_at, dead_at) ON web_auth.login_request TO web_settings_runtime;
 GRANT SELECT, INSERT ON web_auth.security_event TO web_settings_runtime;
+-- A repeat of a counted kind raises the count; nothing else of an event ever changes.
+GRANT UPDATE (count) ON web_auth.security_event TO web_settings_runtime;
 GRANT SELECT ON web_auth.web_lock TO web_settings_runtime;
 GRANT USAGE, SELECT ON SEQUENCE web_auth.security_event_id_seq TO web_settings_runtime;

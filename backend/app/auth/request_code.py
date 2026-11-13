@@ -1,10 +1,14 @@
-"""Request-code endpoint logic (U-web-settings-17, -53, ADR-0036, ADR-0038, ADR-0039).
+"""Request-code endpoint logic (U-web-settings-17, -53, -54, ADR-0036, ADR-0038, ADR-0039).
 
 A request for the configured username and one for any other username take the same steps and give the same answer:
 both read the limits and store one login request row in one transaction, and neither waits for the mail (it is sent
 after the answer). The configured username gets a code and a message. Any other username gets a decoy row: the same
 cookie, expiry, attempt counter and cooldown, no code and no message, so the cooldown, the hourly cap and the
 attempts answer alike.
+
+Web lock (AC-27, SEC-08). While ``web_auth.web_lock`` is set the request takes every step and gives the answer it
+would give otherwise, but no login request row is written and no message is sent: the mails stop and the lock does
+not show. The lock is read in the transaction of the row, so the check cannot be missed.
 
 Limits (ADR-0039). Decoys have their own cap of open requests and never count against the configured username. Open
 requests and requests an hour are also capped per client (a keyed digest of the client key is stored, never the
@@ -136,7 +140,9 @@ class CodeRequests:
             if known:
                 code = self._codes.six_digits()
                 created = await self._store.create(who, code, now, self._limits(known=True))
-                delivery = Delivery(created.id, code, created.expires_at, key, client, request_id)
+                delivery = (
+                    Delivery(created.id, code, created.expires_at, key, client, request_id) if created.stored else None
+                )
             else:
                 created = await self._store.create_decoy(who, now, self._limits(known=False))
                 delivery = None
