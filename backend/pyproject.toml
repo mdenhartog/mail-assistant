@@ -94,7 +94,8 @@ venv = ".venv"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "-q --strict-markers --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90"
+markers = ["timing: wall-clock comparison of the decoy and real paths; noisy, so it runs in the nightly workflow only"]
+addopts = '-q --strict-markers -m "not timing" --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90'
 
 [tool.coverage.run]
 omit = ["app/__main__.py"]
