@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient, Response
 
 from app.auth.login_requests import LoginRequests
 from app.auth.request_code import attach_request_code
+from app.auth.request_code_rules import client_hash
 from app.db import Database
 from app.ids import SecretsIdSource
 from app.main import build_app
@@ -49,7 +50,7 @@ async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
     app = build_app(settings, clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=FakeMailer())
     store = LoginRequests(web_database, ids, hash_key=b"a" * 32, ttl=timedelta(seconds=600), max_attempts=5)
     attach_database(app, web_database, clock)
-    attach_request_code(app, store, SecurityEvents(web_database, clock))
+    attach_request_code(app, store, SecurityEvents(web_database, clock, b"e" * 32))
     async with AsyncClient(
         transport=ASGITransport(app=app, client=("203.0.113.50", 5000)), base_url="http://t"
     ) as http:
@@ -119,7 +120,11 @@ async def test_given_a_flood_from_one_client_when_refused_then_exactly_one_event
     both = await _events(owner)
 
     assert len(first) == 1
-    assert (first[0]["kind"], first[0]["result"], first[0]["client_key"]) == ("rate_limited", "refused", "203.0.113.50")
+    assert (first[0]["kind"], first[0]["result"], first[0]["client_key"].strip()) == (
+        "rate_limited",
+        "refused",
+        client_hash(b"e" * 32, "203.0.113.50"),
+    )
     assert first[0]["request_id"]
     assert first[0]["username_hash"] is None
     assert len(both) == 2

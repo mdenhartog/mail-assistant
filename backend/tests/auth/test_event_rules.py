@@ -71,3 +71,21 @@ def test_client_class_names_the_family_only(client: str, expected: str) -> None:
 )
 def test_username_hash_shape(value: str, expected: bool) -> None:
     assert event_rules.valid_username_hash(value) is expected
+
+
+@pytest.mark.parametrize("kind", ["code_refused"])
+def test_a_repeat_of_a_counted_kind_is_counted(kind: str) -> None:
+    assert event_rules.counts_repeats(kind) is True
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [k for k in KINDS if k != "code_refused"],
+)
+def test_a_repeat_of_any_other_kind_is_dropped_so_a_flood_writes_one_row_a_window(kind: str) -> None:
+    assert event_rules.counts_repeats(kind) is False
+
+
+def test_an_unknown_kind_has_no_repeat_rule() -> None:
+    with pytest.raises(event_rules.UnknownEventKindError):
+        event_rules.counts_repeats("login")

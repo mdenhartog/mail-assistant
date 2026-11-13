@@ -31,6 +31,12 @@ def result_for(kind: str) -> str:
         raise UnknownEventKindError("unknown event kind") from None
 
 
+def counts_repeats(kind: str) -> bool:
+    """Stub: no kind is counted yet."""
+    result_for(kind)
+    return False
+
+
 def event_window(now: datetime) -> int:
     """Return the one-minute window of a time: floor(epoch seconds / 60)."""
     return int(now.timestamp() // WINDOW_SECONDS)

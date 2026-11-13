@@ -27,10 +27,11 @@ _INSERT = text(
 class SecurityEvents:
     """Writes `web_auth.security_event` as the web role."""
 
-    def __init__(self, database: Database, clock: Clock) -> None:
-        """Keep the database access and the clock."""
+    def __init__(self, database: Database, clock: Clock, hash_key: bytes) -> None:
+        """Keep the database access, the clock and the key of the client digest."""
         self._database = database
         self._clock = clock
+        self._hash_key = hash_key
 
     async def record(self, kind: str, request_id: str, client: str, username_hash: str | None = None) -> None:
         """Record one event and log one line about it.

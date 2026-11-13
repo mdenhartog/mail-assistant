@@ -42,7 +42,7 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def events(web_database: Database, clock: FakeClock) -> SecurityEvents:  # noqa: F811
-    return SecurityEvents(web_database, clock)
+    return SecurityEvents(web_database, clock, b"e" * 32)
 
 
 @pytest.fixture
