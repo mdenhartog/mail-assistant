@@ -236,6 +236,7 @@ _SECURITY_EVENT_KINDS = (
     "csrf_refused",
     "rate_limited",
     "lock_refused",
+    "code_invalid",
 )
 
 

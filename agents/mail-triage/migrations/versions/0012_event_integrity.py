@@ -7,16 +7,32 @@ Upgrade:
 - ``web_auth.security_event`` gets ``CHECK (count >= 1)`` and a ``BEFORE UPDATE`` trigger that allows one change only:
   ``count`` rises by exactly one with every other column unchanged. A web role that is taken over can no longer lower
   or jump the count of the wrong-code alert; the owner is held to the same rule.
+- ``ck_security_event_kind`` accepts a ninth kind, ``code_invalid`` (the web app records it, U-web-settings-63);
+- rows that hold a count below one (none are written by the code) are raised to one, before the trigger exists, so
+  the new check cannot fail the upgrade and the trigger does not block this owner-run update;
 - the index ``(kind, at)`` serves the alert query of the agent.
 The agent role's column-level ``SELECT (id, kind, at, count)`` is in ``app/db/grants.sql``.
 
-Downgrade: trigger, function, check and index go; the function returns 1 again. Event data stays.
+Downgrade: trigger, function, check and index go; the ``code_invalid`` rows are deleted and the kind check of 0008
+returns; the function returns 1 again. Other event data stays.
 
 Revision ID: 0012
 Revises: 0011
 """
 
 from alembic import op
+
+_OLD_KINDS = (
+    "code_refused",
+    "code_request_refused",
+    "mail_failed",
+    "session_start",
+    "session_end",
+    "csrf_refused",
+    "rate_limited",
+    "lock_refused",
+)
+_NEW_KINDS = (*_OLD_KINDS, "code_invalid")
 
 revision = "0012"
 down_revision = "0011"
@@ -45,9 +61,17 @@ _TRIGGER = (
 )
 
 
+def _kind_check(kinds: tuple[str, ...]) -> None:
+    op.drop_constraint("ck_security_event_kind", "security_event", schema="web_auth")
+    condition = "kind IN (" + ", ".join(f"'{kind}'" for kind in kinds) + ")"
+    op.create_check_constraint("ck_security_event_kind", "security_event", condition, schema="web_auth")
+
+
 def upgrade() -> None:
-    """Raise the contract version, guard the count, add the check and the index."""
+    """Raise the contract version, widen the kind check, guard the count, add the count check and the index."""
     op.execute(_CONTRACT.format(version=2))
+    _kind_check(_NEW_KINDS)
+    op.execute("UPDATE web_auth.security_event SET count = 1 WHERE count < 1")  # before the trigger exists
     op.execute(_GUARD)
     op.execute("REVOKE ALL ON FUNCTION web_auth.security_event_guard() FROM PUBLIC")
     op.execute(_TRIGGER)
@@ -61,4 +85,6 @@ def downgrade() -> None:
     op.drop_constraint("ck_security_event_count", "security_event", schema="web_auth")
     op.execute("DROP TRIGGER security_event_guard ON web_auth.security_event")
     op.execute("DROP FUNCTION web_auth.security_event_guard()")
+    op.execute("DELETE FROM web_auth.security_event WHERE kind = 'code_invalid'")
+    _kind_check(_OLD_KINDS)
     op.execute(_CONTRACT.format(version=1))
