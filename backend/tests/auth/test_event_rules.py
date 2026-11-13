@@ -8,6 +8,7 @@ from app.auth import event_rules
 
 KINDS = {
     "code_refused": "refused",
+    "code_invalid": "refused",
     "code_request_refused": "refused",
     "mail_failed": "failed",
     "session_start": "ok",

@@ -239,3 +239,17 @@ async def test_given_two_keys_when_the_same_client_is_recorded_then_the_digests_
     await SecurityEvents(web_database, clock, b"b" * 32).record("rate_limited", "req-2", CLIENT)
 
     assert await owner.fetchval("select count(distinct client_key) from web_auth.security_event") == 2
+
+
+# U-web-settings-63
+async def test_given_code_invalid_events_in_a_window_when_recorded_as_the_web_role_then_one_uncounted_row(
+    events: SecurityEvents, owner: asyncpg.Connection
+) -> None:
+    for number in range(20):
+        await events.record("code_invalid", f"req-{number}", CLIENT)
+
+    rows = await owner.fetch(SELECT)
+
+    assert [(r["kind"], r["result"], r["count"], r["request_id"]) for r in rows] == [
+        ("code_invalid", "refused", 1, "req-0")
+    ]

@@ -86,6 +86,21 @@ async def test_given_15_wrong_codes_in_24_hours_when_the_agent_runs_then_the_loc
         assert canary not in seen
 
 
+async def test_given_50_code_invalid_events_when_the_agent_runs_then_no_notice_and_no_lock(
+    owner: asyncpg.Connection, agent_engine: AsyncEngine
+) -> None:
+    # U-web-settings-63 (SEC2-01): garbage posts without a live login request are recorded, never counted
+    for minute in range(50):
+        await _event(owner, timedelta(minutes=minute % 9, seconds=minute), kind="code_invalid")
+    await _event(owner, timedelta(minutes=1), count=4)  # four real wrong codes: still below every line
+    rig = Rig(agent_engine)
+
+    await rig.alert.run(NOW)
+
+    assert await owner.fetchval("select count(*) from web_auth.web_lock") == 0
+    assert rig.chat.said == []
+
+
 async def test_given_14_wrong_codes_and_15_over_24_hours_1_second_when_the_agent_runs_then_nothing_changes(
     owner: asyncpg.Connection, agent_engine: AsyncEngine
 ) -> None:
