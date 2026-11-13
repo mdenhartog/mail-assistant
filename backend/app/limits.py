@@ -22,15 +22,20 @@ class Decision:
 
 def window_key(now: float, window_seconds: int = 60) -> int:
     """Return the window a time falls in: floor(seconds / window length)."""
-    return math.floor(now / window_seconds)
+    return math.floor(now) // window_seconds
 
 
 def retry_after(now: float, window_seconds: int = 60) -> int:
     """Return the whole seconds until the next window starts, at least 1."""
-    return max(1, math.ceil((window_key(now, window_seconds) + 1) * window_seconds - now))
+    return math.ceil(window_seconds - now % window_seconds)
 
 
 type _Key = tuple[str, str]
+
+
+def surplus(held: int, bound: int) -> int:
+    """Return how many of the oldest counters must go so that one more fits under the bound (0 while there is room)."""
+    return max(0, held - bound + 1)
 
 
 class _Window:
@@ -63,7 +68,7 @@ class FixedWindowLimiter:
         self._limit = limit
         self._window_seconds = window_seconds
         self._max_counters = max_counters
-        self._max_per_prefix = max(1, max_counters // PREFIX_SHARE)
+        self._max_per_prefix = -(-max_counters // PREFIX_SHARE)  # a tenth, rounded up: at least 1
         self._windows: dict[int, _Window] = {}
 
     def hit(self, client: str, bucket: str, now: float) -> Decision:
@@ -91,10 +96,12 @@ class FixedWindowLimiter:
         )
 
     def _make_room(self, state: _Window, prefix: str | None) -> None:
-        if prefix is not None and len(state.by_prefix.get(prefix, ())) >= self._max_per_prefix:
-            state.evict(next(iter(state.by_prefix[prefix])))
-        if len(state.counters) >= self._max_counters:
-            state.evict(next(iter(state.counters)))
+        if prefix is not None:
+            group = state.by_prefix.get(prefix, {})
+            for oldest in list(group)[: surplus(len(group), self._max_per_prefix)]:
+                state.evict(oldest)
+        for oldest in list(state.counters)[: surplus(len(state.counters), self._max_counters)]:
+            state.evict(oldest)
 
     def tracked_windows(self) -> int:
         """Return how many windows are held."""
