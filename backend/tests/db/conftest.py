@@ -14,16 +14,18 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, NoReturn
 
 import asyncpg
 import pytest
+from docker.errors import APIError, DockerException
+from requests.exceptions import ConnectionError as RequestsConnectionError
 from testcontainers.community.postgres import PostgresContainer
 
 from app.db import Database
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterator
+    from collections.abc import AsyncIterator, Iterator, Mapping
 
 AGENT_ROOT = Path(__file__).resolve().parents[3] / "agents" / "mail-triage"
 GRANTS = AGENT_ROOT / "app" / "db" / "grants.sql"
@@ -82,13 +84,33 @@ class DbEndpoint:
     agent_url: str
 
 
+def _docker_unavailable(error: BaseException) -> bool:
+    """Whether the error says there is no Docker to talk to (no daemon, no socket), not that a container failed."""
+    if isinstance(error, APIError):
+        return False  # the daemon answered and refused: a real fault
+    return isinstance(error, DockerException | RequestsConnectionError | FileNotFoundError | ConnectionError)
+
+
+def start_failure_outcome(error: BaseException, *, ci: bool) -> Literal["skip", "fail"]:
+    """Decide what a failed container start means (CR-02): a skip only without Docker and only outside CI."""
+    return "skip" if not ci and _docker_unavailable(error) else "fail"
+
+
+def report_start_failure(error: BaseException, image: str, env: Mapping[str, str]) -> NoReturn:
+    """Skip or fail the run for a container that did not start; ``CI`` set and not empty means a continuous run."""
+    detail = f"{image} did not start: {type(error).__name__}"
+    if start_failure_outcome(error, ci=bool(env.get("CI"))) == "skip":
+        pytest.skip(f"Docker is needed for the database tests ({detail})")
+    pytest.fail(detail, pytrace=False)
+
+
 @pytest.fixture(scope="session")
 def pg_server() -> Iterator[PostgresContainer]:
     try:
         container = PostgresContainer(IMAGE, driver=None)
         container.start()
     except Exception as error:
-        pytest.skip(f"Docker with {IMAGE} is needed for the database tests: {type(error).__name__}")
+        report_start_failure(error, IMAGE, os.environ)
     yield container
     container.stop()
 

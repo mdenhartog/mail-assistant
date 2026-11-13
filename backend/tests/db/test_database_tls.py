@@ -7,6 +7,7 @@ rejected the wrong host.
 from __future__ import annotations
 
 import datetime as dt
+import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ from sqlalchemy import text
 from testcontainers.community.postgres import PostgresContainer
 
 from app.db import Database, DatabaseUnavailable, build_ssl_context
+from tests.db.conftest import report_start_failure
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -134,7 +136,7 @@ def tls_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TlsServer]:
     try:
         container.start()
     except Exception as error:
-        pytest.skip(f"Docker with {IMAGE} is needed for the TLS tests: {type(error).__name__}")
+        report_start_failure(error, IMAGE, os.environ)
     directory = tmp_path_factory.mktemp("tls")
     (directory / "trusted.pem").write_text(trusted.pem, encoding="ascii")
     (directory / "other.pem").write_text(other.pem, encoding="ascii")

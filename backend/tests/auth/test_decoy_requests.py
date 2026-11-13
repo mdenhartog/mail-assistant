@@ -13,14 +13,16 @@ import asyncpg
 import pytest
 from fastapi import Request
 from httpx import ASGITransport, AsyncClient, Response
+from sqlalchemy import text
 
 from app.auth.code_hash import hash_code
-from app.auth.login_requests import RETENTION, LoginRequests
+from app.auth.login_requests import RETENTION, Applicant, LoginRequest, LoginRequests
 from app.auth.request_code import CodeRequests, attach_request_code
-from app.auth.request_code_rules import username_key
+from app.auth.request_code_rules import RequestLimits, username_key
 from app.auth.session import SessionStore, attach_sessions
 from app.auth.verify_code import attach_verify_code
 from app.db import Database
+from app.errors import RateLimited
 from app.ids import SecretsIdSource
 from app.main import build_app
 from app.security_events import SecurityEvents
@@ -34,6 +36,7 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     web_database,
 )
 from tests.fakes import FakeClock, FakeCodes, FakeMailer, make_settings
+from tests.step_recorder import StepRecorder, first_difference
 
 T0: Final = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
 ORIGIN: Final = "https://settings.example.test"
@@ -334,6 +337,7 @@ async def _timed(action: Callable[[], Awaitable[object]]) -> float:
 
 
 # Criterion 6
+@pytest.mark.timing
 async def test_given_the_two_paths_when_a_code_is_requested_many_times_then_the_medians_are_within_the_bound(
     api: Api,
 ) -> None:
@@ -352,6 +356,7 @@ async def test_given_the_two_paths_when_a_code_is_requested_many_times_then_the_
 
 
 # Criterion 6
+@pytest.mark.timing
 async def test_given_the_two_paths_when_a_wrong_code_is_posted_many_times_then_the_medians_are_within_the_bound(
     api: Api,
 ) -> None:
@@ -368,6 +373,7 @@ async def test_given_the_two_paths_when_a_wrong_code_is_posted_many_times_then_t
     assert _within_noise(statistics.median(known), statistics.median(unknown)), (known, unknown)
 
 
+@pytest.mark.timing
 def test_given_the_noise_bound_when_medians_are_compared_then_a_big_gap_fails_and_a_small_one_passes() -> None:
     assert _within_noise(0.010, 0.014)
     assert _within_noise(0.001, 0.005)
@@ -529,3 +535,111 @@ async def test_given_five_requests_then_a_sixth_when_known_and_unknown_then_stat
     assert unknown_late.status_code == known_late.status_code == 429
     assert unknown_late.headers["retry-after"] == known_late.headers["retry-after"] == "1"
     assert len(api.mailer.sent) == (0 if fail else 5)
+
+
+# ---- U-web-settings-62 (CR-05): the same steps, recorded, instead of the same time, measured -------------------------
+
+
+@pytest.fixture
+def recorder(api: Api, monkeypatch: pytest.MonkeyPatch) -> StepRecorder:
+    recording = StepRecorder()
+    recording.attach(monkeypatch, api.mailer)
+    return recording
+
+
+# Criterion 3 (AC-30)
+async def test_given_a_known_and_an_unknown_username_when_requested_then_the_recorded_steps_are_equal(
+    api: Api, recorder: StepRecorder
+) -> None:
+    await api.requests.request(USERNAME, "client", "request-1", None)
+    known = recorder.take()
+    api.clock.advance(timedelta(hours=2))
+    await api.requests.request(UNKNOWN, "client", "request-2", None)
+    unknown = recorder.take()
+
+    assert first_difference(known, unknown) is None, (known, unknown)
+    assert any("INSERT INTO web_auth.login_request" in step for step in known)  # the recorder sees the database
+    assert not any(step.startswith("mail") for step in known + unknown)  # the answer never waits for the mail
+
+
+# Criterion 3 (AC-30)
+async def test_given_a_known_and_an_unknown_username_when_refused_by_the_cooldown_then_the_recorded_steps_are_equal(
+    api: Api, recorder: StepRecorder
+) -> None:
+    await api.requests.request(USERNAME, "client", "request-1", None)
+    await api.requests.request(UNKNOWN, "client", "request-2", None)
+    recorder.take()
+
+    refusals: list[list[str]] = []
+    for name in (USERNAME, UNKNOWN):
+        with pytest.raises(RateLimited):
+            await api.requests.request(name, "client", "request-3", None)
+        refusals.append(recorder.take())
+
+    assert first_difference(refusals[0], refusals[1]) is None, refusals
+    assert refusals[0]
+
+
+# Criterion 3 (AC-30)
+async def test_given_a_known_and_an_unknown_username_when_a_wrong_code_is_posted_then_the_recorded_steps_are_equal(
+    api: Api, recorder: StepRecorder
+) -> None:
+    real = await api.issue(USERNAME)
+    decoy = await api.issue(UNKNOWN)
+    recorder.take()
+
+    await api.verify(WRONG, real)
+    known = recorder.take()
+    await api.verify(WRONG, decoy)
+    unknown = recorder.take()
+
+    assert first_difference(known, unknown) is None, (known, unknown)
+    assert any("UPDATE web_auth.login_request SET attempts" in step for step in known)
+
+
+# Criterion 3 (AC-30): the mail is the one difference, and it comes after the answer
+async def test_given_a_known_and_an_unknown_username_when_the_answer_is_given_then_only_the_known_one_is_mailed_after(
+    api: Api, recorder: StepRecorder
+) -> None:
+    known = await api.requests.request(USERNAME, "client", "request-1", None)
+    unknown = await api.requests.request(UNKNOWN, "client", "request-2", None)
+    recorder.take()
+
+    assert unknown.delivery is None
+    assert known.delivery is not None
+    await api.requests.deliver(known.delivery)
+
+    assert [step for step in recorder.take() if step.startswith("mail")] == ["mail: send_code"]
+
+
+# Criterion 3: a recorder that cannot tell paths apart proves nothing, so a deliberately different fake must show
+async def test_given_a_store_that_does_an_extra_query_for_unknown_names_when_recorded_then_the_difference_is_found(
+    api: Api,
+    recorder: StepRecorder,
+    monkeypatch: pytest.MonkeyPatch,
+    web_database: Database,  # noqa: F811
+) -> None:
+    original = LoginRequests.create_decoy
+
+    async def leaky(_self: LoginRequests, who: Applicant, now: datetime, limits: RequestLimits) -> LoginRequest:
+        async with web_database.session() as session:
+            await session.execute(text("SELECT 1 FROM web_auth.session"))
+        return await original(_self, who, now, limits)
+
+    await api.requests.request(USERNAME, "client", "request-1", None)
+    known = recorder.take()
+    api.clock.advance(timedelta(hours=2))
+    monkeypatch.setattr(LoginRequests, "create_decoy", leaky)
+    await api.requests.request(UNKNOWN, "client", "request-2", None)
+    unknown = recorder.take()
+
+    difference = first_difference(known, unknown)
+    assert difference is not None
+    assert "web_auth.session" in difference
+
+
+def test_given_equal_and_different_step_lists_when_compared_then_only_the_different_ones_report() -> None:
+    assert first_difference(["a", "b"], ["a", "b"]) is None
+    assert first_difference(["a", "b"], ["a", "c"]) == "step 2: 'b' against 'c'"
+    assert first_difference(["a"], ["a", "b"]) == "step 2: nothing against 'b'"
+    assert first_difference(["a", "b"], ["a"]) == "step 2: 'b' against nothing"
