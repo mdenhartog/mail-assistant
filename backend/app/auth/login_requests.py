@@ -50,6 +50,7 @@ _INSERT = text(
     "(id, username_key, client_hash, code_hash, expires_at, created_at, sent_at) "
     "VALUES (:id, :username_key, :client_hash, :code_hash, :expires_at, :created_at, :sent_at)"
 )
+_WEB_LOCKED = text("SELECT 1 FROM web_auth.web_lock LIMIT 1")
 _LOCK_ROW = text(
     "SELECT code_hash, created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id FOR UPDATE"
 )
@@ -66,6 +67,7 @@ class LoginRequest:
     id: str
     created_at: datetime
     expires_at: datetime
+    stored: bool = True  # False while the web lock is set: the answer is the usual one, but no row exists
 
 
 @dataclass(frozen=True)
@@ -197,22 +199,23 @@ class LoginRequests:
                 client_live=await _times(session, _CLIENT_LIVE, client_hash=who.client_hash, now=now),
                 class_live=await _times(session, _CLASS_LIVE, owner_key=who.owner_key, known=who.known, now=now),
             )
+            locked = (await session.execute(_WEB_LOCKED)).first() is not None
             wait = request_wait(facts, now, limits)
             if wait > 0:
                 raise LoginRequestRefused(wait)
-            await session.execute(
-                _INSERT,
-                {
-                    "id": request_id,
-                    "username_key": who.username_key,
-                    "client_hash": who.client_hash,
-                    "code_hash": code_hash(request_id).hex(),
-                    "expires_at": expires_at,
-                    "created_at": now,
-                    "sent_at": sent_at,
-                },
-            )
-        return LoginRequest(id=request_id, created_at=now, expires_at=expires_at)
+            # Every step above and the hash below run locked or not, for a real and a decoy username alike (AC-30).
+            row = {
+                "id": request_id,
+                "username_key": who.username_key,
+                "client_hash": who.client_hash,
+                "code_hash": code_hash(request_id).hex(),
+                "expires_at": expires_at,
+                "created_at": now,
+                "sent_at": sent_at,
+            }
+            if not locked:  # the web lock is set: the request is answered but leaves no row (AC-27)
+                await session.execute(_INSERT, row)
+        return LoginRequest(id=request_id, created_at=now, expires_at=expires_at, stored=not locked)
 
     async def check(self, request_id: str | None, code: str, now: datetime) -> Verdict:
         """Check a code: the row is locked, so two checks of one request run one after the other.

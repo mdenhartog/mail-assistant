@@ -86,7 +86,7 @@ def clock() -> FakeClock:
 
 @pytest.fixture
 def store(web_database: Database, clock: FakeClock) -> SessionStore:  # noqa: F811
-    return SessionStore(web_database, SecretsIdSource(), SecurityEvents(web_database, clock))
+    return SessionStore(web_database, SecretsIdSource(), SecurityEvents(web_database, clock, b"e" * 32))
 
 
 @pytest.fixture
@@ -109,7 +109,7 @@ async def api(web_database: Database, clock: FakeClock, store: SessionStore) -> 
     app.state.clock = clock
     app.state.limit_guard = CountingGuard(allowed=30)
     attach_database(app, web_database, clock)
-    attach_sessions(app, store, SecurityEvents(web_database, clock))
+    attach_sessions(app, store, SecurityEvents(web_database, clock, b"e" * 32))
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
         yield Api(http, app)
 

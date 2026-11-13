@@ -1,5 +1,5 @@
 # pure module (mutation-gated)
-"""Pure rules of the security events: kinds, results, window, client class (U-web-settings-13)."""
+"""Pure rules of the security events: kinds, results, counting, window, client class (U-web-settings-13, -54)."""
 
 import ipaddress
 import re
@@ -16,6 +16,7 @@ _RESULTS = {
     "rate_limited": "refused",
     "lock_refused": "refused",
 }
+_COUNTED = frozenset({"code_refused"})
 _DIGEST = re.compile(r"[0-9a-f]{32}|[0-9a-f]{64}")
 
 
@@ -29,6 +30,16 @@ def result_for(kind: str) -> str:
         return _RESULTS[kind]
     except KeyError:
         raise UnknownEventKindError("unknown event kind") from None
+
+
+def counts_repeats(kind: str) -> bool:
+    """Return True when a repeat of the kind in one window is counted; False when it is dropped.
+
+    Wrong codes are counted: the alert adds them up (SEC-04). Every other kind is a flood answer, which must write
+    no more than one row a window however many requests come.
+    """
+    result_for(kind)
+    return kind in _COUNTED
 
 
 def event_window(now: datetime) -> int:

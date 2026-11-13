@@ -73,7 +73,7 @@ async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
     app = build_app(settings, clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=mailer)
     store = LoginRequests(web_database, ids, hash_key=b"a" * 32, ttl=timedelta(seconds=600), max_attempts=5)
     attach_database(app, web_database, clock)
-    attach_request_code(app, store, SecurityEvents(web_database, clock))
+    attach_request_code(app, store, SecurityEvents(web_database, clock, b"e" * 32))
     guard = RecordingGuard()
     app.state.limit_guard = guard
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
@@ -370,3 +370,62 @@ async def test_given_the_route_when_the_inventory_is_read_then_it_is_public_and_
     await api.request()
 
     assert api.guard.buckets == ["signin"]
+
+
+async def _lock(owner: asyncpg.Connection) -> None:  # noqa: F811
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, now())")
+
+
+# Criterion 3 (AC-27, SEC-08): the lock stops the mail and the rows, the answer stays the same
+async def test_given_the_web_lock_when_the_owner_asks_then_the_usual_answer_with_no_row_and_no_mail(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    usual = await api.request()
+    await owner.execute("DELETE FROM web_auth.login_request")
+    api.mailer.sent.clear()
+    api.clock.advance(timedelta(hours=2))
+    await _lock(owner)
+
+    locked = await api.request()
+
+    assert locked.status_code == usual.status_code == 200
+    assert locked.json()["maskedAddress"] == usual.json()["maskedAddress"]
+    assert locked.json()["resendAfterSeconds"] == usual.json()["resendAfterSeconds"]
+    assert sorted(locked.headers) == sorted(usual.headers)
+    assert _cookie(locked)[1] == _cookie(usual)[1]
+    assert await _rows(owner) == 0
+    assert api.mailer.sent == []
+
+
+async def test_given_the_web_lock_when_a_known_and_an_unknown_username_ask_then_identical_answers_and_no_rows(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await _lock(owner)
+
+    known = await api.request(USERNAME)
+    unknown = await api.request(UNKNOWN)
+
+    assert known.status_code == unknown.status_code == 200
+    assert known.json() == unknown.json()
+    assert sorted(known.headers) == sorted(unknown.headers)
+    assert _cookie(known)[1] == _cookie(unknown)[1]
+    assert len(_cookie(known)[0]) == len(_cookie(unknown)[0])
+    assert _cookie(known)[0] != _cookie(unknown)[0]
+    assert await _rows(owner) == 0
+    assert api.mailer.sent == []
+
+
+async def test_given_the_web_lock_when_it_is_lifted_then_the_next_request_stores_a_row_and_sends_the_mail(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await _lock(owner)
+    await api.request()
+    await owner.execute("DELETE FROM web_auth.web_lock")
+
+    await api.request()
+
+    assert await _rows(owner) == 1
+    assert len(api.mailer.sent) == 1

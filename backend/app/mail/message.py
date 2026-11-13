@@ -2,6 +2,7 @@ import math
 from datetime import datetime
 from email.message import EmailMessage
 
+LOCK_COMMAND = "/web_lock"
 SUBJECT = "Your Mail Assistant sign-in code"
 _SECONDS_PER_MINUTE = 60
 
@@ -38,6 +39,7 @@ def build_message(sender: str, address: str, code: str, expires_at: datetime, no
     message.set_content(
         f"Your sign-in code is {code}.\n\n"
         f"It is valid for {validity}. Enter it on the sign-in page.\n"
-        "If you did not ask for a code, ignore this message.\n"
+        "If you did not ask for this code, someone on the network knows the username. "
+        f"Lock web sign-in now: send {LOCK_COMMAND} to the Mail Assistant in Telegram.\n"
     )
     return message

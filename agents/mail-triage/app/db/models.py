@@ -291,6 +291,7 @@ class SecurityEvent(Base):
     request_id: Mapped[str] = mapped_column(String(64))
     client_key: Mapped[str] = mapped_column(String(64))
     window: Mapped[int] = mapped_column(BigInteger)
+    count: Mapped[int] = mapped_column(Integer, server_default=text("1"))
 
 
 class WebLock(Base):

@@ -225,6 +225,7 @@ jobs:
           if echo "$headers" | grep -qi 'includesubdomains\|preload'; then echo "HSTS is too broad"; exit 1; fi
           echo "$headers" | grep -i '^content-security-policy:'
           echo "$headers" | grep -i '^x-content-type-options: nosniff'
+          scripts/prodlike-checks.sh headers
           for path in / /login /settings; do
             code="$(curl_edge -o /dev/null -w '%{http_code}' "$base$path")"
             test "$code" = 200 || { echo "$path answered $code"; exit 1; }

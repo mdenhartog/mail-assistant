@@ -97,7 +97,7 @@ async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
     ids = SecretsIdSource()
     settings = make_settings()
     app = build_app(settings, clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=FakeMailer())
-    events = SecurityEvents(web_database, clock)
+    events = SecurityEvents(web_database, clock, b"e" * 32)
     logins = LoginRequests(web_database, ids, hash_key=b"a" * 32, ttl=timedelta(seconds=600), max_attempts=5)
     sessions = SessionStore(web_database, ids, events)
     attach_database(app, web_database, clock)

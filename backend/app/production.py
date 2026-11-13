@@ -37,7 +37,7 @@ def create_production_app() -> FastAPI:
     ids = SecretsIdSource()
     app = build_app(settings, clock=clock, ids=ids, codes=SecretsCodeSource(), mailer=SmtpMailSender(settings, clock))
     database = Database.from_settings(settings)
-    events = SecurityEvents(database, clock)
+    events = SecurityEvents(database, clock, settings.username_hash_key.get_secret_value().encode("utf-8"))
     logins = LoginRequests(
         database,
         ids,
