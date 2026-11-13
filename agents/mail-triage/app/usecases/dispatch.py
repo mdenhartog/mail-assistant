@@ -13,8 +13,9 @@ the buttons and answers of its own conversation; the older snooze and reply ques
   button (or of the pending question for text). ``advance`` is atomic and rotates the nonce, so a double tap, or a tap
   and a text at once, reach the handler once; the loser finds the nonce stale and does nothing.
 
-- The buttons of a web notice (``webundo:<token>``, ``weblock:<token>``) and ``/web_unlock`` go to the registered
-  ``WebActionsPort``. They have their own token record: they never read, claim, start or clear the conversation.
+- The buttons of a web notice (``webundo:<token>``, ``weblock:<token>``), ``/web_lock`` and ``/web_unlock`` go to the
+  registered ``WebActionsPort``. They have their own token record: they never read, claim, start or clear the
+  conversation.
 
 Who may talk to the agent is decided before this point, by the Telegram intake. Nothing here logs an answer, a nonce,
 a token or a zone; rejections are logged by reason only.
@@ -176,10 +177,14 @@ class UpdateCursorPort(Protocol):
 
 
 class WebActionsPort(Protocol):
-    """The buttons of a web notice and the unlock command (``WebNoticeActions``)."""
+    """The buttons of a web notice and the lock and unlock commands (``WebNoticeActions``)."""
 
     async def on_button(self, command: Command, action: str, token: str) -> None:
         """Run ``webundo`` or ``weblock`` for ``token``."""
+        ...
+
+    async def lock(self, command: Command) -> None:
+        """Lock web sign-in."""
         ...
 
     async def unlock(self, command: Command) -> None:
@@ -361,14 +366,25 @@ class CommandRouter:
 
     async def _run(self, command: Command) -> None:
         if command.kind == "text":
-            if self._web is not None and _slash_command(command.data) == settings_text.WEB_UNLOCK_COMMAND:
-                await self._web.unlock(command)  # no dialogue: a pending question stays as it is
+            if self._web is not None and await self._web_command(self._web, command):
                 return
             await self._text(command.data)
             return
         if command.callback_id:
             await self._chat.answer_callback(command.callback_id)
         await self._button(command)
+
+    @staticmethod
+    async def _web_command(web: WebActionsPort, command: Command) -> bool:
+        """Run ``/web_lock`` or ``/web_unlock`` (no dialogue); ``False`` for other text."""
+        name = _slash_command(command.data)
+        if name == settings_text.WEB_LOCK_COMMAND:
+            await web.lock(command)
+        elif name == settings_text.WEB_UNLOCK_COMMAND:
+            await web.unlock(command)
+        else:
+            return False
+        return True
 
     async def _start(self, handler: DialogueHandler) -> None:
         previous = await self._conversations.current()

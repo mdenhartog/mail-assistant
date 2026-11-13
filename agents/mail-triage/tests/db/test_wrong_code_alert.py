@@ -13,6 +13,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.db.pg_security_events import PgSecurityEvents
+from app.db.pg_web_lock import PgWebLock
 from app.usecases.code_alert import CodeAlert
 from tests.db import test_web_role_grants as roles
 from tests.usecases.fakes_code_alert import SpyChat
@@ -38,9 +39,9 @@ async def agent_engine(agent: asyncpg.Connection, migrated_url: str) -> AsyncIte
     await engine.dispose()
 
 
-def _events(engine: AsyncEngine) -> PgSecurityEvents:
+def _alert(engine: AsyncEngine, chat: SpyChat) -> CodeAlert:
     sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expire_on_commit=False)
-    return PgSecurityEvents(sessions)
+    return CodeAlert(PgSecurityEvents(sessions), PgWebLock(sessions), chat)
 
 
 async def _event(
@@ -115,7 +116,7 @@ async def test_given_one_row_with_count_5_when_the_agent_runs_then_one_notice_wi
     await _event(owner, timedelta(seconds=30), count=5)
     chat = SpyChat()
 
-    await CodeAlert(_events(agent_engine), chat).run(NOW)
+    await _alert(agent_engine, chat).run(NOW)
 
     assert len(chat.said) == 1
     assert "5 wrong" in chat.said[0]
@@ -126,12 +127,12 @@ async def test_given_rows_of_other_kinds_and_old_rows_when_the_agent_runs_then_o
 ) -> None:
     await _event(owner, timedelta(minutes=1), count=2, window=1)
     await _event(owner, timedelta(minutes=9, seconds=59), count=2, window=2)  # inside
-    await _event(owner, timedelta(minutes=10), count=50, window=3)  # exactly 10 minutes: outside
-    await _event(owner, timedelta(minutes=10, seconds=1), count=50, window=4)  # outside
+    await _event(owner, timedelta(minutes=10), count=3, window=3)  # exactly 10 minutes: outside
+    await _event(owner, timedelta(minutes=10, seconds=1), count=3, window=4)  # outside
     for kind in ("rate_limited", "csrf_refused", "mail_failed", "code_request_refused"):
         await _event(owner, timedelta(minutes=1), kind=kind, count=50, window=5)
     chat = SpyChat()
-    alert = CodeAlert(_events(agent_engine), chat)
+    alert = _alert(agent_engine, chat)
 
     await alert.run(NOW)  # 4 wrong codes count
     assert chat.said == []
@@ -149,7 +150,7 @@ async def test_given_events_with_canary_digest_and_username_when_the_agent_runs_
     chat = SpyChat()
     caplog.set_level(logging.DEBUG)
 
-    await CodeAlert(_events(agent_engine), chat).run(NOW)
+    await _alert(agent_engine, chat).run(NOW)
 
     seen = caplog.text + " ".join(chat.said)
     assert chat.said

@@ -151,10 +151,11 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now, policy.in_use)
     )
     web_notices = PgWebNotice(sessions)
+    web_lock = PgWebLock(sessions)
     router.register_web_actions(
         WebNoticeActions(
             web_notices,
-            PgWebLock(sessions),
+            web_lock,
             settings_store,
             outbox,
             chat_id=settings.telegram_allowed_chat_id,
@@ -169,7 +170,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),
         web_notice=WebNotice(web_notices, outbox, new_token),
-        code_alert=CodeAlert(PgSecurityEvents(sessions), outbox),
+        code_alert=CodeAlert(PgSecurityEvents(sessions), web_lock, outbox),
         store=store,
         inbox=inbox,
         router=router,

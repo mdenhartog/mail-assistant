@@ -28,10 +28,18 @@ class PgSecurityEvents:
         """Keep the session factory."""
         self._sessions = sessions
 
-    async def refused_codes(self, since: datetime) -> int:
-        """Sum of ``count`` of the ``code_refused`` events with ``at`` newer than ``since`` (0 when there are none)."""
+    async def refused_codes(self, since: datetime, after_id: int) -> int:
+        """Sum of ``count`` of the ``code_refused`` events newer than ``since`` with an id above ``after_id``.
+
+        0 when there are none. ``after_id`` is how events that were already acted on stay out of the sum.
+        """
         statement = select(func.coalesce(func.sum(SecurityEvent.count), 0)).where(
-            SecurityEvent.kind == CODE_REFUSED, SecurityEvent.at > since
+            SecurityEvent.kind == CODE_REFUSED, SecurityEvent.at > since, SecurityEvent.id > after_id
         )
         async with self._sessions() as session:
             return int((await session.execute(statement)).scalar_one())
+
+    async def newest_id(self) -> int:
+        """The highest event id of any kind (0 when there are no events); ids only go up."""
+        async with self._sessions() as session:
+            return int((await session.execute(select(func.coalesce(func.max(SecurityEvent.id), 0)))).scalar_one())

@@ -325,12 +325,15 @@ def web_notice(version: int, at: datetime, old: TimePolicy | None, new: TimePoli
 # ---- what the buttons of the web notice answer, and /web_unlock (spec C-8; AC-13, AC-27) -----------------------------
 
 WEB_UNLOCK_COMMAND = "/web_unlock"
+WEB_LOCK_COMMAND = "/web_lock"  # the command the sign-in mail names (backend LOCK_COMMAND)
 WEB_UNDONE = "Undone. The values from before the web changes are back."
 WEB_EXPIRED = "Expired"
 WEB_DONE = "Already done"
 WEB_UNLOCKED = "Web sign-in is unlocked."
 WEB_NOT_LOCKED = "Web sign-in was not locked. Nothing was changed."
 _WEB_LOCK_NOTE = f"Web sign-in is locked. Send {WEB_UNLOCK_COMMAND} to allow it again."
+WEB_LOCKED_NOW = _WEB_LOCK_NOTE
+WEB_ALREADY_LOCKED = f"Web sign-in was already locked. Send {WEB_UNLOCK_COMMAND} to allow it again."
 
 
 def web_locked(outcome: str) -> str:
@@ -346,4 +349,12 @@ def code_alert(count: int, at: datetime) -> str:
     return (
         f"{count} wrong or expired web sign-in codes in the last 10 minutes. "
         f"Time: {at.astimezone(UTC):%Y-%m-%d %H:%M} UTC."
+    )
+
+
+def code_lock_alert(count: int, at: datetime) -> str:
+    """The notice after the agent locked web sign-in for repeated wrong codes: number, time, how to unlock."""
+    return (
+        f"{count} wrong or expired web sign-in codes in 24 hours. Web sign-in is locked. "
+        f"Time: {at.astimezone(UTC):%Y-%m-%d %H:%M} UTC. Send {WEB_UNLOCK_COMMAND} to allow it again."
     )
