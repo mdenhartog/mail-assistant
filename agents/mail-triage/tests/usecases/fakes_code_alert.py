@@ -9,16 +9,25 @@ if TYPE_CHECKING:
 
 
 class FakeEvents:
-    """Security events as (time, kind, count); the sum follows ``PgSecurityEvents``."""
+    """Security events; the sum follows ``PgSecurityEvents``: newer than ``since`` and with an id above ``after_id``."""
 
     def __init__(self) -> None:
-        self.rows: list[tuple[datetime, str, int]] = []
+        self.rows: list[tuple[int, datetime, str, int]] = []  # (id, time, kind, count); ids only go up
 
-    def add(self, at: datetime, kind: str = "code_refused", count: int = 1) -> None:
-        self.rows.append((at, kind, count))
+    def add(self, at: datetime, kind: str = "code_refused", count: int = 1) -> int:
+        row_id = len(self.rows) + 1
+        self.rows.append((row_id, at, kind, count))
+        return row_id
 
-    async def refused_codes(self, since: datetime) -> int:
-        return sum(count for at, kind, count in self.rows if kind == "code_refused" and at > since)
+    async def refused_codes(self, since: datetime, after_id: int) -> int:
+        return sum(
+            count
+            for row_id, at, kind, count in self.rows
+            if kind == "code_refused" and at > since and row_id > after_id
+        )
+
+    async def newest_id(self) -> int:
+        return max((row_id for row_id, *_ in self.rows), default=0)
 
 
 class SpyChat:

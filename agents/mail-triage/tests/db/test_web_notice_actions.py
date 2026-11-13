@@ -243,3 +243,29 @@ async def test_given_the_lock_store_when_the_lock_is_set_twice_and_cleared_twice
     assert await lock.unlock() is True
     assert await lock.unlock() is False
     assert await owner.fetchval("select count(*) from web_auth.web_lock") == 0
+
+
+async def test_given_the_lock_store_when_the_lock_is_set_twice_then_only_the_first_call_says_it_set_it(
+    owner: asyncpg.Connection, agent_engine: AsyncEngine
+) -> None:
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(agent_engine, expire_on_commit=False)
+    lock = PgWebLock(sessions)
+
+    assert await lock.is_locked() is False
+    assert await lock.lock(NOW) is True
+    assert await lock.lock(NOW + timedelta(hours=1)) is False
+    assert await lock.is_locked() is True
+    assert await owner.fetchval("select locked_at from web_auth.web_lock") == NOW
+
+
+async def test_given_web_lock_from_the_allowed_chat_when_sent_twice_then_one_lock_row_and_two_answers(
+    owner: asyncpg.Connection, agent_engine: AsyncEngine
+) -> None:
+    rig = Rig(agent_engine)
+
+    await rig.actions.lock(Command("text", "/web_lock", CHAT, 10, None, 2))
+    await rig.actions.lock(Command("text", "/web_lock", CHAT, 11, None, 3))
+    await rig.actions.lock(Command("text", "/web_lock", 2, 12, None, 4))  # another chat: no answer
+
+    assert await owner.fetchval("select count(*) from web_auth.web_lock") == 1
+    assert rig.chat.said == [settings_text.WEB_LOCKED_NOW, settings_text.WEB_ALREADY_LOCKED]

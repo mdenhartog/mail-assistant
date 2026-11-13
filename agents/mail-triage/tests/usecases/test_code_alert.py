@@ -12,6 +12,7 @@ import pytest
 from app.usecases.code_alert import CodeAlert
 from schedule_policy.testing import FakeClock
 from tests.usecases.fakes_code_alert import FakeEvents, SpyChat
+from tests.usecases.fakes_web_actions import FakeLock
 
 APP = Path(__file__).resolve().parents[2] / "app"
 MINUTE = timedelta(minutes=1)
@@ -22,7 +23,8 @@ class Setup:
         self.clock = FakeClock()
         self.events = FakeEvents()
         self.chat = SpyChat()
-        self.alert = CodeAlert(self.events, self.chat)
+        self.lock = FakeLock()
+        self.alert = CodeAlert(self.events, self.lock, self.chat)
 
     def refused(self, ago: timedelta, count: int = 1) -> None:
         self.events.add(self.clock.now() - ago, "code_refused", count)
