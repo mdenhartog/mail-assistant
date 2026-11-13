@@ -394,6 +394,9 @@
           },
           "422": {
             "description": "Query too long or invalid"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
           }
         },
         "summary": "Search Places",
@@ -422,6 +425,9 @@
           },
           "403": {
             "description": "Not a same-origin request"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
           }
         },
         "summary": "Read Session",
@@ -546,6 +552,9 @@
           },
           "403": {
             "description": "CSRF check failed"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
           }
         },
         "summary": "Logout",

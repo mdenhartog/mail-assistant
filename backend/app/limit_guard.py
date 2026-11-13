@@ -7,6 +7,7 @@ from fastapi import Request
 
 from app.auth.session import client_key
 from app.config import Settings
+from app.core.security import AUTH_DEPENDENCY_MARKER, LIMIT_KIND
 from app.errors import RateLimited
 from app.limits import FixedWindowLimiter
 
@@ -28,7 +29,9 @@ class InProcessLimitGuard:
 
     def __init__(self, settings: Settings) -> None:
         """Take the limit and the window length from the settings, the only place that defines them."""
-        self._limiter = FixedWindowLimiter(settings.rate_limit_per_minute, settings.rate_window_seconds)
+        self._limiter = FixedWindowLimiter(
+            settings.rate_limit_per_minute, settings.rate_window_seconds, settings.rate_max_counters
+        )
 
     async def check(self, bucket: str, request: Request) -> None:
         """Count the request against the bucket.
@@ -65,4 +68,5 @@ def limit(bucket: str) -> Callable[[Request], Awaitable[None]]:
         guard: LimitGuard = request.app.state.limit_guard
         await guard.check(bucket, request)
 
+    setattr(dependency, AUTH_DEPENDENCY_MARKER, LIMIT_KIND)  # read by the route inventory
     return dependency

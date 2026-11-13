@@ -35,8 +35,12 @@ class PlaceResults(BaseModel):
 @router.get(
     "/places",
     response_model=PlaceResults,
-    dependencies=[Depends(session), Depends(limit("api"))],
-    responses={401: {"description": "No live session"}, 422: {"description": "Query too long or invalid"}},
+    dependencies=[Depends(limit("api")), Depends(session)],
+    responses={
+        401: {"description": "No live session"},
+        422: {"description": "Query too long or invalid"},
+        429: {"description": "Too many requests; see Retry-After"},
+    },
 )
 async def search_places(
     request: Request,
