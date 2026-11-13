@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     # Limits (C-4); tests lower them.
     rate_limit_per_minute: int = 30
     rate_window_seconds: int = 60
+    # Most counters the in-process limiter holds per window; a new key over it is refused (SEC-06).
+    rate_max_counters: int = Field(default=10000, gt=0)
     body_limit_bytes: int = 8192
     code_ttl_seconds: int = 600
     resend_cooldown_seconds: int = 60

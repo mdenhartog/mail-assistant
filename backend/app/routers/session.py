@@ -17,6 +17,7 @@ from app.auth.expiry import next_idle_expiry
 from app.auth.mask import mask_address
 from app.auth.session import COOKIE_NAME, Session, SessionStore, clear_session_cookie, client_key
 from app.core.security import csrf, session
+from app.limit_guard import limit
 
 if TYPE_CHECKING:
     from app.config import Settings
@@ -40,7 +41,12 @@ class SessionInfo(BaseModel):
 @router.get(
     "/api/session",
     response_model=SessionInfo,
-    responses={401: {"description": "No live session"}, 403: {"description": "Not a same-origin request"}},
+    dependencies=[Depends(limit("api")), Depends(session)],
+    responses={
+        401: {"description": "No live session"},
+        403: {"description": "Not a same-origin request"},
+        429: {"description": "Too many requests; see Retry-After"},
+    },
 )
 async def read_session(request: Request, current: Session = Depends(session)) -> SessionInfo:  # noqa: B008
     """Return the masked address, the CSRF token and the expiry times of the session.
@@ -73,8 +79,12 @@ async def read_session(request: Request, current: Session = Depends(session)) ->
 @router.post(
     "/auth/logout",
     status_code=204,
-    dependencies=[Depends(session), Depends(csrf)],
-    responses={401: {"description": "No live session"}, 403: {"description": "CSRF check failed"}},
+    dependencies=[Depends(limit("api")), Depends(session), Depends(csrf)],
+    responses={
+        401: {"description": "No live session"},
+        403: {"description": "CSRF check failed"},
+        429: {"description": "Too many requests; see Retry-After"},
+    },
 )
 async def logout(request: Request) -> Response:
     """End the session on the server and clear the cookie.

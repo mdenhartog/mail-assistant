@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from fastapi import Depends, FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 
@@ -299,3 +300,70 @@ async def test_given_the_sign_in_route_when_the_body_is_over_the_limit_then_413_
     assert big.status_code == 413
     assert again.status_code == 200
     assert events.recorded == []
+
+
+# ---- U-web-settings-51: the limit runs before the session lookup (criterion 1) ----
+
+
+class CountingSessions:
+    """Stands in for the session store: no session ever exists; counts the lookups."""
+
+    def __init__(self) -> None:
+        self.lookups = 0
+
+    async def get(self, cookie: str | None, now: object) -> None:
+        self.lookups += 1
+
+
+FIVE_ROUTES = [
+    ("GET", "/api/settings"),
+    ("PUT", "/api/settings"),
+    ("GET", "/api/places"),
+    ("GET", "/api/session"),
+    ("POST", "/auth/logout"),
+]
+
+
+@pytest.mark.parametrize(("method", "path"), FIVE_ROUTES)
+async def test_given_31_requests_without_a_session_when_sent_then_the_31st_is_429_and_no_lookup_runs_for_it(
+    method: str, path: str
+) -> None:
+    app, _, _ = _build()
+    sessions = CountingSessions()
+    app.state.sessions = sessions
+    async with _http(app) as http:
+        statuses = [(await http.request(method, path)).status_code for _ in range(30)]
+        lookups_before = sessions.lookups
+        refused = await http.request(method, path)
+
+    assert statuses == [401] * 30
+    assert lookups_before == 30
+    assert refused.status_code == 429
+    assert refused.headers["retry-after"] == "60"
+    assert sessions.lookups == lookups_before
+
+
+async def test_given_31_addresses_of_one_slash_64_when_sent_to_the_limited_route_then_the_31st_is_429() -> None:
+    app, _, _ = _build()
+    statuses: list[int] = []
+    for n in range(1, 32):
+        async with _http(app, f"2001:db8:0:1:{n:x}::{n:x}") as http:
+            statuses.append((await http.get("/t/signin")).status_code)
+    async with _http(app, "2001:db8:0:2::1") as other:
+        separate = await other.get("/t/signin")
+
+    assert statuses == [200] * 30 + [429]
+    assert separate.status_code == 200
+
+
+async def test_given_more_clients_than_the_bound_when_another_arrives_then_it_is_429() -> None:
+    app, _, _ = _build(rate_max_counters=3)
+    statuses: list[int] = []
+    for n in range(4):
+        async with _http(app, f"203.0.113.{n + 1}") as http:
+            statuses.append((await http.get("/t/api")).status_code)
+    async with _http(app, "203.0.113.1") as known:
+        known_again = await known.get("/t/api")
+
+    assert statuses == [200, 200, 200, 429]
+    assert known_again.status_code == 200

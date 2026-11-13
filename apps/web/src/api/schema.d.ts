@@ -451,6 +451,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     read_session_api_session_get: {
@@ -480,6 +487,13 @@ export interface operations {
             };
             /** @description Not a same-origin request */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -625,6 +639,13 @@ export interface operations {
             };
             /** @description CSRF check failed */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

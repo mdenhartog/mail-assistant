@@ -5,6 +5,7 @@ import ipaddress
 from collections.abc import Sequence
 
 UNKNOWN_CLIENT = "unknown"
+IPV6_PREFIX = 64
 
 
 def _parse(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
@@ -16,6 +17,13 @@ def _parse(text: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
         return address.ipv4_mapped
     return address
+
+
+def _key_of(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str:
+    """Return an IPv4 address as itself and an IPv6 address as its /64 network, the unit one subscriber holds."""
+    if isinstance(address, ipaddress.IPv4Address):
+        return str(address)
+    return str(ipaddress.ip_network((address, IPV6_PREFIX), strict=False))
 
 
 def _trusted(address: ipaddress.IPv4Address | ipaddress.IPv6Address, cidrs: Sequence[str]) -> bool:
@@ -36,7 +44,8 @@ def client_key(peer: str | None, xff: str | None, trusted_cidrs: Sequence[str], 
         hops: How many trusted proxies stand in front of the app.
 
     Returns:
-        The address in one canonical form, the peer text itself when it is no address, or ``unknown``.
+        An IPv4 address in canonical form, an IPv6 address as its /64 network (``2001:db8:0:1::/64``), the peer text
+        itself when it is no address, or ``unknown``.
     """
     if peer is None:
         return UNKNOWN_CLIENT
@@ -44,9 +53,9 @@ def client_key(peer: str | None, xff: str | None, trusted_cidrs: Sequence[str], 
     if address is None:
         return peer
     if not _trusted(address, trusted_cidrs) or not xff or hops < 1:
-        return str(address)
+        return _key_of(address)
     entries = xff.split(",")
     if len(entries) < hops:
-        return str(address)
+        return _key_of(address)
     forwarded = _parse(entries[-hops])
-    return str(address) if forwarded is None else str(forwarded)
+    return _key_of(address) if forwarded is None else _key_of(forwarded)

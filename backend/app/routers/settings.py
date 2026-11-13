@@ -26,7 +26,7 @@ _JSON = "application/json"
 @router.get(
     "/settings",
     response_model=Settings,
-    dependencies=[Depends(session), Depends(limit("api"))],
+    dependencies=[Depends(limit("api")), Depends(session)],
     responses={401: {"description": "No live session"}, 429: {"description": "Too many requests; see Retry-After"}},
 )
 async def read_settings(request: Request) -> Settings:
