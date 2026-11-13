@@ -1,4 +1,5 @@
 # kind cluster (/sdlc:k8s-local). Images are loaded into kind from the local prod-like build.
+environment: local # tags instead of digests and no certificate alert; any other value gets the production rules
 api:
   image: { repository: "mail-assistant-api", tag: "local", pullPolicy: Never }
   replicas: 1

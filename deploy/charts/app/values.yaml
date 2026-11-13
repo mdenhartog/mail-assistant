@@ -1,4 +1,7 @@
 # Secure defaults (guardrail-kubernetes / guardrail-helm). Environments override only what differs.
+# Secure by default: an environment that does not say what it is gets the production rules (U-web-settings-57), which the
+# schema enforces: certAlert.enabled true and an image digest for api and web. local and staging may use tags.
+environment: production # local | staging | production
 api:
   image: { repository: ghcr.io/mdenhartog/mail-assistant/api, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
   replicas: 1 # exactly one (ADR-0034): the sign-in limits and the code store are per process
@@ -44,7 +47,8 @@ ingress:
   clusterIssuer: private-ca # a cert-manager issuer backed by the private CA
   tls: { enabled: true } # only true is accepted
   hsts: true # only true is accepted; max-age=31536000, no includeSubDomains, no preload
-  # Controller-specific parts come from the environment values (hosting is an open point); none by default.
+  # Controller-specific parts come from the environment values (hosting is an open point, D-7). The HSTS mechanism has no
+  # default: the schema refuses an empty key, so an environment always names how the header is sent.
   hstsAnnotation: { key: "", format: "%s" } # annotation that carries the header; format gets "max-age=..."
   annotations: {}
   controllerConfig: {} # settings of the controller's own ConfigMap (TLS minimum, log format); not rendered here
