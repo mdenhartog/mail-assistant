@@ -71,6 +71,6 @@ def ipv6_prefix48(client: str) -> str | None:
         network = ipaddress.ip_network(client)
     except ValueError:
         return None
-    if not isinstance(network, ipaddress.IPv6Network) or network.prefixlen != IPV6_PREFIX:
+    if not isinstance(network, ipaddress.IPv6Network) or network.prefixlen not in {IPV6_PREFIX}:
         return None
     return str(network.supernet(new_prefix=IPV6_SITE_PREFIX))
