@@ -1,10 +1,10 @@
-"""U-web-settings-62 (CR-05): the wall-clock decoy comparison runs in the nightly workflow, not in the normal suite."""
+"""U-web-settings-62 (CR-05): the wall-clock decoy comparison runs in the nightly workflow, not in the suite."""
 
 import tomllib
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
-MUTATION_WORKFLOW = BACKEND.parent / ".github" / "workflows" / "mutation.yml"
+NIGHTLY_WORKFLOW = BACKEND.parent / ".github" / "workflows" / "nightly.yml"
 
 
 def _pytest_options() -> dict[str, object]:
@@ -19,8 +19,8 @@ def test_given_the_pytest_options_when_read_then_the_timing_marker_is_registered
     assert '-m "not timing"' in str(options["addopts"])
 
 
-def test_given_the_mutation_workflow_when_read_then_it_runs_the_timing_tests() -> None:
-    workflow = MUTATION_WORKFLOW.read_text(encoding="utf-8")
+def test_given_the_nightly_workflow_when_read_then_it_runs_the_timing_tests() -> None:
+    workflow = NIGHTLY_WORKFLOW.read_text(encoding="utf-8")
 
     assert "pytest -m timing" in workflow
     assert "--no-cov" in workflow

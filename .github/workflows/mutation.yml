@@ -40,18 +40,6 @@ jobs:
       - if: always()  # a failing rating must not hide which mutants survived
         run: uv run cr-report "$RUNNER_TEMP/schedule-policy.sqlite" --show-pending --surviving-only --show-diff
 
-  decoy-timing:
-    # The wall-clock comparison of the known and unknown username paths (CR-05). It is noisy, so it is not in the pull
-    # request suite; the structural check of the recorded steps (AC-30) is.
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults: { run: { working-directory: backend } }
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - run: uv sync --frozen
-      - run: uv run pytest -m timing --no-cov
-
   backend-matrix:
     # the modules come from backend/cosmic-ray.toml, so the workflow cannot go stale (U-web-settings-44)
     runs-on: ubuntu-latest
