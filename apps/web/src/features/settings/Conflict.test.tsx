@@ -225,7 +225,7 @@ describe("a second 409 while resolving (criterion 7)", () => {
 
     await userEvent.click(save());
 
-    await screen.findByText("You typed 22:30, Telegram now has 23:30");
+    await screen.findByText("You typed 22:30, the web now has 23:30");
     expect(puts.map((p) => p.version)).toEqual([1, 2]);
     expect(screen.getByRole("alert")).toHaveTextContent("Settings changed from the web");
     expect(screen.getByRole("alert")).toHaveFocus();

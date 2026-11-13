@@ -159,7 +159,7 @@ test("a save from a second context on version 1 gets the conflict banner with bo
 
   await expect(pageA.getByRole("alert").filter({ hasText: /Settings changed/ })).toBeVisible();
   await expect(pageA.getByRole("button", { name: /^Use mine/ })).toBeVisible();
-  await expect(pageA.getByRole("button", { name: /^Keep Telegram's/ })).toBeVisible();
+  await expect(pageA.getByRole("button", { name: /^Keep the stored value/ })).toBeVisible();
   expect(storedRow()).toBe("2|1050|Europe/Amsterdam"); // B's 17:30; A's 17:00 is not stored
   await pageA.context().close();
   await pageB.context().close();
