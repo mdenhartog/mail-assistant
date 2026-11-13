@@ -59,3 +59,8 @@ def client_key(peer: str | None, xff: str | None, trusted_cidrs: Sequence[str], 
         return _key_of(address)
     forwarded = _parse(entries[-hops])
     return _key_of(address) if forwarded is None else _key_of(forwarded)
+
+
+def ipv6_prefix48(client: str) -> str | None:
+    """Stub: replaced in the next commit."""
+    return None

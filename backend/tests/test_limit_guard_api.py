@@ -356,14 +356,13 @@ async def test_given_31_addresses_of_one_slash_64_when_sent_to_the_limited_route
     assert separate.status_code == 200
 
 
-async def test_given_more_clients_than_the_bound_when_another_arrives_then_it_is_429() -> None:
+async def test_given_more_clients_than_the_bound_when_another_arrives_then_it_is_200_and_the_oldest_is_evicted() -> (
+    None
+):
     app, _, _ = _build(rate_max_counters=3)
     statuses: list[int] = []
     for n in range(4):
         async with _http(app, f"203.0.113.{n + 1}") as http:
             statuses.append((await http.get("/t/api")).status_code)
-    async with _http(app, "203.0.113.1") as known:
-        known_again = await known.get("/t/api")
 
-    assert statuses == [200, 200, 200, 429]
-    assert known_again.status_code == 200
+    assert statuses == [200, 200, 200, 200]

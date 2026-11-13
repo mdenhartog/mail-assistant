@@ -297,23 +297,30 @@ async def test_given_old_decoys_when_a_later_request_is_stored_then_the_retentio
     assert await _rows(owner) == 2
 
 
-# Criterion 5
-async def test_given_decoys_up_to_the_open_cap_when_one_more_is_requested_then_it_is_refused_like_a_real_one(
+# Criterion 5, rebuilt in U-web-settings-64 (RT2-03): a full decoy class is invisible
+async def test_given_decoys_up_to_the_open_cap_when_one_more_is_requested_then_it_is_answered_alike_and_not_stored(
     api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     for index in range(CAP):
         assert (await api.request_code(f"name-{index}", client=_client(index))).status_code == 200
 
     response = await api.request_code(UNKNOWN, client=_client(CAP))
+    owner_answer = await api.request_code(USERNAME, client="10.9.9.9")
 
-    assert response.status_code == 429
+    assert response.status_code == 200
+    assert _shape(response) == _shape(owner_answer)
+    assert await _rows(owner) == CAP + 1  # the owner's row only
+    assert [sent[1] for sent in api.mailer.sent] == ["111111"]
 
 
 # Criterion 5
-async def test_given_a_second_request_for_an_unknown_name_when_stored_then_the_first_decoy_is_dead(api: Api) -> None:
+async def test_given_a_second_request_for_an_unknown_name_with_the_cookie_when_stored_then_the_first_decoy_is_dead(
+    api: Api,
+) -> None:
     first = await api.issue(UNKNOWN)
     api.clock.advance(timedelta(seconds=60))
-    second = await api.issue(UNKNOWN)
+    second = _cookie(await api.request_code(UNKNOWN, cookie=first))
 
     old = await api.verify(WRONG, first)
     new = await api.verify(WRONG, second)
@@ -396,8 +403,8 @@ async def test_given_100_open_decoys_from_100_clients_when_the_owner_asks_from_a
 
     assert owner_answer.status_code == 200
     assert [sent[1] for sent in api.mailer.sent] == ["111111"]
-    assert one_more_decoy.status_code == 429  # the decoys have their own cap and it is full
-    assert one_more_decoy.headers["retry-after"] == "600"
+    assert one_more_decoy.status_code == 200  # the decoys have their own cap, it is full, and that never shows
+    assert _shape(one_more_decoy) == _shape(owner_answer)
 
 
 # Criterion 1 and 2
@@ -464,8 +471,8 @@ async def test_given_the_owners_live_request_when_its_cookie_comes_from_another_
     assert new.status_code == 204
 
 
-# Criterion 3
-async def test_given_a_live_request_when_the_same_client_asks_again_without_the_cookie_then_it_replaces_it(
+# Criterion 2 (RT2-04): the client alone never replaces; a neighbour in the same /64 or behind the same NAT shares it
+async def test_given_a_live_request_when_the_same_client_asks_again_without_the_cookie_then_both_stay_live(
     api: Api,
 ) -> None:
     cookie_a = await api.issue(USERNAME)
@@ -473,8 +480,56 @@ async def test_given_a_live_request_when_the_same_client_asks_again_without_the_
 
     second = await api.issue(USERNAME)
 
-    assert (await api.verify("111111", cookie_a)).status_code == 400
     assert (await api.verify("122222", second)).status_code == 204
+    assert (await api.verify("111111", cookie_a)).status_code == 204
+
+
+# Criterion 2 (RT2-04)
+async def test_given_the_owners_live_request_when_a_slash_64_neighbour_asks_without_the_cookie_then_it_stays_live(
+    api: Api,
+) -> None:
+    cookie_a = await api.request_code(USERNAME, client="2001:db8:0:1::5")
+    api.clock.advance(timedelta(seconds=60))
+
+    neighbour = await api.request_code(USERNAME, client="2001:db8:0:1:aaaa::9")
+    verified = await api.verify("111111", _cookie(cookie_a))
+
+    assert neighbour.status_code == 200
+    assert verified.status_code == 204
+
+
+# Criterion 2 (RT2-04)
+async def test_given_the_owners_live_request_when_a_request_carries_the_cookie_of_a_then_only_a_is_replaced(
+    api: Api,
+) -> None:
+    cookie_a = await api.issue(USERNAME)
+    api.clock.advance(timedelta(seconds=60))
+    cookie_b = _cookie(await api.request_code(USERNAME, client="10.9.9.9"))
+    api.clock.advance(timedelta(seconds=60))
+
+    replacement = await api.request_code(USERNAME, client="10.9.9.9", cookie=cookie_a)
+
+    assert (await api.verify("111111", cookie_a)).status_code == 400
+    assert (await api.verify("122222", cookie_b)).status_code == 204
+    assert (await api.verify("133333", _cookie(replacement))).status_code == 204
+
+
+# Criterion 2: the guessing budget stays 5 codes an hour for a username, with or without the cookie
+async def test_given_a_username_when_requested_with_the_cookie_every_time_then_the_sixth_code_in_the_hour_is_refused(
+    api: Api,
+) -> None:
+    cookie = await api.issue(USERNAME)
+    for _ in range(4):
+        api.clock.advance(timedelta(seconds=60))
+        response = await api.request_code(USERNAME, cookie=cookie)
+        assert response.status_code == 200
+        cookie = _cookie(response)
+    api.clock.advance(timedelta(seconds=60))
+
+    refused = await api.request_code(USERNAME, cookie=cookie)
+
+    assert refused.status_code == 429
+    assert len(api.mailer.sent) == 5
 
 
 # Criterion 3 (the number of live requests of one username is 3)

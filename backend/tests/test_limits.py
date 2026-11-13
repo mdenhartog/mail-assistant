@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.clientaddr import UNKNOWN_CLIENT, client_key
+from app.clientaddr import UNKNOWN_CLIENT, client_key, ipv6_prefix48
 from app.limits import FixedWindowLimiter, retry_after, window_key
 
 T0 = 1_772_373_600.0  # 2026-03-01 14:00:00 UTC, a whole minute
@@ -270,23 +270,26 @@ def test_given_a_trusted_ipv6_peer_without_a_header_when_keyed_then_the_peer_sla
     assert client_key("fd00:0:0:5::7", None, ["fd00::/8"], 1) == "fd00:0:0:5::/64"
 
 
-# ---- U-web-settings-51: bounded counters (criterion 3) ----
+# ---- U-web-settings-51, rebuilt in U-web-settings-64: the bound evicts the oldest keys, it never refuses a key ----
 
 
-def test_given_more_keys_than_the_bound_when_another_arrives_then_it_is_refused_and_not_stored() -> None:
-    limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=3)
+def test_given_the_bound_is_reached_when_a_new_key_arrives_then_it_is_allowed_and_the_oldest_key_is_evicted() -> None:
+    limiter = FixedWindowLimiter(limit=1, window_seconds=60, max_counters=3)
+    for name in ("a", "b", "c"):
+        assert limiter.hit(name, "api", T0).allowed
 
-    first = [limiter.hit(f"c{n}", "api", T0) for n in range(3)]
-    over = limiter.hit("c3", "api", T0 + 10)
+    new = limiter.hit("d", "api", T0 + 10)
 
-    assert all(d.allowed for d in first)
-    assert not over.allowed
-    assert not over.first_refusal
-    assert over.retry_after == 50
+    assert new.allowed
+    assert not new.first_refusal
     assert limiter.tracked_entries() == 3
+    assert limiter.hit("a", "api", T0 + 11).allowed  # the oldest was evicted: its count starts again
+    assert not limiter.hit("c", "api", T0 + 11).allowed  # a younger key kept its count
 
 
-def test_given_the_bound_is_reached_when_a_known_key_hits_again_then_it_is_still_counted() -> None:
+def test_given_the_bound_is_reached_when_a_known_key_hits_again_then_it_is_still_counted_and_nothing_is_evicted() -> (
+    None
+):
     limiter = FixedWindowLimiter(limit=2, window_seconds=60, max_counters=2)
     limiter.hit("a", "api", T0)
     limiter.hit("b", "api", T0)
@@ -295,7 +298,10 @@ def test_given_the_bound_is_reached_when_a_known_key_hits_again_then_it_is_still
 
     assert [d.allowed for d in again] == [True, False]
     assert [d.first_refusal for d in again] == [False, True]
+    assert not limiter.hit("a", "api", T0).allowed
     assert limiter.tracked_entries() == 2
+    assert limiter.hit("b", "api", T0).allowed
+    assert not limiter.hit("b", "api", T0).allowed  # b still held its first count
 
 
 def test_given_one_client_with_two_buckets_when_counted_then_each_pair_is_one_counter() -> None:
@@ -303,24 +309,105 @@ def test_given_one_client_with_two_buckets_when_counted_then_each_pair_is_one_co
 
     assert limiter.hit("a", "api", T0).allowed
     assert limiter.hit("a", "signin", T0).allowed
-    assert not limiter.hit("a", "other", T0).allowed
-    assert not limiter.hit("b", "api", T0).allowed
+    assert limiter.tracked_entries() == 2
+    assert limiter.hit("a", "other", T0).allowed
+    assert limiter.tracked_entries() == 2
 
 
 def test_given_a_full_window_when_the_next_window_starts_then_new_keys_are_counted_again() -> None:
     limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=1)
     assert limiter.hit("a", "api", T0).allowed
-    assert not limiter.hit("b", "api", T0).allowed
 
     assert limiter.hit("b", "api", T0 + 60).allowed
-    assert not limiter.hit("a", "api", T0 + 60).allowed
-    assert limiter.tracked_entries() == 2
+    assert limiter.hit("a", "api", T0 + 60).allowed
+    assert limiter.tracked_entries() == 2  # one counter in each of the two windows held, as the bound says per window
 
 
 def test_given_a_flood_of_distinct_keys_when_counted_then_memory_stays_at_the_bound() -> None:
     limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=50)
 
-    for n in range(5000):
-        limiter.hit(f"k{n}", "api", T0 + n * 0.01)
+    decisions = [limiter.hit(f"k{n}", "api", T0 + n * 0.01) for n in range(5000)]
 
+    assert all(d.allowed for d in decisions)
     assert limiter.tracked_entries() == 50
+
+
+def test_given_10000_keys_from_one_slash_48_when_the_owner_elsewhere_hits_then_it_keeps_its_count() -> None:
+    limiter = FixedWindowLimiter(limit=2, window_seconds=60, max_counters=10000)
+    owner = "2001:db8:1:1::/64"
+    assert limiter.hit(owner, "signin", T0).allowed
+
+    flood = [limiter.hit(f"2001:db8:0:{n:x}::/64", "signin", T0 + 1) for n in range(10000)]
+    second = limiter.hit(owner, "signin", T0 + 2)
+    third = limiter.hit(owner, "signin", T0 + 2)
+
+    assert all(d.allowed for d in flood)
+    assert second.allowed
+    assert not third.allowed  # the owner's counter was not evicted by the flood
+    assert limiter.tracked_entries() <= 10000 // 10 + 1
+
+
+def test_given_10000_keys_from_the_owners_own_slash_48_when_the_owner_hits_then_it_is_never_refused() -> None:
+    limiter = FixedWindowLimiter(limit=2, window_seconds=60, max_counters=10000)
+    owner = "2001:db8:0:ffff::/64"
+    limiter.hit(owner, "signin", T0)
+
+    for n in range(10000):
+        limiter.hit(f"2001:db8:0:{n:x}::/64", "signin", T0 + 1)
+
+    assert limiter.hit(owner, "signin", T0 + 2).allowed
+
+
+def test_given_the_prefix_bound_when_a_new_key_of_a_full_slash_48_arrives_then_the_oldest_of_that_prefix_goes() -> None:
+    limiter = FixedWindowLimiter(limit=1, window_seconds=60, max_counters=100)  # 10 counters per /48
+    other = "2001:db8:9:1::/64"
+    limiter.hit(other, "api", T0)
+    for n in range(10):
+        limiter.hit(f"2001:db8:0:{n:x}::/64", "api", T0)
+
+    assert limiter.hit("2001:db8:0:a::/64", "api", T0).allowed
+
+    assert limiter.tracked_entries() == 11
+    assert limiter.hit("2001:db8:0:0::/64", "api", T0).allowed  # the oldest of the prefix was evicted
+    assert not limiter.hit("2001:db8:0:5::/64", "api", T0).allowed  # a younger one kept its count
+    assert not limiter.hit(other, "api", T0).allowed  # another prefix is untouched
+
+
+def test_given_a_tiny_bound_when_an_ipv6_key_arrives_then_the_prefix_bound_is_at_least_one() -> None:
+    limiter = FixedWindowLimiter(limit=1, window_seconds=60, max_counters=5)
+
+    assert limiter.hit("2001:db8:0:1::/64", "api", T0).allowed
+    assert not limiter.hit("2001:db8:0:1::/64", "api", T0).allowed
+    assert limiter.hit("2001:db8:0:2::/64", "api", T0).allowed
+    assert limiter.tracked_entries() == 1
+
+
+def test_given_ipv4_keys_when_counted_then_the_prefix_bound_does_not_apply() -> None:
+    limiter = FixedWindowLimiter(limit=5, window_seconds=60, max_counters=100)
+
+    for n in range(30):
+        limiter.hit(f"203.0.113.{n}", "api", T0)
+
+    assert limiter.tracked_entries() == 30
+
+
+# ---- U-web-settings-64: the /48 of an IPv6 key ----
+
+
+@pytest.mark.parametrize(
+    ("key", "expected"),
+    [
+        ("2001:db8:0:1::/64", "2001:db8::/48"),
+        ("2001:db8:7:ffff::/64", "2001:db8:7::/48"),
+        ("2001:db8:8:1::/64", "2001:db8:8::/48"),
+        ("203.0.113.9", None),
+        ("unknown", None),
+        ("not an address", None),
+        ("2001:db8::/48", None),
+        ("2001:db8:0:1::5", None),
+    ],
+)
+def test_given_a_client_key_when_its_slash_48_is_asked_then_only_an_ipv6_slash_64_has_one(
+    key: str, expected: str | None
+) -> None:
+    assert ipv6_prefix48(key) == expected
