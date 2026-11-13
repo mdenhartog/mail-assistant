@@ -38,14 +38,14 @@ async def test_given_another_contract_version_when_readyz_then_503_with_a_generi
 ) -> None:
     await owner.execute(
         "CREATE OR REPLACE FUNCTION settings.contract_version() RETURNS integer "
-        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 2 $$"
+        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 3 $$"
     )
 
     response = await ready_client.get("/readyz")
 
     assert response.status_code == 503
     assert "contract" not in response.text.lower()
-    assert "2" not in response.text
+    assert "3" not in response.text
 
 
 async def test_given_the_web_role_when_it_calls_the_contract_version_then_it_is_allowed_but_owns_nothing(

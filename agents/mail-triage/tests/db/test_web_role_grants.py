@@ -89,7 +89,7 @@ async def test_given_the_web_role_when_it_inserts_selects_and_updates_the_allowe
 
     assert await web.fetchval("select quiet_start from settings.schedule") == 660
     assert await owner.fetchval("select count(*) from settings.settings_change") == 3
-    assert await web.fetchval("select settings.contract_version()") == 1
+    assert await web.fetchval("select settings.contract_version()") == 2
 
 
 @pytest.mark.parametrize(
