@@ -111,3 +111,11 @@ Caused by ADR-0036 (replaces ADR-0024) and ADR-0037 (replaces ADR-0032).
 | W-14 to W-17 | New: e-mail interception (I), codes, username and address in logs and responses (I), the SMTP credential (I, E), other devices on the local network and a misrouted exposure (S, D). |
 | R-1 | Restated: whoever reads Marco's mailbox can sign in; two-step verification on the mailbox is a condition for production; R-2 added for the local network. |
 | Data | Added: one-time code, SMTP credential, code-hash key, e-mail address. |
+
+## Delta 2026-11-13 (phase 6 challenge, ADR-0039)
+
+| id | change |
+| --- | --- |
+| W-7 | Limits are per client (IPv6 per /64) and bounded; the chart sets trusted proxies and production refuses an empty list; session routes are limited before the lookup; decoys never count against the configured username and a request from another client does not replace his live request. Fixed by U-51 to U-54. |
+| W-13 | Wrong-code events are counted, not deduplicated; the alert (U-48) is R1; 15 wrong codes in 24 hours set the web lock (U-55); client keys are stored as digests. |
+| R-3 | Accepted: a guesser who knows the username can force the web lock with 15 wrong codes a day, and a group of devices can use the 5 codes an hour of the username. Telegram stays available, Marco unlocks with `/web_unlock`, the events show it. Reviewed on 2027-05-10 with R-1. |

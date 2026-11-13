@@ -61,13 +61,13 @@ Edge          U-37 prod-like TLS edge + nginx exact routes (U-02) ─► U-38 pr
               U-41 chart: NetworkPolicy, replicas, secrets (U-08, U-40)
               U-42 CI sequence + setup + smoke (U-30, U-32, U-37, U-38, U-39)  ══► M2
               U-43 journey (U-33, U-34, U-35, U-36, U-42)      U-44 mutation wiring (U-10, U-11, U-24)
-R2            U-45 reset backend (U-22) ─► U-46 reset web (U-32)   U-47 draft kept (U-30, U-32)   U-48 wrong-code alert (U-13, U-26)   U-49 audit retention purge (U-07, U-08)
+R2            U-45 reset backend (U-22) ─► U-46 reset web (U-32)   U-47 draft kept (U-30, U-32)   U-48 wrong-code alert (U-13, U-26; R1 since ADR-0039)   U-49 audit retention purge (U-07, U-08)
 ```
 
 Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made during the build"):
 
 - U-02 wires the shared package into the backend (lockfile, image, compose, CI) before any backend code imports it, as U-quiet-hours-01b did for the agent.
-- Migration 0008 is the only new migration of R1 (U-06). The R2 purge adds no migration. If another migration lands first, rename before merge; do not renumber after.
+- Migration 0008 is the first migration of R1 (U-06); the challenge fixes add 0009 (U-53), 0010 (U-54) and 0011 (U-56), applied in that order. The R2 purge adds no migration. If another migration lands first, rename before merge; do not renumber after.
 - A unit that adds an environment variable or a role must carry every consumer of it in the same PR: U-08 carries `WEB_ROLE_PASSWORD` in the job, the agent's compose file, the CI `runtime-role` job's `.env` line and the worker chart's Secret together, so `main` stays green. The same for U-37: the removal of `proxy_pass` from the web image and the new edge arrive together with the update of the existing `e2e` job.
 - A one-shot compose service (migrate) is not part of `up --wait` (it exits and counts as failed). The CI job runs it with `docker compose run --rm` before `up --wait` (U-42).
 - The R1 build exposes no R2 surface: U-05 (no `/api/settings/reset` in the route inventory and in `openapi.json`), U-32 (no Reset button in the DOM) and U-43 (the path answers 404 through the edge). U-45 and U-46 add them together with their tests.
@@ -937,7 +937,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   7. Given the login page with a draft present and without, When rendered, Then "what you typed is kept" appears only with a draft (type: edge; level: component).
   8. Given axe on the restore banner, When run, Then no violation and the banner is `role="status"` (AC-23) (type: a11y; level: component).
 
-### U-web-settings-48: Telegram alert after 5 wrong or expired codes (R2)
+### U-web-settings-48: Telegram alert after 5 wrong or expired codes (R1 since ADR-0039)
 
 - Layer: agent
 - Contract: the agent role gains `SELECT` on `web_auth.security_event` (grants.sql); at each run it counts `code_refused` events in the last 10 minutes; at 5 or more it sends one notice (count, time; no code, no username), at most one per 10 minutes. Other kinds (`code_request_refused`, `rate_limited`, `csrf_refused`, `mail_failed`) never count and never alert.
@@ -986,6 +986,170 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   4. Given a wrong-format code on a decoy and on a real request, When posted, Then the two answers have the same shape and number (type: security; level: api).
   5. Given decoys, When requests are counted, Then they use the cooldown, the hourly cap and the in-process limits like real requests and expire with the existing retention (type: edge; level: db).
   6. Given the two paths, When timed over many runs, Then the medians differ by no more than the noise bound set in the test (type: security; level: api).
+
+### U-web-settings-51: Limits before the session lookup, IPv6 per /64, bounded counters (R1; challenge fix; RT-03, RT-05, SEC-06)
+
+- Layer: backend
+- Contract: `limit("api")` runs before `session` on `GET /api/settings`, `PUT /api/settings`, `GET /api/places`, `GET /api/session` and `POST /auth/logout`; the route inventory requires a limit marker before the session marker on every non-probe route; `client_key` maps an IPv6 address to its /64 and an IPv4 address to itself; the limiter holds at most a configured number of counters per window and refuses new keys over it.
+- Files: `backend/app/routers/{session,settings,places}.py`, `backend/app/core/security.py`, `backend/app/clientaddr.py`, `backend/app/limits.py`, `backend/app/limit_guard.py`, `backend/tests/test_route_inventory.py`, `backend/tests/test_limit_guard_api.py`, `backend/tests/test_limits.py`
+- Depends on: U-web-settings-24
+- Parallel: yes
+- Guardrails: guardrail-fastapi, guardrail-pytest
+- Criteria:
+  1. Given 31 requests a minute without a session to each of the five routes, When sent, Then the 31st gets 429 and no session lookup runs for it (AC-16) (type: security; level: api).
+  2. Given 31 requests from 31 addresses of one IPv6 /64, When sent to sign-in, Then the 31st gets 429; two different /64 networks have separate buckets (W-7, W-17) (type: security; level: unit).
+  3. Given more distinct keys than the counter bound in one window, When another arrives, Then it is refused and memory stays bounded (type: edge; level: unit).
+  4. Given the route inventory, When a route has the session marker without a limit marker before it, Then the test fails naming it (type: security; level: unit).
+
+### U-web-settings-52: Chart sets the trusted proxies; production refuses an empty list (R1; challenge fix; RT-02, SEC-01)
+
+- Layer: infra, backend
+- Contract: the api Deployment renders `APP_TRUSTED_PROXY_CIDRS` and `APP_TRUSTED_PROXY_HOPS` from `api.config.trustedProxyCidrs` and `trustedProxyHops`; `values.schema.json` requires them when `ingress.enabled`; `validate_startup` refuses an empty CIDR list when the environment is production.
+- Files: `deploy/charts/app/templates/workloads.yaml`, `deploy/charts/app/values.yaml`, `deploy/charts/app/values.schema.json`, `deploy/envs/local/values.yaml`, `backend/app/startup.py`, `backend/tests/test_startup.py`, `backend/tests/test_chart_env.py`
+- Depends on: U-web-settings-41
+- Parallel: yes
+- Guardrails: guardrail-helm, guardrail-kubernetes, guardrail-fastapi
+- Criteria:
+  1. Given the chart rendered with the local values, When the api env is read, Then both variables are present and the CIDR list is valid and non-empty (W-7, W-17) (type: security; level: chart).
+  2. Given ingress enabled and no CIDR list, When the schema runs, Then it refuses (type: error; level: chart).
+  3. Given environment production and an empty list, When the api starts, Then it exits non-zero naming the setting (type: security; level: unit).
+  4. Given the chart env names, When compared with `Settings`, Then every name exists (existing test extended) (type: edge; level: unit).
+
+### U-web-settings-53: The owner cannot be locked out by decoys, other clients or the cap (R1; challenge fix; ADR-0039; RT-01, RT-04, RT-06, SEC-02)
+
+- Layer: backend, database (migration 0009)
+- Contract: `web_auth.login_request` gains `client_hash` (keyed digest of the client key); decoys have their own open cap; a request for the configured username is never refused for decoy rows; open rows and codes per hour are also capped per `client_hash`; a new request replaces a live one only for the same login cookie or the same `client_hash`; every 429 carries the real remaining wait; the hourly cap counts from `created_at` for real and decoy rows alike.
+- Files: `agents/mail-triage/migrations/versions/0009_login_request_client.py`, `backend/app/auth/login_requests.py`, `backend/app/auth/request_code.py`, `backend/app/auth/request_code_rules.py`, `backend/app/config.py`, `backend/tests/auth/test_decoy_requests.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/auth/test_login_requests.py`
+- Depends on: U-web-settings-50, U-web-settings-51
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given 100 open decoy requests from one client, When the configured username asks for a code from another client, Then it gets 200 and a mail is sent (AC-16) (type: security; level: db).
+  2. Given one client, When it opens more than the per-client number of requests or codes in an hour, Then it is refused while other clients are not (W-7) (type: security; level: db).
+  3. Given Marco's live request in browser A, When another client asks for a code for his username, Then A's code still verifies; a request with A's cookie replaces it (type: security; level: db).
+  4. Given a refused request, When the 429 is read, Then `Retry-After` equals the real time until the limit frees (type: edge; level: api).
+  5. Given five requests then a sixth for a known and an unknown username at identical times, also when the mailer fails, When answered, Then status and `Retry-After` are identical (AC-30) (type: security; level: api).
+  6. Given migration 0009, When run up, down and up, Then it is reversible and the web role gets only the grants it needs (type: edge; level: db).
+
+### U-web-settings-54: Wrong codes are counted, the lock stops code mail, the mail text says what to do (R1; challenge fix; ADR-0039; RT-09, SEC-04, SEC-08, SEC-09)
+
+- Layer: backend, database (migration 0010)
+- Contract: `web_auth.security_event` gains `count`; a repeated `(kind, client_key, window)` increments it instead of being dropped; `client_key` is stored as a keyed digest; while the web lock is set, a code request answers as usual but creates no row and sends no mail; the code mail says that someone on the network knows the username if the code was not asked for and points to the Telegram Lock command.
+- Files: `agents/mail-triage/migrations/versions/0010_security_event_count.py`, `backend/app/security_events.py`, `backend/app/auth/event_rules.py`, `backend/app/auth/request_code.py`, `backend/app/mail/message.py`, `backend/tests/db/test_security_events.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/mail/test_message.py`
+- Depends on: U-web-settings-53
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given 5 wrong codes from one client in one minute, When recorded, Then one row with `count` 5 exists (W-13) (type: happy; level: db).
+  2. Given a stored event, When read, Then `client_key` is a digest and no clear address is stored (type: security; level: db).
+  3. Given the web lock is set, When a code is requested for the configured username, Then the answer is the same, no login request row is written and no mail is sent (AC-27) (type: security; level: api).
+  4. Given the code mail, When rendered, Then it names the Lock command and contains no username or address of the sender (W-14, W-15) (type: security; level: unit).
+
+### U-web-settings-55: Agent sets the web lock after repeated wrong codes (R1; challenge fix; ADR-0039; RT-07, SEC-03)
+
+- Layer: agent
+- Contract: when the summed `count` of `code_refused` events reaches 15 in 24 hours, the agent sets the web lock once and sends a Telegram notice (count, time; no code, username or address); Marco unlocks with `/web_unlock`; U-48 is the notice at 5 in 10 minutes.
+- Files: `agents/mail-triage/app/usecases/code_alert.py`, `agents/mail-triage/app/db/pg_web_lock.py`, `agents/mail-triage/tests/db/test_code_alert.py`
+- Depends on: U-web-settings-48, U-web-settings-54
+- Parallel: no
+- Guardrails: guardrail-telegram, guardrail-sqlalchemy-alembic
+- Criteria:
+  1. Given 15 wrong codes in 24 hours (`FakeClock`), When the agent runs, Then the lock is set and one notice is sent (W-13) (type: happy; level: agent).
+  2. Given 14, or 15 over 24 hours 1 second, When it runs, Then nothing changes (type: edge; level: agent).
+  3. Given a set lock, When the agent runs again, Then no second notice and no second write (type: edge; level: agent).
+  4. Given `/web_unlock`, When Marco sends it, Then sign-in works again and the old events do not set the lock again (type: edge; level: agent).
+
+### U-web-settings-56: Undo burst is identified by an explicit id (R1; challenge fix; CR-07)
+
+- Layer: agent, database (migration 0011)
+- Contract: each Undo token record stores `burst_id` and `first_version`; the guard uses them instead of comparing `before` values; a partial send failure keeps the original burst.
+- Files: `agents/mail-triage/migrations/versions/0011_notice_burst.py`, `agents/mail-triage/app/usecases/web_notice.py`, `agents/mail-triage/app/usecases/web_notice_actions.py`, `agents/mail-triage/tests/db/test_web_notice.py`
+- Depends on: U-web-settings-27
+- Parallel: yes
+- Guardrails: guardrail-telegram, guardrail-sqlalchemy-alembic
+- Criteria:
+  1. Given two bursts whose `before` values are equal inside 24 hours, When Undo is pressed on the older notice, Then only that burst is restored or refused as changed (AC-13) (type: edge; level: db).
+  2. Given a send failure after the first notice of a burst, When retried and Undo is pressed on the first notice, Then the pre-burst values return (type: error; level: db).
+  3. Given migration 0011, When run up, down and up, Then it is reversible (type: edge; level: db).
+
+### U-web-settings-57: Ingress gates: HSTS, certificate alert, image digests (R1; challenge fix; RT-10, SEC-05, SEC-07)
+
+- Layer: infra
+- Contract: `values.schema.json` requires a non-empty HSTS mechanism when `hsts` is true; chart tests assert HSTS, the HTTP redirect and the TLS minimum for every environment values file that sets an ingress class; `certAlert.enabled` and an image `digest` are required when the environment is production; the base images of both Dockerfiles are pinned by `@sha256`. The ingress controller itself stays open (D-7, plan open points).
+- Files: `deploy/charts/app/values.schema.json`, `deploy/charts/app/values.yaml`, `deploy/charts/app/templates/ingress.yaml`, `backend/Dockerfile`, `apps/web/Dockerfile`, `deploy/charts/app/tests/`
+- Depends on: U-web-settings-41
+- Parallel: yes
+- Guardrails: guardrail-helm, guardrail-kubernetes, guardrail-docker, guardrail-tls-certificates
+- Criteria:
+  1. Given `hsts: true` and an empty annotation key, When the schema runs, Then it refuses (AC-18) (type: error; level: chart).
+  2. Given each environment values file, When rendered, Then an HSTS directive, an HTTP redirect and the minimum TLS version are present or the test names what is missing (AC-18) (type: security; level: chart).
+  3. Given production values without `certAlert.enabled` or a digest, When the schema runs, Then it refuses (W-9) (type: security; level: chart).
+  4. Given both Dockerfiles, When linted, Then every `FROM` has a digest (type: security; level: unit).
+
+### U-web-settings-58: TLS with verify-full for the agent and the migrate job (R1; challenge fix; SEC-10)
+
+- Layer: infra, agent
+- Contract: the agent runtime and the migrate job connect with `sslmode=verify-full` and the CA; `pg_hba.conf` uses `hostssl` for every role in the prod-like stack; the worker chart carries the CA and the setting.
+- Files: `agents/mail-triage/app/settings.py`, `agents/mail-triage/app/db/engine.py`, `deploy/charts/worker/`, `deploy/prod-like/pg_hba.conf`, `compose.yaml`, `agents/mail-triage/tests/infra/`
+- Depends on: U-web-settings-39
+- Parallel: yes
+- Guardrails: guardrail-tls-certificates, guardrail-helm, guardrail-compose, guardrail-sqlalchemy-alembic
+- Criteria:
+  1. Given the agent role connecting without TLS in the prod-like stack, When it tries, Then the server refuses (W-8, W-9) (type: security; level: prod-like).
+  2. Given the worker chart, When rendered, Then the CA and `verify-full` are set for the runtime and the migrate job (type: security; level: chart).
+  3. Given the agent settings in production, When `sslmode` is weaker than `verify-full`, Then start-up refuses (type: error; level: unit).
+
+### U-web-settings-59: Safe defaults and response headers (R1; challenge fix; SEC-11, SEC-12, CR-09, CR-11)
+
+- Layer: backend, web (nginx)
+- Contract: `environment` defaults to production and `development` or `test` must be set explicitly; the API sends `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Resource-Policy: same-origin` on every response; nginx sends the same security headers in every location from one include; `PUT /api/settings` declares `session` once.
+- Files: `backend/app/config.py`, `backend/app/middleware.py`, `backend/app/routers/settings.py`, `apps/web/nginx.conf`, `apps/web/snippets/security-headers.conf`, `backend/tests/test_http_surface.py`, `backend/tests/test_edge_config.py`
+- Depends on: U-web-settings-52
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-docker, guardrail-pytest
+- Criteria:
+  1. Given no `APP_ENVIRONMENT`, When settings load, Then production rules apply and `/docs` is off (AC-19) (type: security; level: unit).
+  2. Given any API response including errors, When read, Then the three headers are present (W-5) (type: security; level: api).
+  3. Given every nginx location, When requested, Then the same security headers are present (type: security; level: unit).
+
+### U-web-settings-60: One cookie builder, current attemptsLeft docs, one retention constant (R1; challenge fix; CR-03, CR-04, CR-10)
+
+- Layer: backend
+- Contract: `app/auth/cookies.py` builds and clears every `__Host-` cookie; `client_key` lives next to `clientaddr`; the verify-code description says `attemptsLeft` is present for a real or decoy login request and the generated files are rebuilt; one `LOGIN_REQUEST_RETENTION` constant; expired sessions and login requests are purged on the first request of each hour as well as at start-up.
+- Files: `backend/app/auth/cookies.py`, `backend/app/auth/session.py`, `backend/app/auth/request_code.py`, `backend/app/auth/verify_code.py`, `backend/app/routers/auth.py`, `backend/app/startup.py`, `docs/api/openapi.json`, `docs/api/reference.md`, `apps/web/src/api/schema.d.ts`, `backend/tests/auth/test_cookies.py`
+- Depends on: U-web-settings-53, U-web-settings-54
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-python, guardrail-pytest
+- Criteria:
+  1. Given each cookie, When set or cleared, Then it is `__Host-`, Secure, HttpOnly, SameSite=Lax, Path=/ and has no Domain (AC-7) (type: security; level: unit).
+  2. Given the generated API files, When regenerated, Then the check passes and the `attemptsLeft` text matches AC-3 (type: edge; level: unit).
+  3. Given expired rows and one hour passing (`FakeClock`), When the next request arrives, Then they are purged once (type: edge; level: db).
+
+### U-web-settings-61: Conflict marks name where the other change came from (R1; challenge fix; RT-08)
+
+- Layer: web
+- Contract: the conflict marks and buttons derive their wording from `updatedVia` (web or Telegram).
+- Files: `apps/web/src/features/settings/ConflictLayer.tsx`, `apps/web/src/features/settings/useConflict.ts`, `apps/web/src/features/settings/ConflictLayer.test.tsx`
+- Depends on: U-web-settings-35
+- Parallel: yes
+- Guardrails: guardrail-react, guardrail-vitest-rtl, guardrail-a11y
+- Criteria:
+  1. Given a 409 whose row has `updatedVia` web, When the marks render, Then they say the web now has the value and the button says to keep the stored value (W-11, W-12) (type: security; level: component).
+  2. Given `updatedVia` Telegram, When rendered, Then the wording names Telegram (type: happy; level: component).
+  3. Given both, When axe runs, Then no violation (type: a11y; level: component).
+
+### U-web-settings-62: Test hygiene: no silent skips, structural decoy check (R1; challenge fix; CR-02, CR-05, CR-12)
+
+- Layer: backend, web tests
+- Contract: database fixtures fail instead of skip when `CI` is set and skip only for Docker-unavailable errors; a CI step asserts a minimum number of database tests ran; the decoy equality test compares the recorded database and mail-queue steps of both paths and the wall-clock comparison runs only in the mutation workflow behind a marker; the contract fixture filters its cases before generating; the journey uses web-first assertions instead of `setTimeout`.
+- Files: `backend/tests/db/conftest.py`, `backend/tests/db/test_database_tls.py`, `backend/tests/db/test_contract_fixture.py`, `backend/tests/auth/test_decoy_requests.py`, `.github/workflows/ci.yml`, `apps/web/e2e/journey.spec.ts`
+- Depends on: U-web-settings-53
+- Parallel: no
+- Guardrails: guardrail-pytest, guardrail-playwright
+- Criteria:
+  1. Given `CI` is set and the container cannot start, When the database tests run, Then the run fails (type: security; level: unit).
+  2. Given the backend job, When it ends, Then it fails if fewer than the stated number of database tests ran (type: security; level: ci).
+  3. Given a known and an unknown username, When requested, Then the recorded steps are equal (AC-30) (type: security; level: api).
 
 ## Coverage of the acceptance criteria
 
@@ -1120,6 +1284,8 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-8 `updatedAt` and `updatedVia` are null at version 0 (U-20).
 - D-11 a failed send starts the 60 second cooldown but does not count towards the 5-codes-per-hour cap, so a mail outage cannot lock Marco out (ADR-0036, spec AC-29 and AC-31; U-06, U-11, U-16, U-17).
 - D-12 a locked web gives the same generic refusal as any other refused request, with no explanation of the lock; the screens document has no locked state (U-18, U-31, U-43).
+- D-14 the owner cannot be locked out by decoys or other clients; limits per client, IPv6 per /64 (Marco, 2026-11-13; ADR-0039; U-51, U-52, U-53, U-54).
+- D-15 the wrong-code alert moves into R1 and 15 wrong codes in 24 hours set the web lock (Marco, 2026-11-13; ADR-0039; U-48, U-55).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
 
@@ -1130,7 +1296,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 50 units (45 in R1, 5 in R2), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 62 units (58 in R1, 4 in R2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 
@@ -1142,6 +1308,7 @@ Filled in while building, in the manner of `adjustable-quiet-hours`. Carried ove
   - Windows, local foreground runs of `uv run python mutation/run.py <module>` (CPython 3.13.14): 0.00 % survived for every module (`code_hash`, `code_rules`, `csrf`, `digest`, `event_rules`, `expiry`, `mask`, `request_code_rules`, `return_to`, `verify_code_rules`, `clientaddr`, `limits`). No survivor, so the exclusion list `backend/mutation/code_rules.exclusions` stays empty.
   - The first attempt (run 43297283455, all modules serial in one job) hit the 120 minute job timeout and was cancelled; the workflow now has a `backend-matrix` job that reads the module list from `backend/cosmic-ray.toml` and a `backend` job per module.
 - Migration numbers are checked against `main` before each merge.
+- Phase 6 challenge (2026-11-13), reports by red-team, security-architect and code-reviewer on `main` 67b137e: no Critical, two High (decoy lock-out, chart without trusted proxies); Medium and Low are fixed by U-51 to U-62, decisions in ADR-0039. Not fixed here: CR-01 (`scripts/architecture.mjs` arrives with the kit upgrade PR; run the architecture check after it merges), CR-06 (user guide, phase 8), CR-08 (hand-written boundary validation in `apps/web`, a Low follow-up), the ingress controller choice (D-7).
 
 Follow-ups found while building (2026-11-12), each to be handled by the named unit or a fix unit:
 
