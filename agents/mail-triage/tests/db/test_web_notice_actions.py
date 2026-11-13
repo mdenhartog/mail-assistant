@@ -209,7 +209,8 @@ async def test_given_the_agent_role_when_the_lock_and_the_undo_run_then_no_other
             "select has_table_privilege($1, $2, 'select, insert, update, delete')", AGENT, f"web_auth.{table}"
         )
     # the alert of U-web-settings-48 reads the events; it never writes them
-    assert await owner.fetchval("select has_table_privilege($1, 'web_auth.security_event', 'select')", AGENT)
+    assert await owner.fetchval("select has_column_privilege($1, 'web_auth.security_event', 'count', 'select')", AGENT)
+    assert not await owner.fetchval("select has_table_privilege($1, 'web_auth.security_event', 'select')", AGENT)
     assert not await owner.fetchval(
         "select has_table_privilege($1, 'web_auth.security_event', 'insert, update, delete, truncate')", AGENT
     )
