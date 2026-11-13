@@ -157,7 +157,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   1. Given an unhandled exception that carries a canary, When the response is built, Then the body is a generic 500 problem without class, message or trace, and the canary is only in the server-side error log as the class name (AC-15, W-6) (type: security; level: api).
   2. Given an unknown path, When requested, Then 404 with a generic problem (AC-15) (type: error; level: api).
   3. Given any response (200, 400, 401, 404, 429), When inspected, Then `no-store`, `nosniff` and `no-referrer` are present (AC-14, W-5) (type: security; level: api).
-  4. Given an HTML response the api serves, When inspected, Then the CSP has exactly the four directives and no `unsafe-inline` (AC-14, W-5) (type: security; level: api).
+  4. Given an HTML response the api serves, When inspected, Then the CSP has exactly the four directives and no `unsafe-inline` (AC-14, W-5) (type: security; level: api). Superseded by U-59: one deny-all CSP (`default-src 'none'; frame-ancestors 'none'`) on every API response.
   5. Given a request with `X-Request-Id: attacker`, When answered, Then the response header is the id from `IdSource` (W-13) (type: security; level: api).
   6. Given production settings, When `/docs`, `/redoc` and `/openapi.json` are requested, Then 404 each (AC-19, W-6) (type: security; level: api).
   7. Given a route outside the allow-list, a route without a `public` or `session` marker, and `/api/settings/reset`, When the inventory runs, Then each fails naming the path (AC-15; the R1 build has no R2 surface) (type: security; level: unit).
@@ -269,7 +269,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   1. Given a code created at 14:00:00 with a 600 s life, When asked at 14:09:59 and 14:10:00, Then not expired, then expired (AC-3) (type: edge; level: unit).
   2. Given a code with 4 and 5 wrong attempts, When one more wrong code is registered, Then the fifth wrong attempt kills the code (attempt 5 dead, attempt 4 alive) and a sixth is refused without a comparison (AC-3, AC-5) (type: edge; level: unit).
   3. Given the last request at 14:00:00 (sent or not) and a 60 s cooldown, When asked at 14:00:59 and 14:01:00, Then 1 second remains, then 0 (AC-5, AC-31) (type: edge; level: unit).
-  4. Given sent codes at 13:00:01 and later (failed sends are not in the list), When asked at 14:00:00 and 14:00:01, Then the first send still counts, then it falls out of the hour; with 4 sent codes in the hour the cap is not reached, with 5 it is (AC-5, AC-31) (type: edge; level: unit).
+  4. Given sent codes at 13:00:01 and later (failed sends are not in the list), When asked at 14:00:00 and 14:00:01, Then the first send still counts, then it falls out of the hour; with 4 sent codes in the hour the cap is not reached, with 5 it is (AC-5, AC-31) (type: edge; level: unit). Superseded by D-16 and U-53: every request counts from `created_at`, sent or not.
   5. Given a session last seen at 14:00:00, When asked at 14:29:59 and 14:30:00, Then valid, then idle-expired (AC-7) (type: edge; level: unit).
   6. Given a session created at 08:00:00 with activity every 20 minutes, When asked at 19:59:59 and 20:00:00, Then valid, then absolute-expired (AC-7) (type: edge; level: unit).
   7. Given naive datetimes, When passed in, Then an error (type: error; level: unit).
@@ -297,7 +297,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 ### U-web-settings-13: Security event store (R1; the alert is R2)
 
 - Layer: backend
-- Contract: `SecurityEvents.record(kind, request_id, client, username_hash=None)` writes `web_auth.security_event`; kinds `code_refused` (wrong, expired, used, exhausted, no cookie; the R2 alert counts these), `code_request_refused` (cooldown, hourly cap), `mail_failed`, `session_start`, `session_end`, `csrf_refused`, `rate_limited`, `lock_refused`; one row per kind, client and window (`floor(clock.now() / 60)`); an unknown username is stored only as its digest (U-10); one structured log line per recorded event with kind, result, client class and request id.
+- Contract: `SecurityEvents.record(kind, request_id, client, username_hash=None)` writes `web_auth.security_event`; kinds `code_refused` (wrong, expired, used, exhausted, no cookie; the R2 alert counts these), `code_request_refused` (cooldown, hourly cap), `mail_failed`, `session_start`, `session_end`, `csrf_refused`, `rate_limited`, `lock_refused`; one row per kind, client and window (`floor(clock.now() / 60)`); an unknown username is stored only as its digest (U-10); one structured log line per recorded event with kind, result, client class and request id. Changed by U-54: a repeat of `code_refused` increments `count`; U-63 adds `code_invalid`.
 - Files: `backend/app/security_events.py`, `backend/tests/test_security_events.py`
 - Depends on: U-web-settings-07, U-web-settings-09, U-web-settings-10
 - Parallel: no
@@ -380,7 +380,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   3. Given both cases, When the work done is counted (calls to hash and store, with the fake clock advancing a fixed step per call), Then the same number of steps run, so the timing class is the same (AC-30, W-2) (type: security; level: api).
   4. Given the mailer fails, When a code is requested, Then the answer equals the success answer, a `mail_failed` event exists, the failed send starts the cooldown (a second request within 60 s gets 429) and does not count towards the hourly cap, and nothing about the cause or the address is in the response or log (AC-29, AC-31, W-15) (type: security; level: api).
   5. Given a second request at 59 s and at 60 s after the first, whether the first send succeeded or failed, When requested, Then 429 with `Retry-After: 1`, then 200 and the earlier code no longer works (AC-5, AC-31) (type: edge; level: api).
-  6. Given five sent codes in an hour (spaced 60 s) and a sixth request, When requested, Then the sixth gets 429 with `Retry-After` until the oldest sent code falls out of the hour (59 min 59 s still 429, 60 min 1 s 200) and no message is sent; Given instead five failed sends spaced 60 s, Then the sixth request is answered 200 and its message is sent, because the cap counts only sent codes (AC-5, AC-31, W-7) (type: edge; level: api).
+  6. Given five sent codes in an hour (spaced 60 s) and a sixth request, When requested, Then the sixth gets 429 with `Retry-After` until the oldest sent code falls out of the hour (59 min 59 s still 429, 60 min 1 s 200) and no message is sent; Given instead five failed sends spaced 60 s, Then the sixth request is answered 200 and its message is sent, because the cap counts only sent codes (AC-5, AC-31, W-7) (type: edge; level: api). Superseded by D-16 and U-53: a failed send counts.
   7. Given a wrong or missing `Origin`, When requested, Then 403 and no login request row (AC-8, W-4) (type: security; level: api).
   8. Given a username of 65 characters, a control character or a non-string, When requested, Then 422 before any work and no log line contains it (W-15) (type: security; level: api).
   9. Given a refused request (429), When it happens, Then a `code_request_refused` event is recorded once per window (AC-20, AC-31) (type: security; level: db).
@@ -953,10 +953,10 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   5. Given the real agent role, When it selects `security_event`, Then it works; when it inserts, updates or deletes there, or touches `session` or `login_request`, Then 42501 (type: security; level: db).
   6. Given logs and the notice text, When captured with canary values, Then no digest, username or code appears (W-13, W-15) (type: security; level: agent).
 
-### U-web-settings-49: Audit retention purge in the migrate job (R2)
+### U-web-settings-49: Audit retention purge in the migrate job (R1 since 2026-11-13)
 
 - Layer: backend (database; agent image)
-- Contract: `python -m app purge` runs under the owner role as a step of the migrate job, after migrate and grants (not a CronJob, not a runtime role): it deletes `settings.settings_change` and `web_auth.security_event` rows older than one year (injected clock) and expired `login_request` and `session` rows. `settings_change` stays append-only for the runtime roles through grants; the owner purge is the one documented delete path. The migrate command runs the step, so the Job and the compose service need no change.
+- Contract: `python -m app purge` runs under the owner role as a step of the migrate job, after migrate and grants (not a CronJob, not a runtime role): it deletes `settings.settings_change` rows older than one year and `web_auth.security_event` rows older than 90 days (Marco, 2026-11-13) (injected clock) and expired `login_request` and `session` rows. `settings_change` stays append-only for the runtime roles through grants; the owner purge is the one documented delete path. The migrate command runs the step, so the Job and the compose service need no change.
 - Files: `agents/mail-triage/app/db/purge.py`, `agents/mail-triage/app/db/migrate.py`, `agents/mail-triage/app/__main__.py`, `agents/mail-triage/tests/db/test_purge.py`
 - Depends on: U-web-settings-07, U-web-settings-08
 - Parallel: yes
@@ -964,7 +964,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 - Criteria:
   1. Given audit records 366 days and 364 days old (`FakeClock`), When the purge runs, Then only the older one is removed (AC-21) (type: happy; level: db).
   2. Given a record exactly 365 days old, When the purge runs, Then the boundary follows one stated rule, tested on both sides (AC-21) (type: edge; level: db).
-  3. Given `security_event` rows older than a year, and expired `login_request` and `session` rows, When the purge runs, Then they are removed and live rows stay (AC-21, W-13) (type: happy; level: db).
+  3. Given `security_event` rows older than 90 days, and expired `login_request` and `session` rows, When the purge runs, Then they are removed and live rows stay (AC-21, W-13) (type: happy; level: db).
   4. Given the agent role and the web role, When they delete from `settings_change` or truncate it, Then 42501 still (AC-17) (type: security; level: db).
   5. Given the migrate job, When it runs, Then the order is migrate, grants, purge, and a failing purge makes the job exit non-zero naming the step (AC-21) (type: error; level: db).
   6. Given the rendered worker chart, When searched, Then there is no `CronJob` and no workload with the owner secret other than the migrate Job (AC-21, W-13) (type: security; level: chart).
@@ -1155,6 +1155,75 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   2. Given the backend job, When it ends, Then it fails if fewer than the stated number of database tests ran (type: security; level: ci).
   3. Given a known and an unknown username, When requested, Then the recorded steps are equal (AC-30) (type: security; level: api).
 
+### U-web-settings-63: The lock counts only wrong codes against a live request (R1; challenge round 2; ADR-0039 amendment; SEC2-01, RT2-01)
+
+- Layer: backend (agent unchanged)
+- Contract: `verify-code` records `code_refused` only for a well-formed wrong, expired or exhausting code against a login request that exists (real or decoy); a request without a login cookie, with a malformed body, or for a dead, unknown or replaced request records `code_invalid` instead, a kind that never counts towards the alert or the lock and is deduplicated like the other uncounted kinds. The answers to the visitor do not change (AC-30).
+- Files: `backend/app/auth/verify_code.py`, `backend/app/auth/event_rules.py`, `backend/tests/auth/test_verify_code.py`, `backend/tests/auth/test_event_rules.py`, `backend/tests/db/test_security_events.py`
+- Depends on: U-web-settings-54
+- Parallel: yes
+- Guardrails: guardrail-fastapi, guardrail-pytest
+- Criteria:
+  1. Given no login request, When 20 posts arrive from one client without cookie, with body `{}` and with a well-formed code and an unknown cookie, Then the sum of `count` of `code_refused` is 0 and `code_invalid` holds them (W-13) (type: security; level: db).
+  2. Given a live login request, When 5 wrong well-formed codes are posted with its cookie, Then the sum of `count` of `code_refused` is 5 (type: happy; level: db).
+  3. Given a decoy login request, When wrong codes are posted, Then they count as `code_refused` like for a real one (AC-30) (type: security; level: db).
+  4. Given the agent suite, When 50 `code_invalid` events exist, Then no alert and no lock (type: security; level: agent).
+
+### U-web-settings-64: A full decoy class is invisible, replace by cookie only, limiter keeps room for the owner (R1; challenge round 2; RT2-03, RT2-04, RT2-05)
+
+- Layer: backend
+- Contract: when the decoy class is full, a request for an unknown username is answered like any other (200, cookie, no code sent) but no row is stored, so it never refuses where the owner would not (AC-30); a new request replaces a live one only when it carries the same login cookie, never by `client_hash` alone; the limiter, when the counter bound is reached, evicts the oldest keys (or refuses only keys that are new and carry no valid session or login cookie) so many keys cannot refuse the owner; the limiter keys IPv6 per /64 with a second bound per /48.
+- Files: `backend/app/auth/login_requests.py`, `backend/app/auth/request_code.py`, `backend/app/limits.py`, `backend/app/clientaddr.py`, `backend/tests/auth/test_decoy_requests.py`, `backend/tests/test_limits.py`
+- Depends on: U-web-settings-53, U-web-settings-51
+- Parallel: yes
+- Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given 100 live decoy rows, When a code is requested for an unknown name and for the configured name from a fresh client, Then status, headers apart from the cookie value and body shape are identical (AC-30) (type: security; level: api).
+  2. Given the owner's live request in browser A and another device in the same /64, When that device asks for the configured username without A's cookie, Then A's request is still live; a request with A's cookie replaces it (type: security; level: db).
+  3. Given the limiter at its counter bound, When a new key carries a valid session cookie, or a key seen in the previous window arrives, Then it is allowed; 10000 keys from one /48 cannot refuse the owner (type: security; level: unit).
+  4. Given the mutation gate, When `limits.py` and `clientaddr.py` are mutated, Then survivors stay at 0 (type: edge; level: unit).
+
+### U-web-settings-65: Contract version, count integrity, column grants, event index (R1; challenge round 2; SEC2-02, SEC2-03, RT2-06, RT2-09)
+
+- Layer: database (migration 0012), backend, agent
+- Contract: migration 0012 raises `settings.contract_version()` and the backend `EXPECTED_CONTRACT_VERSION` (down lowers it), so `/readyz` is 503 on a database older or newer than the api; a `BEFORE UPDATE` trigger on `web_auth.security_event` allows only `NEW.count = OLD.count + 1` with every other column unchanged, plus `CHECK (count >= 1)`; the agent role gets `SELECT (id, kind, at, count)` only; an index on `(kind, at)`.
+- Files: `agents/mail-triage/migrations/versions/0012_event_integrity.py`, `agents/mail-triage/app/db/grants.sql`, `agents/mail-triage/app/db/models.py`, `backend/app/db.py`, `agents/mail-triage/tests/db/test_event_integrity_migration.py`, `backend/tests/db/test_readiness_contract.py`
+- Depends on: U-web-settings-54, U-web-settings-48
+- Parallel: yes
+- Guardrails: guardrail-sqlalchemy-alembic, guardrail-fastapi, guardrail-pytest
+- Criteria:
+  1. Given the chain at 0009, 0010 or 0011, When `/readyz` runs, Then 503; at 0012, Then 200 (type: security; level: db).
+  2. Given the web role, When it sets `count` to 0, to old+2 or changes any other column, Then it is refused; `count + 1` works (W-8, W-13) (type: security; level: db).
+  3. Given the agent role, When it selects `username_hash`, `client_key` or `request_id` from `security_event`, Then 42501; `id`, `kind`, `at` and `count` work (type: security; level: db).
+  4. Given the alert query on a large table, When explained, Then it uses the `(kind, at)` index (type: edge; level: db).
+  5. Given migration 0012, When run up, down and up, Then it is reversible (type: edge; level: db).
+
+### U-web-settings-66: Chart: environment cannot be overridden, digests everywhere (R1; challenge round 2; RT2-08, SEC2-05)
+
+- Layer: infra
+- Contract: the app chart renders `APP_ENVIRONMENT` from `.Values.environment` and fails when `api.env` or `web.env` sets `APP_ENVIRONMENT`, `APP_DATABASE_*`, `APP_TRUSTED_PROXY_*` or any limit key (`APP_*_PER_*`, `APP_CODES_PER_HOUR`, `APP_MAX_ATTEMPTS`); the agent Dockerfile and the Caddy image are pinned by `@sha256`; the worker chart gets a values schema that requires a digest when `environment` is production; the digest lint covers every Dockerfile and compose image in the repo.
+- Files: `deploy/charts/app/templates/workloads.yaml`, `deploy/charts/app/values.schema.json`, `deploy/charts/worker/values.schema.json`, `deploy/charts/worker/values.yaml`, `agents/mail-triage/Dockerfile`, `compose.yaml`, `agents/mail-triage/tests/infra/test_ingress_gates.py`
+- Depends on: U-web-settings-57, U-web-settings-58
+- Parallel: yes
+- Guardrails: guardrail-helm, guardrail-docker, guardrail-kubernetes, guardrail-compose
+- Criteria:
+  1. Given environment production and `api.env.APP_ENVIRONMENT=development` or `APP_CODES_PER_HOUR=1000`, When `helm template` runs, Then it fails naming the key (type: security; level: chart).
+  2. Given worker values with environment production and no digest, When the schema runs, Then it refuses (type: security; level: chart).
+  3. Given every Dockerfile and compose image in the repo, When linted, Then each has `@sha256` or an explicit documented exception (type: security; level: unit).
+
+### U-web-settings-67: Digest domain separation, IPv6 event class (R1; challenge round 2; SEC2-07, SEC2-08)
+
+- Layer: backend
+- Contract: the client digest uses its own derived subkey (`HMAC(key, b"client-key")`) so no username can collide with a client digest; `client_class` classifies a `/64` key as `ipv6`.
+- Files: `backend/app/auth/request_code_rules.py`, `backend/app/auth/event_rules.py`, `backend/tests/auth/test_request_code_rules.py`, `backend/tests/auth/test_event_rules.py`
+- Depends on: U-web-settings-64, U-web-settings-63
+- Parallel: no
+- Guardrails: guardrail-python, guardrail-pytest
+- Criteria:
+  1. Given the username `client:10.0.0.5`, When hashed, Then `username_key` differs from `client_hash` of `10.0.0.5` (type: security; level: unit).
+  2. Given an IPv6 `/64` key, When classified, Then the class is `ipv6` (type: edge; level: unit).
+  3. Given the mutation gate, When both modules are mutated, Then survivors stay at 0 (type: edge; level: unit).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1291,6 +1360,9 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-16 every code request counts towards the 5 an hour, also one whose send failed, for known and unknown usernames alike; AC-30 wins over D-11 (Marco, 2026-11-13; U-53). With the mailer down Marco waits at most an hour; each failure stays a `mail_failed` event.
 - D-14 the owner cannot be locked out by decoys or other clients; limits per client, IPv6 per /64 (Marco, 2026-11-13; ADR-0039; U-51, U-52, U-53, U-54).
 - D-15 the wrong-code alert moves into R1 and 15 wrong codes in 24 hours set the web lock (Marco, 2026-11-13; ADR-0039; U-48, U-55).
+- D-17 the alert and the lock count only wrong codes against an existing login request (real or decoy); no-cookie, malformed and dead-request refusals are `code_invalid` and never count (challenge round 2, SEC2-01; ADR-0039 amendment; U-63).
+- D-18 a person who knows the username can use up the 5 codes an hour from one device; accepted as R-4 until the review of 2027-05-10 (Marco, 2026-11-13; RT2-02).
+- D-19 U-49 (retention purge, 90 days for security events, one year for audit) and an index on `(kind, at)` move into R1 and are a gate before production (Marco, 2026-11-13; U-49, U-65).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
 
@@ -1301,7 +1373,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 62 units (58 in R1, 4 in R2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 67 units (64 in R1, 3 in R2; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 
