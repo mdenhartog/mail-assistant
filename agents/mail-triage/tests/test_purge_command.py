@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-
-import pytest
+from typing import TYPE_CHECKING
 
 from app import wiring
 from app.db.migrate import MigrationStepFailed
