@@ -1282,8 +1282,9 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-4 and D-5 are gone with the identity provider; failures are inline on the login page.
 - D-6 the R2 draft lives in `sessionStorage` (U-47).
 - D-8 `updatedAt` and `updatedVia` are null at version 0 (U-20).
-- D-11 a failed send starts the 60 second cooldown but does not count towards the 5-codes-per-hour cap, so a mail outage cannot lock Marco out (ADR-0036, spec AC-29 and AC-31; U-06, U-11, U-16, U-17).
+- D-11 (replaced by D-16 on 2026-11-13) a failed send starts the 60 second cooldown but did not count towards the 5-codes-per-hour cap, so a mail outage cannot lock Marco out (ADR-0036, spec AC-29 and AC-31; U-06, U-11, U-16, U-17).
 - D-12 a locked web gives the same generic refusal as any other refused request, with no explanation of the lock; the screens document has no locked state (U-18, U-31, U-43).
+- D-16 every code request counts towards the 5 an hour, also one whose send failed, for known and unknown usernames alike; AC-30 wins over D-11 (Marco, 2026-11-13; U-53). With the mailer down Marco waits at most an hour; each failure stays a `mail_failed` event.
 - D-14 the owner cannot be locked out by decoys or other clients; limits per client, IPv6 per /64 (Marco, 2026-11-13; ADR-0039; U-51, U-52, U-53, U-54).
 - D-15 the wrong-code alert moves into R1 and 15 wrong codes in 24 hours set the web lock (Marco, 2026-11-13; ADR-0039; U-48, U-55).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
