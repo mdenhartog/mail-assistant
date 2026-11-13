@@ -312,3 +312,5 @@ class WebNoticeToken(Base):
     before: Mapped[dict[str, object]] = mapped_column(JSONB)  # the values Undo restores
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    burst_id: Mapped[str] = mapped_column(String(64), index=True)  # the same for every notice of one burst
+    first_version: Mapped[int] = mapped_column(Integer)  # the first change of the burst

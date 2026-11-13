@@ -2,7 +2,8 @@
 
 ``webundo:<token>`` puts back the values as they were before the first web change of the burst the notice belongs to
 (the token record holds them). The restore is an ordinary audited write guarded by a version: the highest version of
-that burst, so a change that came later (Telegram, or a newer web change) makes it refuse and write nothing.
+that burst, found by its own id and never by comparing values. A change that came later (Telegram, or a newer web
+change) makes it refuse and write nothing.
 ``weblock:<token>`` first sets ``web_auth.web_lock`` (setting it again changes nothing), then does the same undo, so
 the lock holds even when the undo conflicts. ``/web_unlock`` deletes the lock row.
 
@@ -41,8 +42,8 @@ class TokenStore(Protocol):
         """The record of ``token``, expired or not; ``None`` when there is none (never made, or used)."""
         ...
 
-    async def burst_end(self, before: dict[str, object]) -> int:
-        """The highest announced version among the tokens that restore the same ``before``."""
+    async def burst_end(self, burst_id: str, first_version: int) -> int:
+        """The highest announced version among the tokens of the burst ``burst_id`` (0 when none)."""
         ...
 
     async def consume(self, token: str) -> bool:
@@ -147,7 +148,7 @@ class WebNoticeActions:
         policy = _policy_before(record.before)
         if policy is None:
             return settings_text.UNDO_REFUSED if record.before else settings_text.NOTHING_TO_UNDO
-        guard = max(record.version, await self._tokens.burst_end(record.before))
+        guard = max(record.version, await self._tokens.burst_end(record.burst_id, record.first_version))
         try:
             await self._settings.write(policy, guard, VIA, self._by)
         except VersionConflict:

@@ -25,8 +25,10 @@ class FakeTokens:
     async def find(self, token: str) -> NoticeToken | None:
         return next((r for r in self.records if r.token == token), None)
 
-    async def burst_end(self, before: dict[str, object]) -> int:
-        return max((r.version for r in self.records if r.before == before), default=0)
+    async def burst_end(self, burst_id: str, first_version: int) -> int:
+        return max(
+            (r.version for r in self.records if r.burst_id == burst_id and r.version >= first_version), default=0
+        )
 
     async def consume(self, token: str) -> bool:
         found = await self.find(token)
