@@ -67,7 +67,7 @@ R2            U-45 reset backend (U-22) ─► U-46 reset web (U-32)   U-47 draf
 Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made during the build"):
 
 - U-02 wires the shared package into the backend (lockfile, image, compose, CI) before any backend code imports it, as U-quiet-hours-01b did for the agent.
-- Migration 0008 is the first migration of R1 (U-06); the challenge fixes add 0009 (U-53), 0010 (U-54) and 0011 (U-56), applied in that order. The R2 purge adds no migration. If another migration lands first, rename before merge; do not renumber after.
+- Migration 0008 is the first migration of R1 (U-06); the challenge fixes add 0009 (U-56, merged first), 0010 (U-53) and 0011 (U-54). The R2 purge adds no migration. If another migration lands first, rename before merge; do not renumber after.
 - A unit that adds an environment variable or a role must carry every consumer of it in the same PR: U-08 carries `WEB_ROLE_PASSWORD` in the job, the agent's compose file, the CI `runtime-role` job's `.env` line and the worker chart's Secret together, so `main` stays green. The same for U-37: the removal of `proxy_pass` from the web image and the new edge arrive together with the update of the existing `e2e` job.
 - A one-shot compose service (migrate) is not part of `up --wait` (it exits and counts as failed). The CI job runs it with `docker compose run --rm` before `up --wait` (U-42).
 - The R1 build exposes no R2 surface: U-05 (no `/api/settings/reset` in the route inventory and in `openapi.json`), U-32 (no Reset button in the DOM) and U-43 (the path answers 404 through the edge). U-45 and U-46 add them together with their tests.
@@ -1017,9 +1017,9 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 
 ### U-web-settings-53: The owner cannot be locked out by decoys, other clients or the cap (R1; challenge fix; ADR-0039; RT-01, RT-04, RT-06, SEC-02)
 
-- Layer: backend, database (migration 0009)
+- Layer: backend, database (migration 0010)
 - Contract: `web_auth.login_request` gains `client_hash` (keyed digest of the client key); decoys have their own open cap; a request for the configured username is never refused for decoy rows; open rows and codes per hour are also capped per `client_hash`; a new request replaces a live one only for the same login cookie or the same `client_hash`; every 429 carries the real remaining wait; the hourly cap counts from `created_at` for real and decoy rows alike.
-- Files: `agents/mail-triage/migrations/versions/0009_login_request_client.py`, `backend/app/auth/login_requests.py`, `backend/app/auth/request_code.py`, `backend/app/auth/request_code_rules.py`, `backend/app/config.py`, `backend/tests/auth/test_decoy_requests.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/auth/test_login_requests.py`
+- Files: `agents/mail-triage/migrations/versions/0010_login_request_client.py`, `backend/app/auth/login_requests.py`, `backend/app/auth/request_code.py`, `backend/app/auth/request_code_rules.py`, `backend/app/config.py`, `backend/tests/auth/test_decoy_requests.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/auth/test_login_requests.py`
 - Depends on: U-web-settings-50, U-web-settings-51
 - Parallel: no
 - Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
@@ -1029,13 +1029,13 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   3. Given Marco's live request in browser A, When another client asks for a code for his username, Then A's code still verifies; a request with A's cookie replaces it (type: security; level: db).
   4. Given a refused request, When the 429 is read, Then `Retry-After` equals the real time until the limit frees (type: edge; level: api).
   5. Given five requests then a sixth for a known and an unknown username at identical times, also when the mailer fails, When answered, Then status and `Retry-After` are identical (AC-30) (type: security; level: api).
-  6. Given migration 0009, When run up, down and up, Then it is reversible and the web role gets only the grants it needs (type: edge; level: db).
+  6. Given migration 0010, When run up, down and up, Then it is reversible and the web role gets only the grants it needs (type: edge; level: db).
 
 ### U-web-settings-54: Wrong codes are counted, the lock stops code mail, the mail text says what to do (R1; challenge fix; ADR-0039; RT-09, SEC-04, SEC-08, SEC-09)
 
-- Layer: backend, database (migration 0010)
+- Layer: backend, database (migration 0011)
 - Contract: `web_auth.security_event` gains `count`; a repeated `(kind, client_key, window)` increments it instead of being dropped; `client_key` is stored as a keyed digest; while the web lock is set, a code request answers as usual but creates no row and sends no mail; the code mail says that someone on the network knows the username if the code was not asked for and points to the Telegram Lock command.
-- Files: `agents/mail-triage/migrations/versions/0010_security_event_count.py`, `backend/app/security_events.py`, `backend/app/auth/event_rules.py`, `backend/app/auth/request_code.py`, `backend/app/mail/message.py`, `backend/tests/db/test_security_events.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/mail/test_message.py`
+- Files: `agents/mail-triage/migrations/versions/0011_security_event_count.py`, `backend/app/security_events.py`, `backend/app/auth/event_rules.py`, `backend/app/auth/request_code.py`, `backend/app/mail/message.py`, `backend/tests/db/test_security_events.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/mail/test_message.py`
 - Depends on: U-web-settings-53
 - Parallel: no
 - Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
@@ -1061,16 +1061,16 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 
 ### U-web-settings-56: Undo burst is identified by an explicit id (R1; challenge fix; CR-07)
 
-- Layer: agent, database (migration 0011)
+- Layer: agent, database (migration 0009)
 - Contract: each Undo token record stores `burst_id` and `first_version`; the guard uses them instead of comparing `before` values; a partial send failure keeps the original burst.
-- Files: `agents/mail-triage/migrations/versions/0011_notice_burst.py`, `agents/mail-triage/app/usecases/web_notice.py`, `agents/mail-triage/app/usecases/web_notice_actions.py`, `agents/mail-triage/tests/db/test_web_notice.py`
+- Files: `agents/mail-triage/migrations/versions/0009_notice_burst.py`, `agents/mail-triage/app/usecases/web_notice.py`, `agents/mail-triage/app/usecases/web_notice_actions.py`, `agents/mail-triage/tests/db/test_web_notice.py`
 - Depends on: U-web-settings-27
 - Parallel: yes
 - Guardrails: guardrail-telegram, guardrail-sqlalchemy-alembic
 - Criteria:
   1. Given two bursts whose `before` values are equal inside 24 hours, When Undo is pressed on the older notice, Then only that burst is restored or refused as changed (AC-13) (type: edge; level: db).
   2. Given a send failure after the first notice of a burst, When retried and Undo is pressed on the first notice, Then the pre-burst values return (type: error; level: db).
-  3. Given migration 0011, When run up, down and up, Then it is reversible (type: edge; level: db).
+  3. Given migration 0009, When run up, down and up, Then it is reversible (type: edge; level: db).
 
 ### U-web-settings-57: Ingress gates: HSTS, certificate alert, image digests (R1; challenge fix; RT-10, SEC-05, SEC-07)
 
@@ -1323,3 +1323,4 @@ Follow-ups found while building (2026-11-12), each to be handled by the named un
 - Duplicate `RETENTION` constants (`login_requests.py` and `startup.py`); the 503 body in readiness differs from the U-05 error model; the CSP also applies to dev-only `/docs`.
 - Open before staging: ingress-controller vocabulary is ingress-nginx while kind uses Traefik; the api PodDisruptionBudget default `minAvailable: 1` with one replica.
 - Tooling: the worktree isolation of the Agent tool refuses a primary working directory spelled `c:\` against `C:/`; builders create their own worktree with `git worktree add` under `.claude/worktrees/`.
+- Challenge fix status (2026-11-13): merged U-51 (#113), U-52 (#108), U-56 (#109, took migration 0009 because it landed first), U-57 (#110), U-58 (#112), U-61 (#111). U-61 changed the conflict wording of U-35: when the other change came from the web the marks read "You typed X, the web now has Y" and the button "Keep the stored value"; "Keep Telegram's" remains for a Telegram change (AC-28). U-53 takes migration 0010 and U-54 migration 0011.
