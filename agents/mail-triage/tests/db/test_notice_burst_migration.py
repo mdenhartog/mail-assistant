@@ -1,4 +1,4 @@
-"""U-web-settings-56: migration 0011 gives every Undo token record a burst id and the first version of its burst."""
+"""U-web-settings-56: migration 0009 gives every Undo token record a burst id and the first version of its burst."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ async def _columns(url: str) -> set[str]:
     return {r["column_name"] for r in rows}
 
 
-async def test_given_0011_when_run_up_down_and_up_then_the_columns_come_go_and_come_back_with_old_rows_grouped(
+async def test_given_0009_when_run_up_down_and_up_then_the_columns_come_go_and_come_back_with_old_rows_grouped(
     database_url: str,
 ) -> None:
     await _migrate(database_url, "0008")
@@ -56,7 +56,7 @@ async def test_given_0011_when_run_up_down_and_up_then_the_columns_come_go_and_c
     for token, version, before in (("a", 3, '{"quiet_start": 1}'), ("b", 4, '{"quiet_start": 1}'), ("c", 9, "{}")):
         await _execute(database_url, _INSERT.format(token=token, version=version, before=before))
 
-    await _migrate(database_url, "0011")
+    await _migrate(database_url, "0009")
 
     assert {"burst_id", "first_version"} <= await _columns(database_url)
     rows = {r["token"]: r for r in await _fetch(database_url, "select * from web_notice_token")}
@@ -69,7 +69,7 @@ async def test_given_0011_when_run_up_down_and_up_then_the_columns_come_go_and_c
     assert "first_version" not in await _columns(database_url)
     assert len(await _fetch(database_url, "select 1 from web_notice_token")) == 3
 
-    await _migrate(database_url, "0011")
+    await _migrate(database_url, "0009")
 
     assert {"burst_id", "first_version"} <= await _columns(database_url)
     assert len(await _fetch(database_url, "select 1 from web_notice_token")) == 3

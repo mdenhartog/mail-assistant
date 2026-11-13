@@ -8,15 +8,15 @@ The agent role's table-level grant (``app/db/grants.sql``) already covers the ne
 
 Downgrade: both columns go. Token records stay.
 
-Revision ID: 0011
+Revision ID: 0009
 Revises: 0008
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0011"
-down_revision = "0008"  # 0009 and 0010 are on other branches; the chain is joined before the merge
+revision = "0009"
+down_revision = "0008"  # 0008 is the head on main
 branch_labels = None
 depends_on = None
 
