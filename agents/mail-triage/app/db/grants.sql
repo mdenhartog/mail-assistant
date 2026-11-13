@@ -69,7 +69,11 @@ GRANT EXECUTE ON FUNCTION settings.contract_version() TO web_settings_runtime;
 
 -- Sign-in state. Security events are append-only; the lock is read here and written by the agent only.
 GRANT USAGE ON SCHEMA web_auth TO web_settings_runtime;
-GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.login_request, web_auth.session TO web_settings_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.session TO web_settings_runtime;
+-- A login request keeps who asked (username_key, client_hash) and its code hash from the insert on; only the counters
+-- and the times of its life change.
+GRANT SELECT, INSERT, DELETE ON web_auth.login_request TO web_settings_runtime;
+GRANT UPDATE (attempts, sent_at, dead_at) ON web_auth.login_request TO web_settings_runtime;
 GRANT SELECT, INSERT ON web_auth.security_event TO web_settings_runtime;
 GRANT SELECT ON web_auth.web_lock TO web_settings_runtime;
 GRANT USAGE, SELECT ON SEQUENCE web_auth.security_event_id_seq TO web_settings_runtime;

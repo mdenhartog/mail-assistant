@@ -118,6 +118,8 @@ services:
       APP_RESEND_COOLDOWN_SECONDS: "1"
       APP_CODES_PER_HOUR: "1000"
       APP_OPEN_LOGIN_REQUEST_CAP: "1000"
+      APP_OPEN_LOGIN_REQUESTS_PER_CLIENT: "1000"
+      APP_LOGIN_REQUESTS_PER_CLIENT_PER_HOUR: "1000"
     volumes:
       - ./deploy/prod-like/certs/ca.crt:/certs/ca.crt:ro
     healthcheck:

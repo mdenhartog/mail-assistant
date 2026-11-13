@@ -249,6 +249,7 @@ class LoginRequest(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     username_key: Mapped[str] = mapped_column(CHAR(64))
+    client_hash: Mapped[str] = mapped_column(CHAR(64))  # keyed digest of the client key (ADR-0039), never an address
     code_hash: Mapped[str] = mapped_column(CHAR(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(SmallInteger, server_default="0")

@@ -158,13 +158,9 @@ async def test_given_both_cases_when_the_work_is_counted_then_the_same_steps_run
 
     monkeypatch.setattr(login_requests, "hash_code", count_hash(login_requests.hash_code))
     monkeypatch.setattr(code_hash, "hash_code", count_hash(code_hash.hash_code))
-    # mark_sent runs after the answer; a decoy is stored by create_decoy, a real request by create
-    for name, step in (
-        ("last_requested_at", "last"),
-        ("sent_times_in_last_hour", "sent"),
-        ("create", "store"),
-        ("create_decoy", "store"),
-    ):
+    # mark_sent runs after the answer; a decoy is stored by create_decoy, a real request by create. Both read the
+    # limits and write the row in the one transaction of the store, so there is one step.
+    for name, step in (("create", "store"), ("create_decoy", "store")):
         original = getattr(api.store, name)
 
         def spy(*args: Any, _name: str = step, _original: Callable[..., Awaitable[Any]] = original) -> Awaitable[Any]:
@@ -204,7 +200,7 @@ async def test_given_the_mailer_fails_when_requested_then_the_answer_is_the_same
     assert _cookie(failed)[1] == _cookie(ok)[1]
     assert await _events(owner, "mail_failed") == 1
     assert len(api.mailer.sent) == 1
-    assert await api.store.sent_in_last_hour(_key(USERNAME), api.clock.now()) == 1
+    assert await _rows(owner) == 2
     logged = "\n".join(record.getMessage() for record in caplog.records)
     assert ADDRESS not in logged
     assert "mail send failed" not in logged
@@ -232,7 +228,8 @@ async def test_given_a_second_request_at_59_and_60_seconds_when_requested_then_4
     assert "set-cookie" not in early.headers
     assert on_time.status_code == 200
     assert await api.store.check(first_cookie, "111111", api.clock.now()) != Ok()
-    assert await api.store.check(_cookie(on_time)[0], "222222", api.clock.now()) == Ok()
+    # the refused request drew a code too (222222) and threw it away, so the issued one is the third
+    assert await api.store.check(_cookie(on_time)[0], "333333", api.clock.now()) == Ok()
 
 
 async def test_given_five_sent_codes_in_an_hour_when_a_sixth_is_requested_then_429_until_the_oldest_falls_out(
@@ -257,17 +254,24 @@ async def test_given_five_sent_codes_in_an_hour_when_a_sixth_is_requested_then_4
     assert len(api.mailer.sent) == 6
 
 
-async def test_given_five_failed_sends_when_a_sixth_is_requested_then_it_is_answered_and_sent(api: Api) -> None:
+async def test_given_five_failed_sends_when_a_sixth_is_requested_then_it_is_refused_like_for_an_unknown_username(
+    api: Api,
+) -> None:
+    # D-11 gave way to AC-30 (ADR-0039): a failed send counts toward the cap, so the hourly cap counts the same rows,
+    # from created_at, for a real and a decoy username and a mailer outage cannot tell them apart.
     api.mailer.fail()
     for _ in range(5):
-        assert (await api.request()).status_code == 200
+        for name in (USERNAME, UNKNOWN):
+            assert (await api.request(name)).status_code == 200
         api.clock.advance(timedelta(seconds=60))
     api.mailer.succeed()
 
-    sixth = await api.request()
+    known_sixth = await api.request(USERNAME)
+    unknown_sixth = await api.request(UNKNOWN)
 
-    assert sixth.status_code == 200
-    assert len(api.mailer.sent) == 1
+    assert known_sixth.status_code == unknown_sixth.status_code == 429
+    assert known_sixth.headers["retry-after"] == unknown_sixth.headers["retry-after"]
+    assert api.mailer.sent == []
 
 
 async def test_given_an_unknown_username_when_requested_again_then_the_cooldown_and_the_cap_answer_like_the_known_one(

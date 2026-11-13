@@ -5,31 +5,50 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
-from sqlalchemy import text
+from sqlalchemy import TextClause, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.code_hash import decoy_hash, hash_code, verify_code
 from app.auth.code_rules import attempts_exhausted, code_expired, register_wrong
+from app.auth.request_code_rules import RequestFacts, RequestLimits, request_wait
 from app.db import Database
 from app.ids import IdSource
 
 # The column `id` is VARCHAR(32) (migration 0008): 24 random bytes are exactly 32 URL-safe characters.
 _ID_BYTES: Final = 24
-# Rows are kept for an hour after the request so the hourly cap of sent codes can still be counted.
+# Rows are kept for an hour after the request so the hourly caps can still be counted from created_at.
 RETENTION: Final = timedelta(hours=1)
 _SERIALIZE_CREATE = text("SELECT pg_advisory_xact_lock(hashtext('web_auth.login_request'))")
-_REMOVE_OLD = text(
-    "DELETE FROM web_auth.login_request WHERE created_at < :since AND (sent_at IS NULL OR sent_at < :since)"
+_REMOVE_OLD = text("DELETE FROM web_auth.login_request WHERE created_at < :since")
+# A new request kills the live requests of the username that come from its client or carry its cookie, and only those.
+_KILL_REPLACED = text(
+    "UPDATE web_auth.login_request SET dead_at = :now "
+    "WHERE username_key = :username_key AND dead_at IS NULL AND expires_at > :now "
+    "AND (client_hash = :client_hash OR id = :cookie)"
 )
-_COUNT_OPEN_OF_OTHERS = text(
-    "SELECT count(*) FROM web_auth.login_request "
-    "WHERE dead_at IS NULL AND expires_at > :now AND username_key <> :username_key"
+_USERNAME_CREATED = text(
+    "SELECT created_at FROM web_auth.login_request WHERE username_key = :username_key AND created_at > :since"
 )
-_KILL_LIVE = text(
-    "UPDATE web_auth.login_request SET dead_at = :now WHERE username_key = :username_key AND dead_at IS NULL"
+_USERNAME_LIVE = text(
+    "SELECT expires_at FROM web_auth.login_request "
+    "WHERE username_key = :username_key AND dead_at IS NULL AND expires_at > :now"
+)
+_CLIENT_CREATED = text(
+    "SELECT created_at FROM web_auth.login_request WHERE client_hash = :client_hash AND created_at > :since"
+)
+_CLIENT_LIVE = text(
+    "SELECT expires_at FROM web_auth.login_request "
+    "WHERE client_hash = :client_hash AND dead_at IS NULL AND expires_at > :now"
+)
+# The class of a request: the owner's own rows, or every row that is not the owner's (the decoys).
+_CLASS_LIVE = text(
+    "SELECT expires_at FROM web_auth.login_request "
+    "WHERE dead_at IS NULL AND expires_at > :now AND (username_key = :owner_key) = :known"
 )
 _INSERT = text(
-    "INSERT INTO web_auth.login_request (id, username_key, code_hash, expires_at, created_at, sent_at) "
-    "VALUES (:id, :username_key, :code_hash, :expires_at, :created_at, :sent_at)"
+    "INSERT INTO web_auth.login_request "
+    "(id, username_key, client_hash, code_hash, expires_at, created_at, sent_at) "
+    "VALUES (:id, :username_key, :client_hash, :code_hash, :expires_at, :created_at, :sent_at)"
 )
 _LOCK_ROW = text(
     "SELECT code_hash, created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id FOR UPDATE"
@@ -38,14 +57,6 @@ _READ_ROW = text("SELECT created_at, attempts, dead_at FROM web_auth.login_reque
 _COUNT_WRONG = text("UPDATE web_auth.login_request SET attempts = :attempts, dead_at = :dead_at WHERE id = :id")
 _CONSUME = text("UPDATE web_auth.login_request SET dead_at = :now WHERE id = :id")
 _MARK_SENT = text("UPDATE web_auth.login_request SET sent_at = :now WHERE id = :id AND sent_at IS NULL")
-_LAST_REQUESTED = text("SELECT max(created_at) FROM web_auth.login_request WHERE username_key = :username_key")
-_SENT_SINCE = text(
-    "SELECT count(*) FROM web_auth.login_request WHERE username_key = :username_key AND sent_at > :since"
-)
-_SENT_TIMES = text(
-    "SELECT sent_at FROM web_auth.login_request "
-    "WHERE username_key = :username_key AND sent_at > :since ORDER BY sent_at"
-)
 
 
 @dataclass(frozen=True)
@@ -77,8 +88,24 @@ class Dead:
 Verdict = Ok | Wrong | Dead
 
 
-class LoginRequestCapReached(Exception):  # noqa: N818  # a state, not a fault
-    """Too many open login requests; nothing was written."""
+@dataclass(frozen=True)
+class Applicant:
+    """Who asks for a login request: the username, the owner, the client and the login cookie they came with."""
+
+    username_key: str  # keyed digest of the username as typed
+    owner_key: str  # keyed digest of the configured username
+    client_hash: str  # keyed digest of the client key
+    cookie: str | None  # the ``__Host-login`` value of the request, if any
+    known: bool  # whether the username is the configured one
+
+
+class LoginRequestRefused(Exception):  # noqa: N818  # a state, not a fault
+    """A limit holds; nothing was written. ``wait_seconds`` is the real time until the limit frees."""
+
+    def __init__(self, wait_seconds: int) -> None:
+        """Keep the wait."""
+        super().__init__(wait_seconds)
+        self.wait_seconds = wait_seconds
 
 
 class LoginRequests:
@@ -102,68 +129,83 @@ class LoginRequests:
         self._ttl = ttl
         self._max_attempts = max_attempts
 
-    async def create(self, username_key: str, code: str, now: datetime, cap: int) -> LoginRequest:
-        """Replace the live request of the username by a new one, in one transaction.
+    async def create(self, who: Applicant, code: str, now: datetime, limits: RequestLimits) -> LoginRequest:
+        """Store the request of the configured username, in one transaction under every limit.
 
-        Rows older than an hour go; a request that would bring the open ones to more than ``cap`` is refused before
-        anything is written. Creation is serialised so the cap holds under concurrency.
+        Rows older than an hour go. The live requests that come from the same client or carry the same cookie are
+        replaced; the others stay. Then the limits are read and, if one holds, nothing is kept (not even the
+        replacement). Creation is serialised so the limits hold under concurrency.
 
         Args:
-            username_key: The keyed digest of the username (64 characters).
+            who: The asker.
             code: The clear code; only its hash is stored.
             now: The request time (starts the cooldown).
-            cap: The maximum number of open requests.
+            limits: The numbers the request is held to.
 
         Returns:
             The new request.
 
         Raises:
-            LoginRequestCapReached: Too many open requests; nothing was written.
+            LoginRequestRefused: A limit holds; nothing was written.
         """
         return await self._store(
-            username_key, now, cap, lambda request_id: hash_code(self._key, request_id, code), sent_at=None
+            who, now, limits, lambda request_id: hash_code(self._key, request_id, code), sent_at=None
         )
 
-    async def create_decoy(self, username_key: str, now: datetime, cap: int) -> LoginRequest:
+    async def create_decoy(self, who: Applicant, now: datetime, limits: RequestLimits) -> LoginRequest:
         """Store a decoy request of an unknown username (ADR-0038): the same row, the same rules as ``create``.
 
-        No code exists. The stored hash is one no code can match, and the row counts as sent at once so the hourly
-        cap treats it like a sent code. Nothing marks the row as a decoy.
+        No code exists. The stored hash is one no code can match. Nothing marks the row as a decoy, and the limits
+        read the same facts and run the same queries as for the configured username.
 
         Args:
-            username_key: The keyed digest of the username (64 characters).
+            who: The asker.
             now: The request time (starts the cooldown).
-            cap: The maximum number of open requests.
+            limits: The numbers the request is held to.
 
         Returns:
             The new request.
 
         Raises:
-            LoginRequestCapReached: Too many open requests; nothing was written.
+            LoginRequestRefused: A limit holds; nothing was written.
         """
-        return await self._store(
-            username_key, now, cap, lambda request_id: decoy_hash(self._key, request_id), sent_at=now
-        )
+        return await self._store(who, now, limits, lambda request_id: decoy_hash(self._key, request_id), sent_at=now)
 
     async def _store(
-        self, username_key: str, now: datetime, cap: int, code_hash: Callable[[str], bytes], *, sent_at: datetime | None
+        self,
+        who: Applicant,
+        now: datetime,
+        limits: RequestLimits,
+        code_hash: Callable[[str], bytes],
+        *,
+        sent_at: datetime | None,
     ) -> LoginRequest:
         request_id = self._ids.token(_ID_BYTES)
         expires_at = now + self._ttl
+        since = now - RETENTION
         async with self._database.session() as session, session.begin():
             await session.execute(_SERIALIZE_CREATE)
-            await session.execute(_REMOVE_OLD, {"since": now - RETENTION})
-            open_others = (
-                await session.execute(_COUNT_OPEN_OF_OTHERS, {"now": now, "username_key": username_key})
-            ).scalar_one()
-            if open_others >= cap:
-                raise LoginRequestCapReached
-            await session.execute(_KILL_LIVE, {"now": now, "username_key": username_key})
+            await session.execute(_REMOVE_OLD, {"since": since})
+            await session.execute(
+                _KILL_REPLACED,
+                {"now": now, "username_key": who.username_key, "client_hash": who.client_hash, "cookie": who.cookie},
+            )
+            facts = RequestFacts(
+                username_created=await _times(session, _USERNAME_CREATED, username_key=who.username_key, since=since),
+                username_live=await _times(session, _USERNAME_LIVE, username_key=who.username_key, now=now),
+                client_created=await _times(session, _CLIENT_CREATED, client_hash=who.client_hash, since=since),
+                client_live=await _times(session, _CLIENT_LIVE, client_hash=who.client_hash, now=now),
+                class_live=await _times(session, _CLASS_LIVE, owner_key=who.owner_key, known=who.known, now=now),
+            )
+            wait = request_wait(facts, now, limits)
+            if wait > 0:
+                raise LoginRequestRefused(wait)
             await session.execute(
                 _INSERT,
                 {
                     "id": request_id,
-                    "username_key": username_key,
+                    "username_key": who.username_key,
+                    "client_hash": who.client_hash,
                     "code_hash": code_hash(request_id).hex(),
                     "expires_at": expires_at,
                     "created_at": now,
@@ -237,19 +279,6 @@ class LoginRequests:
         async with self._database.session() as session, session.begin():
             await session.execute(_MARK_SENT, {"now": now, "id": request_id})
 
-    async def last_requested_at(self, username_key: str) -> datetime | None:
-        """Return the newest creation time of the username (every request, sent or not), or None."""
-        async with self._database.session() as session, session.begin():
-            return (await session.execute(_LAST_REQUESTED, {"username_key": username_key})).scalar_one()
 
-    async def sent_in_last_hour(self, username_key: str, now: datetime) -> int:
-        """Count the codes of the username that were sent less than an hour before ``now``."""
-        async with self._database.session() as session, session.begin():
-            result = await session.execute(_SENT_SINCE, {"username_key": username_key, "since": now - RETENTION})
-            return result.scalar_one()
-
-    async def sent_times_in_last_hour(self, username_key: str, now: datetime) -> list[datetime]:
-        """Return when the codes of the username were sent, less than an hour before ``now``, oldest first."""
-        async with self._database.session() as session, session.begin():
-            result = await session.execute(_SENT_TIMES, {"username_key": username_key, "since": now - RETENTION})
-            return list(result.scalars())
+async def _times(session: AsyncSession, query: TextClause, **parameters: object) -> list[datetime]:
+    return list((await session.execute(query, parameters)).scalars())

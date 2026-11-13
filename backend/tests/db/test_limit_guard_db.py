@@ -44,7 +44,9 @@ class Api:
 async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
     clock = FakeClock(T0)
     ids = SecretsIdSource()
-    app = build_app(make_settings(), clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=FakeMailer())
+    # The per-client limits of the login requests (ADR-0039) are tested elsewhere; here the rate limiter is the subject.
+    settings = make_settings(open_login_requests_per_client=1000, login_requests_per_client_per_hour=1000)
+    app = build_app(settings, clock=clock, ids=ids, codes=FakeCodes(list(CODES)), mailer=FakeMailer())
     store = LoginRequests(web_database, ids, hash_key=b"a" * 32, ttl=timedelta(seconds=600), max_attempts=5)
     attach_database(app, web_database, clock)
     attach_request_code(app, store, SecurityEvents(web_database, clock))
