@@ -13,7 +13,7 @@ CASE = '<testcase classname="{module}" name="t{index}">{outcome}</testcase>'
 def _report(tmp_path: Path, *groups: tuple[str, str, int]) -> Path:
     """A junit report from (module, outcome element, number of cases) groups."""
     cases = [
-        CASE.format(module=module, index=f"{module}{outcome}{i}", outcome=outcome)
+        CASE.format(module=module, index=f"{module}-{len(outcome)}-{i}", outcome=outcome)
         for module, outcome, number in groups
         for i in range(number)
     ]
