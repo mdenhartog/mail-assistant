@@ -28,7 +28,9 @@ jobs:
       - run: uv run vulture
       - run: uv run xenon --max-absolute B --max-modules A --max-average A app
       - run: uv run deptry .
-      - run: uv run pytest
+      - run: uv run pytest --junitxml="$RUNNER_TEMP/junit.xml"
+      - name: The database tests ran (a skipped database test is green; the floor is in tests/db_floor.py)
+        run: uv run python -m tests.db_floor "$RUNNER_TEMP/junit.xml"
       - run: uv run python -m app.export_openapi --check
       - run: uv run pip-audit
 

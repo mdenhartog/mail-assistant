@@ -337,6 +337,7 @@ async def _timed(action: Callable[[], Awaitable[object]]) -> float:
 
 
 # Criterion 6
+@pytest.mark.timing
 async def test_given_the_two_paths_when_a_code_is_requested_many_times_then_the_medians_are_within_the_bound(
     api: Api,
 ) -> None:
@@ -355,6 +356,7 @@ async def test_given_the_two_paths_when_a_code_is_requested_many_times_then_the_
 
 
 # Criterion 6
+@pytest.mark.timing
 async def test_given_the_two_paths_when_a_wrong_code_is_posted_many_times_then_the_medians_are_within_the_bound(
     api: Api,
 ) -> None:
@@ -371,6 +373,7 @@ async def test_given_the_two_paths_when_a_wrong_code_is_posted_many_times_then_t
     assert _within_noise(statistics.median(known), statistics.median(unknown)), (known, unknown)
 
 
+@pytest.mark.timing
 def test_given_the_noise_bound_when_medians_are_compared_then_a_big_gap_fails_and_a_small_one_passes() -> None:
     assert _within_noise(0.010, 0.014)
     assert _within_noise(0.001, 0.005)
