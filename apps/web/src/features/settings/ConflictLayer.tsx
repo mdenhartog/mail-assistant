@@ -4,7 +4,7 @@ import type { ReactElement, RefObject } from "react";
 import { Button } from "@/components/Button";
 import { ConflictBanner } from "@/features/settings/ConflictBanner";
 import { useConflict } from "@/features/settings/useConflict";
-import type { ConflictMark } from "@/features/settings/useConflict";
+import type { ConflictMark, ConflictSource } from "@/features/settings/useConflict";
 import type { ConflictState, FieldKey, SettingsValues } from "@/features/settings/useSettings";
 
 interface ConflictLayerProps {
@@ -15,22 +15,30 @@ interface ConflictLayerProps {
 
 interface MarkItemProps {
   mark: ConflictMark;
+  source: ConflictSource;
   onUseMine: () => void;
   onKeepTheirs: () => void;
 }
 
-function MarkItem({ mark, onUseMine, onKeepTheirs }: MarkItemProps): ReactElement {
+/** The words for the other side of a mark: "Telegram now has", and the button that keeps its value. */
+const WORDING: Record<ConflictSource, { has: string; keep: string }> = {
+  telegram: { has: "Telegram", keep: "Keep Telegram's" },
+  web: { has: "the web", keep: "Keep the stored value" },
+};
+
+function MarkItem({ mark, source, onUseMine, onKeepTheirs }: MarkItemProps): ReactElement {
+  const words = WORDING[source];
   return (
     <li className="rounded-control border-l-8 border-primary bg-surface-raised px-4 py-3 text-text">
       <p className="font-bold">{mark.label}</p>
-      <p>{`You typed ${mark.mine}, Telegram now has ${mark.theirs}`}</p>
+      <p>{`You typed ${mark.mine}, ${words.has} now has ${mark.theirs}`}</p>
       {mark.usingMine ? <p className="text-text-muted">Using your value.</p> : null}
       <div className="mt-2 flex flex-wrap gap-2">
         <Button aria-label={`Use mine for ${mark.label}`} onClick={onUseMine} variant="secondary">
           Use mine
         </Button>
-        <Button aria-label={`Keep Telegram's for ${mark.label}`} onClick={onKeepTheirs} variant="secondary">
-          Keep Telegram&apos;s
+        <Button aria-label={`${words.keep} for ${mark.label}`} onClick={onKeepTheirs} variant="secondary">
+          {words.keep}
         </Button>
       </div>
     </li>
@@ -72,6 +80,7 @@ export function ConflictLayer({ conflict, values, setValue }: ConflictLayerProps
             <MarkItem
               key={mark.field}
               mark={mark}
+              source={view.source}
               onKeepTheirs={() => {
                 view.keepTheirs(mark.field);
               }}

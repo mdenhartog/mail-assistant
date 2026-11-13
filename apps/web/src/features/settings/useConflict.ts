@@ -12,9 +12,13 @@ export interface ConflictMark {
   usingMine: boolean;
 }
 
+/** Where the other change came from; a row without a source is worded as Telegram, like the banner. */
+export type ConflictSource = "web" | "telegram";
+
 export interface ConflictView {
   /** Source and time of the other change, ready for the banner title. */
   title: string;
+  source: ConflictSource;
   marks: ConflictMark[];
   useMine: (field: FieldKey) => void;
   keepTheirs: (field: FieldKey) => void;
@@ -50,8 +54,12 @@ function clockTime(current: Settings): string | null {
   }
 }
 
+function sourceOf(current: Settings): ConflictSource {
+  return current.updatedVia === "web" ? "web" : "telegram";
+}
+
 function titleOf(current: Settings): string {
-  const source = current.updatedVia === "web" ? "from the web" : "in Telegram";
+  const source = sourceOf(current) === "web" ? "from the web" : "in Telegram";
   const time = clockTime(current);
   return time === null
     ? `Settings changed ${source}.`
@@ -94,7 +102,7 @@ function markOf(field: FieldKey, conflict: ConflictState, values: SettingsValues
 
 /**
  * What the conflict layer shows after a 409: the banner title, a mark per edited field that
- * Telegram (or another tab) changed meanwhile, and the two ways to settle each mark.
+ * Telegram or the web changed meanwhile, and the two ways to settle each mark.
  * Nothing here saves; the choices only change the draft.
  */
 export function useConflict(
@@ -112,6 +120,7 @@ export function useConflict(
     .filter((mark): mark is ConflictMark => mark !== null);
   return {
     title: titleOf(conflict.current),
+    source: sourceOf(conflict.current),
     marks,
     useMine: (field) => {
       setValue(field, conflict.mine[field]);
