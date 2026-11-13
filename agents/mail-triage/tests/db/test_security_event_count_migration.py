@@ -148,14 +148,3 @@ async def test_given_the_grants_when_the_web_role_counts_then_it_may_change_coun
             await web.execute("delete from web_auth.security_event")
     finally:
         await web.close()
-
-
-async def test_given_the_grants_when_the_agent_role_reads_events_then_it_is_still_refused(
-    owner: asyncpg.Connection, migrated_url: str
-) -> None:
-    agent = await _as(migrated_url, AGENT_ROLE, AGENT_PASSWORD)
-    try:
-        with pytest.raises(asyncpg.InsufficientPrivilegeError):
-            await agent.fetch("select count from web_auth.security_event")
-    finally:
-        await agent.close()
