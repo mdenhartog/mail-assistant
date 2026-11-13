@@ -241,3 +241,32 @@ def test_given_a_wrong_limit_or_proxy_setting_when_checked_then_start_is_refused
 
 def test_given_valid_proxy_cidrs_when_checked_then_no_error() -> None:
     validate_startup(make_settings(trusted_proxy_cidrs=["10.42.0.0/16", "fd00::/8"], trusted_proxy_hops=2))
+
+
+# U-web-settings-52: production refuses an empty trusted proxy list (ADR-0039; RT-02, SEC-01)
+
+
+def test_given_production_and_an_empty_proxy_list_when_checked_then_start_is_refused_naming_the_setting() -> None:
+    with pytest.raises(ConfigurationError) as raised:
+        validate_startup(make_settings(environment="production", database_ssl="verify-full", trusted_proxy_cidrs=[]))
+
+    assert raised.value.fields == ("trusted_proxy_cidrs",)
+    assert "trusted_proxy_cidrs" in str(raised.value)
+
+
+def test_given_production_and_an_empty_proxy_list_when_the_app_is_created_then_it_does_not_start() -> None:
+    with pytest.raises(ConfigurationError, match="trusted_proxy_cidrs"):
+        make_app(make_settings(environment="production", database_ssl="verify-full", trusted_proxy_cidrs=[]))
+
+
+@pytest.mark.parametrize("environment", ["development", "test"])
+def test_given_a_non_production_environment_and_an_empty_proxy_list_when_checked_then_no_error(
+    environment: str,
+) -> None:
+    validate_startup(make_settings(environment=environment, trusted_proxy_cidrs=[]))
+
+
+def test_given_production_and_a_proxy_list_when_checked_then_no_error() -> None:
+    validate_startup(
+        make_settings(environment="production", database_ssl="verify-full", trusted_proxy_cidrs=["10.244.0.0/16"])
+    )

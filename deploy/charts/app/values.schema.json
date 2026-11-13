@@ -168,7 +168,9 @@
                 "emailAddress",
                 "publicOrigin",
                 "noticeIntervalMinutes",
-                "smtp"
+                "smtp",
+                "trustedProxyCidrs",
+                "trustedProxyHops"
               ],
               "properties": {
                 "username": {
@@ -208,6 +210,18 @@
                       "pattern": "^[^@\\s]+@[^@\\s]+$"
                     }
                   }
+                },
+                "trustedProxyCidrs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F:.]+/[0-9]{1,3}$"
+                  },
+                  "uniqueItems": true
+                },
+                "trustedProxyHops": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             }
@@ -484,5 +498,41 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "ingress"
+        ],
+        "properties": {
+          "ingress": {
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "api": {
+            "properties": {
+              "config": {
+                "properties": {
+                  "trustedProxyCidrs": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

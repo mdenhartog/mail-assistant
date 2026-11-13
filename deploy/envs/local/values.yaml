@@ -8,6 +8,10 @@ api:
     emailAddress: owner@home.arpa
     publicOrigin: https://app.localhost
     noticeIntervalMinutes: 1
+    # The kind pod network (default 10.244.0.0/16): the ingress controller pod is addressed from it. The controller
+    # itself is an open hosting point (D-7); only the pod CIDR is fixed here.
+    trustedProxyCidrs: ["10.244.0.0/16"]
+    trustedProxyHops: 1
     smtp: { host: smtp.home.arpa, port: 587, from: mail-assistant@home.arpa }
 web:
   image: { repository: "mail-assistant-web", tag: "local", pullPolicy: Never }
