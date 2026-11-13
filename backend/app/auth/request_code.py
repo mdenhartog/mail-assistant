@@ -10,10 +10,12 @@ Web lock (AC-27, SEC-08). While ``web_auth.web_lock`` is set the request takes e
 would give otherwise, but no login request row is written and no message is sent: the mails stop and the lock does
 not show. The lock is read in the transaction of the row, so the check cannot be missed.
 
-Limits (ADR-0039). Decoys have their own cap of open requests and never count against the configured username. Open
-requests and requests an hour are also capped per client (a keyed digest of the client key is stored, never the
-address). A new request replaces a live one only for the same login cookie or the same client, so the owner's live
-request in one browser survives a request from another client; a username holds at most
+Limits (ADR-0039). Decoys have their own cap of open requests and never count against the configured username; when
+that class is full, a decoy request is answered like any other but stores no row, because a refusal there would be one
+the owner never gets (RT2-03). Open requests and requests an hour are also capped per client (a keyed digest of the
+client key is stored, never the address). A new request replaces a live one only when it carries the same login
+cookie, never by client alone (a neighbour in the same /64 or behind the same NAT shares the client key, RT2-04), so
+the owner's live request in one browser survives a request from another device; a username holds at most
 ``live_requests_per_username`` live requests, and its codes stay capped at ``codes_per_hour``, so the guessing budget
 does not grow. Every refusal carries the real time until its limit frees.
 

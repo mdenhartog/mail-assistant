@@ -141,7 +141,7 @@ async def test_given_a_malformed_code_when_checked_then_it_counts_as_a_wrong_att
 
 async def test_given_an_old_and_a_newer_code_when_the_old_is_checked_then_dead(store: LoginRequests) -> None:
     old = await make(store, USER, "111111", T0)
-    new = await make(store, USER, "222222", T0 + timedelta(minutes=2))
+    new = await make(store, USER, "222222", T0 + timedelta(minutes=2), cookie=old.id)
 
     assert await store.check(old.id, "111111", T0 + timedelta(minutes=3)) == Dead()
     assert await store.check(new.id, "222222", T0 + timedelta(minutes=3)) == Ok()
@@ -253,7 +253,7 @@ async def test_given_requests_in_every_state_when_attempts_left_is_read_then_onl
 
 
 # Criterion 1 (RT-01, AC-16)
-async def test_given_decoys_at_their_cap_when_the_owner_creates_a_request_then_it_is_created_and_a_decoy_is_refused(
+async def test_given_decoys_at_their_cap_when_the_owner_creates_a_request_then_it_is_created_and_a_decoy_is_not_stored(
     store: LoginRequests,
 ) -> None:
     limits = lowered(class_open_cap=3)
@@ -263,9 +263,9 @@ async def test_given_decoys_at_their_cap_when_the_owner_creates_a_request_then_i
     owner_request = await make(store, USER, RIGHT, T0, client=ELSEWHERE, limits=limits)
 
     assert owner_request.id
-    with pytest.raises(LoginRequestRefused) as refused:
-        await decoy(store, "9" * 64, T0 + timedelta(seconds=100), client="9" * 64, limits=limits)
-    assert refused.value.wait_seconds == 500  # the earliest decoy expires at T0 + 600
+    swallowed = await decoy(store, "9" * 64, T0 + timedelta(seconds=100), client="9" * 64, limits=limits)
+    assert swallowed.id
+    assert not swallowed.stored  # the usual answer, never a refusal the owner would not get (RT2-03)
 
 
 # Criterion 1
@@ -281,16 +281,16 @@ async def test_given_the_owner_rows_when_a_decoy_is_counted_then_the_owner_rows_
 
 
 # Criterion 1
-async def test_given_a_refused_decoy_when_read_then_nothing_was_written_and_nothing_was_killed(
+async def test_given_a_decoy_at_a_full_class_when_read_then_nothing_was_written_and_nothing_was_killed(
     store: LoginRequests,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     limits = lowered(class_open_cap=1)
     first = await decoy(store, "1" * 64, T0, client="1" * 64, limits=limits)
 
-    with pytest.raises(LoginRequestRefused):
-        await decoy(store, "2" * 64, T0, client="2" * 64, limits=limits)
+    swallowed = await decoy(store, "2" * 64, T0, client="2" * 64, limits=limits)
 
+    assert not swallowed.stored
     assert await live_ids(owner) == {first.id}
     assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 1
 
@@ -357,15 +357,15 @@ async def test_given_a_live_request_when_another_client_asks_then_the_first_stay
 
 
 # Criterion 3
-async def test_given_a_live_request_when_the_same_client_asks_again_then_the_first_is_replaced(
+async def test_given_a_live_request_when_the_same_client_asks_again_without_the_cookie_then_both_stay_live(
     store: LoginRequests,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    await make(store, USER, "111111", T0, client=CLIENT)
+    first = await make(store, USER, "111111", T0, client=CLIENT)
 
     second = await make(store, USER, "222222", T0 + timedelta(minutes=2), client=CLIENT)
 
-    assert await live_ids(owner) == {second.id}
+    assert await live_ids(owner) == {first.id, second.id}
 
 
 # Criterion 3

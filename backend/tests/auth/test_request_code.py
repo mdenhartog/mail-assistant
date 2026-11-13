@@ -59,8 +59,12 @@ class Api:
     store: LoginRequests
     guard: RecordingGuard
 
-    async def request(self, username: object = USERNAME, origin: str | None = ORIGIN) -> Response:
+    async def request(
+        self, username: object = USERNAME, origin: str | None = ORIGIN, cookie: str | None = None
+    ) -> Response:
         headers = {"Origin": origin} if origin is not None else {}
+        if cookie is not None:
+            headers["Cookie"] = f"__Host-login={cookie}"
         return await self.http.post(PATH, json={"username": username}, headers=headers)
 
 
@@ -221,7 +225,7 @@ async def test_given_a_second_request_at_59_and_60_seconds_when_requested_then_4
     api.clock.advance(timedelta(seconds=59))
     early = await api.request()
     api.clock.advance(timedelta(seconds=1))
-    on_time = await api.request()
+    on_time = await api.request(cookie=first_cookie)
 
     assert early.status_code == 429
     assert early.headers["retry-after"] == "1"
@@ -235,16 +239,19 @@ async def test_given_a_second_request_at_59_and_60_seconds_when_requested_then_4
 async def test_given_five_sent_codes_in_an_hour_when_a_sixth_is_requested_then_429_until_the_oldest_falls_out(
     api: Api,
 ) -> None:
+    cookie: str | None = None
     for _ in range(5):
-        assert (await api.request()).status_code == 200
+        response = await api.request(cookie=cookie)
+        assert response.status_code == 200
+        cookie = _cookie(response)[0]  # a browser sends the cookie it holds
         api.clock.advance(timedelta(seconds=60))
     assert len(api.mailer.sent) == 5
 
-    sixth = await api.request()
+    sixth = await api.request(cookie=cookie)
     api.clock.set(T0 + timedelta(seconds=3599))
-    late = await api.request()
+    late = await api.request(cookie=cookie)
     api.clock.set(T0 + timedelta(seconds=3601))
-    after = await api.request()
+    after = await api.request(cookie=cookie)
 
     assert sixth.status_code == 429
     assert sixth.headers["retry-after"] == "3300"
@@ -260,14 +267,17 @@ async def test_given_five_failed_sends_when_a_sixth_is_requested_then_it_is_refu
     # D-11 gave way to AC-30 (ADR-0039): a failed send counts toward the cap, so the hourly cap counts the same rows,
     # from created_at, for a real and a decoy username and a mailer outage cannot tell them apart.
     api.mailer.fail()
+    cookies: dict[str, str | None] = {USERNAME: None, UNKNOWN: None}
     for _ in range(5):
         for name in (USERNAME, UNKNOWN):
-            assert (await api.request(name)).status_code == 200
+            response = await api.request(name, cookie=cookies[name])
+            assert response.status_code == 200
+            cookies[name] = _cookie(response)[0]
         api.clock.advance(timedelta(seconds=60))
     api.mailer.succeed()
 
-    known_sixth = await api.request(USERNAME)
-    unknown_sixth = await api.request(UNKNOWN)
+    known_sixth = await api.request(USERNAME, cookie=cookies[USERNAME])
+    unknown_sixth = await api.request(UNKNOWN, cookie=cookies[UNKNOWN])
 
     assert known_sixth.status_code == unknown_sixth.status_code == 429
     assert known_sixth.headers["retry-after"] == unknown_sixth.headers["retry-after"]
@@ -277,14 +287,18 @@ async def test_given_five_failed_sends_when_a_sixth_is_requested_then_it_is_refu
 async def test_given_an_unknown_username_when_requested_again_then_the_cooldown_and_the_cap_answer_like_the_known_one(
     api: Api,
 ) -> None:
-    assert (await api.request(UNKNOWN)).status_code == 200
+    first = await api.request(UNKNOWN)
+    assert first.status_code == 200
+    cookie = _cookie(first)[0]
     api.clock.advance(timedelta(seconds=30))
-    again = await api.request(UNKNOWN)
+    again = await api.request(UNKNOWN, cookie=cookie)
     api.clock.advance(timedelta(seconds=30))
     for _ in range(4):
-        assert (await api.request(UNKNOWN)).status_code == 200
+        response = await api.request(UNKNOWN, cookie=cookie)
+        assert response.status_code == 200
+        cookie = _cookie(response)[0]
         api.clock.advance(timedelta(seconds=60))
-    capped = await api.request(UNKNOWN)
+    capped = await api.request(UNKNOWN, cookie=cookie)
 
     assert again.status_code == 429
     assert again.headers["retry-after"] == "30"
