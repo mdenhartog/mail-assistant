@@ -61,3 +61,20 @@ Settings values development and test (docs on, weaker connection rules) exist fo
 {{- $map := dict "local" "production" "staging" "production" "production" "production" -}}
 {{- get $map .Values.environment | required (printf "environment must be local, staging or production, not %q" .Values.environment) -}}
 {{- end }}
+
+{{/*
+Values that an environment must supply carry the sentinel REQUIRED in deploy/envs/<env>/values.yaml. A string that is
+still the sentinel stops the render and names the value. Typed values (digests, ports, addresses) are refused by
+values.schema.json with the same path.
+*/}}
+{{- define "app.required.validate" -}}
+{{- range $path := list "api.config.username" "api.config.emailAddress" "api.config.publicOrigin" "api.config.smtp.host" "api.config.smtp.from" "ingress.host" "ingress.clusterIssuer" -}}
+{{- $node := $.Values.AsMap -}}
+{{- range $part := splitList "." $path -}}
+{{- if kindIs "map" $node -}}{{- $node = get $node $part -}}{{- end -}}
+{{- end -}}
+{{- if eq (toString $node) "REQUIRED" -}}
+{{- fail (printf "%s is REQUIRED: supply it in the environment values (it is still the sentinel)" $path) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}

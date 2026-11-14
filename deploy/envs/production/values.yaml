@@ -1,0 +1,45 @@
+# PRODUCTION values of the app chart (api and web). PREPARED, NOT DEPLOYED: nothing applies this file (U-web-settings-74).
+# Every value Marco must supply is the sentinel REQUIRED with a comment "# REQUIRED <name>": the schema and the chart
+# refuse to render while one is left, naming it. Review with docs/release/web-settings-prod.md. Phase 9 needs Marco's
+# written approval; a digest comes from the release image build (the same digest as on staging).
+environment: production
+api:
+  image:
+    repository: ghcr.io/mdenhartog/mail-assistant/api
+    digest: REQUIRED # REQUIRED api-image-digest (sha256:<64 hex> of the released api image, same as staging)
+  replicas: 1 # exactly one (ADR-0034)
+  config:
+    username: REQUIRED # REQUIRED web-username (the one allowed user name)
+    emailAddress: REQUIRED # REQUIRED web-email-address (where the sign-in code goes)
+    publicOrigin: REQUIRED # REQUIRED public-origin (https:// plus the ingress host, lowercase)
+    noticeIntervalMinutes: 1 # must equal the agent run interval
+    # The pod addresses of Traefik: without them every client shares one rate-limit bucket (ADR-0039).
+    trustedProxyCidrs:
+      - REQUIRED # REQUIRED traefik-pod-cidr (pod network CIDR of the Traefik pods in the real cluster)
+    trustedProxyHops: 1 # Traefik is the one proxy in front of the api
+    smtp:
+      host: REQUIRED # REQUIRED smtp-host (the send-only relay, STARTTLS with a certificate in the system trust store)
+      port: REQUIRED # REQUIRED smtp-port (STARTTLS submission, usually 587; the egress rule follows it)
+      from: REQUIRED # REQUIRED smtp-from-address (the From address of the sign-in mail)
+web:
+  image:
+    repository: ghcr.io/mdenhartog/mail-assistant/web
+    digest: REQUIRED # REQUIRED web-image-digest (sha256:<64 hex> of the released web image, same as staging)
+ingress:
+  controller: traefik # ADR-0040
+  host: REQUIRED # REQUIRED ingress-host (a local name under home.arpa, ADR-0037; no public name)
+  localDomainSuffix: home.arpa
+  clusterIssuer: REQUIRED # REQUIRED certificate-issuer (name of the cert-manager ClusterIssuer backed by the private CA, D-9)
+  tls: { enabled: true }
+  hsts: true
+networkPolicy:
+  # The Traefik Helm chart defaults; confirm them against the real installation before the first sync.
+  ingressController:
+    namespace: traefik
+    podLabels: { app.kubernetes.io/name: traefik }
+  egress:
+    database: { cidr: REQUIRED, port: 5432 } # REQUIRED database-cidr (the database host as a /32)
+    smtp: { cidr: REQUIRED } # REQUIRED smtp-cidr (the SMTP relay as a /32; the port is api.config.smtp.port)
+certAlert:
+  enabled: true # the certificate expiry alert, at least 14 days ahead (D-7); needs the Prometheus operator
+  daysAhead: 14
