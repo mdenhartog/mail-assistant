@@ -211,11 +211,12 @@ describe("loaded (criteria 2 and 3)", () => {
     expect(window.sessionStorage.getItem("settings-draft")).not.toContain(TOKEN);
   });
 
-  it("given the R1 build, when the page is searched, then there is no Reset control", async () => {
+  it("given the R2 build, when the page is read, then a Reset to defaults button sits apart from Save and opens nothing by itself", async () => {
     await loaded();
 
-    expect(screen.queryByRole("button", { name: /reset/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/reset/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reset to defaults" })).toBeEnabled();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Defaults restored/)).not.toBeInTheDocument();
   });
 });
 
