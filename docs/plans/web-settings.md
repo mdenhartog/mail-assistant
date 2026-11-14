@@ -1224,6 +1224,60 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   2. Given an IPv6 `/64` key, When classified, Then the class is `ipv6` (type: edge; level: unit).
   3. Given the mutation gate, When both modules are mutated, Then survivors stay at 0 (type: edge; level: unit).
 
+### U-web-settings-68: The lock counts only wrong codes against the owner's real requests; an expired request dies on its first post (R1; challenge round 3; ADR-0039 amendment 2; RT3-01, RT3-04, SEC3-01)
+
+- Layer: backend
+- Contract: `check()` in `login_requests.py` knows the owner key (`username_key` of the configured username); a well-formed wrong, expired or exhausting code counts as `code_refused` only against a row whose `username_key` equals the owner key; a guess against a decoy row is recorded as `code_invalid`; when `check()` meets an expired row it sets `dead_at` in the same locked transaction and returns `Dead(existing=True)` only that first time, later posts get `Dead()`. The answers to the visitor stay identical for real and decoy rows (AC-30).
+- Files: `backend/app/auth/login_requests.py`, `backend/app/auth/verify_code.py`, `backend/app/auth/event_rules.py`, `backend/tests/auth/test_verify_code.py`, `backend/tests/auth/test_login_requests.py`, `backend/tests/db/test_security_events.py`, `agents/mail-triage/tests/db/test_wrong_code_lock.py`
+- Depends on: U-web-settings-63, U-web-settings-67
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given no request for the configured username, When one client asks codes for three unknown names and posts 5 well-formed wrong codes with each cookie, Then the sum of `code_refused` is 0, `code_invalid` holds them and the agent does not set the lock (W-13, R-3) (type: security; level: db).
+  2. Given the owner's live request, When 5 wrong codes are posted, Then the sum of `code_refused` is 5 (type: happy; level: db).
+  3. Given a request 11 minutes old, When 10 well-formed codes are posted with its cookie, Then `code_refused` is 1 and the other nine are `code_invalid` (type: security; level: db).
+  4. Given a decoy and an owner request, When wrong codes are posted, Then status, body and `attemptsLeft` are the same shape (AC-30) (type: security; level: api).
+
+### U-web-settings-69: No swallowed decoys, and the lock leaves no trace (R1; challenge round 3; ADR-0039 amendment 2; RT3-02, RT3-03)
+
+- Layer: backend
+- Contract: the global decoy cap (`open_login_request_cap`, the swallow branch of U-64) is removed; decoy storage stays bounded by the per-client caps (10 open, 20 per hour), the limiter and the one-hour purge, and a decoy is always stored with its own cooldown, hourly count and attempt counter; while the web lock is set a request is still stored (the owner's row with an unmatchable hash like a decoy, so no code can match) and only the mail is skipped, so cooldown, caps and `attemptsLeft` behave the same locked and unlocked (AC-27, AC-30). Rebuild, no flag.
+- Files: `backend/app/auth/login_requests.py`, `backend/app/auth/request_code.py`, `backend/app/config.py`, `backend/tests/auth/test_decoy_requests.py`, `backend/tests/auth/test_request_code.py`, `backend/tests/auth/test_login_requests.py`, `backend/tests/test_login_request_limits_config.py`
+- Depends on: U-web-settings-68
+- Parallel: no
+- Guardrails: guardrail-fastapi, guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given 100 live decoy rows from 10 clients, When a fresh client asks twice within 60 s for an unknown name and twice for the configured name and posts one wrong code with each cookie, Then the second answers have the same status and `Retry-After` and the verify answers have the same `attemptsLeft` presence (AC-30) (type: security; level: api).
+  2. Given the web lock is set and then lifted, When a random name is requested twice within 60 s in each state and a wrong code is posted with that cookie, Then the answers are the same in both states and no mail is sent while locked (AC-27) (type: security; level: api).
+  3. Given many clients, When each stays within its per-client caps, Then no request is swallowed and the table size is bounded by clients times the per-client cap (type: edge; level: db).
+  4. Given the settings, When loaded, Then `open_login_request_cap` no longer exists and the chart's forbidden-key list stays consistent with `Settings` (type: edge; level: unit).
+
+### U-web-settings-70: Chart: case-insensitive env guards, pinned test image, a disruption budget that allows one eviction (R1; challenge round 3; RT3-06, RT3-08, SEC3-08)
+
+- Layer: infra
+- Contract: both charts compare env keys case-insensitively against every key the chart sets itself (plain and secret) and against the forbidden lists (worker: `ENVIRONMENT`, `DATABASE_*`; app: the U-66 list); the Helm test pod image is pinned by `@sha256` and the digest lint covers `deploy/charts/**/templates`; the api PodDisruptionBudget allows one disruption (`maxUnavailable: 1`), and the schema refuses `minAvailable >= api.replicas`.
+- Files: `deploy/charts/app/templates/_helpers.tpl`, `deploy/charts/worker/templates/_helpers.tpl`, `deploy/charts/app/templates/tests/test-health.yaml`, `deploy/charts/app/values.yaml`, `deploy/charts/app/values.schema.json`, `agents/mail-triage/tests/infra/`
+- Depends on: U-web-settings-66
+- Parallel: yes
+- Guardrails: guardrail-helm, guardrail-kubernetes, guardrail-docker
+- Criteria:
+  1. Given `env.database_ssl: disable` on the worker or `api.env.app_public_origin` on the app, When `helm template` runs, Then it fails naming the key (type: security; level: chart).
+  2. Given every image in `deploy/charts/**/templates`, When linted, Then each has `@sha256` (type: security; level: unit).
+  3. Given production values, When rendered, Then the api PodDisruptionBudget allows one disruption; `minAvailable: 1` with one replica is refused by the schema (type: edge; level: chart).
+
+### U-web-settings-71: The web role cannot forge security events; expired notice tokens are purged (R1; challenge round 3; RT3-05, SEC3-04)
+
+- Layer: database (migration 0013), agent
+- Contract: migration 0013 grants the web role `INSERT` on `web_auth.security_event` only for `(kind, result, username_hash, request_id, client_key, "window")`, makes `id` `GENERATED ALWAYS`, and adds a `BEFORE INSERT` trigger that sets `at = now()`, `count = 1` and `window = floor(extract(epoch from now()) / 60)`; the retention purge also deletes `web_notice_token` rows whose `expires_at` has passed.
+- Files: `agents/mail-triage/migrations/versions/0013_event_insert_guard.py`, `agents/mail-triage/app/db/grants.sql`, `agents/mail-triage/app/db/models.py`, `agents/mail-triage/app/db/purge.py`, `agents/mail-triage/tests/db/test_event_insert_guard.py`, `agents/mail-triage/tests/db/test_purge.py`
+- Depends on: U-web-settings-65, U-web-settings-49
+- Parallel: yes
+- Guardrails: guardrail-sqlalchemy-alembic, guardrail-pytest
+- Criteria:
+  1. Given the web role, When it inserts a `security_event` with an explicit `id`, `at` or `count`, Then it is refused (42501); a normal insert works and gets the server's `at`, `count` 1 and window (W-8, W-13) (type: security; level: db).
+  2. Given an expired and a live notice token, When the purge runs, Then only the expired one is gone (W-11) (type: happy; level: db).
+  3. Given migration 0013, When run up, down and up, Then it is reversible (type: edge; level: db).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1363,6 +1417,8 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-17 the alert and the lock count only wrong codes against an existing login request (real or decoy); no-cookie, malformed and dead-request refusals are `code_invalid` and never count (challenge round 2, SEC2-01; ADR-0039 amendment; U-63).
 - D-18 a person who knows the username can use up the 5 codes an hour from one device; accepted as R-4 until the review of 2027-05-10 (Marco, 2026-11-13; RT2-02).
 - D-19 U-49 (retention purge, 90 days for security events, one year for audit) and an index on `(kind, at)` move into R1 and are a gate before production (Marco, 2026-11-13; U-49, U-65).
+- D-20 the lock counts only wrong codes against the owner's real requests, there are no swallowed decoys and the lock leaves no trace (challenge round 3, moderator decision; ADR-0039 amendment 2; U-68, U-69, U-71).
+- D-21 the ingress controller is its own decision, still open; HSTS, redirect and TLS minimum are a gate before production (round 3, SEC3-02, formerly mixed up with D-7 which is the certificate expiry alert).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
 
@@ -1373,7 +1429,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 67 units (64 in R1, 3 in R2; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 72 units (69 in R1, 3 in R2; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 
