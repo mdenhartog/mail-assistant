@@ -179,3 +179,27 @@ async def test_given_the_poll_state_row_exists_when_the_cursor_advances_then_the
     row = await owner.fetchrow("select history_id, telegram_update_id, web_notice_version from poll_state")
     assert row is not None
     assert (row["history_id"], row["telegram_update_id"], row["web_notice_version"]) == ("h9", 77, 4)
+
+
+async def test_given_a_web_reset_to_the_defaults_when_the_use_case_runs_then_one_more_notice_follows(
+    web: asyncpg.Connection, agent_engine: AsyncEngine, owner: asyncpg.Connection
+) -> None:
+    """U-web-settings-45 (AC-13): the reset is one more web write of the same row, so the poll sees it as such."""
+    await _web_changes_up_to(web, 2)
+    chat = RecordingChat()
+    notice = WebNotice(_store(agent_engine), chat, Tokens())
+    await notice.run(NOW)
+    await web.execute(
+        "update settings.schedule set zone = 'Europe/Amsterdam', quiet_start = 1380, quiet_end = 420, "
+        "overview_at = 1080, remind_at = 540, version = 3, updated_via = 'web', "
+        f"updated_by = '{ACTOR}'"
+    )
+
+    await notice.run(NOW)
+
+    assert len(chat.sent) == 3
+    assert await owner.fetchval("select web_notice_version from poll_state") == 3
+    [reset] = await _store(agent_engine).pending_after(2)
+    assert reset.new.quiet_start == time(23, 0)
+    assert reset.old is not None
+    assert reset.old.quiet_start == time(10, 2)

@@ -14,12 +14,13 @@ from app.export_openapi import DEFAULT_TARGET
 from app.limit_guard import limit
 from app.main import discover_routers
 
-R1_PATHS = {
+DESIGN_PATHS = {
     "/auth/request-code",
     "/auth/verify-code",
     "/auth/logout",
     "/api/session",
     "/api/settings",
+    "/api/settings/reset",
     "/api/places",
     "/healthz",
     "/readyz",
@@ -58,8 +59,8 @@ def test_routers_are_discovered() -> None:
     assert _routes(), "no routers found in app.routers"
 
 
-def test_given_the_r1_build_when_the_allow_list_is_read_then_it_is_exactly_the_designs_paths() -> None:
-    assert set(ROUTE_ALLOW_LIST) == R1_PATHS
+def test_given_the_r2_build_when_the_allow_list_is_read_then_it_is_exactly_the_designs_paths() -> None:
+    assert set(ROUTE_ALLOW_LIST) == DESIGN_PATHS
 
 
 def test_given_the_mounted_routes_when_read_then_the_paths_equal_the_allow_list() -> None:
@@ -94,7 +95,7 @@ def test_given_a_route_without_a_marker_when_the_inventory_runs_then_it_fails_na
     assert "/api/settings" in violations[0]
 
 
-def test_given_the_r2_reset_route_when_the_inventory_runs_then_it_fails_naming_the_path() -> None:
+def test_given_the_reset_route_without_the_csrf_marker_when_the_inventory_runs_then_it_fails_naming_the_path() -> None:
     router = APIRouter()
     router.add_api_route(
         "/api/settings/reset",
@@ -106,7 +107,22 @@ def test_given_the_r2_reset_route_when_the_inventory_runs_then_it_fails_naming_t
 
     violations = inventory_violations(_routes_of(router))
 
-    assert any("/api/settings/reset" in v and "allow-list" in v for v in violations)
+    assert len(violations) == 1
+    assert "/api/settings/reset" in violations[0]
+    assert "csrf" in violations[0]
+
+
+def test_given_the_reset_route_with_session_and_csrf_when_the_inventory_runs_then_it_passes() -> None:
+    router = APIRouter()
+    router.add_api_route(
+        "/api/settings/reset",
+        _ok,
+        response_model=_Out,
+        methods=["POST"],
+        dependencies=[Depends(limit("api")), Depends(csrf), Depends(session)],
+    )
+
+    assert inventory_violations(_routes_of(router)) == []
 
 
 def test_given_allowed_routes_with_public_or_session_when_the_inventory_runs_then_it_passes() -> None:
@@ -221,7 +237,7 @@ def test_given_a_204_route_without_a_response_model_when_the_inventory_runs_then
 def test_given_the_mounted_write_routes_when_read_then_each_has_the_session_and_csrf_markers() -> None:
     writes = [(p, r) for p, r in _routes() if (r.methods or set()) & {"POST", "PUT"} and p not in SIGN_IN_PATHS]
 
-    assert sorted(p for p, _ in writes) == ["/api/settings", "/auth/logout"]
+    assert sorted(p for p, _ in writes) == ["/api/settings", "/api/settings/reset", "/auth/logout"]
     assert inventory_violations(writes) == []
 
 

@@ -1,4 +1,4 @@
-"""Settings routes: ``GET`` (U-web-settings-20) and ``PUT /api/settings`` (U-web-settings-22)."""
+"""Settings routes: ``GET`` (U-web-settings-20), ``PUT`` (U-web-settings-22) and the reset (U-web-settings-45)."""
 
 from typing import TYPE_CHECKING, Annotated, Any
 
@@ -10,10 +10,10 @@ from app.auth.session import Session
 from app.core.security import csrf, session
 from app.errors import PROBLEM_MEDIA_TYPE, ProblemError, problem_response
 from app.limit_guard import limit
-from app.settings_models import Conflict409, Problem422, Settings, SettingsUpdate
+from app.settings_models import Conflict409, Problem422, Settings, SettingsReset, SettingsUpdate
 from app.settings_repo import SettingsRepository, VersionConflict
 from app.settings_write import field_problems, to_policy
-from schedule_policy.policy import validate
+from schedule_policy.policy import DEFAULT_POLICY, TimePolicy, validate
 
 if TYPE_CHECKING:
     from app.db import Database
@@ -107,9 +107,24 @@ async def write_settings(
     if problems:
         items = field_problems(body.values, problems)
         return _problem_json(Problem422(type="about:blank", title="Unprocessable content", status=422, problems=items))
+    return await _store(request, to_policy(body.values), body.version, current.username_hash)
+
+
+async def _store(request: Request, policy: TimePolicy, version: int, actor: str) -> Settings | JSONResponse:
+    """Write the policy through the repository, the one path of the save and the reset.
+
+    Args:
+        request: The request, whose app holds the database access.
+        policy: The already validated values.
+        version: The version the change is based on.
+        actor: The keyed digest of the signed-in user.
+
+    Returns:
+        The stored settings, or a 409 with the current settings, or a generic 500.
+    """
     database: Database = request.app.state.database
     try:
-        stored = await SettingsRepository(database).write(to_policy(body.values), body.version, current.username_hash)
+        stored = await SettingsRepository(database).write(policy, version, actor)
     except VersionConflict as conflict:
         return _problem_json(
             Conflict409(
@@ -120,3 +135,38 @@ async def write_settings(
         # Not logged and not chained: the driver text may carry the zone the user typed.
         return problem_response(500)
     return Settings.from_stored(stored)
+
+
+@router.post(
+    "/settings/reset",
+    response_model=Settings,
+    dependencies=[Depends(limit("api")), Depends(csrf), Depends(require_json)],
+    responses={
+        401: {"description": "No live session"},
+        403: {"description": "Missing or wrong token, wrong Origin or cross-site request"},
+        409: {
+            "model": Conflict409,
+            "description": "The settings changed since the version sent; carries the current",
+            "content": _problem_content("Conflict409"),
+        },
+        415: {"description": "The body is not JSON"},
+        429: {"description": "Too many requests; see Retry-After"},
+        500: {"description": "The change could not be stored"},
+    },
+)
+async def reset_settings(
+    body: SettingsReset,
+    request: Request,
+    current: Annotated[Session, Depends(session)],
+) -> Settings | JSONResponse:
+    """Replace the stored values, the time zone included, with the defaults if the row is still at the version.
+
+    Args:
+        body: The version the reset is based on.
+        request: The request, whose app holds the database access.
+        current: The live session; its keyed digest is the actor of the change.
+
+    Returns:
+        The stored defaults at the next version, or a 409 with the current settings.
+    """
+    return await _store(request, DEFAULT_POLICY, body.version, current.username_hash)

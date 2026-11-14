@@ -19,7 +19,7 @@ PROBE_PATHS = frozenset({"/healthz", "/readyz"})  # the probes are not limited
 WRITE_METHODS = frozenset({"POST", "PUT"})
 PUBLIC_WRITE_PATHS = frozenset({"/auth/request-code", "/auth/verify-code"})  # the two sign-in routes
 
-# Exact path allow-list of the R1 build (design: API contract); `/api/settings/reset` is R2 and not here.
+# Exact path allow-list (design: API contract); `/api/settings/reset` joined it with R2 (U-web-settings-45).
 ROUTE_ALLOW_LIST: frozenset[str] = frozenset(
     {
         "/auth/request-code",
@@ -27,6 +27,7 @@ ROUTE_ALLOW_LIST: frozenset[str] = frozenset(
         "/auth/logout",
         "/api/session",
         "/api/settings",
+        "/api/settings/reset",
         "/api/places",
         "/healthz",
         "/readyz",
