@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Mail Assistant: context and containers",
+    "output": "system-architecture.html",
+    "quality_profile": "standard",
+    "viewBox": [1000, 590]
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "signs in first", "pos": [40, 250], "size": [130, 60] },
+    { "id": "traefik", "type": "cloud", "label": "Traefik ingress", "sublabel": "HTTPS, local network", "pos": [250, 100], "size": [150, 60] },
+    { "id": "web", "type": "frontend", "label": "web", "sublabel": "React settings page", "pos": [470, 40], "size": [140, 60] },
+    { "id": "api", "type": "backend", "label": "api", "sublabel": "FastAPI, 1 replica", "pos": [470, 160], "size": [140, 60] },
+    { "id": "smtp", "type": "external", "label": "SMTP server", "sublabel": "sign-in code mail", "pos": [800, 160], "size": [140, 60] },
+    { "id": "migrate", "type": "backend", "label": "migrate job", "sublabel": "only DDL holder", "pos": [230, 300], "size": [140, 60] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "public, settings, web_auth", "pos": [480, 300], "size": [180, 64] },
+    { "id": "triage", "type": "backend", "label": "mail-triage agent", "sublabel": "polls, judges, alerts", "pos": [480, 430], "size": [180, 60] },
+    { "id": "telegram", "type": "external", "label": "Telegram", "sublabel": "Bot API", "pos": [40, 430], "size": [130, 60] },
+    { "id": "gmail", "type": "external", "label": "Gmail + OAuth", "sublabel": "list, label, send", "pos": [800, 430], "size": [140, 60] },
+    { "id": "anthropic", "type": "external", "label": "Anthropic API", "sublabel": "judges each mail", "pos": [800, 510], "size": [140, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Kubernetes namespace mail-assistant", "wraps": ["traefik", "web", "api", "migrate", "postgres", "triage"] }
+  ],
+  "connections": [
+    { "id": "user-to-traefik", "from": "user", "to": "traefik", "label": "HTTPS", "variant": "emphasis" },
+    { "id": "traefik-to-web", "from": "traefik", "to": "web", "label": "assets" },
+    { "id": "traefik-to-api", "from": "traefik", "to": "api", "label": "/api" },
+    { "id": "api-to-smtp", "from": "api", "to": "smtp", "label": "STARTTLS", "variant": "dashed" },
+    { "id": "api-to-postgres", "from": "api", "to": "postgres", "label": "settings, web_auth", "fromSide": "bottom", "toSide": "top", "labelAt": [545, 262] },
+    { "id": "migrate-to-postgres", "from": "migrate", "to": "postgres", "label": "DDL, grants" },
+    { "id": "triage-to-postgres", "from": "triage", "to": "postgres", "label": "public, settings, web_lock", "fromSide": "top", "toSide": "bottom" },
+    { "id": "triage-to-telegram", "from": "triage", "to": "telegram", "label": "long poll, send", "variant": "emphasis" },
+    { "id": "user-to-telegram", "from": "user", "to": "telegram", "label": "buttons, replies", "variant": "dashed", "labelAt": [105, 370] },
+    { "id": "triage-to-gmail", "from": "triage", "to": "gmail", "label": "list, label, send" },
+    { "id": "triage-to-anthropic", "from": "triage", "to": "anthropic", "label": "judge mail" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Boundaries", "items": ["No public inbound; web only on the local network", "Agent and api never call each other"] },
+    { "dot": "emerald", "title": "Database contract", "items": ["The agent and the api meet only in PostgreSQL schemas", "Api role has no grant on public"] },
+    { "dot": "rose", "title": "Not shown", "items": ["Unused scaffolds: assistant, chat-gateway, tools", "Agent internals: see mail-triage-architecture"] }
+  ]
+}

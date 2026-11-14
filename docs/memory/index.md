@@ -39,4 +39,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0038 · Web sign-in: unknown usernames get a decoy login request with the same counters · area:identity · tags:authentication,web,enumeration,one-time-code,mail-triage · decisions/ADR-0038-web-signin-decoy-requests.md
 - ADR-0039 · Web sign-in: protect the owner from lock-out, limit per client, and lock the web after repeated wrong codes · area:identity · tags:authentication,web,rate-limit,denial-of-service,one-time-code,mail-triage · decisions/ADR-0039-web-signin-availability-and-guessing.md
 - ADR-0040 · Ingress controller: Traefik, with its own objects for HSTS, redirect, TLS minimum and the body limit · area:hosting · tags:kubernetes,ingress,traefik,tls,hsts,web,mail-triage · decisions/ADR-0040-ingress-controller-traefik.md
+- ADR-0041 · Architecture baseline: 9 code components, 8 outside systems, model approved · area:architecture · tags:architecture,baseline,model,drift · decisions/ADR-0041-architecture-baseline.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md

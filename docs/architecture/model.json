@@ -1,60 +1,89 @@
 {
-  "status": "draft",
-  "enforce": "warn",
+  "status": "approved",
+  "enforce": "block",
   "components": [
     {
-      "id": "assistant",
-      "name": "assistant",
-      "kind": "agent",
-      "paths": [
-        "agents/assistant"
-      ],
-      "responsibility": "",
-      "owns": [],
-      "dependsOn": []
-    },
-    {
       "id": "mail-triage",
-      "name": "mail-triage",
+      "name": "Mail-triage agent",
       "kind": "agent",
       "paths": [
         "agents/mail-triage"
       ],
-      "responsibility": "",
-      "owns": [],
-      "dependsOn": []
-    },
-    {
-      "id": "web",
-      "name": "web",
-      "kind": "frontend",
-      "paths": [
-        "apps/web"
+      "responsibility": "Polls Gmail, judges each new mail with the model, labels it and runs every Telegram dialogue with the user (alerts, snooze, reply, settings, web-change notices, web lock); its migrate job is the only migrator of the database.",
+      "owns": [
+        "public schema: mail items, alerts, drafts, audit and overview log, conversation state, poll state, web_notice_token (full rights), encrypted Gmail token",
+        "Alembic chain and grants for all schemas (public, settings, web_auth), run by its migrate job with the owner role (ADR-0025, ADR-0030)",
+        "web_auth: select, insert, update and delete on web_lock; select on four columns of security_event (ADR-0033, ADR-0039)"
       ],
-      "responsibility": "",
-      "owns": [],
-      "dependsOn": []
+      "dependsOn": [
+        "schedule-policy",
+        "postgres",
+        "gmail",
+        "google-oauth",
+        "anthropic",
+        "telegram"
+      ]
     },
     {
       "id": "api",
-      "name": "API",
+      "name": "Web settings API",
       "kind": "backend",
       "paths": [
         "backend"
       ],
-      "responsibility": "",
-      "owns": [],
+      "responsibility": "Serves the settings API to the web page: username plus e-mailed one-time-code sign-in, sessions, CSRF, rate limits and versioned reads and writes of the shared settings row.",
+      "owns": [
+        "web_auth sessions, login requests and security events (data; the DDL lives in the mail-triage chain)",
+        "co-writer of settings.schedule through the shared contract (ADR-0023, ADR-0025)",
+        "OpenAPI contract docs/api/openapi.json"
+      ],
+      "dependsOn": [
+        "schedule-policy",
+        "postgres",
+        "smtp"
+      ]
+    },
+    {
+      "id": "web",
+      "name": "Web app",
+      "kind": "frontend",
+      "paths": [
+        "apps/web"
+      ],
+      "responsibility": "Responsive settings page in the browser: sign-in with username and code, and viewing and changing the settings, only through the api's OpenAPI contract.",
+      "owns": [
+        "unsaved form draft in the browser tab"
+      ],
+      "dependsOn": [
+        "api",
+        "tokens"
+      ]
+    },
+    {
+      "id": "schedule-policy",
+      "name": "schedule-policy",
+      "kind": "shared",
+      "paths": [
+        "packages/schedule-policy"
+      ],
+      "responsibility": "Pure Python rules for the settings contract: the TimePolicy model, whole-row validation, typed-time parsing and the place list for time-zone lookup, used by both mail-triage and the api.",
+      "owns": [
+        "settings validation rules and contract cases",
+        "place list (ADR-0028)"
+      ],
       "dependsOn": []
     },
     {
-      "id": "chat-gateway",
-      "name": "chat-gateway",
-      "kind": "channel",
+      "id": "tokens",
+      "name": "Design tokens",
+      "kind": "shared",
       "paths": [
-        "channels/chat-gateway"
+        "packages/tokens"
       ],
-      "responsibility": "",
-      "owns": [],
+      "responsibility": "Single source of the Pebble design tokens and fonts, generated into CSS for the web app (ADR-0035).",
+      "owns": [
+        "token source and the generated CSS"
+      ],
       "dependsOn": []
     },
     {
@@ -64,40 +93,118 @@
       "paths": [
         "deploy"
       ],
-      "responsibility": "",
-      "owns": [],
+      "responsibility": "Runs the system: Helm charts, environment values, Argo CD objects, Traefik ingress, network policies, sealed-secret references and the local and prod-like stack support files.",
+      "owns": [
+        "Kubernetes manifests, values per environment, ingress and TLS settings"
+      ],
       "dependsOn": []
     },
     {
+      "id": "assistant",
+      "name": "assistant (unused scaffold)",
+      "kind": "agent",
+      "paths": [
+        "agents/assistant"
+      ],
+      "responsibility": "Unused scaffold of a Strands chat agent on Bedrock AgentCore, kept as the start of the wanted chat with the agent; it conflicts with ADR-0017 and must be rebuilt for the Anthropic API when that feature is designed.",
+      "owns": [],
+      "dependsOn": [
+        "tools",
+        "aws-bedrock"
+      ]
+    },
+    {
+      "id": "chat-gateway",
+      "name": "chat-gateway (unused scaffold)",
+      "kind": "channel",
+      "paths": [
+        "channels/chat-gateway"
+      ],
+      "responsibility": "Unused scaffold of a stateless Telegram and WhatsApp webhook relay to an agent, kept as the start of the wanted chat; it conflicts with ADR-0019 and ADR-0037 and must be re-decided when that feature is designed.",
+      "owns": [],
+      "dependsOn": [
+        "assistant",
+        "telegram",
+        "whatsapp",
+        "aws-bedrock"
+      ]
+    },
+    {
       "id": "tools",
-      "name": "tools",
+      "name": "tools (unused scaffold)",
       "kind": "mcp-server",
       "paths": [
         "mcp-servers/tools"
       ],
-      "responsibility": "",
+      "responsibility": "Unused scaffold of an MCP tool server, kept as the start of the wanted chat with the agent; no feature uses it yet.",
       "owns": [],
       "dependsOn": []
     },
     {
-      "id": "schedule-policy",
-      "name": "schedule-policy",
-      "kind": "shared",
-      "paths": [
-        "packages/schedule-policy"
+      "id": "postgres",
+      "name": "PostgreSQL",
+      "kind": "datastore",
+      "responsibility": "The one relational database (ADR-0007), split in schemas with one login role per runtime and least-privilege grants (ADR-0025, ADR-0030).",
+      "owns": [
+        "public: mail-triage state, capped mail content (30 days, ADR-0020), encrypted Gmail refresh token, audit (confidential)",
+        "settings: schedule (shared contract) and settings_change (append-only, trigger-written); time zone and quiet hours reveal the user's routine (confidential)",
+        "web_auth: sessions, login requests with hashed codes, security events, web_lock (confidential)"
       ],
-      "responsibility": "",
+      "dependsOn": []
+    },
+    {
+      "id": "gmail",
+      "name": "Gmail API",
+      "kind": "external",
+      "responsibility": "The user's mailbox: mail-triage lists, labels and (after confirmation) sends mail (ADR-0011).",
       "owns": [],
       "dependsOn": []
     },
     {
-      "id": "tokens",
-      "name": "tokens",
-      "kind": "shared",
-      "paths": [
-        "packages/tokens"
-      ],
-      "responsibility": "",
+      "id": "google-oauth",
+      "name": "Google OAuth 2.0",
+      "kind": "external",
+      "responsibility": "One-time consent and token refresh for the Gmail scopes of mail-triage.",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic API",
+      "kind": "external",
+      "responsibility": "Judges each mail (category, urgency, summary) with a JSON-schema result (ADR-0017; accepted risk in ADR-0018).",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "telegram",
+      "name": "Telegram Bot API",
+      "kind": "external",
+      "responsibility": "The user's channel for alerts, buttons, dialogues and notices; long polling, no inbound endpoint (ADR-0019; accepted risk in ADR-0018).",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "smtp",
+      "name": "SMTP server",
+      "kind": "external",
+      "responsibility": "Delivers the sign-in code mail from a send-only account over STARTTLS (ADR-0036); smtp4dev in local stacks (INT-005), the production server is not decided yet.",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "aws-bedrock",
+      "name": "Amazon Bedrock / AgentCore",
+      "kind": "external",
+      "responsibility": "Model and runtime provider referenced only by the unused scaffolds; rejected for this project by ADR-0017.",
+      "owns": [],
+      "dependsOn": []
+    },
+    {
+      "id": "whatsapp",
+      "name": "WhatsApp Cloud API",
+      "kind": "external",
+      "responsibility": "Referenced only by the unused chat-gateway scaffold; no ADR chooses it.",
       "owns": [],
       "dependsOn": []
     }
