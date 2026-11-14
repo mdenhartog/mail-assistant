@@ -189,7 +189,7 @@ async def test_given_an_event_when_any_other_column_changes_then_the_trigger_ref
     with pytest.raises(asyncpg.PostgresError) as refused:
         await owner.execute(f"update web_auth.security_event set {assignment}")
 
-    assert refused.value.sqlstate == "42501"
+    assert refused.value.sqlstate == ("428C9" if assignment.startswith("id ") else "42501")  # id is GENERATED ALWAYS
 
 
 async def test_given_the_web_role_when_it_changes_another_column_then_the_grant_refuses_it(
@@ -286,7 +286,7 @@ async def test_given_the_alert_query_on_a_large_table_when_explained_then_it_use
 # The kind code_invalid (U-web-settings-63) and old rows
 _INVALID = (
     'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
-    f"values ('code_invalid', 'refused', 'req-9', '{CLIENT}', 9)"
+    f"values ('code_invalid', 'refused', 'req-9', '{CLIENT}', floor(extract(epoch from now()) / 60))"
 )
 
 

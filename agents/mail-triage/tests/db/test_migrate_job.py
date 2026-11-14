@@ -323,7 +323,7 @@ async def test_given_the_job_when_it_runs_then_the_purge_comes_after_the_migrati
             "select has_table_privilege($1, 'web_auth.session', 'SELECT')", WEB_ROLE
         )
         seen["clock"] = clock
-        return PurgeCounts(0, 0, 0, 0)
+        return PurgeCounts(0, 0, 0, 0, 0)
 
     monkeypatch.setattr("app.db.migrate.purge_expired", spy)
     clock = FakeClock()

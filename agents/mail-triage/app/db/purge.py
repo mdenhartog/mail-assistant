@@ -8,6 +8,7 @@ Boundary rule, stated once: an audit record or a security event goes when its ti
 cutoff (``at < now - retention``). A record that is exactly as old as the retention stays and goes one run later.
 Login requests and sessions follow the rules the web app applies itself at start-up (``backend/app/startup.py``): the
 cutoff comparison is ``<=`` there, because an expiry moment that has been reached means expired.
+A web notice token follows that rule too (``expires_at <= now``): an Undo token nobody used would stay for ever.
 
 The clock is injected. Only the number of removed rows is logged, never a row, a key or a hash.
 """
@@ -34,6 +35,7 @@ _DELETE_SETTINGS_CHANGE = "DELETE FROM settings.settings_change WHERE at < $1"
 _DELETE_SECURITY_EVENT = "DELETE FROM web_auth.security_event WHERE at < $1"
 _DELETE_LOGIN_REQUEST = "DELETE FROM web_auth.login_request WHERE expires_at <= $1 AND created_at <= $2"
 _DELETE_SESSION = "DELETE FROM web_auth.session WHERE absolute_expires_at <= $1 OR last_seen_at <= $2"
+_DELETE_NOTICE = "DELETE FROM web_notice_token WHERE expires_at <= $1"
 
 
 class Clock(Protocol):
@@ -63,7 +65,7 @@ class PurgeCounts:
     security_event: int
     login_request: int
     session: int
-    web_notice_token: int = 0  # stub for the red commit
+    web_notice_token: int
 
 
 def _removed(status: str) -> int:
@@ -82,12 +84,14 @@ async def purge_expired(connection: asyncpg.Connection, clock: Clock) -> PurgeCo
             security_event=_removed(await connection.execute(_DELETE_SECURITY_EVENT, now - SECURITY_EVENT_RETENTION)),
             login_request=_removed(await connection.execute(_DELETE_LOGIN_REQUEST, now, now - LOGIN_REQUEST_RETENTION)),
             session=_removed(await connection.execute(_DELETE_SESSION, now, now - SESSION_IDLE)),
+            web_notice_token=_removed(await connection.execute(_DELETE_NOTICE, now)),
         )
     logger.info(
-        "purge removed settings_change=%d security_event=%d login_request=%d session=%d",
+        "purge removed settings_change=%d security_event=%d login_request=%d session=%d web_notice_token=%d",
         counts.settings_change,
         counts.security_event,
         counts.login_request,
         counts.session,
+        counts.web_notice_token,
     )
     return counts

@@ -28,18 +28,17 @@ CLIENT = "c" * 64
 _CREATE_ROLES = f"""
 DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{WEB_ROLE}') THEN
-        CREATE ROLE {WEB_ROLE} LOGIN PASSWORD 'web-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+        CREATE ROLE {WEB_ROLE} LOGIN PASSWORD 'web-test-password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'mail_triage_runtime') THEN
-        CREATE ROLE mail_triage_runtime LOGIN PASSWORD 'agent-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+        CREATE ROLE mail_triage_runtime LOGIN PASSWORD 'runtime-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
 END $$
 """
 _SERVER_WINDOW = "floor(extract(epoch from now()) / 60)::bigint"
 _TRIGGERS = "select tgname from pg_trigger where tgrelid = 'web_auth.security_event'::regclass and not tgisinternal"
 _IDENTITY = (
-    "select attidentity::text from pg_attribute "
-    "where attrelid = 'web_auth.security_event'::regclass and attname = 'id'"
+    "select attidentity::text from pg_attribute where attrelid = 'web_auth.security_event'::regclass and attname = 'id'"
 )
 _FUNCTIONS = "select proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'web_auth'"
 _BASE_COLUMNS = 'kind, result, request_id, client_key, "window"'
