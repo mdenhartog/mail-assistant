@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.code_hash import decoy_hash, hash_code, verify_code
 from app.auth.code_rules import attempts_exhausted, code_expired, register_wrong
-from app.auth.request_code_rules import RequestFacts, RequestLimits, request_wait
+from app.auth.request_code_rules import RequestFacts, RequestLimits, request_wait, same_key
 from app.db import Database
 from app.ids import IdSource
 
@@ -53,7 +53,8 @@ _INSERT = text(
 )
 _WEB_LOCKED = text("SELECT 1 FROM web_auth.web_lock LIMIT 1")
 _LOCK_ROW = text(
-    "SELECT code_hash, created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id FOR UPDATE"
+    "SELECT code_hash, username_key, created_at, attempts, dead_at FROM web_auth.login_request "
+    "WHERE id = :id FOR UPDATE"
 )
 _READ_ROW = text("SELECT created_at, attempts, dead_at FROM web_auth.login_request WHERE id = :id")
 _COUNT_WRONG = text("UPDATE web_auth.login_request SET attempts = :attempts, dead_at = :dead_at WHERE id = :id")
@@ -78,7 +79,10 @@ class Ok:
 
 @dataclass(frozen=True)
 class Wrong:
-    """The code was wrong; ``attempts_left`` more may be tried."""
+    """The code was wrong; ``attempts_left`` more may be tried.
+
+    ``existing`` is True when the row is the owner's: a guess the web lock counts. A guess against a decoy is not.
+    """
 
     attempts_left: int
     existing: bool
@@ -88,8 +92,8 @@ class Wrong:
 class Dead:
     """The request is unknown, replaced, used, expired or out of attempts.
 
-    ``existing`` is True when the row was still open and this code killed it or found it expired: a guess against a
-    request that exists, which the web lock counts (U-web-settings-63).
+    ``existing`` is True when the row was the owner's, still open, and this code killed it or found it expired for the
+    first time: a guess against a real request, which the web lock counts (U-web-settings-63, -68). A decoy never is.
     """
 
     existing: bool = False
@@ -236,10 +240,11 @@ class LoginRequests:
             request_id: The id from the ``__Host-login`` cookie, or None.
             code: The code the visitor typed.
             now: The time of the check.
-            owner_key: The keyed digest of the configured username.
+            owner_key: The keyed digest of the configured username; only guesses against its rows are ``existing``.
 
         Returns:
-            ``Ok`` (the request is now dead), ``Wrong`` with the attempts left, or ``Dead``.
+            ``Ok`` (the request is now dead), ``Wrong`` with the attempts left, or ``Dead``. An expired request is
+            killed by the check that finds it, so that check alone reports it as existing.
         """
         if request_id is None:
             return Dead()
@@ -247,8 +252,12 @@ class LoginRequests:
             row = (await session.execute(_LOCK_ROW, {"id": request_id})).one_or_none()
             if row is None or row.dead_at is not None:
                 return Dead()
+            # Only a guess against a row of the owner counts for the web lock: a decoy answers alike but is not counted
+            # (RT3-01). A request that is found expired or exhausted dies here, so it is counted once (RT3-04).
+            existing = same_key(row.username_key, owner_key)
             if code_expired(row.created_at, now, self._ttl) or attempts_exhausted(row.attempts, self._max_attempts):
-                return Dead(existing=True)
+                await session.execute(_CONSUME, {"now": now, "id": request_id})
+                return Dead(existing=existing)
             if verify_code(self._key, request_id, code, bytes.fromhex(row.code_hash)):
                 await session.execute(_CONSUME, {"now": now, "id": request_id})
                 return Ok()
@@ -256,7 +265,7 @@ class LoginRequests:
             await session.execute(
                 _COUNT_WRONG, {"attempts": attempts, "dead_at": now if dead else None, "id": request_id}
             )
-            return Dead(existing=True) if dead else Wrong(self._max_attempts - attempts, existing=True)
+            return Dead(existing=existing) if dead else Wrong(self._max_attempts - attempts, existing=existing)
 
     async def attempts_left(self, request_id: str | None, now: datetime) -> int | None:
         """Return the attempts a live request has left, or None; nothing is counted or changed.

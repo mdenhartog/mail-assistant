@@ -1,10 +1,11 @@
 """Security event store: one row per kind, client and minute in `web_auth.security_event` (U-web-settings-13, -54).
 
 The web role may select and insert there, and update the column ``count`` only. A repeat of the same kind from one
-client in one window hits the unique constraint. For a counted kind (wrong codes) it raises ``count`` (``ON CONFLICT DO
-UPDATE``), so the alert can add the wrong codes up. For any other kind it is dropped (``DO NOTHING``), so a flood
-writes one row a window. The row holds no free text: the username and the client only as keyed digests, never an
-address or an error message. A failing insert never reaches the caller, which is busy refusing a request; only the
+client in one window hits the unique constraint. For a counted kind (wrong codes) it raises ``count``, so the alert can
+add the wrong codes up. For any other kind the count stays, so a flood writes one row a window. Both run the same
+statement, so a real and a decoy login request take the same steps (AC-30). The row holds no free text: the username
+and the client only as keyed digests, never an address or an error message. A failing insert never reaches the caller,
+which is busy refusing a request; only the
 error class is logged.
 """
 
@@ -20,16 +21,13 @@ from app.db import Database, DatabaseUnavailable
 
 logger = logging.getLogger(__name__)
 
-_DROP_REPEAT = text(
-    'INSERT INTO web_auth.security_event (kind, result, username_hash, request_id, client_key, "window") '
-    "VALUES (:kind, :result, :username_hash, :request_id, :client_key, :window) "
-    "ON CONFLICT ON CONSTRAINT uq_security_event_kind_client_window DO NOTHING"
-)
-_COUNT_REPEAT = text(
+# One statement for every kind, so every refusal takes the same step (AC-30): a repeat raises ``count`` by 1 for a
+# counted kind and by 0 for any other.
+_RECORD = text(
     'INSERT INTO web_auth.security_event (kind, result, username_hash, request_id, client_key, "window") '
     "VALUES (:kind, :result, :username_hash, :request_id, :client_key, :window) "
     "ON CONFLICT ON CONSTRAINT uq_security_event_kind_client_window "
-    "DO UPDATE SET count = web_auth.security_event.count + 1"
+    "DO UPDATE SET count = web_auth.security_event.count + :increment"
 )
 
 
@@ -67,9 +65,10 @@ class SecurityEvents:
             "request_id": request_id,
             "client_key": client_hash(self._hash_key, client),
             "window": event_window(self._clock.now()),
+            "increment": 1 if counts_repeats(kind) else 0,
         }
         try:
             async with self._database.session() as session, session.begin():
-                await session.execute(_COUNT_REPEAT if counts_repeats(kind) else _DROP_REPEAT, parameters)
+                await session.execute(_RECORD, parameters)
         except (DatabaseUnavailable, SQLAlchemyError) as error:
             logger.error("security_event.failed kind=%s error_class=%s", kind, type(error).__name__)

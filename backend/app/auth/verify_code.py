@@ -2,9 +2,10 @@
 
 Every failure gives the same 400 with the same cookie handling; ``attemptsLeft`` is added only while the cookie names a
 live login request. A right code while the web lock is set gets the answer of a dead request, so the lock is not
-explained (AC-27). Only a well-formed wrong, expired or exhausting code against a login request that exists (real or
-decoy) is recorded as ``code_refused``, the kind the agent counts; every other refusal is ``code_invalid``, which is not
-counted (SEC2-01). The code, the cookie value and the username never reach an event or a log.
+explained (AC-27). Only a well-formed wrong, expired or exhausting code against a live login request of the configured
+username is recorded as ``code_refused``, the kind the agent counts; a guess against a decoy and every other refusal is
+``code_invalid``, which is not counted (SEC2-01, SEC3-01). The visitor sees no difference. The code, the cookie value
+and the username never reach an event or a log.
 """
 
 from typing import Annotated, Final
@@ -88,7 +89,8 @@ class VerifyCode:
             return await self._refuse("code_invalid", left, client, request_id)
         verdict = await self._logins.check(login_id, body.code, now, self._owner_key)
         if isinstance(verdict, Wrong):
-            return await self._refuse("code_refused", verdict.attempts_left, client, request_id)
+            kind = "code_refused" if verdict.existing else "code_invalid"
+            return await self._refuse(kind, verdict.attempts_left, client, request_id)
         if isinstance(verdict, Dead):
             return await self._refuse("code_refused" if verdict.existing else "code_invalid", None, client, request_id)
         try:

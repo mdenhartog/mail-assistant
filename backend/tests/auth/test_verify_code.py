@@ -637,7 +637,7 @@ async def test_given_no_request_for_the_owner_when_three_unknown_names_get_5_wro
             assert (await api.verify(SECOND, cookie)).status_code == 400
 
     assert await _counted(owner, "code_refused") == 0
-    assert await _counted(owner, "code_invalid") == 15
+    assert await _counted(owner, "code_invalid") == 1  # one row a client and window, however many posts
 
 
 # Criterion 3 (RT3-04)
@@ -652,7 +652,7 @@ async def test_given_an_owner_request_11_minutes_old_when_10_codes_are_posted_th
         _assert_refused(await api.verify(FIRST, cookie))
 
     assert await _counted(owner, "code_refused") == 1
-    assert await _counted(owner, "code_invalid") == 9
+    assert await _counted(owner, "code_invalid") == 1  # the nine others: one row a client and window
 
 
 # Criterion 3
@@ -667,7 +667,7 @@ async def test_given_a_decoy_request_11_minutes_old_when_10_codes_are_posted_the
         _assert_refused(await api.verify(FIRST, cookie))
 
     assert await _counted(owner, "code_refused") == 0
-    assert await _counted(owner, "code_invalid") == 10
+    assert await _counted(owner, "code_invalid") == 1  # one row a client and window
 
 
 # Criterion 1: the exhausting guess of a decoy is not counted either
@@ -681,7 +681,7 @@ async def test_given_a_decoy_request_when_6_wrong_codes_are_posted_then_none_is_
         await api.verify(SECOND, cookie)
 
     assert await _counted(owner, "code_refused") == 0
-    assert await _counted(owner, "code_invalid") == 6
+    assert await _counted(owner, "code_invalid") == 1  # one row a client and window
 
 
 # Criterion 4 (AC-30)
