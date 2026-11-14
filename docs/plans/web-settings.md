@@ -1308,6 +1308,20 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   3. Given the rendered ingress objects, When searched, Then HSTS without `includeSubDomains` and preload, an HTTP to HTTPS redirect, the TLS minimum 1.2 and the 8 KB body cap are present for the chosen controller (AC-18, W-9) (type: security; level: chart).
   4. Given the repository, When searched, Then no workflow applies the Argo CD manifest or the production values (type: security; level: unit).
 
+### U-web-settings-75: The local stack supplies a missing runtime password itself (R1; test environment; D-22)
+
+- Layer: tooling
+- Contract: `scripts/local-stack.mjs init` also writes `MAIL_TRIAGE_RUNTIME_PASSWORD` (fresh random value, never printed) into `deploy/local/secrets.env` when neither `.env` nor `secrets.env` has it, and `up` accepts the name from either file; it never edits `.env` and never overwrites an existing value. The check reads variable names only and `up` still stops, naming the key, when a required name is in neither file. `docs/operations/local-stack.md` and `deploy/local/README.md` say so, and that a `MAIL_TRIAGE_DATABASE_URL` line in `.env` overrides the generated role password (remove it when it still holds the old owner login).
+- Files: `scripts/local-stack.mjs`, `scripts/local-stack.test.mjs`, `agents/mail-triage/tests/infra/test_local_stack.py`, `docs/operations/local-stack.md`, `deploy/local/README.md`
+- Depends on: U-web-settings-73
+- Parallel: yes
+- Guardrails: guardrail-compose, guardrail-pytest
+- Criteria:
+  1. Given `.env` without `MAIL_TRIAGE_RUNTIME_PASSWORD`, When `init` runs twice, Then `secrets.env` holds one random value, the second run changes nothing and nothing is printed (type: security; level: unit).
+  2. Given the name in `.env` only, in `secrets.env` only, or in both, When `up` checks, Then it passes and the existing value is never overwritten (type: edge; level: unit).
+  3. Given the name in neither file, When `up` runs, Then it stops before any docker call naming the key (type: error; level: unit).
+  4. Given the script source, When searched, Then it never writes to `.env` (type: security; level: unit).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1450,7 +1464,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-18 a person who knows the username can use up the 5 codes an hour from one device; accepted as R-4 until the review of 2027-05-10 (Marco, 2026-11-13; RT2-02).
 - D-19 U-49 (retention purge, 90 days for security events, one year for audit) and an index on `(kind, at)` move into R1 and are a gate before production (Marco, 2026-11-13; U-49, U-65).
 - D-20 the lock counts only wrong codes against the owner's real requests, there are no swallowed decoys and the lock leaves no trace (challenge round 3, moderator decision; ADR-0039 amendment 2; U-68, U-69, U-71).
-- D-21 the ingress controller is its own decision, still open; HSTS, redirect and TLS minimum are a gate before production (round 3, SEC3-02, formerly mixed up with D-7 which is the certificate expiry alert).
+- D-21 the ingress controller is Traefik (ADR-0040, Marco agreed 2026-11-14);  HSTS, redirect and TLS minimum are a gate before production (round 3, SEC3-02, formerly mixed up with D-7 which is the certificate expiry alert).
 - D-22 the feature is tested for a week in Docker before any production step: the stack runs from the main checkout under the project name `mail-assistant`, reachable from this computer only, with the real limits (U-73); production is prepared, not deployed (U-74) (Marco, 2026-11-14).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
@@ -1462,7 +1476,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 74 units (71 in R1, 3 in R2 (U-45, U-46, U-47: Marco wants them built before the production release, 2026-11-14); U-73 and U-74 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 75 units (72 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73 and U-74 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 

@@ -38,4 +38,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0037 · The web settings page is reachable only locally (supersedes ADR-0032) · area:hosting · tags:web,ingress,tls,exposure,local,mail-triage · decisions/ADR-0037-web-local-only.md
 - ADR-0038 · Web sign-in: unknown usernames get a decoy login request with the same counters · area:identity · tags:authentication,web,enumeration,one-time-code,mail-triage · decisions/ADR-0038-web-signin-decoy-requests.md
 - ADR-0039 · Web sign-in: protect the owner from lock-out, limit per client, and lock the web after repeated wrong codes · area:identity · tags:authentication,web,rate-limit,denial-of-service,one-time-code,mail-triage · decisions/ADR-0039-web-signin-availability-and-guessing.md
+- ADR-0040 · Ingress controller: Traefik, with its own objects for HSTS, redirect, TLS minimum and the body limit · area:hosting · tags:kubernetes,ingress,traefik,tls,hsts,web,mail-triage · decisions/ADR-0040-ingress-controller-traefik.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
