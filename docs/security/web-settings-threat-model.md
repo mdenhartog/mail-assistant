@@ -96,7 +96,7 @@ All six STRIDE types are covered: S (W-1 to W-3, W-11, W-17), T (W-4, W-5, W-11,
 | W-4 | The CSRF token is derived (`HMAC(csrf_key, session_id)`) and served only to a same-origin `GET /api/session`; two tabs on one session both work. |
 | W-7 | One api replica with in-process limits (ADR-0034). The client address is the one the last trusted proxy appended, so a spoofed leftmost `X-Forwarded-For` does not give a fresh bucket; the limit is checked before any login request row is written; open login requests are capped; one security event per client and window. |
 | W-8 | The web role's column grant includes `version`, `updated_via` and `updated_by` (without them every save fails); the guard checks that `updated_by` matches `web:` and 32 hex characters; every new function is revoked from `PUBLIC`; the database URL uses `sslmode=verify-full`. |
-| W-9 | TLS 1.2 minimum at the ingress, a certificate expiry alert at least 14 days ahead, and a single peer (namespace and pod selector) in the ingress NetworkPolicy. |
+| W-9 | TLS 1.2 minimum at the ingress (a Traefik `TLSOption` with `VersionTLS12`, one `Middleware` for HSTS, a redirect `Middleware` and an 8 KB `buffering` `Middleware`, all rendered and tested by the chart, ADR-0040), a certificate expiry alert at least 14 days ahead, and a single peer (namespace and pod selector) in the ingress NetworkPolicy. |
 | W-11 | Own token record for web notices, Undo back to before the burst, "Undo and lock web sign-in" with `web_auth.web_lock`, and quiet hours never hold the notice (ADR-0033). The notice is selected by `db_role` and ordered by the version as an integer. |
 | W-13 | Logs never contain the query string: api access log off, request logging without queries, ingress and edge formats without them, `httpx` and `httpcore` loggers at WARNING; a grep test in the prod-like job. The alert counts wrong and expired codes only (R2). Retention (R2) runs under the owner role as a migrate job step; no standing job holds owner credentials. |
 
@@ -150,4 +150,4 @@ Caused by ADR-0036 (replaces ADR-0024) and ADR-0037 (replaces ADR-0032).
 | id | change |
 | --- | --- |
 | Data | The classification table now lists the client digests, `window`, `count`, `code_invalid`, the digest of a typed username, `web_notice_token` and the username hash key. |
-| W-13 | The alert, the lock and the purge are R1 and built (U-48, U-49, U-55). The open items for production (ingress controller, certificate expiry alert, trusted proxy CIDRs) are in `docs/release/web-settings-prod.md`. |
+| W-13 | The alert, the lock and the purge are R1 and built (U-48, U-49, U-55). The open items for production (Traefik installation and certificates in the real cluster, certificate expiry alert, trusted proxy CIDRs) are in `docs/release/web-settings-prod.md`. |
