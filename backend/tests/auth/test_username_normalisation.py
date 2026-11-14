@@ -125,7 +125,7 @@ async def test_given_a_code_for_a_differently_typed_owner_when_verified_then_the
 
     verified = await api.verify("111111", _cookie(response))
 
-    assert verified.status_code == 200
+    assert verified.status_code == 204
     row = await owner.fetchrow("SELECT username_hash FROM web_auth.session")
     assert row is not None
     assert str(row["username_hash"]).strip() == username_digest(HASH_KEY, api.configured)

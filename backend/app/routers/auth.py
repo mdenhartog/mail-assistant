@@ -4,11 +4,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, BeforeValidator, ConfigDict, StringConstraints
 from pydantic.alias_generators import to_camel
 
 from app.auth.cookies import LOGIN_COOKIE_NAME, login_cookie
 from app.auth.request_code import CodeRequests, require_signin_origin
+from app.auth.request_code_rules import normalize_username
 from app.auth.verify_code import VerifyCodeBody
 from app.core.security import public
 from app.limit_guard import limit
@@ -23,12 +24,21 @@ router = APIRouter(tags=["auth"])
 # ---- request-code (U-web-settings-17) ----------------------------------------------------------------------------
 
 
+def _normalised(value: object) -> object:
+    """Trim and fold a typed username before the length and character rules; other types fail them as before."""
+    return normalize_username(value) if isinstance(value, str) else value
+
+
 class RequestCodeBody(BaseModel):
     """The username a code is asked for: 1 to 64 characters, no control characters."""
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    username: Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$")]
+    username: Annotated[
+        str,
+        StringConstraints(min_length=1, max_length=64, pattern=r"^[^\x00-\x1f\x7f]+$"),
+        BeforeValidator(_normalised),
+    ]
 
 
 class RequestCodeResponse(BaseModel):

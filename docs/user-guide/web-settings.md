@@ -12,7 +12,7 @@ Sign in on a web page and see or change the same four settings as in Telegram: q
 ## Sign in
 
 1. Open the page. If you are not signed in you land on **Sign in**.
-2. Type your username and choose **Send me a code**. The page says it sends a one-time code to the e-mail address on file and never asks for access to your mail or calendar.
+2. Type your username (not your e-mail address) and choose **Send me a code**. Spaces before or after the name and capital letters do not matter. The page says it sends a one-time code to the e-mail address on file and never asks for access to your mail or calendar.
 3. The page changes to **Enter your code**. It names the hidden address the code went to and says the code is valid for 10 minutes.
 4. Open the mail "Your Mail Assistant sign-in code". It holds six digits and no link. Type the digits in the **Code** field (spaces are dropped when you paste) and choose **Sign in**.
 ![The sign-in page asks for a username](images/web-settings-sign-in.png)
