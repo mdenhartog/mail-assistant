@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import logging
 import threading
 import urllib.request
@@ -13,10 +14,14 @@ import httpx
 import pytest
 
 from app.consent import (
+    REDIRECT_URI,
     SCOPES,
+    WAIT_SECONDS,
     ConsentError,
     authorization_request,
+    consent_bind_host,
     exchange_code,
+    prompt_for_url,
     receive_redirect,
     run_consent,
 )
@@ -182,6 +187,81 @@ def test_given_a_browser_redirect_when_received_then_the_query_is_returned_and_n
     assert result == [{"code": "abc", "state": "xyz"}]
 
 
-def test_given_a_non_loopback_host_when_receiving_then_it_is_refused() -> None:
+@pytest.mark.parametrize("host", ["192.0.2.1", "localhost", "::", ""])
+def test_given_a_host_that_is_neither_loopback_nor_the_container_wildcard_when_receiving_then_it_is_refused(
+    host: str,
+) -> None:
     with pytest.raises(ConsentError):
-        receive_redirect("0.0.0.0", 0, timeout=1, on_ready=lambda _port: None)  # noqa: S104
+        receive_redirect(host, 0, timeout=1, on_ready=lambda _port: None)
+
+
+# -- U-76: the callback server inside the agent container ----------------------------------------------------------
+
+
+def test_given_no_setting_when_the_bind_host_is_read_then_it_is_the_loopback() -> None:
+    assert consent_bind_host({}) == "127.0.0.1"
+    assert consent_bind_host({"CONSENT_BIND_HOST": ""}) == "127.0.0.1"
+
+
+def test_given_the_container_setting_when_the_bind_host_is_read_then_it_is_the_wildcard() -> None:
+    assert consent_bind_host({"CONSENT_BIND_HOST": "0.0.0.0"}) == "0.0.0.0"  # noqa: S104
+
+
+@pytest.mark.parametrize("value", ["192.0.2.1", "localhost", "::", "0.0.0.0/0", "127.0.0.1 "])
+def test_given_any_other_bind_host_when_read_then_it_is_refused_without_echoing_a_secret(value: str) -> None:
+    with pytest.raises(ConsentError, match="CONSENT_BIND_HOST"):
+        consent_bind_host({"CONSENT_BIND_HOST": value})
+
+
+def test_given_the_container_setting_when_the_redirect_uri_is_built_then_google_sees_the_registered_loopback() -> None:
+    assert REDIRECT_URI == "http://127.0.0.1:8765/callback"
+    assert parse_qs(urlparse(authorization_request("cid", REDIRECT_URI).url).query)["redirect_uri"] == [REDIRECT]
+
+
+def test_given_a_wildcard_server_when_the_browser_calls_back_on_the_loopback_then_the_query_is_received() -> None:
+    result: list[dict[str, str]] = []
+    ready, ports = threading.Event(), []
+
+    def serve() -> None:
+        result.append(
+            receive_redirect("0.0.0.0", 0, timeout=5, on_ready=lambda port: (ports.append(port), ready.set()))  # noqa: S104
+        )
+
+    thread = threading.Thread(target=serve)
+    thread.start()
+    assert ready.wait(5)
+    with urllib.request.urlopen(f"http://127.0.0.1:{ports[0]}/callback?code=abc&state=xyz", timeout=5) as page:
+        assert page.status == 200
+    thread.join(5)
+
+    assert result == [{"code": "abc", "state": "xyz"}]
+
+
+def test_given_no_browser_when_the_wait_ends_then_the_one_shot_server_gives_up_with_a_clear_error() -> None:
+    assert WAIT_SECONDS == 300
+    with pytest.raises(ConsentError, match="no redirect arrived in time"):
+        receive_redirect("0.0.0.0", 0, timeout=0.2, on_ready=lambda _port: None)  # noqa: S104
+
+
+def test_given_the_authorisation_url_when_prompted_then_the_url_is_the_only_value_printed_and_it_is_flushed() -> None:
+    url = authorization_request("cid", REDIRECT).url
+
+    class Terminal(io.StringIO):
+        flushed = 0
+
+        def flush(self) -> None:
+            self.flushed += 1
+            super().flush()
+
+    out = Terminal()
+    prompt_for_url(url, out)
+
+    assert url in out.getvalue()
+    assert out.flushed >= 1
+    for secret in (SECRET, CODE, REFRESH):
+        assert secret not in out.getvalue()
+    assert "client_secret" not in out.getvalue()
+    # nothing but the instruction line and the address itself
+    assert [line for line in out.getvalue().splitlines() if line.strip() and url not in line] == [
+        "Open this address in your browser and grant access:"
+    ]

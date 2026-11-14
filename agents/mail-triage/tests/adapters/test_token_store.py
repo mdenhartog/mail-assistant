@@ -112,3 +112,21 @@ async def test_given_two_saves_when_loading_then_there_is_one_row_with_the_lates
 async def test_given_an_empty_token_when_saved_then_it_is_refused(engine: AsyncEngine) -> None:
     with pytest.raises(ValueError, match="empty"):
         await store_with(engine, new_key()).save("  ")
+
+
+async def test_given_a_row_sealed_with_a_lost_key_when_consent_saves_with_the_new_key_then_the_row_is_replaced(
+    engine: AsyncEngine,
+) -> None:
+    """U-76: the old, undecryptable ciphertext is replaced in place (id 1), never appended and never read."""
+    await store_with(engine, new_key()).save("token-of-the-lost-key")
+    async with engine.connect() as connection:
+        old = (await connection.execute(text("select id, ciphertext from oauth_token"))).one()
+    new_store = store_with(engine, new_key())
+
+    await new_store.save(REFRESH)  # must not need to read, let alone decrypt, the old row
+
+    async with engine.connect() as connection:
+        rows = (await connection.execute(text("select id, ciphertext from oauth_token"))).all()
+    assert [row[0] for row in rows] == [old[0]] == [1]
+    assert bytes(rows[0][1]) != bytes(old[1])
+    assert await new_store.load() == REFRESH
