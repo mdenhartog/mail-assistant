@@ -158,7 +158,10 @@ def test_given_the_stack_file_when_read_then_it_holds_settings_and_no_secret() -
 def test_given_the_script_when_read_then_it_passes_the_stack_file_after_the_env_file() -> None:
     text = (ROOT / "scripts" / "local-stack.mjs").read_text(encoding="utf-8")
 
-    assert text.index('".env"') < text.index("deploy/local/stack.env") < text.index("deploy/local/secrets.env")
+    line = re.search(r"const ENV_FILES = \[(.*)\];", text)
+
+    assert line is not None
+    assert re.findall(r'"([^"]+)"', line.group(1)) == [".env", "deploy/local/stack.env", "deploy/local/secrets.env"]
 
 
 # -- criteria 3 and 5: the script, through its node tests -----------------------------------------------------------

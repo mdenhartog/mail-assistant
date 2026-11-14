@@ -38,3 +38,7 @@ deploy/prod-like/certs/
 
 # Saved browser session of the Playwright setup project (U-web-settings-42)
 playwright/.auth/
+
+# The local week-test stack: generated secrets and database dumps (scripts/local-stack.mjs, U-web-settings-73)
+deploy/local/secrets.env
+deploy/local/backups/

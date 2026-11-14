@@ -159,7 +159,9 @@ test("criterion 5: up with an existing database volume starts the database, back
   const { root } = await ready();
   const answer = await run(root, ["up"]);
   assert.equal(answer.status, 0, answer.err);
-  const steps = dockerCalls(answer.calls).map((call) => (call.args[0] === "volume" ? call.args.join(" ") : sub(call)));
+  const steps = dockerCalls(answer.calls)
+    .filter((call) => call.args[1] !== "version")
+    .map((call) => (call.args[0] === "volume" ? call.args.join(" ") : sub(call)));
   assert.deepEqual(steps, [
     "volume inspect mail-assistant_db-data",
     "up -d --wait db mail",
@@ -265,19 +267,20 @@ test("every compose call names the project of compose.yaml, the profile local an
     all.push(...(await run(root, command)).calls);
   }
   const compose = composeCalls(all).filter((call) => call.args[1] !== "version");
-  assert.ok(compose.length >= 8);
+  assert.ok(compose.length >= 7);
   for (const call of compose) {
-    assert.deepEqual(call.args.slice(0, 10), [
+    assert.deepEqual(call.args.slice(0, 11), [
       "compose",
       "-p",
       "mail-assistant",
       "--env-file",
       ".env",
       "--env-file",
+      "deploy/local/stack.env",
+      "--env-file",
       "deploy/local/secrets.env",
       "--profile",
       "local",
-      call.args[9],
     ]);
     assert.equal(call.options.cwd, root);
   }

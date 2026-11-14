@@ -175,7 +175,7 @@ def test_given_the_agent_compose_file_when_read_then_both_services_set_environme
     for name in ("mail-triage", "mail-triage-migrate"):
         environment = services[name]["environment"]
         assert {"ENVIRONMENT", "DATABASE_SSL", "DATABASE_CA_FILE"} <= set(environment), name
-        assert environment["ENVIRONMENT"] == "${LOCAL_AGENT_ENVIRONMENT:-development}"  # production: the local stack file only
+        assert environment["ENVIRONMENT"] == "${LOCAL_AGENT_ENVIRONMENT:-development}"
         assert environment["DATABASE_CA_FILE"] == "/certs/ca.crt"
         assert any("deploy/prod-like/certs" in volume and ":ro" in volume for volume in services[name]["volumes"]), name
 

@@ -23,7 +23,7 @@ SECRET_SHAPES = (
 
 def documented(name: str) -> bool:
     """The variable has a line in the example, active or as a commented default."""
-    if re.search(rf"^{re.escape(name)}=", STACK_ENV, re.MULTILINE):  # the local stack's own settings file (U-web-settings-73)
+    if re.search(rf"^{re.escape(name)}=", STACK_ENV, re.MULTILINE):
         return True
     return re.search(rf"^#?\s*{re.escape(name)}=", EXAMPLE, re.MULTILINE) is not None
 
