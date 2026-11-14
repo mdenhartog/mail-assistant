@@ -1,4 +1,9 @@
-# Commit-level checks (secure-by-design, layer 1). Renovate keeps the revs current.
+# Checks in two stages (secure-by-design, layer 1). Renovate keeps the revs current.
+#  - commit: fast, per staged file (format, secrets, commit message, architecture). Safe to run on every commit.
+#  - push: whole-project analysis (pyright, bandit, eslint, tsc, generated docs). The same checks run on the
+#    changed files while building (node scripts/check.mjs unit) and on everything in CI.
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -59,17 +64,32 @@ repos:
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
+        stages: [pre-push]
       - id: bandit
         name: bandit (backend)
         entry: uv run --directory backend bandit -q -c pyproject.toml -r app
         language: system
         files: ^backend/.*\.py$
         pass_filenames: false
+        stages: [pre-push]
       - id: api-docs
         name: api docs generated (openapi.json + reference.md)
         entry: node scripts/docs.mjs api
         language: system
         files: ^backend/app/
+        pass_filenames: false
+        stages: [pre-push]
+      - id: images
+        name: image names follow the GitHub repository (ghcr.io/<owner>/<repo>)
+        entry: node scripts/images.mjs sync
+        language: system
+        always_run: true
+        pass_filenames: false
+      - id: architecture
+        name: architecture (model, overview and imports agree)
+        entry: node scripts/architecture.mjs check
+        language: system
+        files: ^(apps|packages|backend|agents|mcp-servers|channels|workers|deploy)/|^docs/architecture/
         pass_filenames: false
       - id: web-lint
         name: eslint (web)
@@ -77,15 +97,18 @@ repos:
         language: system
         files: ^(apps/web|packages)/
         pass_filenames: false
+        stages: [pre-push]
       - id: web-typecheck
         name: tsc (web)
         entry: pnpm --filter web typecheck
         language: system
         files: ^(apps/web|packages)/
         pass_filenames: false
+        stages: [pre-push]
       - id: tokens-up-to-date
         name: design tokens generated
         entry: node packages/tokens/build.mjs --check
         language: system
         files: ^packages/tokens/
         pass_filenames: false
+        stages: [pre-push]

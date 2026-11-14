@@ -1,5 +1,5 @@
 {
-  "kitVersion": "0.4.0",
+  "kitVersion": "0.5.0",
   "files": {
     ".claude/rules/backend.md": "c402952f8bde6ffa6003aa11299750f1e8bfb8752543160565bfd0866955330e",
     ".claude/rules/infra.md": "a9bb514990dcdde68e53ce94b5f20a3af9e0237f9b4985467ce8dcd038af616d",
@@ -11,11 +11,16 @@
     ".pre-commit-config.yaml": "f3c410809e2d69d4711afb0c6a17db1a440d6b5a73f5dc2ef4df956ff2dc980c",
     ".semgrep/kit-rules.yml": "39c16e4ff97caf0fcf903c7e5bbc6fd269becf6874aa5e53cb8afc3c7f80261c",
     "commitlint.config.mjs": "9c46dd6e2258b8783f57255cbcdd09fd13c0283069b281568806ba147df85340",
+    "scripts/architecture.mjs": "07fcb2cc5e46f9e93267b735ef147c91d36fd65cb64cc57436a3cac9360f3691",
     "scripts/audit.mjs": "07347d93d28df1d08064e99eb3c02fac7712d2e479683c190f818fa53a61825c",
     "scripts/check-mobile-bundle.mjs": "293d8f8a9cce1ef179944608e0560ee731934ebd5d23c0f68bbb6f335617040f",
+    "scripts/check.mjs": "d93f9750663c249a0ef97725abce8d96f47621a3987b9e2292697147a4381616",
+    "scripts/ci-changes.mjs": "fb51e7ddf9dc6db932c9ee3cc799f73b9c4dadd3446924bf3efca68ee8f06525",
     "scripts/components.mjs": "b5c44d6f874f4d18171acd85b6ad28c06777337de4df4afc3a6b2317a8740a4f",
     "scripts/docs.mjs": "a5c3ad22ec2967ed57326448fc21a97baa1fbf7d1a0d6766bc58a4ed8d7fe31a",
+    "scripts/images.mjs": "aa810a11096a0b4746bcee8cfda1b12c3c72b5b53615ec2573ccd8f80c6916ab",
+    "scripts/integrate.mjs": "87b411f4d9904f036c333192ee782df8212e9f4f9c261d6d2b696d892acd357c",
     "scripts/lib/run-pnpm.mjs": "2049b5f62dabf175faa95ad6c8ff6f0852ac01e317fee3e37781a8fe4a453f62",
-    "scripts/status.mjs": "b01d2be4c668767aec7741fbb69edbd791369f94ef895b94c04f444be08eb3c7"
+    "scripts/status.mjs": "4ebbb0b41da3e80e81e81df23cdf9e52c17f91c7433244e802c149f818b9ed5c"
   }
 }

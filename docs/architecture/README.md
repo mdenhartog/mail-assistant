@@ -48,3 +48,23 @@ PostgreSQL holds everything. The agent's Alembic chain is the only migrator.
 | [ADR-0028](../memory/decisions/ADR-0028-place-list.md) | The place list for time-zone lookup |
 | [ADR-0029](../memory/decisions/ADR-0029-secrets-sealed-secrets.md) | Cluster secrets with Sealed Secrets |
 | [ADR-0030](../memory/decisions/ADR-0030-runtime-role-hardening.md) | Runtime role hardening |
+
+## Components
+
+<!-- architecture:components:start -->
+
+Generated from `docs/architecture/model.json` by `node scripts/architecture.mjs render`; edit the model, not this table.
+
+| Component | Kind | Responsibility | Owns | May depend on | Code |
+|---|---|---|---|---|---|
+| assistant (`assistant`) | agent |  | — | — | `agents/assistant` |
+| mail-triage (`mail-triage`) | agent |  | — | — | `agents/mail-triage` |
+| web (`web`) | frontend |  | — | — | `apps/web` |
+| API (`api`) | backend |  | — | — | `backend` |
+| chat-gateway (`chat-gateway`) | channel |  | — | — | `channels/chat-gateway` |
+| Deployment (`platform`) | platform |  | — | — | `deploy` |
+| tools (`tools`) | mcp-server |  | — | — | `mcp-servers/tools` |
+| schedule-policy (`schedule-policy`) | shared |  | — | — | `packages/schedule-policy` |
+| tokens (`tokens`) | shared |  | — | — | `packages/tokens` |
+
+<!-- architecture:components:end -->
