@@ -1,0 +1,52 @@
+{
+  "description": "Contract cases for the category list (INT-004, AC-2, AC-8, C-3). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected normalised name. 'category' rows validate one category: 'existing' are the names already on the list, 'labels' the Assistant/ Gmail labels that are not on the stored list; 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A description of the form __N__ stands for N letters. 'list' rows validate a whole list; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. Invisible characters and look-alikes use unicode escapes.",
+  "normalise": [
+    {"id": "plain", "raw": "Invoices", "expected": "invoices"},
+    {"id": "trim", "raw": "  Invoices \t", "expected": "invoices"},
+    {"id": "case", "raw": "INVOICES", "expected": "invoices"},
+    {"id": "fullwidth", "raw": "Ｉｎｖｏｉｃｅｓ", "expected": "invoices"},
+    {"id": "no_break_space_trimmed", "raw": " Invoices ", "expected": "invoices"},
+    {"id": "german_sharp_s", "raw": "Straße", "expected": "strasse"},
+    {"id": "ligature", "raw": "Oﬃce", "expected": "office"}
+  ],
+  "category": [
+    {"id": "valid_simple", "name": "Invoices", "description": "Bills and receipts", "existing": [], "labels": [], "rules": []},
+    {"id": "valid_with_spaces_and_unicode", "name": "Café receipts", "description": "x", "existing": ["Invoices"], "labels": [], "rules": []},
+    {"id": "name_40_code_points", "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "description": "x", "existing": [], "labels": [], "rules": []},
+    {"id": "name_41_code_points", "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "description": "x", "existing": [], "labels": [], "rules": ["name_too_long"]},
+    {"id": "name_empty", "name": "", "description": "x", "existing": [], "labels": [], "rules": ["name_empty"]},
+    {"id": "name_only_spaces", "name": "   ", "description": "x", "existing": [], "labels": [], "rules": ["name_empty"]},
+    {"id": "name_with_slash", "name": "Work/Invoices", "description": "x", "existing": [], "labels": [], "rules": ["name_slash"]},
+    {"id": "name_with_fullwidth_slash", "name": "Work／Invoices", "description": "x", "existing": [], "labels": [], "rules": ["name_slash"]},
+    {"id": "name_with_control_character", "name": "Inv\u0007oices", "description": "x", "existing": [], "labels": [], "rules": ["name_forbidden_char"]},
+    {"id": "name_with_newline", "name": "Inv\noices", "description": "x", "existing": [], "labels": [], "rules": ["name_forbidden_char"]},
+    {"id": "name_with_zero_width_space", "name": "Inv​oices", "description": "x", "existing": [], "labels": [], "rules": ["name_forbidden_char"]},
+    {"id": "name_with_bidi_override", "name": "Inv‮oices", "description": "x", "existing": [], "labels": [], "rules": ["name_forbidden_char"]},
+    {"id": "reserved_other", "name": "Other", "description": "x", "existing": [], "labels": [], "rules": ["name_reserved"]},
+    {"id": "reserved_archive_lower_case", "name": "archive", "description": "x", "existing": [], "labels": [], "rules": ["name_reserved"]},
+    {"id": "reserved_other_padded", "name": "  OTHER  ", "description": "x", "existing": [], "labels": [], "rules": ["name_reserved"]},
+    {"id": "reserved_other_fullwidth", "name": "Ｏｔｈｅｒ", "description": "x", "existing": [], "labels": [], "rules": ["name_reserved"]},
+    {"id": "reserved_archive_upper_case", "name": "ARCHIVE", "description": "x", "existing": [], "labels": [], "rules": ["name_reserved"]},
+    {"id": "other_prefix_is_fine", "name": "Other things", "description": "x", "existing": [], "labels": [], "rules": []},
+    {"id": "duplicate_other_case", "name": "invoices", "description": "x", "existing": ["Invoices"], "labels": [], "rules": ["name_duplicate"]},
+    {"id": "duplicate_look_alike", "name": "Ｉnvoices", "description": "x", "existing": ["Invoices"], "labels": [], "rules": ["name_duplicate"]},
+    {"id": "label_exists_not_on_list", "name": "Invoices", "description": "x", "existing": [], "labels": ["Assistant/Invoices"], "rules": ["name_label_exists"]},
+    {"id": "label_exists_other_case", "name": "invoices", "description": "x", "existing": [], "labels": ["Assistant/INVOICES"], "rules": ["name_label_exists"]},
+    {"id": "label_for_another_name", "name": "Invoices", "description": "x", "existing": [], "labels": ["Assistant/Receipts"], "rules": []},
+    {"id": "label_outside_assistant_is_ignored", "name": "Invoices", "description": "x", "existing": [], "labels": ["Invoices"], "rules": []},
+    {"id": "description_empty", "name": "Invoices", "description": "", "existing": [], "labels": [], "rules": ["description_empty"]},
+    {"id": "description_only_spaces", "name": "Invoices", "description": "  \n ", "existing": [], "labels": [], "rules": ["description_empty"]},
+    {"id": "description_500", "name": "Invoices", "description": "__500__", "existing": [], "labels": [], "rules": []},
+    {"id": "description_501", "name": "Invoices", "description": "__501__", "existing": [], "labels": [], "rules": ["description_too_long"]},
+    {"id": "name_and_description_both_wrong", "name": "", "description": "", "existing": [], "labels": [], "rules": ["name_empty", "description_empty"]}
+  ],
+  "list": [
+    {"id": "empty_list", "categories": [], "labels": [], "problems": []},
+    {"id": "one_valid", "categories": [{"name": "Invoices", "description": "x"}], "labels": [], "problems": []},
+    {"id": "duplicate_in_list_flags_the_later", "categories": [{"name": "Invoices", "description": "x"}, {"name": "INVOICES", "description": "y"}], "labels": [], "problems": [[1, "name_duplicate"]]},
+    {"id": "problems_carry_their_index", "categories": [{"name": "Invoices", "description": "x"}, {"name": "A/B", "description": ""}], "labels": [], "problems": [[1, "name_slash"], [1, "description_empty"]]},
+    {"id": "label_not_on_list_refused", "categories": [{"name": "Invoices", "description": "x"}], "labels": ["Assistant/Invoices"], "problems": [[0, "name_label_exists"]]},
+    {"id": "fifty_categories", "generate": 50, "labels": [], "problems": []},
+    {"id": "fifty_one_categories", "generate": 51, "labels": [], "problems": [[null, "list_too_many"]]}
+  ]
+}
