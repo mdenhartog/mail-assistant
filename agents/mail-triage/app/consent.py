@@ -1,7 +1,10 @@
 """One-time Google consent for the owner: ``python -m app.consent`` (spec; ADR-0011; guardrail-oauth2-oidc).
 
 Authorization-code flow with PKCE (S256) and a random ``state``, for an installed app: the redirect goes to a one-shot
-server bound to 127.0.0.1. Only the three Gmail scopes of ADR-0011 are requested. The authorisation code, the client
+server. On a host it binds to 127.0.0.1. In the agent container of the local stack (U-web-settings-76) it binds to
+0.0.0.0 inside the container (``CONSENT_BIND_HOST``), because the host browser comes in through the published port,
+which compose binds to the host loopback 127.0.0.1 only. The redirect address Google sees is always http://127.0.0.1:8765/callback.
+Only the three Gmail scopes of ADR-0011 are requested. The authorisation code, the client
 secret and the tokens are never logged and never put into an error message; the refresh token goes straight into the
 encrypted token store.
 """
@@ -13,6 +16,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import sys
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -24,7 +28,8 @@ import httpx
 from app.db.migrate import SchemaNotReady, check_schema
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import Awaitable, Callable, Mapping
+    from typing import TextIO
 
     from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -37,7 +42,12 @@ SCOPES = (
 )
 CALLBACK_PATH = "/callback"
 LOOPBACK = "127.0.0.1"
+CONTAINER_WILDCARD = "0.0.0.0"  # noqa: S104  # nosec B104 - inside the container only; the host side is the loopback
+BIND_HOSTS = (LOOPBACK, CONTAINER_WILDCARD)
 REDIRECT_PORT = 8765
+REDIRECT_URI = (
+    f"http://{LOOPBACK}:{REDIRECT_PORT}{CALLBACK_PATH}"  # as registered in the Google client, never the bind host
+)
 WAIT_SECONDS = 300
 HTTP_OK = 200
 _PAGE = b"<html><body>Consent received. You can close this tab and return to the terminal.</body></html>"
@@ -45,6 +55,23 @@ _PAGE = b"<html><body>Consent received. You can close this tab and return to the
 
 class ConsentError(RuntimeError):
     """Consent failed. The message never contains a code, a secret or a token."""
+
+
+def consent_bind_host(env: Mapping[str, str]) -> str:
+    """The address the one-shot server binds to: 127.0.0.1 unless ``CONSENT_BIND_HOST`` says 0.0.0.0 (container)."""
+    value = env.get("CONSENT_BIND_HOST", "")
+    if value == "":
+        return LOOPBACK
+    if value not in BIND_HOSTS:
+        raise ConsentError(f"CONSENT_BIND_HOST must be {LOOPBACK} or {CONTAINER_WILDCARD}")
+    return value
+
+
+def prompt_for_url(url: str, out: TextIO) -> None:
+    """Print the instruction and the authorisation address, nothing else; flushed so a container shows it."""
+    out.write("Open this address in your browser and grant access:\n")
+    out.write(f"{url}\n")
+    out.flush()
 
 
 async def require_schema(engine: AsyncEngine) -> None:
@@ -137,9 +164,9 @@ async def run_consent(  # noqa: PLR0913
 
 
 def receive_redirect(host: str, port: int, *, timeout: float, on_ready: Callable[[int], None]) -> dict[str, str]:
-    """Serve on loopback until the callback arrives; return its query parameters. Everything else gets a 404."""
-    if host != LOOPBACK:
-        raise ConsentError("the redirect server may only listen on 127.0.0.1")
+    """Serve until the callback arrives; return its query parameters. Everything else gets a 404."""
+    if host not in BIND_HOSTS:
+        raise ConsentError("the redirect server may only listen on 127.0.0.1 (or 0.0.0.0 inside the container)")
     received: dict[str, str] = {}
 
     class Handler(BaseHTTPRequestHandler):
@@ -176,14 +203,14 @@ async def main() -> None:  # pragma: no cover - thin shell around the tested pie
     from pydantic import SecretStr  # noqa: PLC0415
     from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: PLC0415
 
-    from app.adapters.token_store import TokenCipher, TokenStore  # noqa: PLC0415
+    from app.adapters.token_store import TokenCipher, TokenKeyError, TokenStore  # noqa: PLC0415
     from app.db.engine import make_engine  # noqa: PLC0415
     from app.settings import SettingsError, load_database_tls  # noqa: PLC0415
 
-    redirect_uri = f"http://{LOOPBACK}:{REDIRECT_PORT}{CALLBACK_PATH}"
     try:
+        bind_host = consent_bind_host(os.environ)
         tls = load_database_tls()
-    except SettingsError as error:
+    except (ConsentError, SettingsError) as error:
         raise SystemExit(str(error)) from None
     engine = make_engine(os.environ["DATABASE_URL"], tls)
     try:
@@ -191,31 +218,39 @@ async def main() -> None:  # pragma: no cover - thin shell around the tested pie
     except ConsentError as error:
         await engine.dispose()
         raise SystemExit(str(error)) from None
-    store = TokenStore(
-        async_sessionmaker(engine, expire_on_commit=False), TokenCipher(SecretStr(os.environ["TOKEN_ENCRYPTION_KEY"]))
-    )
+    try:
+        cipher = TokenCipher(SecretStr(os.environ["TOKEN_ENCRYPTION_KEY"]))
+    except TokenKeyError as error:
+        await engine.dispose()
+        raise SystemExit(str(error)) from None
+    store = TokenStore(async_sessionmaker(engine, expire_on_commit=False), cipher)  # save() replaces; it never reads
 
     async def wait(_state: str) -> dict[str, str]:
         return await asyncio.to_thread(
-            receive_redirect, LOOPBACK, REDIRECT_PORT, timeout=WAIT_SECONDS, on_ready=lambda _port: None
+            receive_redirect, bind_host, REDIRECT_PORT, timeout=WAIT_SECONDS, on_ready=lambda _port: None
         )
 
     def show(url: str) -> None:
-        print("Open this address in your browser and grant access:\n", url)
-        webbrowser.open(url)
+        prompt_for_url(url, sys.stdout)
+        if bind_host == LOOPBACK:  # in the container there is no browser; the address is opened on the host
+            webbrowser.open(url)
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        await run_consent(
-            client=client,
-            client_id=os.environ["GOOGLE_CLIENT_ID"],
-            client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
-            redirect_uri=redirect_uri,
-            store=store,
-            show_url=show,
-            wait_for_redirect=wait,
-        )
-    await engine.dispose()
-    print("Consent stored.")
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            await run_consent(
+                client=client,
+                client_id=os.environ["GOOGLE_CLIENT_ID"],
+                client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
+                redirect_uri=REDIRECT_URI,
+                store=store,
+                show_url=show,
+                wait_for_redirect=wait,
+            )
+    except ConsentError as error:  # the message holds no code, secret or token
+        raise SystemExit(str(error)) from None
+    finally:
+        await engine.dispose()
+    print("Consent stored.", flush=True)
 
 
 if __name__ == "__main__":  # pragma: no cover
