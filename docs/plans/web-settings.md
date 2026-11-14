@@ -1343,6 +1343,21 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   9. Given the authorisation address, When prompted, Then only the instruction and the address are printed, flushed (type: security; level: unit).
   10. Given the docs, When read, Then they name the consent step, the redirect address to register, the new-key case and exit code 3 (type: happy; level: unit).
 
+### U-web-settings-78: The login page says it wants the username, not the e-mail address (R1; D-22)
+
+- Layer: web
+- Contract: under the label of the username field a fixed hint, "Your username, not your e-mail address.", is always visible and linked to the input with `aria-describedby` (the error id stays in the list). The `Field` component takes it through its existing `hint` prop. The text is static, carries no server data, does not say that a name exists (ADR-0038) and changes nothing that is sent to the api or any error behaviour. The code step does not show it.
+- Files: `apps/web/src/pages/UsernameStep.tsx`, `apps/web/src/pages/LoginPage.test.tsx`
+- Depends on: U-web-settings-31
+- Parallel: yes
+- Guardrails: guardrail-react, guardrail-vitest-rtl, guardrail-a11y, guardrail-tailwind, guardrail-playwright
+- Criteria:
+  1. Given the login page, When rendered, Then the hint is visible and the username's accessible description contains it (type: happy; level: component).
+  2. Given an empty username sent, When the error shows, Then the description holds both the hint and the error (type: error; level: component).
+  3. Given the login states, When checked at 320, 375, 768 and 1280 px, in light and dark and at 200 % text, Then axe finds nothing (type: a11y; level: e2e, ui-states).
+  4. Given the rest of the page, When the unit is built, Then the existing tests pass unchanged (type: edge; level: component).
+  5. Given the code step, When shown, Then the hint is not on the page (type: edge; level: component).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1498,7 +1513,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 76 units (73 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73, U-74, U-75 and U-76 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 77 units (74 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73, U-74, U-75, U-76 and U-78 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 
