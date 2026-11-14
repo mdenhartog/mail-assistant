@@ -14,7 +14,7 @@ import signal
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -24,7 +24,7 @@ from app.adapters.gmail_send import GmailSender
 from app.adapters.judge_anthropic import AnthropicJudge, DailyBudget
 from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
-from app.adapters.token_store import TokenCipher, TokenStore
+from app.adapters.token_store import TokenCipher, TokenDecryptError, TokenStore
 from app.db import repos
 from app.db.engine import make_engine
 from app.db.migrate import (
@@ -229,6 +229,31 @@ async def purge(settings: MigrateSettings, clock: Clock = SYSTEM_CLOCK) -> int:
     return EXIT_OK
 
 
+class TokenLoader(Protocol):
+    """What ``serve`` needs from the token store."""
+
+    async def load(self) -> str | None:
+        """The stored refresh token, or ``None``."""
+        ...
+
+
+async def load_token_or_stop(store: TokenLoader) -> str | int:
+    """The stored refresh token, or the exit code to stop with (3) when there is none or it cannot be decrypted."""
+    try:
+        token = await store.load()
+    except TokenDecryptError:
+        # No traceback and no detail: a key or a token must never reach the log.
+        logger.error(
+            "the stored Gmail token cannot be decrypted with the current TOKEN_ENCRYPTION_KEY: "
+            "run node scripts/local-stack.mjs consent"
+        )
+        return EXIT_NO_CONSENT
+    if token is None:
+        logger.error("no Google consent stored; after the migrate job has run, run: python -m app.consent")
+        return EXIT_NO_CONSENT
+    return token
+
+
 async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real Google, Telegram and database
     """Run the agent until it is told to stop. Returns an exit code."""
     from google.oauth2.credentials import Credentials  # noqa: PLC0415
@@ -243,10 +268,10 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
         not_ready = await verify_schema(engine)  # the migrate job owns the schema; the agent only checks it
         if not_ready is not None:
             return not_ready
-        refresh_token = await TokenStore(sessions, TokenCipher(settings.token_encryption_key)).load()
-        if refresh_token is None:
-            logger.error("no Google consent stored; after the migrate job has run, run: python -m app.consent")
-            return EXIT_NO_CONSENT
+        loaded = await load_token_or_stop(TokenStore(sessions, TokenCipher(settings.token_encryption_key)))
+        if isinstance(loaded, int):
+            return loaded
+        refresh_token = loaded
         credentials = Credentials(  # type: ignore[no-untyped-call]
             None,
             refresh_token=refresh_token,
