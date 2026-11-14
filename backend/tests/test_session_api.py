@@ -1,6 +1,7 @@
 # pyright: reportUnusedImport=false
 """U-web-settings-19: GET /api/session, the CSRF and Origin checks and POST /auth/logout against a real PostgreSQL."""
 
+import sys
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from http.cookies import SimpleCookie
@@ -25,9 +26,16 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     template_name,
     web_database,
 )
-from tests.fakes import FakeClock, make_app, make_settings
+from tests.fakes import FakeClock, make_app, make_settings, real_minute
 
 T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _t0_is_the_real_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "T0", real_minute())  # the event window is checked by the database
+
+
 USER = username_digest(b"k" * 32, "canary-user")
 ORIGIN = "https://settings.example.test"
 CSRF_KEY = b"b" * 32

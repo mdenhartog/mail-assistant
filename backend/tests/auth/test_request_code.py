@@ -2,6 +2,7 @@
 """U-web-settings-17: the request-code endpoint against a real PostgreSQL, a FakeClock, FakeMailer and FakeCodes."""
 
 import logging
+import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -32,9 +33,16 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     template_name,
     web_database,
 )
-from tests.fakes import FakeClock, FakeCodes, FakeMailer, make_settings
+from tests.fakes import FakeClock, FakeCodes, FakeMailer, make_settings, real_minute
 
 T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _t0_is_the_real_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "T0", real_minute())  # the event window is checked by the database
+
+
 ORIGIN = "https://settings.example.test"
 USERNAME = "test-user"
 UNKNOWN = "somebody-else"
@@ -110,7 +118,7 @@ async def test_given_the_configured_username_when_a_code_is_requested_then_200_c
     assert response.status_code == 200
     assert response.json() == {
         "maskedAddress": "m***@example.test",
-        "expiresAt": "2026-03-01T14:10:00Z",
+        "expiresAt": (T0 + timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "resendAfterSeconds": 60,
     }
     value, attributes = _cookie(response)
@@ -198,7 +206,7 @@ async def test_given_the_mailer_fails_when_requested_then_the_answer_is_the_same
     assert failed.status_code == 200
     assert failed.json() == {
         "maskedAddress": "m***@example.test",
-        "expiresAt": "2026-03-01T14:11:00Z",
+        "expiresAt": (T0 + timedelta(minutes=11)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "resendAfterSeconds": 60,
     }
     assert _cookie(failed)[1] == _cookie(ok)[1]
