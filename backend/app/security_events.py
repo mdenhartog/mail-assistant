@@ -22,12 +22,12 @@ from app.db import Database, DatabaseUnavailable
 logger = logging.getLogger(__name__)
 
 # One statement for every kind, so every refusal takes the same step (AC-30): a repeat raises ``count`` by 1 for a
-# counted kind and by 0 for any other.
+# counted kind and changes nothing for any other (the guard of migration 0012 allows no other change).
 _RECORD = text(
     'INSERT INTO web_auth.security_event (kind, result, username_hash, request_id, client_key, "window") '
     "VALUES (:kind, :result, :username_hash, :request_id, :client_key, :window) "
     "ON CONFLICT ON CONSTRAINT uq_security_event_kind_client_window "
-    "DO UPDATE SET count = web_auth.security_event.count + :increment"
+    "DO UPDATE SET count = web_auth.security_event.count + 1 WHERE :counted"
 )
 
 
@@ -65,7 +65,7 @@ class SecurityEvents:
             "request_id": request_id,
             "client_key": client_hash(self._hash_key, client),
             "window": event_window(self._clock.now()),
-            "increment": 1 if counts_repeats(kind) else 0,
+            "counted": counts_repeats(kind),
         }
         try:
             async with self._database.session() as session, session.begin():
