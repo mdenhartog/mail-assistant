@@ -8,7 +8,7 @@ services:
   mail-triage-migrate:
     # Not in prod-like: `up --wait` counts a container that has exited, even with 0, as failed. CI runs it by itself
     # (`docker compose run --rm --build mail-triage-migrate`) against the prod-like database to check the runtime role.
-    profiles: ["components", "dev"]
+    profiles: ["components", "dev", "local"]
     build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
     command: ["python", "-m", "app", "migrate"]
     restart: "no"
@@ -20,8 +20,9 @@ services:
     environment:
       # Database TLS (SEC-10). Development runs without it. The prod-like database accepts TLS only: run the service with
       # `-e ENVIRONMENT=production -e DATABASE_SSL=verify-full` (the CI job does), which the CA below then verifies.
-      ENVIRONMENT: development
-      DATABASE_SSL: disable
+      # The `local` profile gets production and verify-full from deploy/local/stack.env (scripts/local-stack.mjs passes it).
+      ENVIRONMENT: ${LOCAL_AGENT_ENVIRONMENT:-development}
+      DATABASE_SSL: ${LOCAL_AGENT_DATABASE_SSL:-disable}
       DATABASE_CA_FILE: /certs/ca.crt
       DATABASE_OWNER_URL: ${MAIL_TRIAGE_DATABASE_OWNER_URL:-postgresql+asyncpg://app:${POSTGRES_PASSWORD:-}@db:5432/app}
       RUNTIME_ROLE_PASSWORD: ${MAIL_TRIAGE_RUNTIME_PASSWORD:-}
@@ -30,7 +31,7 @@ services:
       - ../../deploy/prod-like/certs:/certs:ro
 
   mail-triage:
-    profiles: ["components", "dev"]
+    profiles: ["components", "dev", "local"]
     # Repo-root context (paths in an included file are relative to this file): the image carries packages/schedule-policy.
     build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
     depends_on:
@@ -49,8 +50,9 @@ services:
     environment:
       # Database TLS (SEC-10). Development runs without it. The prod-like database accepts TLS only: run the service with
       # `-e ENVIRONMENT=production -e DATABASE_SSL=verify-full` (the CI job does), which the CA below then verifies.
-      ENVIRONMENT: development
-      DATABASE_SSL: disable
+      # The `local` profile gets production and verify-full from deploy/local/stack.env (scripts/local-stack.mjs passes it).
+      ENVIRONMENT: ${LOCAL_AGENT_ENVIRONMENT:-development}
+      DATABASE_SSL: ${LOCAL_AGENT_DATABASE_SSL:-disable}
       DATABASE_CA_FILE: /certs/ca.crt
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
