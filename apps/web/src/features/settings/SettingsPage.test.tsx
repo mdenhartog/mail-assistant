@@ -202,12 +202,13 @@ describe("loaded (criteria 2 and 3)", () => {
     expect(save()).toBeDisabled();
   });
 
-  it("given settings, when loaded and edited, then nothing is written to localStorage or sessionStorage", async () => {
+  it("given settings, when loaded and edited, then nothing is written to localStorage and only the draft to sessionStorage", async () => {
     await loaded();
     setTime("Daily overview", "19:30");
 
     expect(window.localStorage).toHaveLength(0);
-    expect(window.sessionStorage).toHaveLength(0);
+    expect(Object.keys(window.sessionStorage)).toEqual(["settings-draft"]);
+    expect(window.sessionStorage.getItem("settings-draft")).not.toContain(TOKEN);
   });
 
   it("given the R1 build, when the page is searched, then there is no Reset control", async () => {

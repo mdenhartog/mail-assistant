@@ -67,6 +67,16 @@ async function toDirtySettings(page: Page, handlers: Handlers = {}): Promise<voi
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
 }
 
+/** The typed values of a session that ended, as the page keeps them in this tab (D-6). */
+async function keepDraft(page: Page): Promise<void> {
+  await page.addInitScript(
+    ([key, values, version]) => {
+      window.sessionStorage.setItem(key, JSON.stringify({ values, version, savedAt: Date.now() }));
+    },
+    ["settings-draft", { ...STORED.values, remindAt: "10:30" }, STORED.version] as const,
+  );
+}
+
 function loginStates(): UiState[] {
   const resend = (answer: Handler): Handlers => ({ requestCode: sequence(CODE_SENT, answer) });
   return [
@@ -124,6 +134,12 @@ function loginStates(): UiState[] {
       await page.goto("/login?notice=expired");
       await expect(page.getByText("Your session ended.")).toBeVisible();
     }),
+    state("login: session expired, typed values kept", async (page) => {
+      await keepDraft(page);
+      await stubApi(page);
+      await page.goto("/login?notice=expired");
+      await expect(page.getByText(/what you typed is kept/)).toBeVisible();
+    }),
   ];
 }
 
@@ -169,6 +185,12 @@ function settingsStates(): UiState[] {
       await toDirtySettings(page, { putSettings: reply(409, { current: TELEGRAM_NOW }) });
       await page.getByRole("button", { name: "Save changes" }).click();
       await expect(page.getByText(/Settings changed in Telegram/)).toBeVisible();
+    }),
+    state("settings: typed values restored", async (page) => {
+      await keepDraft(page);
+      await toLoadedSettings(page);
+      await expect(page.getByText("Welcome back.")).toBeVisible();
+      await expect(page.getByLabel("Remind-me-later default")).toHaveValue("10:30");
     }),
     state("settings: load failed", async (page) => {
       await stubApi(page, { signedIn: true, getSettings: reply(500) });

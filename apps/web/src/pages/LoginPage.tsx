@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router";
 
 import { Banner } from "@/components/Banner";
 import { Layout } from "@/components/Layout";
+import { useDraft } from "@/features/settings/useDraft";
 import { CodeStep } from "@/pages/CodeStep";
 import { UsernameStep } from "@/pages/UsernameStep";
 import { useSignIn } from "@/pages/useSignIn";
@@ -24,13 +25,17 @@ function statusText(signIn: SignIn): string {
   return signIn.maskedAddress === null ? "" : `Code sent to ${signIn.maskedAddress}. It is valid for 10 minutes.`;
 }
 
+/** What the session notice adds while typed values wait for the return to the settings (AC-12). */
+const DRAFT_KEPT = "Sign in again; what you typed is kept.";
+
 function Notice(): ReactElement | null {
   const [params] = useSearchParams();
+  const draft = useDraft();
   const key = params.get("notice");
   const notice = key !== null && Object.hasOwn(NOTICES, key) ? NOTICES[key] : undefined;
   return notice ? (
     <Banner kind="info" title={notice.title}>
-      {notice.text}
+      {key === "expired" && draft.has() ? DRAFT_KEPT : notice.text}
     </Banner>
   ) : null;
 }

@@ -4,6 +4,7 @@ import { Navigate, Outlet, useNavigate } from "react-router";
 
 import { Banner } from "@/components/Banner";
 import { Layout } from "@/components/Layout";
+import { useDraft } from "@/features/settings/useDraft";
 import { apiFetch, setCsrfToken } from "@/api/client";
 import { paths } from "@/router/paths";
 import { useSession } from "@/session/useSession";
@@ -35,10 +36,12 @@ export function ProtectedShell(): ReactElement {
   const { data, isPending, isError } = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const draft = useDraft();
   const logout = useMutation({
     mutationFn: () => apiFetch("/auth/logout", { method: "POST" }),
     onSuccess: () => {
       setCsrfToken(null);
+      draft.clear();
       queryClient.clear();
       void navigate(paths.login);
     },
