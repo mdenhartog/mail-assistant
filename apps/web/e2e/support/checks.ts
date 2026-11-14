@@ -63,7 +63,10 @@ export async function targetProblems(page: Page, touch: boolean): Promise<string
       const text = (element.getAttribute("aria-label") ?? (element as HTMLInputElement).labels?.[0]?.textContent ?? element.textContent).trim().slice(0, 30);
       return `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""} "${text}"`;
     };
+    // With a modal dialog open only the dialog can be reached; the page behind it is inert.
+    const modal = document.querySelector("dialog[open]");
     const found = [...document.querySelectorAll(selector)]
+      .filter((element) => modal === null || modal.contains(element))
       .map((element) => ({ element, box: element.getBoundingClientRect() }))
       .filter(({ box }) => box.width > 1 && box.height > 1);
     const tooSmall = found
@@ -90,9 +93,10 @@ export async function layoutProblems(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const label = (element: Element): string => `${element.tagName.toLowerCase()} "${element.textContent.trim().slice(0, 30)}"`;
     const clipping = ["hidden", "clip", "auto", "scroll"];
+    const modal = document.querySelector("dialog[open]");
     const visible = [...document.body.querySelectorAll("*")].filter((element) => {
       const box = element.getBoundingClientRect();
-      return box.width > 1 && box.height > 1 && getComputedStyle(element).visibility === "visible" && !element.closest("[role=listbox]");
+      return (modal === null || modal.contains(element)) && box.width > 1 && box.height > 1 && getComputedStyle(element).visibility === "visible" && !element.closest("[role=listbox]");
     });
     const outside = (element: Element): string[] => {
       const box = element.getBoundingClientRect();
@@ -102,7 +106,8 @@ export async function layoutProblems(page: Page): Promise<string[]> {
     const clipped = (element: Element): string[] => {
       const style = getComputedStyle(element);
       const clips = clipping.includes(style.overflowX) || clipping.includes(style.overflowY);
-      const control = element instanceof HTMLInputElement || element instanceof HTMLSelectElement;
+      // A modal dialog that is taller than a small window scrolls on purpose; its content is reached by scrolling.
+      const control = element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLDialogElement;
       const cut = element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1;
       return clips && !control && cut ? [`${label(element)} clips its content`] : [];
     };
@@ -195,10 +200,11 @@ export async function focusRingReport(page: Page): Promise<FocusReport> {
   const unreached = await page.evaluate((reached) => {
     const selector =
       'a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const modal = document.querySelector("dialog[open]");
     return [...document.querySelectorAll(selector)]
       .filter((element) => {
         const box = element.getBoundingClientRect();
-        return box.width > 1 && box.height > 1;
+        return (modal === null || modal.contains(element)) && box.width > 1 && box.height > 1;
       })
       .map((element) => `${element.tagName.toLowerCase()} "${(element.getAttribute("aria-label") ?? (element as HTMLInputElement).labels?.[0]?.textContent ?? element.textContent).trim().slice(0, 30)}"`)
       .filter((name) => !reached.includes(name));

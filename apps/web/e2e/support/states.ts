@@ -171,6 +171,32 @@ function settingsStates(): UiState[] {
       await page.getByRole("button", { name: "Save changes" }).click();
       await expect(page.getByText(/^Saved at/)).toBeVisible();
     }),
+    state("settings: reset confirmation", async (page) => {
+      await toLoadedSettings(page);
+      await page.getByRole("button", { name: "Reset to defaults" }).click();
+      await expect(page.getByRole("alertdialog", { name: "Reset to defaults?" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Keep my settings" })).toBeFocused();
+    }),
+    state("settings: resetting", async (page) => {
+      const gate = held(reply(200, { ...STORED, version: 4 }));
+      await toLoadedSettings(page, { resetSettings: gate.handler });
+      await page.getByRole("button", { name: "Reset to defaults" }).click();
+      await page.getByRole("button", { name: "Replace my settings with defaults" }).click();
+      await expect(page.getByRole("button", { name: "Saving..." })).toBeVisible();
+      return gate.release;
+    }),
+    state("settings: defaults restored", async (page) => {
+      await toLoadedSettings(page);
+      await page.getByRole("button", { name: "Reset to defaults" }).click();
+      await page.getByRole("button", { name: "Replace my settings with defaults" }).click();
+      await expect(page.getByText("Defaults restored.")).toBeVisible();
+    }),
+    state("settings: reset failed", async (page) => {
+      await toLoadedSettings(page, { resetSettings: reply(500) });
+      await page.getByRole("button", { name: "Reset to defaults" }).click();
+      await page.getByRole("button", { name: "Replace my settings with defaults" }).click();
+      await expect(page.getByText("Could not reset. Nothing was changed.")).toBeVisible();
+    }),
     state("settings: validation error", async (page) => {
       await toDirtySettings(page, { putSettings: reply(422, QUIET_CLASH) });
       await page.getByRole("button", { name: "Save changes" }).click();

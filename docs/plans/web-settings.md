@@ -70,7 +70,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 - Migration 0008 is the first migration of R1 (U-06); the challenge fixes add 0009 (U-56, merged first), 0010 (U-53) and 0011 (U-54). The R2 purge adds no migration. If another migration lands first, rename before merge; do not renumber after.
 - A unit that adds an environment variable or a role must carry every consumer of it in the same PR: U-08 carries `WEB_ROLE_PASSWORD` in the job, the agent's compose file, the CI `runtime-role` job's `.env` line and the worker chart's Secret together, so `main` stays green. The same for U-37: the removal of `proxy_pass` from the web image and the new edge arrive together with the update of the existing `e2e` job.
 - A one-shot compose service (migrate) is not part of `up --wait` (it exits and counts as failed). The CI job runs it with `docker compose run --rm` before `up --wait` (U-42).
-- The R1 build exposes no R2 surface: U-05 (no `/api/settings/reset` in the route inventory and in `openapi.json`), U-32 (no Reset button in the DOM) and U-43 (the path answers 404 through the edge). U-45 and U-46 add them together with their tests. U-45 (backend and edge side) flipped U-05, U-22 and U-43: the path is on the allow-list and in `openapi.json`, and through the edge GET answers 405 and an unauthenticated POST answers 401; the web side (U-32) is flipped by U-46.
+- The R1 build exposes no R2 surface: U-05 (no `/api/settings/reset` in the route inventory and in `openapi.json`), U-32 (no Reset button in the DOM) and U-43 (the path answers 404 through the edge). U-45 and U-46 add them together with their tests. U-45 (backend and edge side) flipped U-05, U-22 and U-43: the path is on the allow-list and in `openapi.json`, and through the edge GET answers 405 and an unauthenticated POST answers 401; the web side (U-32) is flipped by U-46 (the no-Reset assertion of `SettingsPage.test.tsx` now checks that the button is there and the dialog is closed).
 
 ## Units
 
@@ -670,7 +670,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   6. Given a network error or 5xx, When shown, Then the danger banner "Could not save. Nothing was changed." with "Try again", typed values kept (type: error; level: component).
   7. Given the API returns `<img src=x onerror=alert(1)>` as zone, When rendered, Then it appears as text and no element is created (AC-14, W-5) (type: security; level: component).
   8. Given keyboard only, When the user tabs through, edits, submits invalid, fixes and saves, Then the whole flow works (AC-23) (type: a11y; level: component).
-  9. Given the R1 build, When the DOM of the page is searched, Then there is no "Reset" control (R1 exposes no R2 surface) (type: security; level: component).
+  9. Given the R1 build, When the DOM of the page is searched, Then there is no "Reset" control (R1 exposes no R2 surface; flipped by U-46: since R2 the page has the "Reset to defaults" button and a closed dialog) (type: security; level: component).
   10. Given axe on loading, loaded, dirty, saving, validation error and save-failed states, When run, Then no violation (AC-22) (type: a11y; level: component).
 
 ### U-web-settings-33: ZoneCombobox with live time (R1)

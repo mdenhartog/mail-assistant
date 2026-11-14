@@ -66,7 +66,7 @@ test.describe("200 % text at 320 px: the buttons stack with the primary one firs
     await useDoubleText(page);
   });
 
-  for (const name of ["login: step 2", "settings: dirty"]) {
+  for (const name of ["login: step 2", "settings: dirty", "settings: loaded"]) {
     test(name, async ({ page }) => {
       const state = STATES.find((candidate) => candidate.name === name);
       await state?.open(page);
@@ -74,8 +74,12 @@ test.describe("200 % text at 320 px: the buttons stack with the primary one firs
 
       const boxes = await buttonBoxes(page);
       const primary = name === "login: step 2" ? "Sign in" : "Save changes";
+      const secondary = name === "login: step 2" ? undefined : "Reset to defaults";
       const own = boxes.filter((box) => box.name !== "Sign out");
       expect(own[0]?.name).toBe(primary);
+      if (secondary) {
+        expect(own[1]?.name).toBe(secondary);
+      }
       for (const [index, box] of own.entries()) {
         const previous = own[index - 1];
         if (previous) {
@@ -134,7 +138,57 @@ test("the stubbed sign-in to saved flow works with the keyboard only, and focus 
   await expect(page.getByText(/^Saved at/)).toBeVisible();
 });
 
-const FOCUS_PAGES = ["login: step 1", "login: step 2", "settings: loaded", "settings: conflict", "refused (403)", "not found"];
+test.describe("the reset confirmation", () => {
+  test("two buttons in greyscale differ by label, border and weight, not by colour alone", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await STATES.find((state) => state.name === "settings: reset confirmation")?.open(page);
+    await page.addStyleTag({ content: "html { filter: grayscale(1); }" });
+
+    const look = async (name: string): Promise<{ label: string; border: string; weight: string }> =>
+      page.getByRole("button", { name }).evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { label: element.textContent, border: style.borderTopWidth, weight: style.fontWeight };
+      });
+    const safe = await look("Keep my settings");
+    const destructive = await look("Replace my settings with defaults");
+
+    expect(destructive.label).not.toBe(safe.label);
+    expect(destructive.border).not.toBe(safe.border);
+    expect(destructive.weight).not.toBe(safe.weight);
+  });
+
+  test("Tab stays inside the dialog and Escape returns focus to Reset to defaults", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await STATES.find((state) => state.name === "settings: reset confirmation")?.open(page);
+
+    for (let press = 0; press < 6; press += 1) {
+      await page.keyboard.press("Tab");
+      expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null)).toBe(true);
+    }
+    for (let press = 0; press < 3; press += 1) {
+      await page.keyboard.press("Shift+Tab");
+      expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null)).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+
+    await expect(page.getByRole("alertdialog")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Reset to defaults" })).toBeFocused();
+  });
+
+  test("the page behind the dialog cannot be reached by click or focus", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const stub = await stubApi(page, { signedIn: true });
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Reset to defaults" }).click();
+
+    await page.getByLabel("Daily overview").focus();
+    await expect(page.getByLabel("Daily overview")).not.toBeFocused();
+    await expect(page.getByRole("button", { name: "Keep my settings" })).toBeFocused();
+    expect(stub.calls.resetSettings).toBe(0);
+  });
+});
+
+const FOCUS_PAGES = ["login: step 1", "login: step 2", "settings: loaded", "settings: reset confirmation", "settings: conflict", "refused (403)", "not found"];
 
 for (const viewport of [VIEWPORTS[1], VIEWPORTS[3]]) {
   for (const scheme of SCHEMES) {
