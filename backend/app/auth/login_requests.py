@@ -81,6 +81,7 @@ class Wrong:
     """The code was wrong; ``attempts_left`` more may be tried."""
 
     attempts_left: int
+    existing: bool
 
 
 @dataclass(frozen=True)
@@ -228,13 +229,14 @@ class LoginRequests:
                 await session.execute(_INSERT, row)
         return LoginRequest(id=request_id, created_at=now, expires_at=expires_at, stored=stored)
 
-    async def check(self, request_id: str | None, code: str, now: datetime) -> Verdict:
+    async def check(self, request_id: str | None, code: str, now: datetime, owner_key: str) -> Verdict:
         """Check a code: the row is locked, so two checks of one request run one after the other.
 
         Args:
             request_id: The id from the ``__Host-login`` cookie, or None.
             code: The code the visitor typed.
             now: The time of the check.
+            owner_key: The keyed digest of the configured username.
 
         Returns:
             ``Ok`` (the request is now dead), ``Wrong`` with the attempts left, or ``Dead``.
@@ -254,7 +256,7 @@ class LoginRequests:
             await session.execute(
                 _COUNT_WRONG, {"attempts": attempts, "dead_at": now if dead else None, "id": request_id}
             )
-            return Dead(existing=True) if dead else Wrong(self._max_attempts - attempts)
+            return Dead(existing=True) if dead else Wrong(self._max_attempts - attempts, existing=True)
 
     async def attempts_left(self, request_id: str | None, now: datetime) -> int | None:
         """Return the attempts a live request has left, or None; nothing is counted or changed.

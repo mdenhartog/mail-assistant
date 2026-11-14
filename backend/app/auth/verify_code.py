@@ -17,6 +17,7 @@ from pydantic.alias_generators import to_camel
 from app.auth.cookies import clear_login_cookie, session_cookie
 from app.auth.digest import username_digest
 from app.auth.login_requests import Dead, LoginRequests, Wrong
+from app.auth.request_code_rules import username_key
 from app.auth.return_to import safe_return_to
 from app.auth.session import SessionStore, WebLocked
 from app.auth.verify_code_rules import code_well_formed, login_id_well_formed, refusal_body
@@ -63,9 +64,9 @@ class VerifyCode:
         self._logins = logins
         self._sessions = sessions
         self._events = events
-        self._username_hash = username_digest(
-            settings.username_hash_key.get_secret_value().encode("utf-8"), settings.username
-        )
+        hash_key = settings.username_hash_key.get_secret_value().encode("utf-8")
+        self._username_hash = username_digest(hash_key, settings.username)
+        self._owner_key = username_key(hash_key, settings.username)
 
     async def verify(self, raw_body: bytes, cookie: str | None, client: str, request_id: str) -> Response:
         """Answer a code check.
@@ -85,7 +86,7 @@ class VerifyCode:
         if body is None:  # a format error is not a guess: answered like any refusal, recorded but never counted
             left = await self._logins.attempts_left(login_id, now)
             return await self._refuse("code_invalid", left, client, request_id)
-        verdict = await self._logins.check(login_id, body.code, now)
+        verdict = await self._logins.check(login_id, body.code, now, self._owner_key)
         if isinstance(verdict, Wrong):
             return await self._refuse("code_refused", verdict.attempts_left, client, request_id)
         if isinstance(verdict, Dead):

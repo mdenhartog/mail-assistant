@@ -41,6 +41,7 @@ UNKNOWN = "somebody-else"
 CODES = [f"{n:06d}" for n in range(111111, 111111 + 20 * 111111, 111111)]
 PATH = "/auth/request-code"
 ADDRESS = "marco@example.test"
+OWNER_KEY = username_key(b"c" * 32, USERNAME)
 
 
 class RecordingGuard:
@@ -125,7 +126,7 @@ async def test_given_the_cookie_when_the_code_is_checked_then_it_is_the_id_of_th
 
     value, _ = _cookie(response)
 
-    assert await api.store.check(value, "111111", T0) == Ok()
+    assert await api.store.check(value, "111111", T0, OWNER_KEY) == Ok()
 
 
 async def test_given_the_configured_and_an_unknown_username_when_requested_then_the_answers_are_identical(
@@ -231,9 +232,9 @@ async def test_given_a_second_request_at_59_and_60_seconds_when_requested_then_4
     assert early.headers["retry-after"] == "1"
     assert "set-cookie" not in early.headers
     assert on_time.status_code == 200
-    assert await api.store.check(first_cookie, "111111", api.clock.now()) != Ok()
+    assert await api.store.check(first_cookie, "111111", api.clock.now(), OWNER_KEY) != Ok()
     # the refused request drew a code too (222222) and threw it away, so the issued one is the third
-    assert await api.store.check(_cookie(on_time)[0], "333333", api.clock.now()) == Ok()
+    assert await api.store.check(_cookie(on_time)[0], "333333", api.clock.now(), OWNER_KEY) == Ok()
 
 
 async def test_given_five_sent_codes_in_an_hour_when_a_sixth_is_requested_then_429_until_the_oldest_falls_out(
