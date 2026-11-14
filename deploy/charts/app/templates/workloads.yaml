@@ -118,7 +118,16 @@ metadata:
   name: {{ $.Release.Name }}-{{ $name }}
   labels: {{- include "app.labels" $ctx | nindent 4 }}
 spec:
-  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  {{- $budget := $.Values.podDisruptionBudget }}
+  {{- if hasKey $budget "minAvailable" }}
+  {{- $copies := ternary $c.autoscaling.minReplicas $c.replicas (and (ne $name "api") $c.autoscaling.enabled) }}
+  {{- if ge (int $budget.minAvailable) (int $copies) }}
+  {{- fail (printf "podDisruptionBudget.minAvailable (%v) must be below the %s replicas (%v), or no pod could ever be evicted; use maxUnavailable: 1" $budget.minAvailable $name $copies) }}
+  {{- end }}
+  minAvailable: {{ int $budget.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ required "podDisruptionBudget needs maxUnavailable or minAvailable" $budget.maxUnavailable }}
+  {{- end }}
   unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels: {{- include "app.selector" $ctx | nindent 6 }}

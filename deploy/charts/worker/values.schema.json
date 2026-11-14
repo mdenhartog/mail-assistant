@@ -38,6 +38,14 @@
           ]
         }
       }
+    },
+    "env": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "pattern": "^([Ee][Nn][Vv][Ii][Rr][Oo][Nn][Mm][Ee][Nn][Tt]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]_.*|[Rr][Uu][Nn][Tt][Ii][Mm][Ee]_[Rr][Oo][Ll][Ee]_[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ww][Ee][Bb]_[Rr][Oo][Ll][Ee]_[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd])$"
+        }
+      }
     }
   },
   "if": {

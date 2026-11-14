@@ -12,7 +12,7 @@ spec:
   {{- include "app.podSecurity" (dict "name" "test" "root" .) | nindent 2 }}
   containers:
     - name: curl
-      image: curlimages/curl:8.17.0
+      image: curlimages/curl:8.17.0@sha256:935d9100e9ba842cdb060de42472c7ca90cfe9a7c96e4dacb55e79e560b3ff40
       args: ["--fail", "--silent", "--show-error", "http://{{ .Release.Name }}-api:{{ .Values.api.port }}/healthz"]
       {{- include "app.containerSecurity" (dict "name" "test" "root" .) | nindent 6 }}
       resources:
