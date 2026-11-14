@@ -1,6 +1,7 @@
 import { useId } from "react";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 
+import { Card } from "@/components/Card";
 import { Field } from "@/components/Field";
 import { FieldGroup } from "@/components/FieldGroup";
 import { TimeField } from "@/components/TimeField";
@@ -20,10 +21,6 @@ interface SettingsFieldsProps {
 interface GroupControl {
   "aria-describedby": string | undefined;
   "aria-invalid": true | undefined;
-}
-
-function Card({ children }: { children: ReactNode }): ReactElement {
-  return <div className="rounded-card bg-surface-raised p-5 shadow-soft">{children}</div>;
 }
 
 interface SingleTimeProps extends SettingsFieldsProps {

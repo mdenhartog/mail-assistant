@@ -4,4 +4,6 @@ export const paths = {
   login: "/login",
   loginExpired: "/login?notice=expired",
   settings: "/settings",
+  categories: "/categories",
+  review: "/review",
 } as const;
