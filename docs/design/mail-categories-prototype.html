@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mail categories prototype</title>
+<script>document.documentElement.dataset.theme=window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+<style>
+/* Tokens exactly as in packages/tokens/tokens.css (Pebble, ADR-0035). No other colour is used. */
+:root{color-scheme:light;
+--color-surface:#faf1ee;--color-surface-raised:#ffffff;--color-text:#2a1823;--color-text-muted:#6a4f5e;--color-border:#967a89;--color-divider:#ead3dc;
+--color-primary:#8a2f63;--color-primary-contrast:#ffffff;--color-danger:#b42318;--color-danger-soft:#fde4e0;--color-success:#23683d;--color-success-soft:#e0f1e3;--color-focus:#0b5fc2;
+--font-sans:"Figtree",system-ui,"Segoe UI",sans-serif;--font-display:"Bricolage Grotesque","Trebuchet MS",system-ui,sans-serif;
+--radius-pill:999px;--radius-control:14px;--radius-card:24px;--shadow-soft:0 6px 24px -8px rgba(60,20,45,.28);
+--spacing-1:.25rem;--spacing-2:.5rem;--spacing-3:.75rem;--spacing-4:1rem;--spacing-5:1.25rem;--spacing-6:1.5rem;--spacing-8:2rem;
+--text-sm:.875rem;--text-md:1rem;--text-lg:1.25rem;--text-xl:1.5625rem;--text-2xl:2rem;--duration-press:200ms;--duration-enter:250ms;--ease-spring:cubic-bezier(.34,1.56,.64,1)}
+:root[data-theme=dark]{color-scheme:dark;--color-surface:#1c1219;--color-surface-raised:#281a24;--color-text:#f6e9f0;--color-text-muted:#c4a9b8;--color-border:#8e7282;--color-divider:#402e3a;
+--color-primary:#f0a0cb;--color-primary-contrast:#3a0f27;--color-danger:#ffa399;--color-danger-soft:#4b1f1b;--color-success:#92d8a6;--color-success-soft:#1d3a26;--color-focus:#9cc4ff}
+@media (prefers-reduced-motion:reduce){:root{--duration-press:0ms;--duration-enter:0ms}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--color-surface);color:var(--color-text);font-family:var(--font-sans);font-size:1rem;line-height:1.5;overflow-wrap:anywhere}
+h1,h2{font-family:var(--font-display);margin:0;color:var(--color-text);font-weight:600}p{margin:0}button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--color-focus);outline-offset:2px}[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+/* prototype chrome (not part of the product) */
+.proto-bar{display:flex;flex-wrap:wrap;gap:var(--spacing-2) var(--spacing-4);align-items:center;padding:var(--spacing-2) var(--spacing-4);background:var(--color-surface-raised);border-bottom:2px dashed var(--color-border);font-size:var(--text-sm)}
+.proto-bar label{display:flex;align-items:center;gap:var(--spacing-2)}
+.proto-bar select{min-height:44px;border:1px solid var(--color-border);border-radius:var(--radius-control);background:var(--color-surface-raised);padding:0 var(--spacing-2)}
+/* Button.tsx */
+.btn{display:inline-flex;min-height:44px;min-width:44px;cursor:pointer;align-items:center;justify-content:center;border-radius:var(--radius-pill);text-align:center;transition:transform var(--duration-press) var(--ease-spring)}
+.btn:active{transform:scale(.95)}.btn[disabled],.btn[aria-disabled=true]{cursor:not-allowed;opacity:.6}
+.btn.primary{border:2px solid transparent;background:var(--color-primary);padding:0 var(--spacing-6);font-weight:600;color:var(--color-primary-contrast)}
+.btn.secondary{border:2px solid var(--color-border);background:var(--color-surface-raised);padding:0 var(--spacing-5);font-weight:600;color:var(--color-text)}
+.btn.ghost{border:2px solid transparent;background:transparent;padding:0 var(--spacing-3);font-weight:600;color:var(--color-text)}
+.btn.danger{border:4px solid var(--color-text);background:var(--color-danger);padding:0 var(--spacing-6);font-weight:700;color:var(--color-surface-raised)}
+/* Layout.tsx */
+header.app{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--spacing-3);border-bottom:1px solid var(--color-divider);padding:var(--spacing-4) var(--spacing-6)}
+header.app .brand{font-family:var(--font-display);font-size:var(--text-lg)}header.app .who{font-size:var(--text-sm);color:var(--color-text-muted)}
+nav.tabs{display:flex;flex-wrap:wrap;gap:var(--spacing-1);border-bottom:1px solid var(--color-divider);padding:var(--spacing-2) var(--spacing-6)}
+nav.tabs button{min-height:44px;border-radius:var(--radius-pill);border:2px solid transparent;background:transparent;padding:0 var(--spacing-4);font-weight:600;cursor:pointer}
+nav.tabs button[aria-current=page]{border-color:var(--color-primary);background:var(--color-surface-raised);color:var(--color-primary)}
+.badge{display:inline-block;min-width:1.5rem;margin-left:.4rem;padding:0 .4rem;border-radius:var(--radius-pill);background:var(--color-primary);color:var(--color-primary-contrast);font-size:var(--text-sm);text-align:center}
+main{outline:none}.page{max-width:48rem;margin:0 auto;padding:var(--spacing-8) var(--spacing-6)}
+h1{font-size:var(--text-2xl);color:var(--color-text)}.muted{color:var(--color-text-muted)}.sm{font-size:var(--text-sm)}
+.stack{display:flex;flex-direction:column;gap:var(--spacing-6);margin-top:var(--spacing-6)}
+/* SettingsFields Card + grid */
+.grid{display:grid;grid-template-columns:1fr;gap:var(--spacing-4)}@media (min-width:40rem){.grid{grid-template-columns:1fr 1fr}}
+.card{border-radius:var(--radius-card);background:var(--color-surface-raised);padding:var(--spacing-5);box-shadow:var(--shadow-soft)}
+.card.plain{background:transparent;box-shadow:none;border:2px dashed var(--color-divider)}
+.skel{height:7rem;border-radius:var(--radius-card);background:var(--color-divider);animation:pulse 2s ease-in-out infinite}@keyframes pulse{50%{opacity:.5}}
+/* Field.tsx */
+.field{display:flex;flex-direction:column;gap:var(--spacing-1)}.field+.field{margin-top:var(--spacing-4)}.field>label{font-weight:600}.field .hint{font-size:var(--text-sm);color:var(--color-text-muted)}.field .ctl{margin-top:var(--spacing-1)}
+.field input,.field textarea{min-height:44px;width:100%;min-width:0;border-radius:var(--radius-control);border:1px solid var(--color-border);background:var(--color-surface-raised);padding:0 var(--spacing-3);color:var(--color-text)}
+.field textarea{padding:var(--spacing-2) var(--spacing-3);min-height:6rem;resize:vertical}
+.field input[aria-invalid=true],.field textarea[aria-invalid=true]{border:2px solid var(--color-danger)}
+.err{display:flex;align-items:flex-start;gap:var(--spacing-2);margin-top:var(--spacing-1);color:var(--color-danger)}
+.err i{flex:none;display:inline-grid;place-items:center;width:1.25rem;height:1.25rem;margin-top:.125rem;border-radius:50%;background:var(--color-danger);color:var(--color-surface-raised);font-size:var(--text-sm);font-weight:700;font-style:normal}
+/* Banner.tsx */
+.banner{display:flex;align-items:flex-start;gap:var(--spacing-3);border-radius:var(--radius-control);border-left:8px solid;padding:var(--spacing-3) var(--spacing-4);animation:rise var(--duration-enter) ease-out}@keyframes rise{from{opacity:0;transform:translateY(.5rem)}}
+.banner .ic{flex:none;display:inline-grid;place-items:center;width:1.5rem;height:1.5rem;margin-top:.125rem;border-radius:50%;font-size:var(--text-sm);font-weight:700}
+.banner.danger{border-color:var(--color-danger);background:var(--color-danger-soft);color:var(--color-danger)}.banner.danger .ic{background:var(--color-danger);color:var(--color-danger-soft)}
+.banner.success{border-color:var(--color-success);background:var(--color-success-soft);color:var(--color-success)}.banner.success .ic{background:var(--color-success);color:var(--color-success-soft)}
+.banner.info,.banner.conflict{border-color:var(--color-primary);background:var(--color-surface-raised);color:var(--color-text)}.banner.info .ic,.banner.conflict .ic{background:var(--color-primary);color:var(--color-primary-contrast)}
+.banner .act{margin-top:var(--spacing-2)}
+/* ConfirmDialog.tsx */
+dialog{margin:auto;max-height:91%;width:91%;max-width:28rem;overflow-y:auto;border:0;border-radius:var(--radius-card);background:var(--color-surface-raised);padding:var(--spacing-6);color:var(--color-text);box-shadow:var(--shadow-soft)}
+dialog::backdrop{background:color-mix(in srgb,var(--color-text) 50%,transparent)}dialog h2{font-size:var(--text-xl)}dialog .body{margin-top:var(--spacing-3)}dialog ul{padding-left:var(--spacing-5);margin:var(--spacing-2) 0}
+dialog .foot{margin-top:var(--spacing-6);display:flex;flex-direction:column;gap:var(--spacing-3)}@media (min-width:40rem){dialog .foot{flex-direction:row;justify-content:flex-end}}
+/* new components, built only from the tokens above */
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--spacing-3)}.row .sp{flex:1 1 10rem}
+.bar{height:.75rem;margin-top:var(--spacing-3);overflow:hidden;border-radius:var(--radius-pill);background:var(--color-divider)}.bar i{display:block;height:100%;background:var(--color-primary)}
+.group{border-radius:var(--radius-card);background:var(--color-surface-raised);box-shadow:var(--shadow-soft);overflow:hidden}
+.group .head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--spacing-2) var(--spacing-3);padding:var(--spacing-3) var(--spacing-5)}
+.group .toggle{flex:1 1 14rem;min-height:44px;display:flex;align-items:center;gap:var(--spacing-2);border:0;background:transparent;text-align:left;font-weight:700;cursor:pointer}
+.group .gb{border-top:1px solid var(--color-divider);padding:var(--spacing-2) var(--spacing-5) var(--spacing-4)}
+.item{display:flex;align-items:flex-start;gap:var(--spacing-3);min-height:44px;padding:var(--spacing-2) 0;border-bottom:1px solid var(--color-divider);cursor:pointer}
+.item input{flex:none;width:1.5rem;height:1.5rem;margin-top:.25rem;accent-color:var(--color-primary)}.item b{display:block}.item small{display:block;color:var(--color-text-muted)}
+.sticky{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--spacing-3);margin-top:var(--spacing-6);border-top:1px solid var(--color-divider);background:var(--color-surface);padding:var(--spacing-3) 0}
+.foot-actions{display:flex;flex-direction:column;align-items:flex-start;gap:var(--spacing-4)}@media (min-width:40rem){.foot-actions{flex-direction:row;justify-content:space-between}}
+</style>
+</head>
+<body>
+<div class="proto-bar" role="region" aria-label="Prototype controls (not part of the product)">
+  <strong>Prototype, fake data</strong>
+  <label>Categories state
+    <select id="pc"><option value="ready">Ready</option><option value="loading">Loading</option><option value="notready">Not ready (agent seeding)</option><option value="conflict">Conflict (409)</option><option value="failed">Save failed</option><option value="locked">Web lock (403)</option><option value="expired">Session expired</option></select></label>
+  <label>Review state
+    <select id="pr"><option value="ready">Ready (842 items)</option><option value="none">No plan</option><option value="building">Building</option><option value="cap">Ready, cap reached</option><option value="scheduled">Scheduled (delayed)</option><option value="applied">Applied</option><option value="replaced">Replaced by list change</option><option value="locked">Web lock (403)</option></select></label>
+  <button class="btn secondary" id="theme" type="button">Light / dark</button>
+</div>
+<header class="app"><span class="brand">Mail Assistant</span><p class="who">Signed in as m***@example.com</p><button class="btn secondary" type="button">Sign out</button></header>
+<nav class="tabs" aria-label="Main"><button type="button" disabled title="Not in this prototype">Settings</button><button type="button" data-go="cat" aria-current="page">Categories</button><button type="button" data-go="rev">Review moves<span class="badge" id="nb" aria-label="open items">842</span></button></nav>
+<main id="main" tabindex="-1"></main>
+<div class="sr" role="status" aria-live="polite" id="live"></div>
+<dialog id="dlg" role="alertdialog" aria-labelledby="dt" aria-describedby="db"><h2 id="dt"></h2><div class="body" id="db"></div><div class="foot"><button class="btn secondary" id="dc" type="button" style="padding-top:.5rem;padding-bottom:.5rem"></button><button class="btn danger" id="dok" type="button" style="padding-top:.5rem;padding-bottom:.5rem"></button></div></dialog>
+
+<script>
+const $=(s,r=document)=>r.querySelector(s),live=m=>{$('#live').textContent=m};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const banner=(kind,title,body='',action='')=>`<div class="banner ${kind}" role="${kind==='danger'||kind==='conflict'?'alert':'status'}"><span class="ic" aria-hidden="true">${{danger:'!',conflict:'!',success:'✓',info:'i'}[kind]}</span><div><strong>${title}</strong>${body?' '+body:''}${action?`<div class="act">${action}</div>`:''}</div></div>`;
+const errp=m=>`<p class="err" role="alert"><i aria-hidden="true">!</i><span>${m}</span></p>`;
+let page='cat';
+const orig=[{id:'c1',name:'Receipts',desc:'Invoices, receipts and payment confirmations',n:212},{id:'c2',name:'Newsletters',desc:'Marketing and news mail I did not ask for',n:640},{id:'c3',name:'Work',desc:'Mail from colleagues and clients',n:318},{id:'c4',name:'Travel',desc:'Bookings, tickets and itineraries',n:57}];
+let list=orig.map(c=>({...c})),errors={},saved=false;const pendingPlan=true;
+const groups=[{key:'g1',from:'Other',to:'Receipts',count:310},{key:'g2',from:'Other',to:'Newsletters',count:412},{key:'g3',from:'Work',to:'Other',count:120}];
+const names=['Shop Online','Bank Support','Travel Desk','Weekly Digest','Anna de Vries','Parcel Service'];
+const subj=['Your order has shipped','Statement for October','Boarding pass attached','Ten things to read','Quick question about Friday','Delivery tomorrow between 10 and 12'];
+groups.forEach(g=>{g.sel=new Set();g.open=false;g.shown=8});
+const sel=()=>groups.reduce((a,g)=>a+g.sel.size,0),total=()=>groups.reduce((a,g)=>a+g.count,0);
+const item=(g,i)=>{const k=(i*7+g.count)%6;return{name:names[k],addr:names[k].toLowerCase().replace(/\W+/g,'.')+'@example.test',subject:subj[(k+i)%6]+(i>5?' #'+(i+1):'')}};
+function render(){
+  const open=['ready','cap'].includes($('#pr').value);$('#nb').textContent='842';$('#nb').hidden=!open;
+  document.querySelectorAll('nav.tabs [data-go]').forEach(b=>b.dataset.go===page?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
+  $('#main').innerHTML=`<div class="page">${page==='cat'?renderCat():renderRev()}</div>`;bind();
+}
+function renderCat(){
+  const s=$('#pc').value;let h='<h1>Categories</h1><p class="muted" style="margin-top:var(--spacing-2)">Choose the categories the agent files your mail under. A mail that fits none goes to Other. <b>Changes apply to new mail from now on.</b> Older mail moves only after you approve a review.</p>';
+  if(s==='loading')return h+'<div aria-busy="true" style="margin-top:var(--spacing-6)"><p class="muted">Loading your categories</p><div class="grid" style="margin-top:var(--spacing-4)" aria-hidden="true"><div class="skel"></div><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>';
+  const top=(x)=>`<div style="margin-top:var(--spacing-6)">${x}</div>`;
+  if(s==='expired')return h+top(banner('danger','Your session has expired.','Your unsaved changes are kept in this tab.','<button class="btn secondary" type="button">Sign in again</button>'));
+  if(s==='locked')return h+top(banner('danger','Web sign-in is locked.','Unlock it in Telegram with /web_unlock.'));
+  if(s==='notready')return h+top(banner('info','The agent is still preparing your list.','This takes one run, about 5 minutes. Try again soon.'));
+  h+='<form class="stack" novalidate>';
+  if(s==='conflict')h+=banner('conflict','The list changed somewhere else.','Showing the newest list. Your edits were not saved.','<button class="btn secondary" type="button" data-act="keepmine">Show my edits again</button>');
+  if(s==='failed')h+=banner('danger','Could not save. Nothing was changed.','Check your connection and try again.','<button class="btn secondary" type="button" data-act="save">Try again</button>');
+  if(saved)h+=banner('success','Saved.','You get a Telegram notice with Undo within about 5 minutes.');
+  h+=banner('info','Mail you put in the Gmail label Archive is never re-sorted.');
+  h+='<div class="grid">';
+  list.forEach((c,i)=>{const e=errors[c.id]||{};h+=`<div class="card"><div class="row"><h2 class="sp" style="font-size:var(--text-lg)">${esc(c.name||'New category')}</h2><span class="muted sm">${c.n??0} mails</span></div>
+  <div class="field"><label for="n${i}">Name</label><div class="ctl"><input id="n${i}" data-f="name" data-i="${i}" value="${esc(c.name)}" maxlength="40" ${e.name?'aria-invalid="true" aria-describedby="e'+i+'n"':''}></div>${e.name?errp(e.name).replace('<p ','<p id="e'+i+'n" '):''}</div>
+  <div class="field"><label for="d${i}">Description</label><p class="hint" id="h${i}">The model reads the description. Say what belongs here, for example: Invoices, receipts and payment confirmations.</p><div class="ctl"><textarea id="d${i}" data-f="desc" data-i="${i}" maxlength="500" aria-describedby="h${i}" ${e.desc?'aria-invalid="true"':''}>${esc(c.desc)}</textarea></div>${e.desc?errp(e.desc):''}</div>
+  <div style="margin-top:var(--spacing-4)"><button class="btn ghost" type="button" data-del="${i}" aria-label="Delete ${esc(c.name||'category')}">Delete</button></div></div>`});
+  h+=`<div class="card plain"><div class="row"><h2 class="sp" style="font-size:var(--text-lg)">Other</h2><span class="muted sm">1 204 mails</span></div><p class="muted sm" style="margin-top:var(--spacing-2)">Mail that fits no category. This one always exists.</p></div>
+  <div class="card plain"><div class="row"><h2 class="sp" style="font-size:var(--text-lg)">Older category: Invoices-2019</h2><span class="muted sm">36 mails</span></div><p class="muted sm" style="margin:var(--spacing-2) 0 var(--spacing-3)">This label was made by the agent before and is not on your list. Its mails are part of the first review.</p><button class="btn secondary" type="button" data-act="adopt">Add to my list</button></div></div>`;
+  h+='<div class="foot-actions"><button class="btn primary" type="button" data-act="save">Save changes</button><button class="btn secondary" type="button" data-act="add">Add category</button></div><p class="sr" role="status"></p></form>';return h;
+}
+function renderRev(){
+  const s=$('#pr').value;let h='<h1>Review moves</h1><p class="muted" style="margin-top:var(--spacing-2)">The agent proposes where earlier mail should go after you changed your list. <b>Nothing moves until you approve.</b> Moves only change labels. Nothing is deleted.</p>';
+  const top=x=>`<div style="margin-top:var(--spacing-6)">${x}</div>`;
+  if(s==='locked')return h+top(banner('danger','Web sign-in is locked.','Unlock it in Telegram with /web_unlock.'));
+  if(s==='none')return h+top(`<div class="card"><p><b>No review is open.</b></p><p class="muted sm" style="margin-top:var(--spacing-1)">Last review: applied 12 Nov, 310 moved, 2 skipped.</p></div>`);
+  if(s==='building')return h+top(`<div class="card" aria-busy="true"><p><b>Building your review: 340 of about 2 000 mails checked.</b></p><p class="muted sm" style="margin-top:var(--spacing-1)">Nothing moves yet. More mail is checked every day within the daily budget.</p><div class="bar"><i style="width:17%"></i></div></div>`);
+  if(s==='replaced')return h+top(banner('conflict','Your list changed, so the earlier review was replaced.','Your decisions on it were discarded. A new review is being built.'));
+  if(s==='scheduled')return h+top(banner('info','842 mails move at 14:20.','You can cancel until then, here or in Telegram.','<button class="btn secondary" type="button" data-act="cancel">Cancel the move</button>'));
+  if(s==='applied')return h+`<div class="stack">${banner('success','Done.','836 mails moved, 4 skipped, 2 failed.')}<div class="card"><h2 style="font-size:var(--text-lg)">Skipped and failed</h2><div class="item"><span><b>Anna de Vries</b><small>Quick question about Friday</small><small>Skipped: you moved this mail yourself.</small></span></div><div class="item"><span><b>Parcel Service</b><small>Delivery tomorrow between 10 and 12</small><small>Failed: Gmail was busy. It will be tried again.</small></span></div></div><p class="muted sm">The label Assistant/Invoices-2019 is now empty. You can delete it in Gmail.</p><div><button class="btn secondary" type="button" data-act="back">Move back</button></div></div>`;
+  h+='<div class="stack">';
+  if(s==='cap')h+=banner('info','1 200 mails were not looked at.','The review covers the newest 5 000 mails. Approve this one first; a new review follows.');
+  h+=`<p class="muted sm" style="margin-top:0">${total()} mails would move. <b>${sel()}</b> selected. Mails you leave out stay where they are and stay out of later reviews until your list changes again.</p>`;
+  groups.forEach(g=>{const n=g.sel.size;h+=`<section class="group"><div class="head"><button class="toggle" type="button" aria-expanded="${g.open}" data-tg="${g.key}"><span aria-hidden="true">${g.open?'▾':'▸'}</span> ${g.from} → ${g.to} <span class="muted sm">${g.count} mails</span></button><span class="muted sm" role="status">${n} of ${g.count} selected</span><button class="btn secondary" type="button" data-ap="${g.key}">Approve group</button><button class="btn ghost" type="button" data-kp="${g.key}">Keep all</button></div>`;
+    if(g.open){h+='<div class="gb"><p class="muted sm">Tick the mails to move.</p>';for(let i=0;i<Math.min(g.shown,g.count);i++){const it=item(g,i);h+=`<label class="item"><input type="checkbox" data-it="${g.key}" data-ix="${i}" ${g.sel.has(i)?'checked':''}><span><b>${esc(it.name)} <span class="muted sm">&lt;${esc(it.addr)}&gt;</span></b><small>${esc(it.subject)}</small></span></label>`}
+      h+='<div class="row" style="margin-top:var(--spacing-3)">';if(g.shown<g.count)h+=`<button class="btn secondary" type="button" data-more="${g.key}">Load more (${g.count-g.shown} left)</button>`;if(n<g.count)h+=`<button class="btn ghost" type="button" data-ap="${g.key}">Select all ${g.count} in this group</button>`;h+='</div></div>'}
+    h+='</section>'});
+  h+=`<div class="sticky"><span class="muted sm">${sel()} selected</span><button class="btn primary" type="button" data-act="approve" ${sel()?'':'disabled'}>Move ${sel()} mails, labels only</button></div></div>`;return h;
+}
+function bind(){
+  document.querySelectorAll('[data-f]').forEach(el=>el.addEventListener('input',()=>{list[el.dataset.i][el.dataset.f==='name'?'name':'desc']=el.value;saved=false}));
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{list.splice(+b.dataset.del,1);saved=false;render();live('Category removed. Saving will create a review.')});
+  document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>act(b.dataset.act));
+  document.querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{const g=groups.find(x=>x.key===b.dataset.tg);g.open=!g.open;render();$(`[data-tg=${g.key}]`).focus()});
+  document.querySelectorAll('[data-ap]').forEach(b=>b.onclick=()=>{const g=groups.find(x=>x.key===b.dataset.ap);g.sel=new Set([...Array(g.count).keys()]);render();live(`${g.count} selected in ${g.from} to ${g.to}`)});
+  document.querySelectorAll('[data-kp]').forEach(b=>b.onclick=()=>{const g=groups.find(x=>x.key===b.dataset.kp);g.sel.clear();render();live('None selected in this group')});
+  document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{const g=groups.find(x=>x.key===b.dataset.more);g.shown+=8;render()});
+  document.querySelectorAll('[data-it]').forEach(c=>c.addEventListener('change',()=>{const g=groups.find(x=>x.key===c.dataset.it),i=+c.dataset.ix;c.checked?g.sel.add(i):g.sel.delete(i);render();live(`${g.sel.size} of ${g.count} selected`);const a=$(`[data-it=${g.key}][data-ix="${i}"]`);if(a)a.focus()}));
+}
+function validate(){errors={};const seen=new Set();list.forEach(c=>{const e={};const n=c.name.trim().normalize('NFKC').toLowerCase();
+  if(!n)e.name='Give the category a name.';else if(n.includes('/'))e.name='A name cannot contain /.';else if(['other','archive'].includes(n))e.name='This name is reserved.';else if(seen.has(n))e.name='Another category already has this name.';
+  if(c.desc.length>500)e.desc='Use at most 500 characters.';else if(!c.desc.trim())e.desc='Say what belongs in this category. The model reads it.';seen.add(n);if(e.name||e.desc)errors[c.id]=e});return !Object.keys(errors).length}
+function dialog(title,body,okLabel,fn,cancelLabel='Back'){$('#dt').textContent=title;$('#db').innerHTML=body;$('#dok').textContent=okLabel;$('#dc').textContent=cancelLabel;$('#dok').onclick=()=>{$('#dlg').close();fn()};$('#dlg').showModal();$('#dc').focus();}
+function act(a){
+  if(a==='add'){list.push({id:'n'+Date.now(),name:'',desc:'',n:0});saved=false;render();return}
+  if(a==='adopt'){list.push({id:'n'+Date.now(),name:'Invoices-2019',desc:'',n:36});render();return}
+  if(a==='keepmine'||a==='save'){
+    if(!validate()){render();const f=$('[aria-invalid="true"]');if(f)f.focus();live('Fix the fields marked with an exclamation mark.');return}
+    const renamed=list.filter(c=>{const o=orig.find(x=>x.id===c.id);return o&&o.name!==c.name&&o.desc===c.desc}).length;
+    const removed=orig.filter(o=>!list.find(c=>c.id===o.id)).length;
+    const descChanged=list.filter(c=>{const o=orig.find(x=>x.id===c.id);return o&&o.desc!==c.desc}).length;
+    if(!(renamed||removed||descChanged||list.length!==orig.length)){live('No changes to save.');return}
+    let b='<ul>';if(renamed)b+=`<li>${renamed} rename: <b>only the label name changes</b>. No review is made.</li>`;
+    if(removed||descChanged)b+=`<li><b>Saving will create a review of up to 1 204 mails.</b> The agent proposes where the mail of ${removed?'deleted':''}${removed&&descChanged?' and ':''}${descChanged?'changed':''} categories goes. Nothing moves until you approve.</li>`;
+    if(pendingPlan&&(removed||descChanged))b+='<li><b>This replaces the review that is open now.</b> Your decisions on it are discarded.</li>';
+    b+='<li>You get a Telegram notice with Undo.</li></ul>';dialog('Save your categories?',b,'Save',()=>{saved=true;list.forEach(c=>{const o=orig.find(x=>x.id===c.id);if(o){o.name=c.name;o.desc=c.desc}else orig.push({...c})});render();live('Saved')},'Keep editing');return}
+  if(a==='approve'){const n=sel(),late=n>50;
+    const per=groups.filter(g=>g.sel.size).map(g=>`<li>${g.from} → ${g.to}: <b>${g.sel.size}</b></li>`).join('');
+    dialog(`Move ${n} mails?`,`<ul>${per}</ul><p><b>Labels only. Nothing is deleted.</b> You can move them back afterwards.</p>${late?'<p class="muted sm" style="margin-top:var(--spacing-2)">Because this is more than 50 mails, the move starts after 15 minutes. You can cancel here or in Telegram.</p>':''}`,late?`Schedule ${n} moves`:`Move ${n} mails`,()=>{$('#pr').value=late?'scheduled':'applied';render();live(late?'Scheduled. You can cancel.':'Done')},'Not yet');return}
+  if(a==='cancel'){$('#pr').value='ready';render();live('Cancelled. Nothing moved.');return}
+  if(a==='back'){dialog('Move these mails back?','<p>The agent puts the old labels back. Mail you changed yourself meanwhile is skipped.</p>','Move back',()=>{$('#pr').value='ready';render();live('Moving back')},'Keep as is')}
+}
+document.querySelectorAll('nav.tabs [data-go]').forEach(b=>b.onclick=()=>{page=b.dataset.go;render()});
+$('#pc').onchange=()=>{page='cat';render()};$('#pr').onchange=()=>{page='rev';render()};$('#dc').onclick=()=>$('#dlg').close();
+$('#dlg').addEventListener('cancel',e=>{e.preventDefault();$('#dlg').close()});
+$('#theme').onclick=()=>{const r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'};
+render();
+</script>
+</body>
+</html>

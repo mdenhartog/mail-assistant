@@ -9,7 +9,7 @@
       "paths": [
         "agents/mail-triage"
       ],
-      "responsibility": "Polls Gmail, judges each new mail with the model, labels it and runs every Telegram dialogue with the user (alerts, snooze, reply, settings, web-change notices, web lock); its migrate job is the only migrator of the database.",
+      "responsibility": "Polls Gmail, judges each new mail with the model against the user's category list (closed set, urgency separate), labels it, builds and applies re-sort plans, and runs every Telegram dialogue with the user (alerts, snooze, reply, settings, web-change notices, web lock, plan notices); its migrate job is the only migrator of the database.",
       "owns": [
         "public schema: mail items, alerts, drafts, audit and overview log, conversation state, poll state, web_notice_token (full rights), encrypted Gmail token",
         "Alembic chain and grants for all schemas (public, settings, web_auth), run by its migrate job with the owner role (ADR-0025, ADR-0030)",
@@ -17,6 +17,7 @@
       ],
       "dependsOn": [
         "schedule-policy",
+        "category-policy",
         "postgres",
         "gmail",
         "google-oauth",
@@ -31,7 +32,7 @@
       "paths": [
         "backend"
       ],
-      "responsibility": "Serves the settings API to the web page: username plus e-mailed one-time-code sign-in, sessions, CSRF, rate limits and versioned reads and writes of the shared settings row.",
+      "responsibility": "Serves the settings and category API to the web pages: username plus e-mailed one-time-code sign-in, sessions, CSRF, rate limits, versioned reads and writes of the shared settings row and of the category list, and recording of approve and reject decisions on plan items (it never moves mail).",
       "owns": [
         "web_auth sessions, login requests and security events (data; the DDL lives in the mail-triage chain)",
         "co-writer of settings.schedule through the shared contract (ADR-0023, ADR-0025)",
@@ -39,6 +40,7 @@
       ],
       "dependsOn": [
         "schedule-policy",
+        "category-policy",
         "postgres",
         "smtp"
       ]
@@ -50,7 +52,7 @@
       "paths": [
         "apps/web"
       ],
-      "responsibility": "Responsive settings page in the browser: sign-in with username and code, and viewing and changing the settings, only through the api's OpenAPI contract.",
+      "responsibility": "Responsive pages in the browser: sign-in with username and code, the settings, the \"Categories\" page and the \"Review moves\" page, only through the api's OpenAPI contract.",
       "owns": [
         "unsaved form draft in the browser tab"
       ],
@@ -70,6 +72,19 @@
       "owns": [
         "settings validation rules and contract cases",
         "place list (ADR-0028)"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "category-policy",
+      "name": "category-policy",
+      "kind": "shared",
+      "paths": [
+        "packages/category-policy"
+      ],
+      "responsibility": "Pure Python rules for the category contract: name rules (NFKC, case folding, reserved names, length in code points), limits, Assistant/ label mapping and plan decision values, used by both mail-triage and the api (ADR-0042).",
+      "owns": [
+        "category validation rules and contract cases"
       ],
       "dependsOn": []
     },
@@ -148,7 +163,8 @@
       "owns": [
         "public: mail-triage state, capped mail content (30 days, ADR-0020), encrypted Gmail refresh token, audit (confidential)",
         "settings: schedule (shared contract) and settings_change (append-only, trigger-written); time zone and quiet hours reveal the user's routine (confidential)",
-        "web_auth: sessions, login requests with hashed codes, security events, web_lock (confidential)"
+        "web_auth: sessions, login requests with hashed codes, security events, web_lock (confidential)",
+        "categories: list, versions, audit (api-writable); label map, plans, plan items with sender and subject for at most 14 days, rejections, apply audit (agent-owned); every table carries a mailbox id (ADR-0042, ADR-0043, ADR-0044)"
       ],
       "dependsOn": []
     },

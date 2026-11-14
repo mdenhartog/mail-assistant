@@ -40,4 +40,10 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0039 · Web sign-in: protect the owner from lock-out, limit per client, and lock the web after repeated wrong codes · area:identity · tags:authentication,web,rate-limit,denial-of-service,one-time-code,mail-triage · decisions/ADR-0039-web-signin-availability-and-guessing.md
 - ADR-0040 · Ingress controller: Traefik, with its own objects for HSTS, redirect, TLS minimum and the body limit · area:hosting · tags:kubernetes,ingress,traefik,tls,hsts,web,mail-triage · decisions/ADR-0040-ingress-controller-traefik.md
 - ADR-0041 · Architecture baseline: 9 code components, 8 outside systems, model approved · area:architecture · tags:architecture,baseline,model,drift · decisions/ADR-0041-architecture-baseline.md
+- ADR-0042 · Category contract: own schema, split tables, shared category-policy package · area:architecture · tags:mail-categories,postgresql,contract · decisions/ADR-0042-category-contract.md
+- ADR-0043 · Mailbox id on every new table · area:architecture · tags:mail-categories,multi-mailbox,drift · decisions/ADR-0043-mailbox-id.md
+- ADR-0044 · The api reads sender and subject of plan items; accepted exposure MR-1 · area:security · tags:mail-categories,privacy,web · decisions/ADR-0044-api-reads-sender-subject.md
+- ADR-0045 · Judging against the user's list: closed set, urgency separate, security mail pinned · area:architecture · tags:mail-categories,llm,prompt-injection · decisions/ADR-0045-closed-set-judging.md
+- ADR-0046 · Re-sort plans: lifecycle, Gmail operations, delayed apply, Telegram exception to D1 · area:architecture · tags:mail-categories,gmail,telegram,budget · decisions/ADR-0046-resort-plan-lifecycle.md
+- ADR-0047 · Database functions are the api's only write path for plan decisions; retention through an owner-role purge · area:security · tags:mail-categories,postgresql,audit,retention · decisions/ADR-0047-decision-functions-and-purge.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
