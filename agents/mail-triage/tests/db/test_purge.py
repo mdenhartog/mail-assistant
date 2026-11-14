@@ -115,6 +115,16 @@ async def _labels(connection: asyncpg.Connection) -> list[str]:
     return [r["by"] for r in await connection.fetch('select "by" from settings.settings_change order by "by"')]
 
 
+async def _token(connection: asyncpg.Connection, key: str, *, expires_at: datetime) -> None:
+    await connection.execute(
+        "insert into web_notice_token (token, version, before, created_at, expires_at, burst_id, first_version) "
+        "values ($1, 1, '{}', $2, $3, 'b', 1)",
+        key,
+        expires_at - timedelta(minutes=15),
+        expires_at,
+    )
+
+
 # Criterion 1
 async def test_given_records_366_and_364_days_old_when_purged_then_only_the_older_one_goes(
     owner: asyncpg.Connection,
@@ -237,3 +247,39 @@ async def test_given_a_purge_when_it_runs_twice_then_the_second_removes_nothing(
 
     assert first == PurgeCounts(settings_change=1, security_event=1, login_request=0, session=1)
     assert second == PurgeCounts(settings_change=0, security_event=0, login_request=0, session=0)
+
+
+# Criterion 2 (U-web-settings-71, SEC3-04)
+async def test_given_an_expired_and_a_live_notice_token_when_purged_then_only_the_expired_one_goes(
+    owner: asyncpg.Connection,
+) -> None:
+    await _token(owner, "expired", expires_at=NOW - timedelta(minutes=1))
+    await _token(owner, "live", expires_at=NOW + timedelta(minutes=1))
+
+    counts = await purge_expired(owner, FakeClock(NOW))
+
+    assert counts.web_notice_token == 1
+    assert [r["token"] for r in await owner.fetch("select token from web_notice_token")] == ["live"]
+
+
+async def test_given_a_notice_token_expiring_exactly_now_when_purged_then_it_goes_and_one_second_earlier_it_stays(
+    owner: asyncpg.Connection,
+) -> None:
+    await _token(owner, "edge", expires_at=NOW)
+
+    assert (await purge_expired(owner, FakeClock(NOW - timedelta(seconds=1)))).web_notice_token == 0
+    assert await _count(owner, "web_notice_token") == 1
+    assert (await purge_expired(owner, FakeClock(NOW))).web_notice_token == 1
+    assert await _count(owner, "web_notice_token") == 0
+
+
+async def test_given_an_expired_notice_token_when_purged_then_the_log_has_the_count_and_never_the_token(
+    owner: asyncpg.Connection, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _token(owner, "secret-token-value", expires_at=NOW - timedelta(hours=1))
+
+    with caplog.at_level(logging.INFO, logger="app.db.purge"):
+        await purge_expired(owner, FakeClock(NOW))
+
+    assert "web_notice_token=1" in caplog.text
+    assert "secret-token-value" not in caplog.text

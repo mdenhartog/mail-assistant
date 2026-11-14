@@ -63,6 +63,7 @@ class PurgeCounts:
     security_event: int
     login_request: int
     session: int
+    web_notice_token: int = 0  # stub for the red commit
 
 
 def _removed(status: str) -> int:
