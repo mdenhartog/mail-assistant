@@ -154,6 +154,30 @@ describe("step 1: username", () => {
     await screen.findByRole("heading", { level: 1, name: "Enter your code" });
   });
 
+  it("given /login, when rendered, then the fixed hint is visible text and part of the username's description", async () => {
+    stubApi();
+    setup();
+
+    const username = await screen.findByLabelText("Username");
+    const hint = screen.getByText("Your username, not your e-mail address.");
+    expect(hint).toBeVisible();
+    expect(username).toHaveAccessibleDescription(expect.stringContaining("Your username, not your e-mail address."));
+    expect(username).not.toHaveAttribute("placeholder");
+    expect(username.getAttribute("aria-describedby")).toContain(hint.id);
+  });
+
+  it("given an empty username, when sent, then both the hint and the error are in the description", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(await screen.findByRole("button", { name: "Send me a code" }));
+
+    const description = screen.getByLabelText("Username");
+    expect(description).toHaveAccessibleDescription(/Your username, not your e-mail address\./);
+    expect(description).toHaveAccessibleDescription(/Enter your username\./);
+  });
+
   it("given an empty username, when sent, then an inline error shows and no request is made", async () => {
     const posted = stubApi();
     const user = userEvent.setup();
@@ -204,6 +228,17 @@ describe("an unusable answer", () => {
 });
 
 describe("step 2: code", () => {
+  it("given the code step, when shown, then the username hint is gone", async () => {
+    stubApi();
+    const user = userEvent.setup();
+    setup();
+
+    await askForCode(user);
+
+    await screen.findByRole("heading", { level: 1, name: "Enter your code" });
+    expect(screen.queryByText("Your username, not your e-mail address.")).not.toBeInTheDocument();
+  });
+
   it("given the same answer for a known and an unknown username, when step 2 appears, then focus is in the code field and the pages are identical", async () => {
     stubApi();
     const first = setup();
