@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Final
 from xml.etree import ElementTree  # the report is written by pytest in the same job, not input from outside
 
-MINIMUM_DB_TESTS: Final = 66
+MINIMUM_DB_TESTS: Final = 78
 CEILING_FACTOR: Final = 1.25
 _DB_PREFIX: Final = "tests.db."
 _NO_DATABASE: Final = frozenset({"tests.db.test_start_policy"})
