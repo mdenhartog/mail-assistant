@@ -13,6 +13,7 @@
 // It only runs `docker compose` with the project name that compose.yaml defines and the profile `local` (and
 // `docker volume inspect` to see whether the database volume exists). The compose files get, in this order, Marco's
 // .env, deploy/local/stack.env (settings, checked in) and deploy/local/secrets.env (made by `init`, git-ignored).
+// .env is only read (names only), never written; `init` puts a missing MAIL_TRIAGE_RUNTIME_PASSWORD in secrets.env.
 // A secret is never printed and never overwritten. `down` never removes a volume: there is no such option.
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -41,7 +42,11 @@ export const SECRET_KEYS = [
 const KEY_BYTES = { WEB_ROLE_PASSWORD: 24, MAIL_SMTP_PASSWORD: 24 };
 const DEFAULT_USERNAME = "marco";
 const DEFAULT_EMAIL = "marco@example.test";
-const REQUIRED_IN_ENV = ["POSTGRES_PASSWORD", "MAIL_TRIAGE_RUNTIME_PASSWORD"];
+const REQUIRED_NAMES = ["POSTGRES_PASSWORD", "MAIL_TRIAGE_RUNTIME_PASSWORD"];
+/** `init` makes this one when neither .env nor secrets.env has it (a .env from before the two-role database). */
+const RUNTIME_PASSWORD = "MAIL_TRIAGE_RUNTIME_PASSWORD";
+/** A .env entry with one of these names replaces the generated least-privilege role in compose. */
+const ROLE_BYPASS_NAMES = ["MAIL_TRIAGE_DATABASE_URL", "MAIL_TRIAGE_DATABASE_OWNER_URL"];
 const SERVICES = ["db", "mail", "mail-triage-migrate", "mail-triage", "api", "web", "edge"];
 const MIN_COMPOSE = [2, 24, 0]; // repeated --env-file flags
 const ENV_FILES = [".env", "deploy/local/stack.env", "deploy/local/secrets.env"];
@@ -67,6 +72,11 @@ export function parseEnv(text) {
   return values;
 }
 
+/** The variable names an env file text defines. Values are dropped at once and never leave this function. */
+export function envNames(text) {
+  return new Set(parseEnv(text).keys());
+}
+
 /** `20261114T101530Z.sql` */
 export function backupFileName(date) {
   return `${date.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.sql`;
@@ -84,7 +94,7 @@ export function composeVersionOk(text) {
 }
 
 /** The new secrets file text: what is there stays, what is missing is added. Never returns a value for printing. */
-export function planSecrets(existingText, { random, username, email }) {
+export function planSecrets(existingText, { random, username, email, otherNames = new Set() }) {
   const present = parseEnv(existingText);
   const used = new Set(present.values());
   const lines = [];
@@ -100,6 +110,14 @@ export function planSecrets(existingText, { random, username, email }) {
     while (used.has(value));
     used.add(value);
     add(key, value);
+  }
+  // The runtime role password: only when neither .env (otherNames) nor this file has it; compose reads both files.
+  if (!present.has(RUNTIME_PASSWORD) && !otherNames.has(RUNTIME_PASSWORD)) {
+    let value;
+    do value = random(32).toString("hex");
+    while (used.has(value));
+    used.add(value);
+    add(RUNTIME_PASSWORD, value);
   }
   if (!present.has("WEB_USERNAME")) add("WEB_USERNAME", username);
   if (!present.has("WEB_EMAIL_ADDRESS")) add("WEB_EMAIL_ADDRESS", email);
@@ -163,9 +181,9 @@ export async function main(argv, deps = {}) {
     if (!existsSync(path(".env"))) return "There is no .env in the checkout. Copy .env.example to .env and fill it in.";
     if (!existsSync(path(SECRETS))) return "There is no deploy/local/secrets.env. Run: node scripts/local-stack.mjs init";
     if (!existsSync(path(CERTS, "ca.crt"))) return "There are no certificates. Run: node scripts/local-stack.mjs init";
-    const names = new Set([...parseEnv(readFileSync(path(".env"), "utf8")).keys(), ...parseEnv(readFileSync(path(SECRETS), "utf8")).keys()]);
-    const missing = REQUIRED_IN_ENV.filter((key) => !names.has(key));
-    if (missing.length) return `.env lacks: ${missing.join(", ")}`;
+    const names = new Set([...envNames(readFileSync(path(".env"), "utf8")), ...envNames(readFileSync(path(SECRETS), "utf8"))]);
+    const missing = REQUIRED_NAMES.filter((key) => !names.has(key));
+    if (missing.length) return `Neither .env nor deploy/local/secrets.env has: ${missing.join(", ")}. Set POSTGRES_PASSWORD in .env; MAIL_TRIAGE_RUNTIME_PASSWORD is made by: node scripts/local-stack.mjs init`;
     return null;
   };
 
@@ -200,7 +218,8 @@ export async function main(argv, deps = {}) {
       if (!validName(email, /^[^\s@,=]{1,64}@[A-Za-z0-9.-]{1,120}$/)) return fail("--email: not a valid address");
       mkdirSync(path("deploy", "local"), { recursive: true });
       const existing = existsSync(path(SECRETS)) ? readFileSync(path(SECRETS), "utf8") : "";
-      const plan = planSecrets(existing, { random, username, email });
+      const otherNames = existsSync(path(".env")) ? envNames(readFileSync(path(".env"), "utf8")) : new Set();
+      const plan = planSecrets(existing, { random, username, email, otherNames });
       if (plan.added.length) {
         writeFileSync(path(SECRETS), plan.text, { mode: 0o600 });
         say(`deploy/local/secrets.env: added ${plan.added.join(", ")} (values are not printed).`);
@@ -219,6 +238,8 @@ export async function main(argv, deps = {}) {
       if (!known(["--recreate"])) return fail(USAGE, 2);
       const problem = preflight();
       if (problem) return fail(problem);
+      const bypass = ROLE_BYPASS_NAMES.filter((name) => envNames(readFileSync(path(".env"), "utf8")).has(name));
+      if (bypass.length) say(`WARNING: .env defines ${bypass.join(", ")}, which replaces the least-privilege database role; remove it unless that is on purpose.`);
       const version = runner("docker", ["compose", "version", "--short"], { cwd: root, capture: true });
       if (version.status !== 0 || !composeVersionOk(version.stdout)) return fail("docker compose 2.24.0 or newer is needed (repeated --env-file).");
       const recreate = flags.has("--recreate") ? ["--force-recreate"] : [];

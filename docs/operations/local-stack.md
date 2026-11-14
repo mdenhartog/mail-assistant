@@ -21,8 +21,14 @@ STARTTLS only), `mail-triage-migrate` (a one-shot job), `mail-triage` (the agent
 - Node 22 or newer, `bash` and `openssl` on the path. On Windows use Git for Windows (Git Bash) and run the script from
   Git Bash or PowerShell with `C:\Program Files\Git\bin` in the path. If `bash` is another program (WSL), set
   `LOCAL_STACK_BASH` to the full path of Git's `bash.exe`.
-- Your `.env` (copy of `.env.example`) holds `POSTGRES_PASSWORD`, `MAIL_TRIAGE_RUNTIME_PASSWORD` and the Telegram, Gmail
-  and model settings. The script checks that the first two exist (names only, it never prints a value).
+- Your `.env` (copy of `.env.example`) holds `POSTGRES_PASSWORD` and the Telegram, Gmail and model settings. `up` checks
+  that `POSTGRES_PASSWORD` and `MAIL_TRIAGE_RUNTIME_PASSWORD` exist in `.env` or in `deploy/local/secrets.env` (names only,
+  it never prints a value) and stops, before any docker call, naming the key that is in neither.
+- `MAIL_TRIAGE_RUNTIME_PASSWORD` (the password of the least-privilege database role, ADR-0025): when your `.env` has none,
+  `init` writes a fresh random one into `deploy/local/secrets.env`. The script never edits `.env` and never overwrites a value.
+- A `MAIL_TRIAGE_DATABASE_URL` entry in `.env` overrides the generated role password in compose (the default URL is built
+  from the runtime password). If `.env` still has an old owner-login URL, remove it. `up` prints one `WARNING` line (the
+  name only) when `.env` defines `MAIL_TRIAGE_DATABASE_URL` or `MAIL_TRIAGE_DATABASE_OWNER_URL`, because that bypasses the role.
 - The checkout runs on branch `local/stack`, which tracks `origin/main`.
 
 ## First start
@@ -30,7 +36,8 @@ STARTTLS only), `mail-triage-migrate` (a one-shot job), `mail-triage` (the agent
 1. `node scripts/local-stack.mjs init` makes the private CA and the certificates (`deploy/prod-like/certs/`) and writes
    `deploy/local/secrets.env` with fresh random keys and passwords, plus `WEB_USERNAME=marco` and
    `WEB_EMAIL_ADDRESS=marco@example.test` (change them with `--username` and `--email` on the first run, or edit the file).
-   Running it again changes nothing. Values in `secrets.env` win over the same names in `.env`.
+   Running it again changes nothing. Values in `secrets.env` win over the same names in `.env`
+   (the order compose gets is `.env`, `stack.env`, `secrets.env`; the later file wins).
 2. `node scripts/local-stack.mjs trust-ca` prints how to trust `ca.crt`. It changes nothing itself:
    - Edge and Chrome (Windows): `certutil -user -addstore Root "<path>\ca.crt"`, then confirm the Windows dialog.
      Restart the browser.
