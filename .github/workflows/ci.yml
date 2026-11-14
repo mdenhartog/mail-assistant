@@ -194,7 +194,7 @@ jobs:
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5
       - run: helm lint --strict deploy/charts/app -f deploy/envs/local/values.yaml
       - name: kubeconform
-        run: helm template app deploy/charts/app -f deploy/envs/local/values.yaml | docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0-alpine -strict -summary -
+        run: helm template app deploy/charts/app -f deploy/envs/local/values.yaml | docker run --rm -i ghcr.io/yannh/kubeconform:v0.8.0-alpine -strict -summary -schema-location default -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -
       - name: kube-linter
         run: helm template app deploy/charts/app -f deploy/envs/local/values.yaml > /tmp/render.yaml && docker run --rm -v /tmp:/tmp stackrox/kube-linter:v0.8.3 lint /tmp/render.yaml
 

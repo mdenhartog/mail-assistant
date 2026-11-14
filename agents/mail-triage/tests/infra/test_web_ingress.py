@@ -19,8 +19,11 @@ needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render t
 HIDDEN_PATHS = ("/docs", "/openapi.json", "/healthz", "/readyz", "/metrics")
 # The chart defaults name no proxy (U-web-settings-52): an environment sets them while the ingress is enabled.
 PROXY = "api.config.trustedProxyCidrs={10.244.0.0/16}"
-# Rendering the bare defaults: the environment must say it is not production (no digest, no alert) and name an HSTS key.
-BARE = ("environment=local", "ingress.hstsAnnotation.key=example.test/hsts")
+# Rendering the bare defaults: the environment must say it is not production (no digest, no alert) and name the
+# ingress controller (ADR-0040: required, no default).
+BARE = ("environment=local", "ingress.controller=traefik")
+TRAEFIK = "traefik.ingress.kubernetes.io"
+CRDS = "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
 
 
 def helm(command: str, *args: str, values: bool = True) -> subprocess.CompletedProcess[str]:
@@ -42,7 +45,13 @@ def render(*sets: str, values: bool = True) -> list[dict[str, Any]]:
 
 
 def ingress(*sets: str, values: bool = True) -> dict[str, Any]:
-    return next(doc for doc in render(*sets, values=values) if doc["kind"] == "Ingress")
+    """The HTTPS Ingress (the one with the TLS section)."""
+    docs = render(*sets, values=values)
+    return next(doc for doc in docs if doc["kind"] == "Ingress" and doc["spec"].get("tls"))
+
+
+def of_kind(docs: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
+    return [doc for doc in docs if doc["kind"] == kind]
 
 
 def local_ingress_values() -> dict[str, Any]:
@@ -60,27 +69,70 @@ def test_given_the_rendered_ingress_when_read_then_only_api_auth_and_web_are_rou
 
 
 @needs_helm
-def test_given_the_rendered_ingress_when_read_then_tls_redirect_issuer_and_hsts_are_set() -> None:
+def test_given_the_rendered_ingress_when_read_then_tls_issuer_and_the_traefik_objects_are_referenced() -> None:
+    docs = render()
     spec = ingress()
     annotations = spec["metadata"]["annotations"]
     host = local_ingress_values()["host"]
-    header = " ".join(str(value) for value in annotations.values() if "Strict-Transport-Security" in str(value))
 
     assert spec["spec"]["tls"] == [{"hosts": [host], "secretName": "app-tls"}]
     assert annotations["cert-manager.io/cluster-issuer"] == local_ingress_values()["clusterIssuer"]
-    assert annotations["nginx.ingress.kubernetes.io/ssl-redirect"] == "true"
-    assert annotations["nginx.ingress.kubernetes.io/force-ssl-redirect"] == "true"
-    assert "max-age=31536000" in header
-    assert "includeSubDomains" not in header
-    assert "preload" not in header
+    assert annotations[f"{TRAEFIK}/router.entrypoints"] == "websecure"
+    assert annotations[f"{TRAEFIK}/router.tls"] == "true"
+    # every reference is <namespace>-<name>@kubernetescrd and names an object the chart renders
+    option = annotations[f"{TRAEFIK}/router.tls.options"]
+    assert option.endswith("@kubernetescrd")
+    assert option.removesuffix("@kubernetescrd") in {
+        f"default-{d['metadata']['name']}" for d in of_kind(docs, "TLSOption")
+    }
+    refs = annotations[f"{TRAEFIK}/router.middlewares"].split(",")
+    middlewares = {f"default-{d['metadata']['name']}@kubernetescrd" for d in of_kind(docs, "Middleware")}
+    assert len(refs) == 2
+    assert set(refs) <= middlewares
+
+
+@needs_helm
+def test_given_the_rendered_chart_when_read_then_exactly_one_middleware_sends_hsts_without_subdomains() -> None:
+    docs = render()
+    senders = [d for d in of_kind(docs, "Middleware") if "stsSeconds" in d["spec"].get("headers", {})]
+
+    assert len(senders) == 1
+    headers = senders[0]["spec"]["headers"]
+    assert headers["stsSeconds"] == 31536000
+    assert not headers.get("stsIncludeSubdomains")
+    assert not headers.get("stsPreload")
+    assert "Strict-Transport-Security" not in str(docs)  # no second source: no hand written header
+    assert "includeSubDomains" not in str(docs)
+    assert "preload" not in str(docs).lower()
+
+
+@needs_helm
+def test_given_the_rendered_chart_when_read_then_a_redirect_ingress_sends_http_to_https() -> None:
+    docs = render()
+    redirect = next(d for d in of_kind(docs, "Ingress") if not d["spec"].get("tls"))
+    annotations = redirect["metadata"]["annotations"]
+    name = annotations[f"{TRAEFIK}/router.middlewares"].split("@")[0].removeprefix("default-")
+    middleware = next(d for d in of_kind(docs, "Middleware") if d["metadata"]["name"] == name)
+
+    assert annotations[f"{TRAEFIK}/router.entrypoints"] == "web"
+    assert middleware["spec"]["redirectScheme"] == {"scheme": "https", "permanent": True, "port": "8443"}
+    assert redirect["spec"]["rules"][0]["host"] == local_ingress_values()["host"]
+    assert "cert-manager.io/cluster-issuer" not in annotations
+
+
+@needs_helm
+def test_given_no_local_https_port_when_rendered_then_the_redirect_uses_the_default_https_port() -> None:
+    docs = render("ingress.httpsPort=")
+    middleware = next(d for d in of_kind(docs, "Middleware") if "redirectScheme" in d["spec"])
+
+    assert middleware["spec"]["redirectScheme"] == {"scheme": "https", "permanent": True}
 
 
 @needs_helm
 def test_given_the_hsts_setting_when_the_chart_is_rendered_then_it_is_the_only_source_of_the_header() -> None:
-    annotations = ingress("ingress.hsts=true")["metadata"]["annotations"]
+    docs = render("ingress.hsts=true")
 
-    assert any("Strict-Transport-Security" in str(value) for value in annotations.values())
-    assert "includeSubDomains" not in str(annotations)
+    assert len([d for d in of_kind(docs, "Middleware") if "stsSeconds" in d["spec"].get("headers", {})]) == 1
 
 
 @needs_helm
@@ -101,6 +153,12 @@ def test_given_the_local_values_when_linted_strictly_then_the_chart_has_no_findi
         ("ingress.host=localhost", "host"),
         ("ingress.localDomainSuffix=com", "localDomainSuffix"),
         ("ingress.clusterIssuer=letsencrypt-prod", "clusterIssuer"),
+        ("ingress.controller=nginx", "controller"),
+        ("ingress.controller=", "controller"),
+        ("ingress.hstsAnnotation.key=x", "hstsAnnotation"),
+        ("ingress.annotations.a=b", "annotations"),
+        ("ingress.controllerConfig.a=b", "controllerConfig"),
+        ("ingress.httpsPort=eight", "httpsPort"),
     ],
 )
 def test_given_a_values_file_that_weakens_tls_or_goes_public_when_linted_then_it_fails(
@@ -113,23 +171,58 @@ def test_given_a_values_file_that_weakens_tls_or_goes_public_when_linted_then_it
 
 
 @needs_helm
-def test_given_the_local_values_when_rendered_then_the_body_cap_tls_minimum_and_log_format_come_from_values() -> None:
-    values = local_ingress_values()
-    annotations = ingress()["metadata"]["annotations"]
-    config = values["controllerConfig"]
+def test_given_the_local_values_when_rendered_then_the_body_cap_and_tls_minimum_are_traefik_objects() -> None:
+    docs = render()
+    limits = [d for d in of_kind(docs, "Middleware") if "buffering" in d["spec"]]
+    options = of_kind(docs, "TLSOption")
 
-    assert annotations["nginx.ingress.kubernetes.io/proxy-body-size"] == "8k"
-    assert config["ssl-protocols"] == "TLSv1.2 TLSv1.3"
-    log_format = config["log-format-upstream"]
-    assert "$uri" in log_format
-    assert not re.search(r"\$(request|request_uri|args|query_string|is_args)\b", log_format)
+    assert [d["spec"]["buffering"] for d in limits] == [{"maxRequestBodyBytes": 8192}]
+    assert [d["spec"]["minVersion"] for d in options] == ["VersionTLS12"]
+    assert not [d for d in options if d["spec"].get("maxVersion")]
 
 
 @needs_helm
-def test_given_the_chart_defaults_when_rendered_then_no_controller_specific_annotation_exists() -> None:
-    annotations = ingress(PROXY, *BARE, values=False)["metadata"]["annotations"]
+def test_given_the_local_values_when_rendered_then_no_text_of_another_ingress_controller_is_left() -> None:
+    docs = render()
+    text = yaml.safe_dump([d for d in docs if d["kind"] in {"Ingress", "Middleware", "TLSOption"}])
 
-    assert set(annotations) == {"cert-manager.io/cluster-issuer", "example.test/hsts"}
+    assert "nginx" not in text.lower()  # the web image is nginx, but no ingress object speaks its vocabulary
+    assert "configuration-snippet" not in text
+
+
+def test_given_the_repository_when_searched_then_no_chart_or_environment_file_names_ingress_nginx() -> None:
+    files = [p for p in (ROOT / "deploy").glob("charts/**/*") if p.is_file()]
+    files += list((ROOT / "deploy").glob("envs/**/*.y*ml"))
+    assert files
+    for path in files:
+        text = path.read_text(encoding="utf-8").lower()
+        for word in ("ingress-nginx", "nginx.ingress", "configuration-snippet", "hstsannotation", "controllerconfig"):
+            assert word not in text, (path.relative_to(ROOT).as_posix(), word)
+
+
+@needs_helm
+def test_given_the_chart_defaults_when_rendered_then_only_cert_manager_and_traefik_annotations_exist() -> None:
+    docs = render(PROXY, *BARE, values=False)
+
+    assert of_kind(docs, "Ingress")
+    for doc in of_kind(docs, "Ingress"):
+        keys = set(doc["metadata"]["annotations"])
+        assert all(k == "cert-manager.io/cluster-issuer" or k.startswith(f"{TRAEFIK}/") for k in keys), keys
+
+
+@needs_helm
+def test_given_no_ingress_controller_when_rendered_then_the_schema_names_the_missing_value() -> None:
+    result = helm("template", "environment=local", PROXY, values=False)
+
+    assert result.returncode != 0
+    assert "controller" in result.stderr
+
+
+@needs_helm
+def test_given_the_ingress_is_off_when_rendered_then_no_traefik_object_exists() -> None:
+    docs = render("ingress.enabled=false")
+
+    assert not [d for d in docs if d["kind"] in {"Middleware", "TLSOption", "Ingress"}]
 
 
 def values_files() -> list[Path]:
@@ -171,7 +264,16 @@ def test_given_the_values_files_when_read_then_no_public_host_name_is_set() -> N
 def test_given_the_rendered_chart_when_checked_with_kubeconform_then_it_passes() -> None:
     manifests = helm("template").stdout
     result = subprocess.run(  # noqa: S603
-        [shutil.which("kubeconform") or "", "-strict", "-summary", "-"],
+        [
+            shutil.which("kubeconform") or "",
+            "-strict",
+            "-summary",
+            "-schema-location",
+            "default",
+            "-schema-location",
+            CRDS,
+            "-",
+        ],
         input=manifests,
         capture_output=True,
         text=True,

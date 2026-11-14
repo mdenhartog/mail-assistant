@@ -1,0 +1,58 @@
+# Argo CD objects for production. A FILE ONLY: nothing in CI, a script or a test applies it (U-web-settings-74).
+# Marco applies it by hand after his written approval (phase 9), once Argo CD, Traefik, cert-manager and the
+# sealed-secrets controller run in the cluster. Sync is manual on purpose: a human syncs the release he approved.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: mail-assistant
+  namespace: argocd
+spec:
+  description: Mail assistant (web settings and the mail-triage agent)
+  sourceRepos:
+    - https://github.com/mdenhartog/mail-assistant.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: mail-assistant
+  clusterResourceWhitelist: [] # namespaced objects only (Traefik Middleware and TLSOption are namespaced)
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mail-assistant-app
+  namespace: argocd
+spec:
+  project: mail-assistant
+  source:
+    repoURL: https://github.com/mdenhartog/mail-assistant.git
+    targetRevision: REQUIRED # REQUIRED release-revision (the release tag or commit that the approved digests belong to)
+    path: deploy/charts/app
+    helm:
+      releaseName: app
+      valueFiles:
+        - ../../envs/production/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mail-assistant
+  syncPolicy:
+    syncOptions: [CreateNamespace=false]
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mail-triage
+  namespace: argocd
+spec:
+  project: mail-assistant
+  source:
+    repoURL: https://github.com/mdenhartog/mail-assistant.git
+    targetRevision: REQUIRED # REQUIRED release-revision (the same revision as mail-assistant-app)
+    path: deploy/charts/worker
+    helm:
+      releaseName: mail-triage
+      valueFiles:
+        - ../../envs/production/mail-triage.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mail-assistant
+  syncPolicy:
+    syncOptions: [CreateNamespace=false]

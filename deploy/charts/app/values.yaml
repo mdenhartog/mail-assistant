@@ -14,8 +14,8 @@ api:
     username: owner
     emailAddress: owner@home.arpa
     publicOrigin: https://app.home.arpa
-    # The addresses of the ingress controller pods, as a JSON list in the env. Required while ingress.enabled: without
-    # them every client shares one rate-limit bucket (ADR-0039). Set per environment to the controller's pod network.
+    # The addresses of the Traefik pods, as a JSON list in the env. Required while ingress.enabled: without them every
+    # client shares one rate-limit bucket (ADR-0039). Set per environment to the pod network of the Traefik pods.
     trustedProxyCidrs: []
     trustedProxyHops: 1 # proxies in front of the api; the client is the address the last trusted one appended
     noticeIntervalMinutes: 1 # must equal the agent run interval, rounded up to whole minutes
@@ -41,28 +41,31 @@ web:
 
 ingress:
   enabled: true
-  className: ""
+  # REQUIRED while the ingress is enabled, with no default (ADR-0040): the controller whose objects the chart renders.
+  # The schema allows traefik only. The chart renders a Traefik Middleware for HSTS (max-age=31536000, no
+  # includeSubDomains, no preload), a Middleware for the 8 KB body limit, a redirectScheme Middleware on an Ingress at the
+  # web entry point and a TLSOption with minVersion VersionTLS12; it needs the Traefik CRDs (traefik.io/v1alpha1).
+  # controller: traefik
+  className: "" # the IngressClass of Traefik; empty selects the default class
   # Local only (ADR-0037): the host must sit under localDomainSuffix; there is no public name.
   host: app.home.arpa
   localDomainSuffix: home.arpa
   clusterIssuer: private-ca # a cert-manager issuer backed by the private CA
   tls: { enabled: true } # only true is accepted
   hsts: true # only true is accepted; max-age=31536000, no includeSubDomains, no preload
-  # Controller-specific parts come from the environment values (hosting is an open point, D-7). The HSTS mechanism has no
-  # default: the schema refuses an empty key, so an environment always names how the header is sent.
-  hstsAnnotation: { key: "", format: "%s" } # annotation that carries the header; format gets "max-age=..."
-  annotations: {}
-  controllerConfig: {} # settings of the controller's own ConfigMap (TLS minimum, log format); not rendered here
+  # The HTTPS port clients are sent to by the redirect, when it is not 443 (kind maps 8443). Empty is the default port.
+  httpsPort: ""
 
 # One api copy (ADR-0034) and a budget that allows one disruption, so a node drain is not blocked. maxUnavailable XOR
 # minAvailable; minAvailable must stay below the replicas (schema and template), or no pod could ever be evicted.
 podDisruptionBudget: { maxUnavailable: 1 }
 networkPolicy:
   enabled: true
-  # The one ingress peer for api and web: the controller's namespace AND its pods (never an empty selector).
+  # The one ingress peer for api and web: the Traefik namespace AND its pods (never an empty selector). These are the
+  # defaults of the Traefik Helm chart installed in the namespace traefik (deploy/kind/traefik-values.yaml).
   ingressController:
-    namespace: ingress-nginx
-    podLabels: { app.kubernetes.io/name: ingress-nginx }
+    namespace: traefik
+    podLabels: { app.kubernetes.io/name: traefik }
   # api egress: the database, DNS and the SMTP host. Addresses are placeholders; set the real ones per environment.
   egress:
     database: { cidr: 10.0.0.10/32, port: 5432 }

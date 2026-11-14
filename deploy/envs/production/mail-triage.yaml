@@ -1,0 +1,17 @@
+# PRODUCTION values of the worker chart (mail-triage agent). PREPARED, NOT DEPLOYED (U-web-settings-74).
+# helm template mail-triage deploy/charts/worker -f deploy/envs/production/mail-triage.yaml  (renders only with every
+# REQUIRED value supplied). Secrets are SealedSecrets (ADR-0029): only their names are here, never a value.
+environment: production
+image:
+  repository: ghcr.io/mdenhartog/mail-assistant/mail-triage
+  digest: REQUIRED # REQUIRED agent-image-digest (sha256:<64 hex> of the released agent image, same as staging)
+envFromSecret: REQUIRED # REQUIRED agent-secret-name (the Secret the sealed-secrets controller creates for the agent)
+database:
+  tls:
+    sslMode: verify-full
+    caConfigMap: REQUIRED # REQUIRED database-ca-configmap (ConfigMap with the key ca.crt of the database CA)
+env:
+  POLL_INTERVAL_SECONDS: "60"
+migration:
+  enabled: true # the Argo CD PreSync hook, with the retention purge as its last step (D-19)
+  secretName: REQUIRED # REQUIRED migration-secret-name (the Secret with the owner URL and the role passwords)

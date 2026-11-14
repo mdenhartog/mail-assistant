@@ -1,17 +1,71 @@
 {{- if .Values.ingress.enabled }}
-{{- /* Local only (ADR-0037). values.schema.json enforces: tls and hsts on, host under the local suffix, private CA issuer. */ -}}
+{{- /*
+Local only (ADR-0037). The controller is Traefik (ADR-0040): the chart renders Traefik's own objects, no annotation text of
+another controller. Needs the Traefik CRDs (traefik.io/v1alpha1) and the entry points web and websecure (chart defaults).
+values.schema.json enforces: controller traefik, tls and hsts on, host under the local suffix, private CA issuer.
+*/ -}}
 {{- $ingress := .Values.ingress }}
-{{- $annotations := dict "cert-manager.io/cluster-issuer" $ingress.clusterIssuer }}
-{{- if $ingress.hstsAnnotation.key }}
-{{- $_ := set $annotations $ingress.hstsAnnotation.key (printf $ingress.hstsAnnotation.format "max-age=31536000") }}
+{{- if ne $ingress.controller "traefik" }}
+{{- fail (printf "ingress.controller must be traefik, not %q (ADR-0040)" $ingress.controller) }}
 {{- end }}
-{{- $annotations = merge $annotations $ingress.annotations }}
+{{- $ns := .Release.Namespace }}
+{{- $headers := printf "%s-security-headers" .Release.Name }}
+{{- $limit := printf "%s-body-limit" .Release.Name }}
+{{- $redirect := printf "%s-redirect-https" .Release.Name }}
+{{- $tlsOption := printf "%s-tls12" .Release.Name }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $headers }}
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  # The only source of Strict-Transport-Security: neither the web image (nginx) nor the api sends it (AC-18). One year,
+  # no includeSubDomains and no preload (ADR-0037). The other security headers come from the images.
+  headers:
+    stsSeconds: 31536000
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $limit }}
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  # The outer 8 KB cap (ADR-0034, W-9): a larger request body gets 413. The api enforces the same limit itself.
+  buffering:
+    maxRequestBodyBytes: 8192
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $redirect }}
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+    {{- with $ingress.httpsPort }}
+    port: {{ . | quote }}
+    {{- end }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: TLSOption
+metadata:
+  name: {{ $tlsOption }}
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  minVersion: VersionTLS12
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ .Release.Name }}
   labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
-  annotations: {{- toYaml $annotations | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: {{ $ingress.clusterIssuer | quote }}
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.options: {{ printf "%s-%s@kubernetescrd" $ns $tlsOption | quote }}
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-%s@kubernetescrd,%s-%s@kubernetescrd" $ns $limit $ns $headers | quote }}
 spec:
   {{- with $ingress.className }}
   ingressClassName: {{ . }}
@@ -29,6 +83,27 @@ spec:
           - path: /auth
             pathType: Prefix
             backend: { service: { name: {{ .Release.Name }}-api, port: { name: http } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ .Release.Name }}-web, port: { name: http } } }
+---
+# Plain HTTP only redirects to HTTPS: the router on the web entry point has the redirect Middleware and no TLS section.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Release.Name }}-redirect
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-%s@kubernetescrd" $ns $redirect | quote }}
+spec:
+  {{- with $ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - host: {{ $ingress.host | quote }}
+      http:
+        paths:
           - path: /
             pathType: Prefix
             backend: { service: { name: {{ .Release.Name }}-web, port: { name: http } } }
