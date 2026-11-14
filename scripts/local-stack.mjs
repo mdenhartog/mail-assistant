@@ -9,6 +9,11 @@
 //   node scripts/local-stack.mjs logs [service] [--follow]
 //   node scripts/local-stack.mjs backup
 //   node scripts/local-stack.mjs trust-ca
+//   node scripts/local-stack.mjs consent
+//
+// `consent` is the one-time Gmail consent (U-web-settings-76): it runs the one-shot service mail-triage-consent
+// (`python -m app.consent`) in the agent image and passes the terminal through. The service prints the Google address,
+// Marco opens it on this computer, and the refresh token goes into the encrypted token store, replacing an older one.
 //
 // It only runs `docker compose` with the project name that compose.yaml defines and the profile `local` (and
 // `docker volume inspect` to see whether the database volume exists). The compose files get, in this order, Marco's
@@ -46,6 +51,8 @@ const REQUIRED_NAMES = ["POSTGRES_PASSWORD", "MAIL_TRIAGE_RUNTIME_PASSWORD"];
 /** `init` makes this one when neither .env nor secrets.env has it (a .env from before the two-role database). */
 const RUNTIME_PASSWORD = "MAIL_TRIAGE_RUNTIME_PASSWORD";
 /** A .env entry with one of these names replaces the generated least-privilege role in compose. */
+/** The one-shot consent needs the Google client and the key that encrypts the token (names only are checked). */
+const CONSENT_NAMES = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY"];
 const ROLE_BYPASS_NAMES = ["MAIL_TRIAGE_DATABASE_URL", "MAIL_TRIAGE_DATABASE_OWNER_URL"];
 const SERVICES = ["db", "mail", "mail-triage-migrate", "mail-triage", "api", "web", "edge"];
 const MIN_COMPOSE = [2, 24, 0]; // repeated --env-file flags
@@ -53,7 +60,7 @@ const ENV_FILES = [".env", "deploy/local/stack.env", "deploy/local/secrets.env"]
 const SECRETS = "deploy/local/secrets.env";
 const CERTS = "deploy/prod-like/certs";
 const USAGE =
-  "usage: node scripts/local-stack.mjs init [--renew-certs] | up [--recreate] | down | status | logs [service] [--follow] | backup | trust-ca";
+  "usage: node scripts/local-stack.mjs init [--renew-certs] | up [--recreate] | down | status | logs [service] [--follow] | backup | trust-ca | consent";
 
 /** The project name compose.yaml defines (a top-level `name:`). */
 export function projectName(composeText) {
@@ -187,6 +194,11 @@ export async function main(argv, deps = {}) {
     return null;
   };
 
+  const missingNames = (wanted) => {
+    const names = new Set([...envNames(readFileSync(path(".env"), "utf8")), ...envNames(readFileSync(path(SECRETS), "utf8"))]);
+    return wanted.filter((key) => !names.has(key));
+  };
+
   const backup = () => {
     const dir = path("deploy", "local", "backups");
     mkdirSync(dir, { recursive: true });
@@ -284,6 +296,24 @@ export async function main(argv, deps = {}) {
       const file = backup();
       if (!file) return fail("The backup failed.");
       say(`Backup written to ${file}`);
+      return 0;
+    }
+    case "consent": {
+      if (flags.size || positional.length) return fail(`consent takes no options or arguments. ${USAGE}`, 2);
+      const problem = preflight();
+      if (problem) return fail(problem);
+      const missing = missingNames(CONSENT_NAMES);
+      if (missing.length) return fail(`Neither .env nor deploy/local/secrets.env has: ${missing.join(", ")}. The consent needs the Google client and the key that encrypts the token.`);
+      const running = runner("docker", [...composeBase(project), "ps", "--status", "running", "--services"], { cwd: root, capture: true });
+      if (running.status !== 0 || !running.stdout.split("\n").some((line) => line.trim() === "db")) {
+        return fail("The database is not running. Start the stack first: node scripts/local-stack.mjs up (the agent may stop until the consent is stored; the database is enough).");
+      }
+      say("Gmail consent: the address to open is printed below. Open it in the browser on this computer.");
+      say("Google must have http://127.0.0.1:8765/callback registered as a redirect address of the client. Waiting 5 minutes at most.");
+      // -T: no pseudo-terminal (Git Bash on Windows has none); stdin and stdout still go to this terminal.
+      const result = compose("run", "--rm", "--build", "--service-ports", "-T", "mail-triage-consent");
+      if (result.status !== 0) return fail("The consent did not finish, so nothing was stored (read the message above). Run it again: node scripts/local-stack.mjs consent");
+      say("The consent is stored. Start the agent with the new token: node scripts/local-stack.mjs up");
       return 0;
     }
     case "trust-ca": {

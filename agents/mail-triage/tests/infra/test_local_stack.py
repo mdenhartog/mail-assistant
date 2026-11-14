@@ -20,7 +20,7 @@ COMPOSE = ROOT / "compose.yaml"
 STACK_ENV = ROOT / "deploy" / "local" / "stack.env"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 NODE = shutil.which("node")
-LOCAL_SERVICES = {"db", "mail", "mail-triage-migrate", "mail-triage", "api", "web", "edge"}
+LOCAL_SERVICES = {"db", "mail", "mail-triage-migrate", "mail-triage", "mail-triage-consent", "api", "web", "edge"}
 SPEC_DEFAULTS = {
     "APP_RATE_LIMIT_PER_MINUTE": ("API_RATE_LIMIT_PER_MINUTE", "30"),
     "APP_RESEND_COOLDOWN_SECONDS": ("API_RESEND_COOLDOWN_SECONDS", "60"),
@@ -73,7 +73,7 @@ def ci_job(name: str) -> dict[str, Any]:
 # -- criterion 1 ---------------------------------------------------------------------------------------------------
 
 
-def test_given_the_compose_files_when_parsed_then_the_local_profile_is_exactly_the_seven_services() -> None:
+def test_given_the_compose_files_when_parsed_then_the_local_profile_is_exactly_the_eight_services() -> None:
     assert set(local_services()) == LOCAL_SERVICES
     for name in ("mail", "mail-triage-migrate", "mail-triage", "api", "web", "edge"):
         assert "local" in all_services()[name]["profiles"], name
@@ -218,6 +218,16 @@ def test_given_the_warning_tests_when_its_node_tests_run_then_the_database_url_w
     assert all(mine.values()), [name for name, ok in mine.items() if not ok]
 
 
+@pytest.mark.parametrize("criterion", [f"U-76 criterion {number}:" for number in (4, 5, 6)])
+def test_given_the_consent_unit_when_its_node_tests_run_then_every_criterion_has_a_passing_test(
+    node_results: dict[str, bool], criterion: str
+) -> None:
+    mine = {name: ok for name, ok in node_results.items() if name.startswith(criterion)}
+
+    assert mine, criterion
+    assert all(mine.values()), [name for name, ok in mine.items() if not ok]
+
+
 def test_given_the_script_when_its_node_tests_run_then_all_of_them_pass(node_results: dict[str, bool]) -> None:
     assert all(node_results.values()), [name for name, ok in node_results.items() if not ok]
 
@@ -233,3 +243,80 @@ def test_given_the_prod_like_job_when_parsed_then_it_still_runs_the_journey_with
     assert "docker compose --profile prod-like up -d --build --wait" in commands
     assert "mail-triage-migrate" in commands
     assert {key: str(job["env"][key]) for key in RAISED_BY_CI} == RAISED_BY_CI
+
+
+# -- U-web-settings-76: the one-shot Gmail consent service ----------------------------------------------------------
+
+
+def consent_service() -> dict[str, Any]:
+    return all_services()["mail-triage-consent"]
+
+
+def test_given_the_consent_service_when_parsed_then_it_is_a_one_shot_of_the_local_profile_only() -> None:
+    service = consent_service()
+
+    assert service["profiles"] == ["local"]
+    assert service["command"] == ["python", "-m", "app.consent"]
+    assert service["restart"] == "no"
+    assert service["depends_on"] == {
+        "db": {"condition": "service_healthy"},
+        "mail-triage-migrate": {"condition": "service_completed_successfully"},
+    }
+    assert service["build"] == all_services()["mail-triage"]["build"]  # the same image definition
+
+
+def test_given_the_consent_service_when_parsed_then_its_port_is_published_on_the_host_loopback_only() -> None:
+    ports = consent_service()["ports"]
+
+    assert ports == ["127.0.0.1:8765:8765"]  # the redirect URI registered at Google is http://127.0.0.1:8765/callback
+    for name, service in all_services().items():
+        if name != "mail-triage-consent":
+            assert not any("8765" in str(port) for port in service.get("ports", [])), name
+
+
+def test_given_the_consent_service_when_parsed_then_it_has_the_hardening_of_the_agent() -> None:
+    service, agent = consent_service(), all_services()["mail-triage"]
+
+    assert service["read_only"] is True
+    assert service["cap_drop"] == ["ALL"]
+    assert service["security_opt"] == ["no-new-privileges:true"]
+    assert service["tmpfs"] == ["/tmp"]  # noqa: S108
+    assert service["volumes"] == agent["volumes"] == ["../../deploy/prod-like/certs:/certs:ro"]
+    assert "privileged" not in service
+    assert "user" not in service or service["user"] == agent.get("user")
+
+
+def test_given_the_consent_service_when_parsed_then_it_runs_like_production_with_only_the_settings_it_needs() -> None:
+    environment, agent = consent_service()["environment"], all_services()["mail-triage"]["environment"]
+    stack = env_file(STACK_ENV)
+
+    assert resolve(environment["ENVIRONMENT"], stack) == "production"
+    assert resolve(environment["DATABASE_SSL"], stack) == "verify-full"
+    assert environment["DATABASE_CA_FILE"] == "/certs/ca.crt"
+    for key in ("DATABASE_URL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY"):
+        assert environment[key] == agent[key], key  # the same runtime role and key as the agent (by anchor)
+    assert environment["CONSENT_BIND_HOST"] == "0.0.0.0"  # noqa: S104 - inside the container; the host side is the loopback
+    assert environment["PYTHONUNBUFFERED"] == "1"
+    assert not {"ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN"} & set(environment)  # consent needs no model or chat secret
+    assert "healthcheck" not in consent_service() or consent_service()["healthcheck"] == {"disable": True}
+
+
+def test_given_the_compose_source_when_read_then_the_consent_service_shares_the_agent_by_anchor_not_by_copy() -> None:
+    text = (ROOT / "agents" / "mail-triage" / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "<<: *" in text
+    assert text.count("DATABASE_CA_FILE: /certs/ca.crt") == 2  # migrate has its own; the agent and consent share one
+    assert len(re.findall(r"^\s+GOOGLE_CLIENT_SECRET:", text, re.MULTILINE)) == 1
+    assert len(re.findall(r"^\s+TOKEN_ENCRYPTION_KEY:", text, re.MULTILINE)) == 1
+
+
+def test_given_the_docs_when_read_then_they_explain_the_consent_step_the_redirect_uri_and_the_new_key() -> None:
+    operations = (ROOT / "docs" / "operations" / "local-stack.md").read_text(encoding="utf-8")
+    deploy = (ROOT / "deploy" / "local" / "README.md").read_text(encoding="utf-8")
+    readme = (ROOT / "agents" / "mail-triage" / "README.md").read_text(encoding="utf-8")
+
+    for text in (operations, deploy):
+        assert "node scripts/local-stack.mjs consent" in text
+        assert "http://127.0.0.1:8765/callback" in text
+    assert "TOKEN_ENCRYPTION_KEY" in operations
+    assert re.search(r"^\| 3 \|.*cannot be decrypted", readme, re.MULTILINE)

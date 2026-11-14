@@ -4,6 +4,36 @@
 # the password is POSTGRES_PASSWORD) and creates the runtime role mail_triage_runtime with MAIL_TRIAGE_RUNTIME_PASSWORD and the web role
 # web_settings_runtime with WEB_ROLE_PASSWORD (empty means the job stops with exit code 2, naming the key).
 # The agent runs with that runtime role, which owns nothing, and starts only after the migration has completed.
+# The agent and the one-shot consent service share these by anchor (YAML merge), not by copy: the image build, the start
+# order, the hardening, the CA mount, the database settings and the Google settings. The consent service gets no
+# Telegram or model secret.
+x-agent-service: &agent-service
+  # Repo-root context (paths in an included file are relative to this file): the image carries packages/schedule-policy.
+  build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
+  depends_on:
+    db: { condition: service_healthy }
+    mail-triage-migrate: { condition: service_completed_successfully }
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  tmpfs: ["/tmp"]
+  volumes:
+    - ../../deploy/prod-like/certs:/certs:ro
+
+x-agent-database: &agent-database
+  # Database TLS (SEC-10). Development runs without it. The prod-like database accepts TLS only: run the service with
+  # `-e ENVIRONMENT=production -e DATABASE_SSL=verify-full` (the CI job does), which the CA below then verifies.
+  # The `local` profile gets production and verify-full from deploy/local/stack.env (scripts/local-stack.mjs passes it).
+  ENVIRONMENT: ${LOCAL_AGENT_ENVIRONMENT:-development}
+  DATABASE_SSL: ${LOCAL_AGENT_DATABASE_SSL:-disable}
+  DATABASE_CA_FILE: /certs/ca.crt
+  DATABASE_URL: ${MAIL_TRIAGE_DATABASE_URL:-postgresql+asyncpg://mail_triage_runtime:${MAIL_TRIAGE_RUNTIME_PASSWORD:-}@db:5432/app}
+
+x-agent-google: &agent-google
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  TOKEN_ENCRYPTION_KEY: ${MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY:-}
+
 services:
   mail-triage-migrate:
     # Not in prod-like: `up --wait` counts a container that has exited, even with 0, as failed. CI runs it by itself
@@ -31,16 +61,8 @@ services:
       - ../../deploy/prod-like/certs:/certs:ro
 
   mail-triage:
+    <<: *agent-service
     profiles: ["components", "dev", "local"]
-    # Repo-root context (paths in an included file are relative to this file): the image carries packages/schedule-policy.
-    build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
-    depends_on:
-      db: { condition: service_healthy }
-      mail-triage-migrate: { condition: service_completed_successfully }
-    read_only: true
-    security_opt: ["no-new-privileges:true"]
-    cap_drop: ["ALL"]
-    tmpfs: ["/tmp"]
     # The loop touches /tmp/heartbeat after every mail cycle; unhealthy when it is older than three minutes.
     healthcheck:
       test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time()-os.path.getmtime('/tmp/heartbeat')<180 else 1)"]
@@ -48,24 +70,28 @@ services:
       start_period: 60s
       retries: 3
     environment:
-      # Database TLS (SEC-10). Development runs without it. The prod-like database accepts TLS only: run the service with
-      # `-e ENVIRONMENT=production -e DATABASE_SSL=verify-full` (the CI job does), which the CA below then verifies.
-      # The `local` profile gets production and verify-full from deploy/local/stack.env (scripts/local-stack.mjs passes it).
-      ENVIRONMENT: ${LOCAL_AGENT_ENVIRONMENT:-development}
-      DATABASE_SSL: ${LOCAL_AGENT_DATABASE_SSL:-disable}
-      DATABASE_CA_FILE: /certs/ca.crt
+      <<: [*agent-database, *agent-google]
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_USER_ID: ${TELEGRAM_ALLOWED_USER_ID:-}
       TELEGRAM_ALLOWED_CHAT_ID: ${TELEGRAM_ALLOWED_CHAT_ID:-}
       MODEL_SMALL: ${MAIL_TRIAGE_MODEL_SMALL:-}
       MODEL_LARGE: ${MAIL_TRIAGE_MODEL_LARGE:-}
-      DATABASE_URL: ${MAIL_TRIAGE_DATABASE_URL:-postgresql+asyncpg://mail_triage_runtime:${MAIL_TRIAGE_RUNTIME_PASSWORD:-}@db:5432/app}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      TOKEN_ENCRYPTION_KEY: ${MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY:-}
       POLL_INTERVAL_SECONDS: ${MAIL_TRIAGE_POLL_INTERVAL_SECONDS:-60}
       DAILY_MODEL_BUDGET: ${MAIL_TRIAGE_DAILY_MODEL_BUDGET:-200}
       ALERTS_PER_HOUR: ${MAIL_TRIAGE_ALERTS_PER_HOUR:-5}
-    volumes:
-      - ../../deploy/prod-like/certs:/certs:ro
+
+  # The one-time Gmail consent (U-web-settings-76), run by `node scripts/local-stack.mjs consent`: it is not started by
+  # `up`. The one-shot server listens on 0.0.0.0 inside the container (CONSENT_BIND_HOST); the port is published on the
+  # host loopback only (ADR-0037). The redirect address in the browser stays http://127.0.0.1:8765/callback, which must
+  # be registered in the Google client. The refresh token goes into the encrypted token store, replacing any older one.
+  mail-triage-consent:
+    <<: *agent-service
+    profiles: ["local"]
+    command: ["python", "-m", "app.consent"]
+    restart: "no"
+    ports: ["127.0.0.1:8765:8765"]
+    environment:
+      <<: [*agent-database, *agent-google]
+      CONSENT_BIND_HOST: 0.0.0.0
+      PYTHONUNBUFFERED: "1"
