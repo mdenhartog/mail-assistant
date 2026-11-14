@@ -11,6 +11,7 @@ from app.settings import Settings
 
 ROOT = Path(__file__).resolve().parents[4]
 EXAMPLE = (ROOT / ".env.example").read_text(encoding="utf-8")
+STACK_ENV = (ROOT / "deploy" / "local" / "stack.env").read_text(encoding="utf-8")
 COMPOSE = yaml.safe_load((ROOT / "agents" / "mail-triage" / "compose.yaml").read_text(encoding="utf-8"))
 ENVIRONMENT: dict[str, str] = COMPOSE["services"]["mail-triage"]["environment"]
 SECRET_SHAPES = (
@@ -22,6 +23,8 @@ SECRET_SHAPES = (
 
 def documented(name: str) -> bool:
     """The variable has a line in the example, active or as a commented default."""
+    if re.search(rf"^{re.escape(name)}=", STACK_ENV, re.MULTILINE):
+        return True
     return re.search(rf"^#?\s*{re.escape(name)}=", EXAMPLE, re.MULTILINE) is not None
 
 

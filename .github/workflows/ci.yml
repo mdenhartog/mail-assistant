@@ -218,6 +218,13 @@ jobs:
     # test, then the log check. Replaces the former `e2e` and `runtime-role` jobs; their checks are kept below.
     runs-on: ubuntu-latest
     needs: [changes, images]
+    # The e2e runs raise the limits of the spec (rate, cooldown, codes, per-client caps); compose defaults to the spec values.
+    env:
+      API_RATE_LIMIT_PER_MINUTE: "1000"
+      API_RESEND_COOLDOWN_SECONDS: "1"
+      API_CODES_PER_HOUR: "1000"
+      API_OPEN_LOGIN_REQUESTS_PER_CLIENT: "1000"
+      API_LOGIN_REQUESTS_PER_CLIENT_PER_HOUR: "1000"
     # Also runs for components and deploy changes: the runtime-role checks it replaces ran for those areas too.
     if: ${{ !cancelled() && !failure() && (needs.changes.outputs.e2e == 'true' || needs.changes.outputs.components == 'true' || needs.changes.outputs.deploy == 'true') }}
     steps:
@@ -320,6 +327,13 @@ jobs:
     # GAMP 5 evidence run + validation package (only in projects with validation/system.yaml)
     runs-on: ubuntu-latest
     needs: [changes, images]
+    # The e2e runs raise the limits of the spec (rate, cooldown, codes, per-client caps); compose defaults to the spec values.
+    env:
+      API_RATE_LIMIT_PER_MINUTE: "1000"
+      API_RESEND_COOLDOWN_SECONDS: "1"
+      API_CODES_PER_HOUR: "1000"
+      API_OPEN_LOGIN_REQUESTS_PER_CLIENT: "1000"
+      API_LOGIN_REQUESTS_PER_CLIENT_PER_HOUR: "1000"
     if: ${{ !cancelled() && !failure() && needs.changes.outputs.gxp == 'true' && vars.GXP_ENABLED == 'true' }}  # off for this project (ADR-0006); hashFiles() is not allowed in a job-level if
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

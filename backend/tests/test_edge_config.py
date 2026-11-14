@@ -269,7 +269,7 @@ def test_given_the_certs_script_when_read_then_it_makes_a_ca_and_a_leaf_for_the_
 def test_given_the_prod_like_profile_when_read_then_the_edge_service_exists_with_the_fixed_host_name() -> None:
     edge = compose()["services"]["edge"]
 
-    assert edge["profiles"] == ["prod-like"]
+    assert edge["profiles"] == ["prod-like", "local"]
     assert HOST in edge["networks"]["default"]["aliases"]
     assert edge["depends_on"]["api"]["condition"] == "service_healthy"
     assert edge["depends_on"]["web"]["condition"] == "service_healthy"
