@@ -6,7 +6,8 @@ of this.
 
 What runs (compose project `mail-assistant`, profile `local`): `db` (TLS only), `mail` (a catcher that takes mail over
 STARTTLS only), `mail-triage-migrate` (a one-shot job), `mail-triage` (the agent: Telegram, Gmail and the model from your
-`.env`, `ENVIRONMENT=production`, `DATABASE_SSL=verify-full`), `api`, `web` and `edge`.
+`.env`, `ENVIRONMENT=production`, `DATABASE_SSL=verify-full`), `api`, `web` and `edge`. `mail-triage-consent` is a one-shot
+service of the same profile that only `node scripts/local-stack.mjs consent` starts (see "Gmail consent").
 
 | What | Where |
 | --- | --- |
@@ -48,8 +49,31 @@ STARTTLS only), `mail-triage-migrate` (a one-shot job), `mail-triage` (the agent
    `up -d --build --wait --no-deps` for `mail-triage`, `api`, `web` and `edge`.
 4. Open <https://mail-assistant.localhost:8443>. The code mail appears in <http://127.0.0.1:8025>.
 
-Other commands: `status` (containers and when the certificates end), `logs [service] [--follow]`, `backup`, `down`.
+Other commands: `consent` (below), `status` (containers and when the certificates end), `logs [service] [--follow]`, `backup`, `down`.
 `down` stops the containers and never removes a volume; your data stays in `mail-assistant_db-data`.
+
+## Gmail consent
+
+The agent reads and sends Gmail with a refresh token that is stored encrypted (with `MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY`, in the
+container `TOKEN_ENCRYPTION_KEY`). The first start has no token, and the agent stops with exit code 3. A token is also useless
+after a new encryption key: the old one cannot be decrypted, and the agent stops with exit code 3 and the message "the stored
+Gmail token cannot be decrypted with the current TOKEN_ENCRYPTION_KEY: run node scripts/local-stack.mjs consent". In both
+cases do the consent once:
+
+1. In the Google client (Google Cloud console, Credentials, the OAuth client of `GOOGLE_CLIENT_ID`) the redirect address
+   `http://127.0.0.1:8765/callback` must be registered, exactly that text (loopback address, not `localhost`, port 8765).
+2. `node scripts/local-stack.mjs up` if the database is not running (the agent may stop afterwards; the database is enough).
+3. `node scripts/local-stack.mjs consent`. It checks that the database runs and that `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET` and `MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY` exist (names only), builds the image when needed and runs the
+   one-shot service `mail-triage-consent`. It prints one address: open it in the browser on this computer and grant access.
+   Google then sends the browser to `http://127.0.0.1:8765/callback`; the port is published on the loopback of this computer
+   only, and the server inside the container listens for that one request, for at most 5 minutes (state and PKCE are checked).
+4. The refresh token goes into the encrypted token store and replaces the old row (there is one row; the old, unreadable
+   value is never read). Nothing secret is printed.
+5. `node scripts/local-stack.mjs up` again: the agent starts with the new token.
+
+With a new encryption key nothing else needs to happen: the old token is lost, the consent makes a new one with the new key.
+If you change the key again later, repeat the consent.
 
 ## Update
 

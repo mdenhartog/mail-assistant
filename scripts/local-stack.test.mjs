@@ -527,3 +527,104 @@ test("U-75 warning: the warning comes before any docker call", async () => {
   assert.ok(warning < events.findIndex((e) => e.startsWith("call:")));
   rmSync(root, { recursive: true, force: true });
 });
+
+// -- U-76: node scripts/local-stack.mjs consent ---------------------------------------------------------------------
+
+const CONSENT_ENV =
+  "POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=rt\nGOOGLE_CLIENT_ID=gid\nGOOGLE_CLIENT_SECRET=gsecret-value\nMAIL_TRIAGE_TOKEN_ENCRYPTION_KEY=key-value-secret\n";
+const dbRunning = { "ps --status running --services": { status: 0, stdout: "db\nmail\n" } };
+
+async function consentReady(envText = CONSENT_ENV) {
+  const { root } = await ready();
+  writeEnv(root, envText);
+  return root;
+}
+
+test("U-76 criterion 4: consent runs the one-shot service with the project, the env files and the loopback port, passing the terminal through", async () => {
+  const root = await consentReady();
+  const answer = await run(root, ["consent"], dbRunning);
+  assert.equal(answer.status, 0, answer.err);
+  const runs = composeCalls(answer.calls).filter((call) => call.args.includes("run"));
+  assert.equal(runs.length, 1);
+  const call = runs[0];
+  assert.deepEqual(call.args.slice(0, 3), ["compose", "-p", "mail-assistant"]);
+  const files = call.args.flatMap((arg, i) => (call.args[i - 1] === "--env-file" ? [arg] : []));
+  assert.deepEqual(files, [".env", "deploy/local/stack.env", "deploy/local/secrets.env"]);
+  assert.equal(call.args[call.args.indexOf("--profile") + 1], "local");
+  const tail = sub(call);
+  assert.match(tail, /^run --rm --build --service-ports -T mail-triage-consent$/);
+  // stdin and stdout go to the terminal: no capture, no output file
+  assert.ok(!call.options.capture && !call.options.outFile);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 4: after a successful consent it says to run up again", async () => {
+  const root = await consentReady();
+  const answer = await run(root, ["consent"], dbRunning);
+  assert.equal(answer.status, 0);
+  assert.match(answer.out, /node scripts\/local-stack\.mjs up/);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 4: a consent that did not finish returns non-zero and does not say it worked", async () => {
+  const root = await consentReady();
+  const answer = await run(root, ["consent"], { ...dbRunning, "mail-triage-consent": { status: 1, stdout: "" } });
+  assert.equal(answer.status, 1);
+  assert.ok(!/node scripts\/local-stack\.mjs up/.test(answer.out));
+  assert.match(answer.err, /consent/i);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 5: consent with the database not running stops and names what to run", async () => {
+  const root = await consentReady();
+  for (const stdout of ["", "mail\n", "db-other\n"]) {
+    const answer = await run(root, ["consent"], { "ps --status running --services": { status: 0, stdout } });
+    assert.equal(answer.status, 1);
+    assert.match(answer.err, /node scripts\/local-stack\.mjs up/);
+    assert.ok(!composeCalls(answer.calls).some((call) => call.args.includes("run")));
+  }
+  const broken = await run(root, ["consent"], { "ps --status running --services": { status: 1, stdout: "" } });
+  assert.equal(broken.status, 1);
+  assert.ok(!composeCalls(broken.calls).some((call) => call.args.includes("run")));
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 5: consent without the Google settings stops before any docker call and names the keys only", async () => {
+  const root = await consentReady("POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=rt\nGOOGLE_CLIENT_ID=gid\n");
+  const answer = await run(root, ["consent"], dbRunning);
+  assert.equal(answer.status, 1);
+  assert.equal(answer.calls.length, 0);
+  assert.match(answer.err, /GOOGLE_CLIENT_SECRET/);
+  assert.match(answer.err, /MAIL_TRIAGE_TOKEN_ENCRYPTION_KEY/);
+  assert.ok(!answer.err.includes("gid"));
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 5: consent takes no options or arguments", async () => {
+  const root = await consentReady();
+  for (const extra of [["--follow"], ["mail-triage"]]) {
+    const answer = await run(root, ["consent", ...extra], dbRunning);
+    assert.equal(answer.status, 2);
+    assert.equal(answer.calls.length, 0);
+  }
+  assert.ok(!/consent\s+\S*\bup\b/.test(SCRIPT));
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 6: consent prints no value of .env, only names and the next command", async () => {
+  const root = await consentReady();
+  const good = await run(root, ["consent"], dbRunning);
+  const bad = await run(root, ["consent"], { ...dbRunning, "mail-triage-consent": { status: 1, stdout: "" } });
+  const missing = await run(root, ["consent"], { "ps --status running --services": { status: 0, stdout: "" } });
+  for (const answer of [good, bad, missing]) {
+    for (const secret of ["gsecret-value", "key-value-secret", "gid", "pg-from-env", "rt-from-env"]) {
+      assert.ok(!(answer.out + answer.err).includes(secret), secret);
+    }
+  }
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-76 criterion 6: the usage line lists consent and the script header documents it", () => {
+  assert.match(SCRIPT, /usage: [^\n]*consent/);
+  assert.match(SCRIPT, /\/\/\s+node scripts\/local-stack\.mjs consent/);
+});
