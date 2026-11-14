@@ -135,16 +135,27 @@ const resetToDefaults: Handler = async (route, { state }) => {
 
 type Endpoint = keyof Stub["calls"];
 
-function tableOf(handlers: Handlers): [Endpoint, string, string, Handler][] {
+function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
+  const own: Required<Omit<Handlers, "signedIn">> = {
+    session: sessionByState,
+    requestCode: requestCodeOk,
+    verifyCode: verifyOk,
+    getSettings: reply(200, STORED),
+    putSettings: putEcho,
+    resetSettings: resetToDefaults,
+    logout: reply(204),
+    places: reply(200, PLACES),
+    ...given,
+  };
   return [
-    ["session", "/api/session", "GET", handlers.session ?? sessionByState],
-    ["requestCode", "/auth/request-code", "POST", handlers.requestCode ?? requestCodeOk],
-    ["verifyCode", "/auth/verify-code", "POST", handlers.verifyCode ?? verifyOk],
-    ["getSettings", "/api/settings", "GET", handlers.getSettings ?? reply(200, STORED)],
-    ["putSettings", "/api/settings", "PUT", handlers.putSettings ?? putEcho],
-    ["resetSettings", "/api/settings/reset", "POST", handlers.resetSettings ?? resetToDefaults],
-    ["logout", "/auth/logout", "POST", handlers.logout ?? reply(204)],
-    ["places", "/api/places", "GET", handlers.places ?? reply(200, PLACES)],
+    ["session", "/api/session", "GET", own.session],
+    ["requestCode", "/auth/request-code", "POST", own.requestCode],
+    ["verifyCode", "/auth/verify-code", "POST", own.verifyCode],
+    ["getSettings", "/api/settings", "GET", own.getSettings],
+    ["putSettings", "/api/settings", "PUT", own.putSettings],
+    ["resetSettings", "/api/settings/reset", "POST", own.resetSettings],
+    ["logout", "/auth/logout", "POST", own.logout],
+    ["places", "/api/places", "GET", own.places],
   ];
 }
 

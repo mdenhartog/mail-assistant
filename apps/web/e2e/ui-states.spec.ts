@@ -66,20 +66,20 @@ test.describe("200 % text at 320 px: the buttons stack with the primary one firs
     await useDoubleText(page);
   });
 
-  for (const name of ["login: step 2", "settings: dirty", "settings: loaded"]) {
+  const EXPECTED_ORDER: Record<string, string[]> = {
+    "login: step 2": ["Sign in"],
+    "settings: dirty": ["Save changes", "Reset to defaults"],
+    "settings: loaded": ["Save changes", "Reset to defaults"],
+  };
+  for (const [name, order] of Object.entries(EXPECTED_ORDER)) {
     test(name, async ({ page }) => {
       const state = STATES.find((candidate) => candidate.name === name);
       await state?.open(page);
       await settle(page);
 
       const boxes = await buttonBoxes(page);
-      const primary = name === "login: step 2" ? "Sign in" : "Save changes";
-      const secondary = name === "login: step 2" ? undefined : "Reset to defaults";
       const own = boxes.filter((box) => box.name !== "Sign out");
-      expect(own[0]?.name).toBe(primary);
-      if (secondary) {
-        expect(own[1]?.name).toBe(secondary);
-      }
+      expect(own.slice(0, order.length).map((box) => box.name)).toEqual(order);
       for (const [index, box] of own.entries()) {
         const previous = own[index - 1];
         if (previous) {
