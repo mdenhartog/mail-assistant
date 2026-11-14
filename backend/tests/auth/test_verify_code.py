@@ -635,6 +635,15 @@ async def test_given_an_expired_request_when_a_well_formed_code_is_posted_then_i
     assert await _counted(owner, "code_invalid") == 0
 
 
+async def _age(owner: asyncpg.Connection, age: timedelta) -> None:  # noqa: F811
+    """Make every login request older by ``age``; the clock stays at the real minute the event window needs."""
+    await owner.execute(
+        "UPDATE web_auth.login_request "
+        "SET created_at = created_at - $1::interval, expires_at = expires_at - $1::interval",
+        age,
+    )
+
+
 # U-web-settings-68 (RT3-01, RT3-04, SEC3-01): only the owner's real requests count
 # Criterion 1
 async def test_given_no_request_for_the_owner_when_three_unknown_names_get_5_wrong_codes_each_then_code_refused_is_0(
@@ -657,7 +666,7 @@ async def test_given_an_owner_request_11_minutes_old_when_10_codes_are_posted_th
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     cookie = await api.issue()
-    api.clock.advance(timedelta(minutes=11))
+    await _age(owner, timedelta(minutes=11))
 
     for _ in range(10):
         _assert_refused(await api.verify(FIRST, cookie))
@@ -672,7 +681,7 @@ async def test_given_a_decoy_request_11_minutes_old_when_10_codes_are_posted_the
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     cookie = await api.issue(UNKNOWN)
-    api.clock.advance(timedelta(minutes=11))
+    await _age(owner, timedelta(minutes=11))
 
     for _ in range(10):
         _assert_refused(await api.verify(FIRST, cookie))
@@ -698,11 +707,13 @@ async def test_given_a_decoy_request_when_6_wrong_codes_are_posted_then_none_is_
 # Criterion 4 (AC-30)
 @pytest.mark.parametrize("age", [timedelta(0), timedelta(minutes=11)])
 async def test_given_an_owner_and_a_decoy_request_when_wrong_codes_are_posted_then_the_answers_have_the_same_shape(
-    api: Api, age: timedelta
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    age: timedelta,
 ) -> None:
     real = await api.issue()
     decoy = await api.issue(UNKNOWN)
-    api.clock.advance(age)
+    await _age(owner, age)
 
     for _ in range(7):
         real_answer = await api.verify(SECOND, real)
