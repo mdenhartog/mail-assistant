@@ -1,11 +1,12 @@
-"""U-web-settings-57: ingress gates for HSTS, the certificate alert and image digests (ADR-0037, ADR-0039).
+"""U-web-settings-57 and U-74: ingress gates for HSTS, redirect, TLS minimum, the certificate alert and image digests.
 
-Findings RT-10, SEC-05, SEC-07; AC-18, W-9. The ingress controller is still an open point (D-7), so the gates read what
-the rendered Ingress annotations and the declared controller config say, not which controller consumes them.
+Findings RT-10, SEC-05, SEC-07, SEC2-04, SEC3-02; AC-18, W-9 (ADR-0037, ADR-0039, ADR-0040). The controller is Traefik:
+the gates read the rendered Middleware and TLSOption objects and the Ingresses that reference them.
 """
 
 from __future__ import annotations
 
+import copy
 import fnmatch
 import json
 import re
@@ -24,8 +25,6 @@ LOCAL_VALUES = ENVS / "local" / "values.yaml"
 HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
 DIGEST = "sha256:" + "a" * 64  # a well-formed digest for the schema; not an image anybody runs
-REDIRECT_KEYS = ("ssl-redirect", "force-ssl-redirect")
-ALLOWED_TLS = {"TLSv1.2", "TLSv1.3", "VersionTLS12", "VersionTLS13", "tls1.2", "tls1.3", "1.2", "1.3"}
 
 
 def helm(command: str, values: Path, *sets: str) -> subprocess.CompletedProcess[str]:
@@ -53,21 +52,6 @@ def env_value_files() -> list[Path]:
     return sorted(ENVS.glob("*/values.yaml"))
 
 
-def tls_findings(config: dict[str, str]) -> list[str]:
-    versions = [
-        (k, v)
-        for k, v in config.items()
-        if re.search(r"ssl-protocols|tls-?(min|version)|min-?version", k, re.IGNORECASE)
-    ]
-    if not versions:
-        return ["a TLS minimum (a controllerConfig key such as ssl-protocols or minVersion)"]
-    return [
-        f"a TLS minimum of 1.2 ({key}={value!r} allows an older version)"
-        for key, value in versions
-        if not set(re.split(r"[\s,]+", value.strip())) <= ALLOWED_TLS
-    ]
-
-
 def weakened(override: dict[str, Any], tmp: Path) -> Path:
     """Write a copy of the local values with `override` merged in (null deletes a key)."""
     merged = deep_merge(yaml.safe_load(LOCAL_VALUES.read_text(encoding="utf-8")), override)
@@ -76,35 +60,50 @@ def weakened(override: dict[str, Any], tmp: Path) -> Path:
     return path
 
 
-def missing_gates(values: Path) -> list[str]:
-    """Return what an environment is missing: the HSTS directive, the HTTP redirect and the TLS minimum."""
-    result = helm("template", values)
-    if result.returncode != 0:
-        return [f"a chart that renders ({result.stderr.strip()})"]
-    docs = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
-    ingress = next((d for d in docs if d["kind"] == "Ingress"), None)
-    if ingress is None:
-        return ["an Ingress"]
-    annotations: dict[str, str] = ingress["metadata"]["annotations"]
-    merged = deep_merge(
-        yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8")),
-        yaml.safe_load(values.read_text(encoding="utf-8")),
-    )
-    config: dict[str, str] = merged["ingress"].get("controllerConfig", {})
+def ingress_gate_findings(docs: list[dict[str, Any]]) -> list[str]:
+    """What the rendered objects are missing (ADR-0040): HSTS, the HTTP redirect, the TLS minimum and the body cap."""
+    middlewares = [d["spec"] for d in docs if d["kind"] == "Middleware"]
     missing: list[str] = []
 
-    hsts = [v for v in annotations.values() if "max-age=" in v]
+    hsts = [m["headers"] for m in middlewares if "stsSeconds" in m.get("headers", {})]
+    by_hand = [m for m in middlewares if "strict-transport-security" in str(m.get("headers", {})).lower()]
     if not hsts:
-        missing.append("an HSTS directive (an annotation value with max-age=)")
-    elif any(re.search(r"includeSubDomains|preload", v) for v in hsts):
+        missing.append("a Middleware with an HSTS directive (headers.stsSeconds)")
+    elif hsts[0]["stsSeconds"] != 31536000:
+        missing.append("an HSTS max-age of 31536000")
+    if len(hsts) + len(by_hand) > 1:
+        missing.append("exactly one HSTS directive (a second one is rendered)")
+    if any(h.get("stsIncludeSubdomains") or h.get("stsPreload") for h in hsts):
         missing.append("an HSTS directive without includeSubDomains and preload")
 
-    redirects = {k: v for k, v in annotations.items() if "redirect" in k.lower() or "redirect" in v.lower()}
-    if not redirects or all(v.strip().lower() in {"false", "off", "0"} for v in redirects.values()):
-        missing.append("an HTTP to HTTPS redirect (an annotation naming a redirect that is not switched off)")
+    redirects = [m["redirectScheme"] for m in middlewares if "redirectScheme" in m]
+    if not any(r.get("scheme") == "https" for r in redirects):
+        missing.append("an HTTP to HTTPS redirect (a redirectScheme Middleware with scheme https)")
+    served_on_web = [
+        d
+        for d in docs
+        if d["kind"] == "Ingress"
+        and d["metadata"].get("annotations", {}).get("traefik.ingress.kubernetes.io/router.entrypoints") == "web"
+    ]
+    if not served_on_web:
+        missing.append("an Ingress on the web entry point that carries the redirect")
 
-    missing.extend(tls_findings(config))
+    versions = [d["spec"].get("minVersion") for d in docs if d["kind"] == "TLSOption"]
+    if not versions:
+        missing.append("a TLSOption with a TLS minimum (minVersion)")
+    elif any(v not in {"VersionTLS12", "VersionTLS13"} for v in versions):
+        missing.append(f"a TLS minimum of 1.2 (minVersion {versions!r} allows an older version)")
+
+    caps = [m["buffering"].get("maxRequestBodyBytes") for m in middlewares if "buffering" in m]
+    if caps != [8192]:
+        missing.append(f"a body limit of 8192 bytes (buffering.maxRequestBodyBytes, found {caps!r})")
     return missing
+
+
+def render_docs(values: Path) -> list[dict[str, Any]]:
+    result = helm("template", values)
+    assert result.returncode == 0, result.stderr
+    return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
 
 
 def test_given_the_repository_when_environments_are_listed_then_the_local_values_are_checked() -> None:
@@ -112,56 +111,81 @@ def test_given_the_repository_when_environments_are_listed_then_the_local_values
 
 
 @needs_helm
-@pytest.mark.parametrize("values", env_value_files(), ids=lambda p: p.parent.name)
-def test_given_an_environment_values_file_when_rendered_then_hsts_redirect_and_tls_minimum_are_present(
-    values: Path,
-) -> None:
-    missing = missing_gates(values)
+def test_given_the_local_values_when_rendered_then_hsts_redirect_tls_minimum_and_body_cap_are_present() -> None:
+    missing = ingress_gate_findings(render_docs(LOCAL_VALUES))
 
-    assert not missing, f"{values.relative_to(ROOT)} is missing: " + "; ".join(missing)
+    assert not missing, "deploy/envs/local/values.yaml renders without: " + "; ".join(missing)
+
+
+def mutate(docs: list[dict[str, Any]], kind: str, change: Any) -> list[dict[str, Any]]:
+    copied = copy.deepcopy(docs)
+    for doc in copied:
+        if doc["kind"] == kind:
+            change(doc)
+    return copied
 
 
 @needs_helm
 @pytest.mark.parametrize(
-    ("override", "expected"),
+    ("kind", "change", "expected"),
     [
+        ("Middleware", lambda d: d["spec"].pop("headers", None), "HSTS directive (headers.stsSeconds)"),
+        ("Middleware", lambda d: d["spec"].get("headers", {}).update(stsIncludeSubdomains=True), "without includeSubDomains"),
+        ("Middleware", lambda d: d["spec"].get("headers", {}).update(stsPreload=True), "without includeSubDomains and preload"),
+        ("Middleware", lambda d: d["spec"].get("headers", {}).update(stsSeconds=300), "max-age of 31536000"),
         (
-            {"ingress": {"annotations": {f"nginx.ingress.kubernetes.io/{k}": None for k in REDIRECT_KEYS}}},
-            "redirect",
+            "Middleware",
+            lambda d: d["spec"].get("headers", {}).update(customResponseHeaders={"Strict-Transport-Security": "max-age=1"}),
+            "exactly one HSTS directive",
         ),
+        ("Middleware", lambda d: d["spec"].pop("redirectScheme", None), "HTTP to HTTPS redirect"),
+        ("Middleware", lambda d: d["spec"].pop("buffering", None), "body limit of 8192"),
+        ("Middleware", lambda d: d["spec"].get("buffering", {}).update(maxRequestBodyBytes=9000), "body limit of 8192"),
+        ("TLSOption", lambda d: d["spec"].update(minVersion="VersionTLS11"), "TLS minimum of 1.2"),
+        ("TLSOption", lambda d: d["spec"].pop("minVersion"), "a TLS minimum"),
         (
-            {"ingress": {"annotations": {f"nginx.ingress.kubernetes.io/{k}": "false" for k in REDIRECT_KEYS}}},
-            "redirect",
+            "Ingress",
+            lambda d: d["metadata"]["annotations"].update({"traefik.ingress.kubernetes.io/router.entrypoints": "websecure"}),
+            "Ingress on the web entry point",
         ),
-        ({"ingress": {"controllerConfig": {"ssl-protocols": None}}}, "TLS minimum"),
-        ({"ingress": {"controllerConfig": {"ssl-protocols": "TLSv1 TLSv1.1 TLSv1.2"}}}, "TLS minimum of 1.2"),
-        ({"ingress": {"hstsAnnotation": {"format": "%s; preload"}}}, "a chart that renders"),
     ],
 )
-def test_given_an_environment_that_drops_a_gate_when_checked_then_the_missing_item_is_named(
-    override: dict[str, Any], expected: str, tmp_path: Path
+def test_given_a_render_that_drops_a_traefik_gate_when_checked_then_the_missing_item_is_named(
+    kind: str, change: Any, expected: str
 ) -> None:
-    missing = missing_gates(weakened(override, tmp_path))
+    missing = ingress_gate_findings(mutate(render_docs(LOCAL_VALUES), kind, change))
 
     assert any(expected in item for item in missing), missing
 
 
 @needs_helm
-@pytest.mark.parametrize("key", ["", " "])
-def test_given_hsts_true_and_an_empty_annotation_key_when_the_schema_runs_then_it_refuses(key: str) -> None:
-    for command in ("template", "lint"):
-        result = helm(command, LOCAL_VALUES, f"ingress.hstsAnnotation.key={key}")
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"ingress": {"controller": None}},
+        {"ingress": {"controller": "nginx"}},
+        {"ingress": {"hstsAnnotation": {"key": "x/y", "format": "%s"}}},
+        {"ingress": {"annotations": {"a": "b"}}},
+        {"ingress": {"controllerConfig": {"ssl-protocols": "TLSv1"}}},
+        {"ingress": {"hsts": False}},
+        {"ingress": {"tls": {"enabled": False}}},
+    ],
+)
+def test_given_an_environment_that_weakens_the_ingress_when_rendered_then_the_schema_refuses(
+    override: dict[str, Any], tmp_path: Path
+) -> None:
+    result = helm("template", weakened(override, tmp_path))
 
-        assert result.returncode != 0, command
-        assert "hstsAnnotation" in result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "ingress" in result.stderr
 
 
 @needs_helm
-def test_given_hsts_true_and_no_annotation_object_when_the_schema_runs_then_it_refuses() -> None:
-    result = helm("template", LOCAL_VALUES, "json:ingress.hstsAnnotation=null")
+def test_given_the_local_values_when_the_controller_is_removed_then_the_error_names_controller() -> None:
+    result = helm("lint", LOCAL_VALUES, "json:ingress.controller=null")
 
     assert result.returncode != 0
-    assert "hstsAnnotation" in result.stderr
+    assert "controller" in result.stdout + result.stderr
 
 
 @needs_helm
@@ -369,6 +393,15 @@ CHART_IMAGE_EXCEPTIONS = {
     "deploy/envs/local/values.yaml: api.image": "local kind cluster: an image loaded from the local build, tag local",
     "deploy/envs/local/values.yaml: web.image": "local kind cluster: an image loaded from the local build, tag local",
     "deploy/envs/local/mail-triage.yaml: image": "local values; any production release sets image.digest (schema)",
+    "deploy/envs/production/values.yaml: api.image": (
+        "digest is the sentinel REQUIRED on purpose: the schema refuses it until a release supplies the real digest"
+    ),
+    "deploy/envs/production/values.yaml: web.image": (
+        "digest is the sentinel REQUIRED on purpose: the schema refuses it until a release supplies the real digest"
+    ),
+    "deploy/envs/production/mail-triage.yaml: image": (
+        "digest is the sentinel REQUIRED on purpose: the schema refuses it until a release supplies the real digest"
+    ),
 }
 
 

@@ -22,8 +22,9 @@ HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
 # The chart defaults name no proxy (U-web-settings-52): an environment sets them while the ingress is enabled.
 PROXY = "api.config.trustedProxyCidrs={10.244.0.0/16}"
-# Rendering the bare defaults: the environment must say it is not production (no digest, no alert) and name an HSTS key.
-BARE = ("environment=local", "ingress.hstsAnnotation.key=example.test/hsts")
+# Rendering the bare defaults: the environment must say it is not production (no digest, no alert) and name the ingress
+# controller (ADR-0040: required, no default).
+BARE = ("environment=local", "ingress.controller=traefik")
 
 SECRET_ENV = {
     "APP_DATABASE_URL": "database-url",
@@ -161,6 +162,27 @@ def test_given_the_controller_values_when_rendered_then_the_peer_selects_that_na
 
     assert peer["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "ingress-test"}
     assert peer["podSelector"]["matchLabels"] == {"app.kubernetes.io/name": "ctl"}
+
+
+@needs_helm
+@pytest.mark.parametrize("name", ["api", "web"])
+def test_given_the_chart_defaults_when_rendered_then_the_one_peer_is_the_traefik_pods(name: str) -> None:
+    docs = render(PROXY, *BARE, values=False)
+    peer = ingress_rules(docs, name)[0]["from"][0]
+
+    assert peer["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "traefik"}
+    assert peer["podSelector"]["matchLabels"] == {"app.kubernetes.io/name": "traefik"}
+
+
+@needs_helm
+def test_given_the_local_values_when_rendered_then_the_peer_and_the_proxy_cidr_name_the_traefik_pods() -> None:
+    docs = render()
+    peer = ingress_rules(docs, "api")[0]["from"][0]
+    api_env = {e["name"]: e.get("value") for e in container(docs, "api")["env"]}
+
+    assert peer["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "traefik"}
+    assert peer["podSelector"]["matchLabels"] == {"app.kubernetes.io/name": "traefik"}
+    assert api_env["APP_TRUSTED_PROXY_CIDRS"] == '["10.244.0.0/16"]'  # the kind pod network of the Traefik pod
 
 
 @needs_helm
