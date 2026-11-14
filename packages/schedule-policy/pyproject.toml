@@ -28,6 +28,9 @@ dev = [
 
 [tool.uv]
 exclude-newer = "7 days"
+# Rebuild and reinstall when the code changes, not only when pyproject.toml does: the version stays 0.1.0, so a
+# long-lived environment would keep a stale copy (the integration worktree lacked RULES, 2026-11-14).
+cache-keys = [{ file = "pyproject.toml" }, { file = "schedule_policy/**/*" }]
 
 [tool.ruff]
 target-version = "py312"
