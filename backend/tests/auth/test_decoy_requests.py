@@ -47,7 +47,7 @@ REQUEST_CODE: Final = "/auth/request-code"
 VERIFY: Final = "/auth/verify-code"
 GENERIC: Final = {"type": "about:blank", "title": "Bad request", "status": 400}
 WRONG: Final = "000001"
-CAP: Final = 100  # open_login_request_cap of the default settings
+CAP: Final = 100  # live decoys of the oracle tests, from ten clients (the per-client cap is ten open requests)
 # Timing: the two medians may differ by at most this share of the larger one, or this many seconds when the larger
 # one is tiny. Samples alternate between the two paths, so a slow moment of the machine hits both.
 SAMPLES: Final = 25
@@ -305,20 +305,20 @@ async def test_given_old_decoys_when_a_later_request_is_stored_then_the_retentio
     assert await _rows(owner) == 2
 
 
-# Criterion 5, rebuilt in U-web-settings-64 (RT2-03): a full decoy class is invisible
-async def test_given_decoys_up_to_the_open_cap_when_one_more_is_requested_then_it_is_answered_alike_and_not_stored(
+# Criterion 5, rebuilt in U-web-settings-69 (RT3-02): there is no decoy cap and nothing is swallowed
+async def test_given_100_live_decoys_when_one_more_is_requested_then_it_is_answered_alike_and_has_its_own_row(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     for index in range(CAP):
-        assert (await api.request_code(f"name-{index}", client=_client(index))).status_code == 200
+        assert (await api.request_code(f"name-{index}", client=_client(index // 10))).status_code == 200
 
     response = await api.request_code(UNKNOWN, client=_client(CAP))
     owner_answer = await api.request_code(USERNAME, client="10.9.9.9")
 
     assert response.status_code == 200
     assert _shape(response) == _shape(owner_answer)
-    assert await _rows(owner) == CAP + 1  # the owner's row only
+    assert await _rows(owner) == CAP + 2  # every decoy and the owner's row
     assert [sent[1] for sent in api.mailer.sent] == ["111111"]
 
 
@@ -400,18 +400,18 @@ def test_given_the_noise_bound_when_medians_are_compared_then_a_big_gap_fails_an
 
 
 # Criterion 1 (RT-01, AC-16)
-async def test_given_100_open_decoys_from_100_clients_when_the_owner_asks_from_another_client_then_200_and_a_mail(
+async def test_given_100_open_decoys_from_10_clients_when_the_owner_asks_from_another_client_then_200_and_a_mail(
     api: Api,
 ) -> None:
     for index in range(CAP):
-        assert (await api.request_code(f"name-{index}", client=_client(index))).status_code == 200
+        assert (await api.request_code(f"name-{index}", client=_client(index // 10))).status_code == 200
 
     owner_answer = await api.request_code(USERNAME, client="10.9.9.9")
     one_more_decoy = await api.request_code(UNKNOWN, client="10.9.9.8")
 
     assert owner_answer.status_code == 200
     assert [sent[1] for sent in api.mailer.sent] == ["111111"]
-    assert one_more_decoy.status_code == 200  # the decoys have their own cap, it is full, and that never shows
+    assert one_more_decoy.status_code == 200
     assert _shape(one_more_decoy) == _shape(owner_answer)
 
 
@@ -707,3 +707,78 @@ def test_given_equal_and_different_step_lists_when_compared_then_only_the_differ
     assert first_difference(["a", "b"], ["a", "c"]) == "step 2: 'b' against 'c'"
     assert first_difference(["a"], ["a", "b"]) == "step 2: nothing against 'b'"
     assert first_difference(["a", "b"], ["a"]) == "step 2: 'b' against nothing"
+
+
+# ---- U-web-settings-69 (RT3-02, RT3-03): no username oracle from the decoys, no trace of the lock ------------------
+
+
+async def _ask_twice_and_guess(api: Api, username: str, client: str) -> list[object]:
+    """What a visitor sees: two asks a few seconds apart, then one wrong code with the cookie of the first."""
+    first = await api.request_code(username, client=client)
+    api.clock.advance(timedelta(seconds=10))
+    second = await api.request_code(username, client=client)
+    guess = await api.verify(WRONG, _cookie(first))
+    return [
+        first.status_code,
+        second.status_code,
+        second.headers.get("retry-after"),
+        guess.status_code,
+        "attemptsLeft" in guess.json(),
+        guess.json().get("attemptsLeft"),
+    ]
+
+
+# Criterion 1 (AC-30)
+async def test_given_100_live_decoys_from_10_clients_when_a_fresh_client_asks_then_owner_and_stranger_answer_alike(
+    api: Api,
+) -> None:
+    for index in range(CAP):
+        assert (await api.request_code(f"name-{index}", client=_client(index // 10))).status_code == 200
+
+    stranger = await _ask_twice_and_guess(api, UNKNOWN, "10.9.9.1")
+    owner_answers = await _ask_twice_and_guess(api, USERNAME, "10.9.9.2")
+
+    assert stranger == owner_answers == [200, 429, "50", 400, True, 4]
+
+
+async def _set_lock(owner: asyncpg.Connection) -> None:  # noqa: F811
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, now())")
+
+
+# Criterion 2 (AC-27)
+async def test_given_the_web_lock_set_and_then_lifted_when_a_name_is_asked_twice_then_the_answers_are_the_same_in_both(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await _set_lock(owner)
+    locked = [await _ask_twice_and_guess(api, name, f"10.2.2.{n}") for n, name in enumerate(("random-a", USERNAME))]
+    assert api.mailer.sent == []  # the lock stops the mail
+    await owner.execute("DELETE FROM web_auth.web_lock")
+    api.clock.advance(timedelta(hours=2))
+
+    unlocked = [await _ask_twice_and_guess(api, name, f"10.3.3.{n}") for n, name in enumerate(("random-b", USERNAME))]
+
+    assert locked == unlocked
+    assert locked[0] == [200, 429, "50", 400, True, 4]
+    assert len(api.mailer.sent) == 1  # only the lifted lock mails
+
+
+# Criterion 2 (AC-27, AC-30): the recorded steps are the same locked and unlocked, for the owner and a stranger
+@pytest.mark.parametrize("username", [USERNAME, UNKNOWN])
+async def test_given_the_web_lock_when_a_name_is_requested_then_the_recorded_steps_equal_those_without_the_lock(
+    api: Api,
+    recorder: StepRecorder,
+    owner: asyncpg.Connection,  # noqa: F811
+    username: str,
+) -> None:
+    await api.requests.request(username, "client", "request-1", None)
+    unlocked = recorder.take()
+    api.clock.advance(timedelta(hours=2))
+    await _set_lock(owner)
+    recorder.take()
+
+    await api.requests.request(username, "client", "request-2", None)
+    locked = recorder.take()
+
+    assert first_difference(unlocked, locked) is None, (unlocked, locked)
+    assert any("INSERT INTO web_auth.login_request" in step for step in locked)

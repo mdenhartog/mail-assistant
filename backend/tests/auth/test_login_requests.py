@@ -258,47 +258,81 @@ async def test_given_requests_in_every_state_when_attempts_left_is_read_then_onl
 # ---- U-web-settings-53 ---------------------------------------------------------------------------------------------
 
 
-# Criterion 1 (RT-01, AC-16)
-async def test_given_decoys_at_their_cap_when_the_owner_creates_a_request_then_it_is_created_and_a_decoy_is_not_stored(
-    store: LoginRequests,
-) -> None:
-    limits = lowered(class_open_cap=3)
-    for index in range(3):
-        await decoy(store, f"{index}" * 64, T0, client=f"{index}" * 64, limits=limits)
-
-    owner_request = await make(store, USER, RIGHT, T0, client=ELSEWHERE, limits=limits)
-
-    assert owner_request.id
-    swallowed = await decoy(store, "9" * 64, T0 + timedelta(seconds=100), client="9" * 64, limits=limits)
-    assert swallowed.id
-    assert not swallowed.stored  # the usual answer, never a refusal the owner would not get (RT2-03)
-
-
-# Criterion 1
-async def test_given_the_owner_rows_when_a_decoy_is_counted_then_the_owner_rows_do_not_count_against_the_decoy_cap(
-    store: LoginRequests,
-) -> None:
-    limits = lowered(class_open_cap=1)
-    await make(store, USER, RIGHT, T0, client=ELSEWHERE, limits=limits)
-
-    created = await decoy(store, "1" * 64, T0, limits=limits)
-
-    assert created.id
-
-
-# Criterion 1
-async def test_given_a_decoy_at_a_full_class_when_read_then_nothing_was_written_and_nothing_was_killed(
+# Criterion 1 (RT-01, AC-16), rebuilt in U-web-settings-69 (RT3-02): there is no decoy cap, so no decoy is swallowed
+async def test_given_100_live_decoys_when_the_owner_and_one_more_decoy_ask_then_every_request_has_a_row(
     store: LoginRequests,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    limits = lowered(class_open_cap=1)
-    first = await decoy(store, "1" * 64, T0, client="1" * 64, limits=limits)
+    for index in range(101):
+        await decoy(store, f"{index:064d}", T0, client=f"{index // 10:064d}")
 
-    swallowed = await decoy(store, "2" * 64, T0, client="2" * 64, limits=limits)
+    owner_request = await make(store, USER, RIGHT, T0, client=ELSEWHERE)
 
-    assert not swallowed.stored
-    assert await live_ids(owner) == {first.id}
-    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 1
+    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 102
+    assert owner_request.id in await live_ids(owner)
+
+
+# Criterion 3 (U-web-settings-69): storage is bounded by the clients times their caps, and nothing is swallowed
+async def test_given_many_clients_within_their_caps_when_they_ask_for_decoys_then_every_decoy_has_its_own_row(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    limits = lowered(open_per_client=10, requests_per_client_per_hour=20)
+    clients = 30
+
+    for client in range(clients):
+        for name in range(10):
+            await decoy(store, f"{client:032d}{name:032d}", T0, client=f"{client:064d}", limits=limits)
+        with pytest.raises(LoginRequestRefused):  # the eleventh open request of a client is the client's limit
+            await decoy(store, "f" * 64, T0 + timedelta(seconds=1), client=f"{client:064d}", limits=limits)
+
+    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == clients * 10
+
+
+# Criterion 2 (AC-27, RT3-03): the lock stores the owner's row with a hash no code matches
+async def test_given_the_web_lock_when_the_owner_creates_a_request_then_a_row_is_stored_that_no_code_opens(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, $1)", T0)
+
+    request = await make(store, USER, RIGHT, T0)
+
+    assert await live_ids(owner) == {request.id}
+    assert await store.check(request.id, RIGHT, T0, USER) == Wrong(4, existing=True)
+
+
+# Criterion 2
+async def test_given_the_web_lock_when_a_request_is_made_twice_then_the_cooldown_and_the_hourly_count_apply_as_ever(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    limits = lowered(cooldown=timedelta(seconds=60), codes_per_hour=2)
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, $1)", T0)
+    await make(store, USER, RIGHT, T0, limits=limits)
+
+    with pytest.raises(LoginRequestRefused) as early:
+        await make(store, USER, RIGHT, T0 + timedelta(seconds=10), limits=limits)
+    await make(store, USER, RIGHT, T0 + timedelta(seconds=60), limits=limits)
+    with pytest.raises(LoginRequestRefused) as hourly:
+        await make(store, USER, RIGHT, T0 + timedelta(seconds=120), limits=limits)
+
+    assert early.value.wait_seconds == 50
+    assert hourly.value.wait_seconds == 3600 - 120
+
+
+# Criterion 2
+async def test_given_the_web_lock_when_a_decoy_is_requested_then_it_is_stored_and_its_attempts_count_down(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, $1)", T0)
+
+    request = await decoy(store, OTHER, T0)
+
+    assert await live_ids(owner) == {request.id}
+    assert await store.attempts_left(request.id, T0) == MAX_ATTEMPTS
+    assert await store.check(request.id, WRONG, T0, USER) == Wrong(4, existing=False)
 
 
 # Criterion 2 (W-7)

@@ -558,11 +558,11 @@ async def test_given_a_used_replaced_or_dead_request_when_a_code_is_posted_then_
     assert await _counted(owner, "code_invalid") == 1
 
 
-async def test_given_a_decoy_swallowed_by_a_full_class_when_a_code_is_posted_then_it_is_code_invalid_no_row_exists(
+async def test_given_100_live_decoys_when_a_code_is_posted_to_one_more_then_it_meets_a_row_and_counts_down(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    # U-web-settings-64: a decoy swallowed by a full class has no row, so the post meets no login request
+    # U-web-settings-69 (RT3-02): a decoy is never swallowed, so a post to the 101st meets its row like any other
     for index in range(100):
         await owner.execute(
             "INSERT INTO web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
@@ -578,7 +578,8 @@ async def test_given_a_decoy_swallowed_by_a_full_class_when_a_code_is_posted_the
 
     answer = await api.verify(FIRST, cookie)
 
-    _assert_refused(answer)
+    assert answer.status_code == 400
+    assert answer.json()["attemptsLeft"] == 4
     assert await _counted(owner, "code_refused") == 0
     assert await _counted(owner, "code_invalid") == 1
 
