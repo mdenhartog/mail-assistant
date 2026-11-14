@@ -181,7 +181,7 @@ async def test_given_the_poll_state_row_exists_when_the_cursor_advances_then_the
     assert (row["history_id"], row["telegram_update_id"], row["web_notice_version"]) == ("h9", 77, 4)
 
 
-async def test_given_a_web_reset_to_the_defaults_when_the_use_case_runs_then_one_more_notice_follows_like_any_web_change(
+async def test_given_a_web_reset_to_the_defaults_when_the_use_case_runs_then_one_more_notice_follows(
     web: asyncpg.Connection, agent_engine: AsyncEngine, owner: asyncpg.Connection
 ) -> None:
     """U-web-settings-45 (AC-13): the reset is one more web write of the same row, so the poll sees it as such."""
