@@ -2,7 +2,8 @@
 feature: web-settings
 intent: INT-002
 extends: adjustable-quiet-hours
-status: approved
+status: done
+docs: docs/user-guide/web-settings.md
 date: 2026-11-09
 revised: 2026-11-14
 approver: Marco
