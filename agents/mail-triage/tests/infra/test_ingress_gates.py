@@ -336,3 +336,132 @@ def test_given_the_renovate_config_when_read_then_compose_files_and_dockerfiles_
     assert "config:recommended" in config["extends"]
     assert enabled is None or {"dockerfile", "docker-compose"} <= set(enabled)
     assert not [r for r in disabled if {"dockerfile", "docker-compose"} & set(r.get("matchManagers", []))]
+
+
+# --- U-web-settings-70 (RT3-06): every image reference in the charts and the environment values -------------------
+
+CHARTS = ROOT / "deploy" / "charts"
+TEMPLATE_IMAGE = re.compile(r"^\s*-?\s*image:\s*(\S.*?)\s*$")
+CHART_IMAGE_EXCEPTIONS = {
+    'deploy/charts/app/templates/workloads.yaml: {{ include "app.image" $c.image }}': (
+        "composed by the app.image helper from api.image and web.image; values.schema.json requires a digest for both "
+        "unless environment is local or staging"
+    ),
+    'deploy/charts/worker/templates/migration.yaml: {{ include "worker.image" . }}': (
+        "composed by the worker.image helper from image.*; values.schema.json requires a digest in production"
+    ),
+    'deploy/charts/worker/templates/worker.yaml: {{ include "worker.image" . }}': (
+        "composed by the worker.image helper from image.*; values.schema.json requires a digest in production"
+    ),
+    'deploy/charts/component/templates/component.yaml: {{ include "component.image" . }}': (
+        "scaffold chart for a component that is not deployed yet; its image comes from values and has no schema"
+    ),
+    "deploy/charts/app/values.yaml: api.image": (
+        "empty digest by default on purpose; the schema refuses it unless environment is local or staging"
+    ),
+    "deploy/charts/app/values.yaml: web.image": (
+        "empty digest by default on purpose; the schema refuses it unless environment is local or staging"
+    ),
+    "deploy/charts/worker/values.yaml: image": (
+        "digest is empty by default on purpose; the schema refuses an empty digest in production"
+    ),
+    "deploy/charts/component/values.yaml: image": "scaffold chart; the digest is set by the release that deploys it",
+    "deploy/envs/local/values.yaml: api.image": "local kind cluster: an image loaded from the local build, tag local",
+    "deploy/envs/local/values.yaml: web.image": "local kind cluster: an image loaded from the local build, tag local",
+    "deploy/envs/local/mail-triage.yaml: image": "local values; any production release sets image.digest (schema)",
+}
+
+
+def chart_template_files(root: Path) -> list[Path]:
+    return sorted(
+        p
+        for p in (root / "deploy" / "charts").glob("*/templates/**/*")
+        if p.is_file() and p.suffix in {".yaml", ".yml", ".tpl"}
+    )
+
+
+def chart_values_files(root: Path) -> list[Path]:
+    found = list((root / "deploy" / "charts").glob("*/values.y*ml")) + list((root / "deploy" / "envs").rglob("*.y*ml"))
+    return sorted(found)
+
+
+def image_mappings(node: Any, trail: str = "") -> list[tuple[str, Any]]:
+    found: list[tuple[str, Any]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            here = f"{trail}.{key}" if trail else str(key)
+            if key == "image" and isinstance(value, dict | str):
+                found.append((here, value))
+            else:
+                found += image_mappings(value, here)
+    return found
+
+
+def chart_image_findings(root: Path) -> tuple[list[str], set[str]]:
+    """The unpinned image references under root, and the exception keys that were used."""
+    problems: list[str] = []
+    used: set[str] = set()
+    for key, message in _unpinned_template_images(root) + _unpinned_values_images(root):
+        if key in CHART_IMAGE_EXCEPTIONS:
+            used.add(key)
+        else:
+            problems.append(message)
+    return problems, used
+
+
+def _unpinned_template_images(root: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for path in chart_template_files(root):
+        name = path.relative_to(root).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            match = TEMPLATE_IMAGE.match(line)
+            if match and not DIGEST_PIN.search(match.group(1)):
+                image = match.group(1)
+                found.append((f"{name}: {image}", f"{name}:{number} image {image} has no @sha256 digest"))
+    return found
+
+
+def _unpinned_values_images(root: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for path in chart_values_files(root):
+        name = path.relative_to(root).as_posix()
+        for trail, image in image_mappings(yaml.safe_load(path.read_text(encoding="utf-8")) or {}):
+            digest = image.get("digest", "") if isinstance(image, dict) else image
+            if not re.fullmatch(r"(?:.*@)?sha256:[a-f0-9]{64}", str(digest)):
+                found.append((f"{name}: {trail}", f"{name}: {trail} has no @sha256 digest"))
+    return found
+
+
+def test_given_every_chart_and_environment_image_when_linted_then_each_has_a_digest_or_an_exception() -> None:
+    problems, _ = chart_image_findings(ROOT)
+
+    assert problems == []
+
+
+def test_given_the_chart_image_exceptions_when_listed_then_each_is_used_and_explained() -> None:
+    _, used = chart_image_findings(ROOT)
+
+    assert set(CHART_IMAGE_EXCEPTIONS) == used, "remove an exception that no chart file uses any more"
+    assert all(len(reason) > 30 for reason in CHART_IMAGE_EXCEPTIONS.values())
+
+
+def test_given_an_unpinned_image_in_a_chart_template_when_linted_then_the_linter_names_the_line(tmp_path: Path) -> None:
+    templates = tmp_path / "deploy" / "charts" / "x" / "templates"
+    templates.mkdir(parents=True)
+    pinned = "curlimages/curl:8.17.0@sha256:" + "e" * 64
+    (templates / "t.yaml").write_text(
+        f"containers:\n  - name: a\n    image: curlimages/curl:8.17.0\n  - name: b\n    image: {pinned}\n",
+        encoding="utf-8",
+    )
+
+    problems, _ = chart_image_findings(tmp_path)
+
+    assert problems == ["deploy/charts/x/templates/t.yaml:3 image curlimages/curl:8.17.0 has no @sha256 digest"]
+
+
+def test_given_the_test_pod_when_read_then_its_image_is_pinned_by_digest() -> None:
+    text = (ROOT / "deploy" / "charts" / "app" / "templates" / "tests" / "test-health.yaml").read_text(encoding="utf-8")
+    images = [m.group(1) for line in text.splitlines() if (m := TEMPLATE_IMAGE.match(line))]
+
+    assert images
+    assert all(DIGEST_PIN.search(image) for image in images), images
