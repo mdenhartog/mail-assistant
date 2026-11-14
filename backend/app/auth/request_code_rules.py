@@ -18,6 +18,11 @@ def origin_allowed(origin: str | None, public_origin: str) -> bool:
     return origin is not None and bool(public_origin) and origin == public_origin
 
 
+def normalize_username(raw: str) -> str:
+    """Stub of U-77 (red step): returns the name unchanged."""
+    return raw
+
+
 def username_key(key: bytes, username: str) -> str:
     """Return the 64 lower-case hex characters of the keyed HMAC-SHA-256 of the username."""
     return hmac.new(key, username.encode("utf-8"), hashlib.sha256).hexdigest()
