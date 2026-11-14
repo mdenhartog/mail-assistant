@@ -29,7 +29,12 @@ A login page where Marco gives a username and a one-time code sent by e-mail (AD
 | Allowed username | internal | Configuration. An unknown username is never logged in clear. |
 | Quiet hours, overview time, reminder default | internal | See the Telegram model. |
 | Time zone | personal data (low) | Reveals travel location. |
-| Security event log | internal | Result, hashed username when unknown, request id. |
+| Security event log | internal | Kind, result, request id, `window` (minute) and `count` (wrong codes of that client in that minute). Kept 90 days. |
+| `client_key`, `client_hash` | internal | Keyed digest (HMAC-SHA-256, own subkey) of the client address or IPv6 /64, 64 hex characters, on security events and login requests. Never an address. |
+| Kind `code_invalid` | internal | A refusal that is not counted by the alert or the lock (no cookie, malformed body, dead or decoy request). |
+| Keyed digest of a typed username | internal | 64 hex characters on `code_request_refused`, `mail_failed` (and `csrf_refused`, `session_start`, `session_end` with the configured username), and `username_key` on login requests; never the username in clear. |
+| `web_notice_token` (agent database) | secret | Pre-change values, the burst id and the bearer token of the Undo buttons, in clear text; the token alone does not allow anything without the allowed Telegram chat. Purged when expired. |
+| Username hash key | secret | Its own key, at least 32 random bytes, different from the code-hash key and the CSRF key (start-up refuses equal keys); SealedSecret. |
 
 ## Diagram
 
@@ -139,3 +144,10 @@ Caused by ADR-0036 (replaces ADR-0024) and ADR-0037 (replaces ADR-0032).
 | R-3 | Restated: forcing the web lock needs about 15 well-formed wrong codes against requests of the configured username in 24 hours, which needs the username; Telegram stays available and `/web_unlock` lifts it. |
 | R-5 | Accepted: the limiter keys an IPv6 client by /64 and has no total per /48, so a LAN device with many /64 networks can send more than 30 requests a minute; the database caps (5 codes an hour, 5 attempts per code) still hold. Reviewed on 2027-05-10 with R-1. |
 | Data | Added: `web_notice_token` (pre-change values, burst id, bearer token) is purged when expired (U-71). |
+
+## Delta 2026-11-14 (phase 8)
+
+| id | change |
+| --- | --- |
+| Data | The classification table now lists the client digests, `window`, `count`, `code_invalid`, the digest of a typed username, `web_notice_token` and the username hash key. |
+| W-13 | The alert, the lock and the purge are R1 and built (U-48, U-49, U-55). The open items for production (ingress controller, certificate expiry alert, trusted proxy CIDRs) are in `docs/release/web-settings-prod.md`. |

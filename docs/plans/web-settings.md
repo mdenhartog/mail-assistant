@@ -1284,63 +1284,65 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 | --- | --- |
 | AC-1 | 20, 25, 32, 34, 42, 43 |
 | AC-2 | 15, 20, 22, 23, 28, 43 |
-| AC-3 | 10, 11, 16, 18, 25, 30, 31, 42, 43 |
+| AC-3 | 10, 11, 16, 18, 25, 30, 31, 42, 43, 50, 60 |
 | AC-4 | 04, 38 |
 | AC-5 | 11, 16, 17, 18, 31 |
 | AC-6 | 10, 18, 30 |
-| AC-7 | 11, 15, 18, 19, 25, 28, 42 |
+| AC-7 | 11, 15, 18, 19, 25, 28, 42, 60 |
 | AC-8 | 17, 18, 19, 22, 28, 45, 47 |
 | AC-9 | 06, 21, 22, 25, 32, 42 |
 | AC-10 | 20, 21, 22, 32 |
-| AC-11 | 21, 22, 35, 43, 45, 46, 47 |
+| AC-11 | 21, 22, 35, 43, 45, 46, 47, 61 |
 | AC-12 (first half, R1) | 28, 30, 43 |
 | AC-12 (second half, R2) | 47 |
-| AC-13 | 26, 27, 34, 45 |
+| AC-13 | 26, 27, 34, 45, 56 |
 | AC-14 | 01, 05, 22, 28, 30, 32, 33, 43 |
 | AC-15 | 05, 14, 17, 18, 19, 20, 22, 23, 28, 45 |
-| AC-16 | 16, 17, 20, 22, 24, 38, 40 |
-| AC-17 | 06, 07, 21, 22, 39, 42, 49 |
-| AC-18 | 04, 37, 40, 43 |
-| AC-19 | 05, 37, 40, 43 |
-| AC-20 (first half, R1) | 13, 14, 15, 17, 18, 19, 24, 37, 42 |
-| AC-20 (second half, R2) | 48 |
-| AC-21 (R2) | 49 |
+| AC-16 | 16, 17, 20, 22, 24, 38, 40, 51, 52, 53 |
+| AC-17 | 06, 07, 21, 22, 39, 42, 49, 65, 71 |
+| AC-18 | 04, 37, 40, 43, 57, 66, 70 |
+| AC-19 | 05, 37, 40, 43, 59 |
+| AC-20 (first half) | 13, 14, 15, 17, 18, 19, 24, 37, 42 |
+| AC-20 (second half, R1 since ADR-0039) | 48, 54, 55, 63, 65, 68, 71 |
+| AC-21 (R1 since D-19) | 49, 65, 71 |
 | AC-22 | 01, 29, 31, 32, 33, 36, 43, 46 |
 | AC-23 | 01, 29, 30, 31, 32, 33, 34, 35, 36, 46, 47 |
 | AC-24 | 30 |
 | AC-25 (R2) | 45, 46 |
 | AC-26 | 20, 21, 25 |
-| AC-27 | 15, 18, 20, 22, 27, 31, 43 |
-| AC-28 | 33, 34, 35, 43, 47 |
-| AC-29 | 12, 13, 16, 17, 38 |
-| AC-30 | 17, 30 |
-| AC-31 | 11, 16, 17, 31 |
+| AC-27 | 15, 18, 20, 22, 27, 31, 43, 54, 55, 69 |
+| AC-28 | 33, 34, 35, 43, 47, 61 |
+| AC-29 | 12, 13, 16, 17, 38, 54 |
+| AC-30 | 17, 30, 50, 53, 62, 63, 64, 68, 69 |
+| AC-31 | 11, 16, 17, 31, 53, 54, 64 |
+| AC-32 (added in the build) | 48, 55, 63, 68, 69 |
+| AC-33 (added in the build) | 63, 68 |
 
-Check (run mechanically from the criteria tags): AC-1 to AC-31 all appear, with the R2 halves of AC-12 and AC-20 and AC-21 and AC-25 in R2 units only.
+Check (run mechanically from the criteria tags): AC-1 to AC-33 all appear; only the second half of AC-12 and AC-25 are in R2 units (U-45 to U-47), which are not built. U-52, U-58, U-66, U-67 and U-70 have no acceptance criterion of their own; they are listed under the threats below.
 
 ## Coverage of the threats
 
 | Threat | Units |
 | --- | --- |
 | W-1 | 04, 10, 16, 18, 31 |
-| W-2 | 10, 17, 18 |
+| W-2 | 10, 17, 18, 50 |
 | W-3 | 15 |
 | W-4 | 17, 19, 28, 47 |
-| W-5 | 05, 32, 43 |
+| W-5 | 05, 32, 43, 59 |
 | W-6 | 05, 37, 40 |
-| W-7 | 09, 16, 17, 24, 31, 41 |
-| W-8 | 06, 07, 09, 39, 41, 42 |
-| W-9 | 09, 37, 39, 40, 41 |
+| W-7 | 09, 16, 17, 24, 31, 41, 51, 52, 53, 64, 66, 67, 70 |
+| W-8 | 06, 07, 09, 39, 41, 42, 58, 65, 71 |
+| W-9 | 09, 37, 39, 40, 41, 57, 58, 66 |
 | W-10 | 06, 10, 21, 45 |
-| W-11 | 26, 27 |
-| W-12 | 21, 29, 32, 36 |
-| W-13 | 05, 06, 13, 14, 24, 37, 48, 49 |
-| W-14 | 04, 12, 38 |
-| W-15 | 04, 06, 10, 12, 13, 14, 16, 17, 18, 19, 23, 25, 30, 33, 42, 48 |
+| W-11 | 26, 27, 56, 61, 71 |
+| W-12 | 21, 29, 32, 36, 61 |
+| W-13 | 05, 06, 13, 14, 24, 37, 48, 49, 54, 55, 63, 65, 68, 71 |
+| W-14 | 04, 12, 38, 54 |
+| W-15 | 04, 06, 10, 12, 13, 14, 16, 17, 18, 19, 23, 25, 30, 33, 42, 48, 54, 55 |
 | W-16 | 04, 12, 13, 41 |
-| W-17 | 24, 40, 41 |
+| W-17 | 24, 40, 41, 51, 52 |
 
-Check (run mechanically from the criteria tags): W-1 to W-17 all appear.
+Check (run mechanically from the criteria tags): W-1 to W-17 all appear; U-51 to U-71 are each listed in at least one row of the two tables above (U-60 under AC-3 and AC-7, U-62 under AC-30, U-67 under W-7).
 
 ## Units that touch the same files or tests
 
@@ -1457,3 +1459,5 @@ Follow-ups found while building (2026-11-12), each to be handled by the named un
 - Open before staging: ingress-controller vocabulary is ingress-nginx while kind uses Traefik; the api PodDisruptionBudget default `minAvailable: 1` with one replica.
 - Tooling: the worktree isolation of the Agent tool refuses a primary working directory spelled `c:\` against `C:/`; builders create their own worktree with `git worktree add` under `.claude/worktrees/`.
 - Challenge fix status (2026-11-13): merged U-51 (#113), U-52 (#108), U-56 (#109, took migration 0009 because it landed first), U-57 (#110), U-58 (#112), U-61 (#111). U-61 changed the conflict wording of U-35: when the other change came from the web the marks read "You typed X, the web now has Y" and the button "Keep the stored value"; "Keep Telegram's" remains for a Telegram change (AC-28). U-53 takes migration 0010 and U-54 migration 0011.
+- Status of the round 2 and round 3 findings (2026-11-14, phase 8): SEC2-04 and SEC3-02 are one open item, the ingress controller decision (D-21); no unit fixes it, it is a gate before production in `docs/release/web-settings-prod.md` (HSTS, redirect, TLS minimum and the 8 KB body cap proven on the real ingress in staging). SEC2-06 (security events kept until the purge) is closed by U-49 (90 days) and U-71 (expired `web_notice_token`), with the residual that the purge runs only at deploy time (PreSync), tracked as a release condition (a sync at least every 30 days, SEC3-04). SEC2-09 (documents no longer match the build) and SEC3-07 (D-7 meant two things; D-7 is the certificate expiry alert, the ingress controller is D-21, D-20 is the round 3 moderator decision) are closed by the documentation unit U-72. RT2-07 (the web lock is observable) is closed by U-69. RT2-02 is accepted as R-4 (Marco, 2026-11-13). The other round 2 findings went into U-63 to U-67 and U-49, the round 3 findings into U-68 to U-71. SEC3-03, SEC3-05 and SEC3-06 (the cap wording of AC-29, the R1/R2 split of AC-20 and AC-21, the data classification, the ADR amendments and the README line on deletes) are corrected in the documentation PR `docs/INT-002/web-settings-finish`, which also does CR-06 (the user guide). Still open: CR-01 (the architecture check arrives with the kit 0.5.0 upgrade, PR #84), CR-08 (hand-written boundary validation in `apps/web`, Low), RT3-07 (no limiter total per /48, accepted as R-5) and the in-memory "spent" rule of the wrong-code alert, which is forgotten after an agent restart.
+- Units: 72 are planned; U-45 to U-47 (R2) are not built and U-72 is this documentation unit.
