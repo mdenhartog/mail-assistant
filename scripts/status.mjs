@@ -1,5 +1,5 @@
 // Build status (skill `build-status`): what is being built right now, split intent -> feature -> unit.
-// Derived from the repository, never typed: the plans in docs/plans, the intents in docs/intent,
+// Derived from the repository, never typed: the plans in docs/plans (a folder per feature, a file per unit), the intents in docs/intent,
 // git worktrees and branches, the TDD commits on each branch, `Unit:` trailers on main and (when the
 // `gh` CLI is available) pull requests. The page is docs/STATUS.md in the main worktree; it is
 // gitignored (generated, so parallel worktrees never conflict on it).
@@ -10,7 +10,8 @@
 //   node scripts/status.mjs --quiet         print nothing (used by the plugin hook)
 //   node scripts/status.mjs --root <dir>    project root (default: the current directory)
 // Conventions: branch `feat|fix/<INT-nnn>/<feature>/<nn>` is unit `U-<feature>-<nn>` of the plan
-// docs/plans/<feature>.md; every commit carries trailers `Refs: INT-nnn` and `Unit: U-<feature>-<nn>`
+// docs/plans/<feature>/U-<feature>-<nn>.md (index: docs/plans/<feature>/index.md; the older single file
+// docs/plans/<feature>.md is still read); every commit carries trailers `Refs: INT-nnn` and `Unit: U-<feature>-<nn>`
 // and the squash-merge message keeps them (that is how a merged unit is recognised as done).
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -41,6 +42,18 @@ export function parseIntent(text, file = "") {
   return { id, title: data.title ?? id, status: data.status ?? "draft" };
 }
 
+function applyField(unit, line) {
+  const field = /^-\s+([A-Za-z ]+):\s*(.*)$/.exec(line);
+  if (!field) return;
+  const key = field[1].trim().toLowerCase();
+  if (key === "layer") unit.layer = field[2].trim();
+  else if (key === "depends on") unit.dependsOn = field[2].split(/[,\s]+/).filter((d) => /^U-/.test(d));
+  else if (key === "parallel") unit.parallel = /^yes/i.test(field[2].trim());
+}
+
+const newUnit = (id, name) => ({ id, name, layer: "", dependsOn: [], parallel: false });
+
+/** A plan in one file (older layout): docs/plans/<feature>.md with a `### U-<feature>-<nn>: <name>` section per unit. */
 export function parsePlan(text, file = "") {
   const { data, body } = frontMatter(text);
   const feature = data.feature ?? path.basename(file, ".md");
@@ -48,17 +61,35 @@ export function parsePlan(text, file = "") {
   let current = null;
   for (const line of body.split(/\r?\n/)) {
     const head = /^###\s+(U-[a-z0-9-]+-\d+):\s*(.+?)\s*$/.exec(line);
-    if (head) { current = { id: head[1], name: head[2], layer: "", dependsOn: [], parallel: false }; units.push(current); continue; }
+    if (head) { current = newUnit(head[1], head[2]); units.push(current); continue; }
     if (/^#{1,3}\s/.test(line)) { current = null; continue; }
-    if (!current) continue;
-    const field = /^-\s+([A-Za-z ]+):\s*(.*)$/.exec(line);
-    if (!field) continue;
-    const key = field[1].trim().toLowerCase();
-    if (key === "layer") current.layer = field[2].trim();
-    else if (key === "depends on") current.dependsOn = field[2].split(/[,\s]+/).filter((d) => /^U-/.test(d));
-    else if (key === "parallel") current.parallel = /^yes/i.test(field[2].trim());
+    if (current) applyField(current, line);
   }
   return { intent: data.intent ?? "", feature, title: data.title ?? feature, units };
+}
+
+/** One unit file of a plan folder: docs/plans/<feature>/U-<feature>-<nn>.md, headed `# U-<feature>-<nn>: <name>`. */
+export function parseUnitFile(text, file = "") {
+  const { data, body } = frontMatter(text);
+  let unit = null;
+  for (const line of body.split(/\r?\n/)) {
+    const head = /^#\s+(U-[a-z0-9-]+-\d+):\s*(.+?)\s*$/.exec(line);
+    if (head && !unit) { unit = newUnit(head[1], head[2]); continue; }
+    if (unit && /^#{1,2}\s/.test(line)) break;
+    if (unit) applyField(unit, line);
+  }
+  if (!unit && data.unit) unit = newUnit(data.unit, path.basename(file, ".md"));
+  return unit ? { intent: data.intent ?? "", feature: data.feature ?? "", unit } : null;
+}
+
+/** A plan folder (current layout): index.md (intent, feature, title, build order) plus one file per unit. */
+export function parsePlanFolder(indexText, unitFiles, dirName = "") {
+  const { data, body } = frontMatter(indexText ?? "");
+  const heading = /^#\s+(.+?)\s*$/m.exec(body)?.[1];
+  const parsed = unitFiles.map(([f, text]) => parseUnitFile(text, f)).filter(Boolean);
+  const feature = data.feature || parsed.find((p) => p.feature)?.feature || dirName;
+  const intent = data.intent || parsed.find((p) => p.intent)?.intent || "";
+  return { intent, feature, title: data.title ?? heading ?? feature, units: parsed.map((p) => p.unit) };
 }
 
 /** The TDD stage from the commit subjects on a branch, oldest first. */
@@ -204,6 +235,19 @@ function readDir(dir, pattern) {
   return existsSync(dir) ? readdirSync(dir).filter((f) => pattern.test(f)).sort().map((f) => [f, readFileSync(path.join(dir, f), "utf8")]) : [];
 }
 
+/** Plans in both layouts: a folder per feature (index.md + U-*.md) and the older single file per feature. */
+export function readPlans(dir) {
+  const plans = readDir(dir, /\.md$/).map(([f, text]) => parsePlan(text, f));
+  if (existsSync(dir)) {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+      const sub = path.join(dir, entry.name);
+      const index = existsSync(path.join(sub, "index.md")) ? readFileSync(path.join(sub, "index.md"), "utf8") : "";
+      plans.push(parsePlanFolder(index, readDir(sub, /^U-.*\.md$/), entry.name));
+    }
+  }
+  return plans.filter((p) => p.units.length);
+}
+
 function readPullRequests(cwd) {
   const r = spawnSync("gh", ["pr", "list", "--state", "all", "--limit", "200", "--json", "headRefName,state,url,isDraft"], { cwd, encoding: "utf8", timeout: 20_000 });
   if (r.status !== 0) return [];
@@ -241,7 +285,7 @@ export function collect(root, { prs = true } = {}) {
   }));
   const doneUnits = new Set([...git(["log", trunk, "--format=%B"], main).matchAll(/^Unit:\s*(U-[a-z0-9-]+-\d+)\s*$/gm)].map((m) => m[1]));
   const intents = readDir(path.join(main, "docs", "intent"), /^INT-\d+.*\.md$/).map(([f, text]) => parseIntent(text, f));
-  const plans = readDir(path.join(main, "docs", "plans"), /\.md$/).map(([f, text]) => parsePlan(text, f)).filter((p) => p.units.length);
+  const plans = readPlans(path.join(main, "docs", "plans"));
   const model = buildModel({ intents, plans, branches, doneUnits, prs: prs ? readPullRequests(main) : [] });
   const integration = integrationLine(main);
   if (integration) model.integration = integration;

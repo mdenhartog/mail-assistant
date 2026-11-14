@@ -1,5 +1,5 @@
 {
-  "kitVersion": "0.5.0",
+  "kitVersion": "0.6.0",
   "files": {
     ".claude/rules/backend.md": "c402952f8bde6ffa6003aa11299750f1e8bfb8752543160565bfd0866955330e",
     ".claude/rules/infra.md": "a9bb514990dcdde68e53ce94b5f20a3af9e0237f9b4985467ce8dcd038af616d",
@@ -21,6 +21,6 @@
     "scripts/images.mjs": "aa810a11096a0b4746bcee8cfda1b12c3c72b5b53615ec2573ccd8f80c6916ab",
     "scripts/integrate.mjs": "87b411f4d9904f036c333192ee782df8212e9f4f9c261d6d2b696d892acd357c",
     "scripts/lib/run-pnpm.mjs": "2049b5f62dabf175faa95ad6c8ff6f0852ac01e317fee3e37781a8fe4a453f62",
-    "scripts/status.mjs": "4ebbb0b41da3e80e81e81df23cdf9e52c17f91c7433244e802c149f818b9ed5c"
+    "scripts/status.mjs": "bc7181e30f18b16a850bd2157e8716a97634d223be4aa98a9a8f7068c1ea3728"
   }
 }
