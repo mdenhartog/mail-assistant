@@ -1343,6 +1343,23 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   9. Given the authorisation address, When prompted, Then only the instruction and the address are printed, flushed (type: security; level: unit).
   10. Given the docs, When read, Then they name the consent step, the redirect address to register, the new-key case and exit code 3 (type: happy; level: unit).
 
+### U-web-settings-77: The sign-in username ignores surrounding spaces and letter case (R1; backend; D-24)
+
+- Layer: backend
+- Contract: one pure function `normalize_username(raw)` in `app/auth/request_code_rules.py` (strip, NFKC, `casefold`, NFKC, strip; stable when applied twice). It is applied to the typed username before it becomes the `username_key` of a login request, real or decoy, and to the configured `Settings.username` when the owner key is derived (request-code and verify-code). The request model validates length (1 to 64) and characters on the normalised value, so a name that is empty after trimming gives the same 422 as an empty one. The decoy path runs the same normalisation and the same steps (AC-30). The audit actor digest `web:<digest>` and every other long-term digest of the configured username are still made from the configured name as written. The mail, the masked address and the answers do not change. The page cannot say that an e-mail address was typed (an unknown name gets a decoy, ADR-0038); the fixed hint is U-78.
+- Files: `backend/app/auth/request_code_rules.py`, `backend/app/auth/request_code.py`, `backend/app/auth/verify_code.py`, `backend/app/routers/auth.py`, `backend/tests/auth/test_request_code_rules.py`, `backend/tests/auth/test_username_normalisation.py`, `docs/specs/web-settings.md`, `docs/user-guide/web-settings.md`, `docs/security/web-settings-threat-model.md`
+- Depends on: U-web-settings-17, U-web-settings-18, U-web-settings-50
+- Parallel: yes
+- Guardrails: guardrail-python, guardrail-pytest, guardrail-fastapi, guardrail-pydantic
+- Criteria:
+  1. Given the configured username `marco` (or `Marco`), When `Marco`, ` marco ` , `MARCO` and `marco` each ask for a code, Then each gets a code mail and creates the same owner key (AC-3, AC-6) (type: happy; level: integration).
+  2. Given an unknown name, When it asks for a code, Then it gets a decoy with the same answer, cookie and Retry-After as before, and the same steps run as for the owner (AC-30) (type: security; level: integration).
+  3. Given the owner's e-mail address typed as username, When it asks for a code, Then it is still unknown: a decoy and no mail (AC-30) (type: security; level: integration).
+  4. Given the configured name `Marco` and a fixed key, When a session starts, Then the audit digest is the one it was before this unit (type: regression; level: integration).
+  5. Given any text, When normalised, Then the result is stable, plain lower-case names do not change, `ß` gives `ss`, full-width letters give plain ones and `İ` gives `i` with a combining dot (type: edge; level: unit).
+  6. Given `request_code_rules.py`, When the mutation gate runs, Then no mutant survives (type: security; level: unit).
+  7. Given a name that is empty or only spaces after trimming, or has a control character, When it asks for a code, Then the same 422 as an empty name (type: error; level: integration).
+
 ### U-web-settings-78: The login page says it wants the username, not the e-mail address (R1; D-22)
 
 - Layer: web
@@ -1364,10 +1381,10 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 | --- | --- |
 | AC-1 | 20, 25, 32, 34, 42, 43 |
 | AC-2 | 15, 20, 22, 23, 28, 43 |
-| AC-3 | 10, 11, 16, 18, 25, 30, 31, 42, 43, 50, 60 |
+| AC-3 | 10, 11, 16, 18, 25, 30, 31, 42, 43, 50, 60, 77 |
 | AC-4 | 04, 38 |
 | AC-5 | 11, 16, 17, 18, 31 |
-| AC-6 | 10, 18, 30 |
+| AC-6 | 10, 18, 30, 77 |
 | AC-7 | 11, 15, 18, 19, 25, 28, 42, 60 |
 | AC-8 | 17, 18, 19, 22, 28, 45, 47 |
 | AC-9 | 06, 21, 22, 25, 32, 42 |
@@ -1393,7 +1410,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 | AC-27 | 15, 18, 20, 22, 27, 31, 43, 54, 55, 69 |
 | AC-28 | 33, 34, 35, 43, 47, 61 |
 | AC-29 | 12, 13, 16, 17, 38, 54 |
-| AC-30 | 17, 30, 50, 53, 62, 63, 64, 68, 69 |
+| AC-30 | 17, 30, 50, 53, 62, 63, 64, 68, 69, 77 |
 | AC-31 | 11, 16, 17, 31, 53, 54, 64 |
 | AC-32 (added in the build) | 48, 55, 63, 68, 69 |
 | AC-33 (added in the build) | 63, 68 |
@@ -1503,6 +1520,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-21 the ingress controller is Traefik (ADR-0040, Marco agreed 2026-11-14);  HSTS, redirect and TLS minimum are a gate before production (round 3, SEC3-02, formerly mixed up with D-7 which is the certificate expiry alert).
 - D-23 the Gmail consent runs in the agent container for the local stack (Marco, 2026-11-14).
 - D-22 the feature is tested for a week in Docker before any production step: the stack runs from the main checkout under the project name `mail-assistant`, reachable from this computer only, with the real limits (U-73); production is prepared, not deployed (U-74) (Marco, 2026-11-14).
+- D-24 the username is compared without surrounding spaces and without letter case; the page says it wants the username, not the e-mail address (Marco, 2026-11-14; U-77, U-78).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
 
@@ -1513,7 +1531,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 77 units (74 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73, U-74, U-75, U-76 and U-78 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 78 units (75 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73 to U-78 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 

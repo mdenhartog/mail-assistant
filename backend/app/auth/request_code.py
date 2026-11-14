@@ -36,7 +36,14 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.auth.login_requests import Applicant, LoginRequestRefused, LoginRequests
 from app.auth.mask import mask_address
-from app.auth.request_code_rules import RequestLimits, client_hash, origin_allowed, same_key, username_key
+from app.auth.request_code_rules import (
+    RequestLimits,
+    client_hash,
+    normalize_username,
+    origin_allowed,
+    same_key,
+    username_key,
+)
 from app.clock import Clock
 from app.codes import CodeSource
 from app.config import Settings
@@ -92,7 +99,7 @@ class CodeRequests:
         self._store = store
         self._events = events
         self._username_hash_key = settings.username_hash_key.get_secret_value().encode("utf-8")
-        self._configured = username_key(self._username_hash_key, settings.username)
+        self._configured = username_key(self._username_hash_key, normalize_username(settings.username))
         self._cooldown = timedelta(seconds=settings.resend_cooldown_seconds)
         self._ttl = timedelta(seconds=settings.code_ttl_seconds)
 
@@ -100,7 +107,7 @@ class CodeRequests:
         """Answer a code request.
 
         Args:
-            username: The username as typed.
+            username: The username as typed; spaces at the ends and letter case are ignored (D-24).
             client: The client key.
             request_id: The id of this HTTP request.
             cookie: The value of the ``__Host-login`` cookie of the request, if any.
@@ -112,7 +119,7 @@ class CodeRequests:
             RateLimited: A limit holds; nothing was written. It carries the real wait.
         """
         now = self._clock.now()
-        key = username_key(self._username_hash_key, username)
+        key = username_key(self._username_hash_key, normalize_username(username))
         known = same_key(key, self._configured)
         who = Applicant(key, client_hash(self._username_hash_key, client), cookie)
         try:

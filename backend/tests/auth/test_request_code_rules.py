@@ -6,12 +6,15 @@ import hmac
 from datetime import UTC, datetime, timedelta, tzinfo
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from app.auth import request_code_rules
 from app.auth.request_code_rules import (
     RequestFacts,
     RequestLimits,
     client_hash,
+    normalize_username,
     origin_allowed,
     request_wait,
     same_key,
@@ -344,3 +347,51 @@ class _NoOffset(tzinfo):
 def test_given_a_time_with_a_zone_that_has_no_offset_when_asked_then_it_is_refused() -> None:
     with pytest.raises(ValueError, match="timezone-aware"):
         wait_until_below([T0], datetime(2026, 3, 1, 14, 0, 0, tzinfo=_NoOffset()), 1)
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("marco", "marco"),
+        ("Marco", "marco"),
+        ("MARCO", "marco"),
+        (" marco ", "marco"),
+        ("\t marco\n", "marco"),
+        ("\xa0marco\u3000", "marco"),  # no-break and ideographic spaces count as spaces
+        ("ma rco", "ma rco"),  # inner spaces stay: only the ends are trimmed
+        ("Stra\xdfe", "strasse"),  # sharp s folds to ss (casefold, not lower)
+        ("".join(chr(0xFF21 + n) for n in (12, 0, 17, 2, 14)), "marco"),  # full-width letters fold (NFKC)
+        ("\u0130", "i\u0307"),  # folds to i + combining dot, never a plain i
+        ("user@example.test", "user@example.test"),
+        ("", ""),
+        ("   ", ""),
+    ],
+)
+def test_given_a_typed_username_when_normalised_then_ends_are_trimmed_and_case_and_width_are_folded(
+    typed: str, expected: str
+) -> None:
+    assert normalize_username(typed) == expected
+
+
+def test_given_plain_lowercase_names_when_normalised_then_nothing_changes() -> None:
+    for name in ("marco", "test-user", "a.b_c-9", "x" * 64):
+        assert normalize_username(name) == name
+
+
+@given(st.text(max_size=80))
+def test_given_any_text_when_normalised_twice_then_the_second_pass_changes_nothing(raw: str) -> None:
+    once = normalize_username(raw)
+    assert normalize_username(once) == once
+    assert once == once.strip()
+
+
+@given(st.text(alphabet=st.characters(min_codepoint=33, max_codepoint=126), min_size=1, max_size=20))
+def test_given_ascii_text_when_padded_or_recased_then_the_key_is_the_same(raw: str) -> None:
+    key = b"k" * 32
+    base = username_key(key, normalize_username(raw))
+    assert username_key(key, normalize_username(f"  {raw.upper()}\t")) == base
+    assert username_key(key, normalize_username(raw.lower())) == base
+
+
+def test_given_an_email_address_when_normalised_then_it_is_not_the_username() -> None:
+    assert normalize_username(" Marco@Example.Test ") != normalize_username("marco")

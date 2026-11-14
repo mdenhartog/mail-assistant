@@ -4,6 +4,7 @@
 import hashlib
 import hmac
 import math
+import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,6 +17,19 @@ _HOUR = timedelta(hours=1)
 def origin_allowed(origin: str | None, public_origin: str) -> bool:
     """Return True only when the Origin header equals the public origin exactly."""
     return origin is not None and bool(public_origin) and origin == public_origin
+
+
+def normalize_username(raw: str) -> str:
+    """Return the username as it is compared: no surrounding white space, no letter case, no compatibility forms.
+
+    The steps are Unicode caseless matching (NFKC, ``casefold``, NFKC again, so the result is stable) between two
+    trims. NFKC is applied on purpose: a full-width ``MARCO`` from a phone keyboard is the same name as ``marco``.
+    ``casefold`` turns ``ß`` into ``ss``; ``İ`` becomes ``i`` and a combining dot and so never equals a plain ``i``.
+    The same function runs for the typed name and the configured name, known or not (AC-30, D-24), so it only
+    widens what reaches the one configured username and tells nothing about which names exist.
+    """
+    folded = unicodedata.normalize("NFKC", unicodedata.normalize("NFKC", raw.strip()).casefold())
+    return folded.strip()
 
 
 def username_key(key: bytes, username: str) -> str:
