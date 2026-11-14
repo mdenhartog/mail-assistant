@@ -75,6 +75,27 @@ cases do the consent once:
 With a new encryption key nothing else needs to happen: the old token is lost, the consent makes a new one with the new key.
 If you change the key again later, repeat the consent.
 
+## Known first-start problems
+
+These happened while the stack was first started in this project.
+
+- **`docker compose build` fails with "failed to execute bake" on Windows.** The shell was started in a directory spelled
+  with a lowercase drive letter (`c:\...`). Start the shell in a directory spelled `C:\Projects\mail-assistant` and run the
+  command again.
+- **The migrate job fails with `InvalidPasswordError`.** An old data volume keeps the owner password it was created
+  with. If `POSTGRES_PASSWORD` in `.env` is different now, the job cannot sign in. Set the role to the value of `.env`
+  inside the `db` container with `ALTER ROLE app PASSWORD '...'` (typed from your `.env`, and do not paste the value into
+  chat, tickets or logs), then run `up` again.
+- **The agent exits with code 3.** The stored Gmail token cannot be decrypted with the current `TOKEN_ENCRYPTION_KEY`
+  (the first start has no token either). Run `node scripts/local-stack.mjs consent` (see "Gmail consent").
+- **The consent fails with `deleted_client`.** The OAuth client in Google Cloud was deleted. Create a new OAuth client of
+  the type "Desktop app", put its values in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`, and run `consent`
+  again.
+- **`certs.sh` on Windows needs `MSYS2_ARG_CONV_EXCL='/CN='`.** Git Bash would otherwise treat the argument `/CN=...` as a
+  path. `node scripts/local-stack.mjs init` sets it itself; set it yourself only when you run `certs.sh` by hand.
+- **The sign-in page refuses `marco@...`.** The field wants the username (`marco`), not the e-mail address. Spaces around
+  it and capital letters do not matter.
+
 ## Update
 
 ```text
@@ -96,7 +117,7 @@ Write down what feels wrong; those are the things to tune.
 - Quiet hours, both ways: change the quiet hours in the page, then in Telegram, and back. Check that each side sees the change.
 - Conflict wording: change the same setting on the page and in Telegram, save the stale one, and read the message.
 - Session expiry: leave a session idle (the idle time of the spec) and use it again; check the message and the way back in.
-- Restore after expiry (U-47, when merged) and reset (U-45, U-46, when merged).
+- Restore after expiry (U-47): type a change, let the session end, sign in again and look for the "Welcome back" banner. Reset to defaults (U-45, U-46): read the dialog, confirm, and press Undo in the Telegram notice.
 - Limits (the real ones: 30 requests a minute, 60 s between codes, 5 codes an hour, 5 attempts, 10 open and 20 an hour
   per client): hit each and read the answer. Too tight or too loose? Tune in `.env` with `API_RATE_LIMIT_PER_MINUTE`,
   `API_RESEND_COOLDOWN_SECONDS`, `API_CODES_PER_HOUR`, `API_MAX_ATTEMPTS`, `API_OPEN_LOGIN_REQUESTS_PER_CLIENT` and
