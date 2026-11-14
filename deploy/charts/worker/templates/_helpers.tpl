@@ -36,6 +36,16 @@ exec:
     - import os, sys, time; sys.exit(0 if time.time() - os.path.getmtime('{{ .Values.heartbeat.path }}') < {{ .Values.heartbeat.maxAgeSeconds }} else 1)
 {{- end }}
 
+{{/*
+Keys that only the chart may set (SEC3-08): the environment, every DATABASE_* variable (the chart writes DATABASE_SSL,
+DATABASE_CA_FILE and, in the migration Job, DATABASE_OWNER_URL; the worker's DATABASE_URL comes from envFromSecret) and
+the role passwords of the migration Job. The agent reads variables without regard to case and the last duplicate wins,
+so the match ignores case. values.schema.json forbids the same keys.
+*/}}
+{{- define "worker.env.forbidden" -}}
+(?i)^(ENVIRONMENT|DATABASE_.*|RUNTIME_ROLE_PASSWORD|WEB_ROLE_PASSWORD)$
+{{- end }}
+
 {{/* Database TLS (SEC-10, W-8, W-9): the same three settings for the worker and the migration Job. */}}
 {{- define "worker.dbTls.validate" -}}
 {{- $tls := .Values.database.tls -}}
@@ -48,9 +58,9 @@ exec:
 {{- if and (has $tls.sslMode (list "verify-ca" "verify-full")) (not $tls.caConfigMap) -}}
 {{- fail "database.tls.caConfigMap is required for verify-ca and verify-full (name of a ConfigMap with the key ca.crt)" -}}
 {{- end -}}
-{{- range $name := list "ENVIRONMENT" "DATABASE_SSL" "DATABASE_CA_FILE" -}}
-{{- if hasKey $.Values.env $name -}}
-{{- fail (printf "env.%s is set by the chart (environment and database.tls); remove it from env" $name) -}}
+{{- range $key := keys (default dict .Values.env) | sortAlpha -}}
+{{- if regexMatch (include "worker.env.forbidden" $) $key -}}
+{{- fail (printf "env.%s is set by the chart (environment, database.tls and the migration Secret); remove it from env" $key) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
