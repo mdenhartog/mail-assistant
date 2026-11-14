@@ -130,3 +130,12 @@ Caused by ADR-0036 (replaces ADR-0024) and ADR-0037 (replaces ADR-0032).
 | R-3 | Restated: a person who sends 15 well-formed wrong codes against existing login requests in 24 hours (which needs a username and a live request) can force the web lock; Telegram stays available and `/web_unlock` lifts it. |
 | R-4 | Accepted: a person who knows the username can use up the 5 codes an hour from one device and keep Marco from requesting a code; the code mails and the security events show it. Reviewed on 2027-05-10 with R-1 (ADR-0039 amendment). |
 | Data | Added: the client digest on login requests and security events, `count`, and the `code_invalid` kind; stored as keyed digests, never the clear address. |
+
+## Delta 2026-11-13 (phase 6, round 3)
+
+| id | change |
+| --- | --- |
+| W-7, W-13 | The lock counts only wrong codes against the configured username's real requests; guesses against decoys are `code_invalid`; an expired request dies on its first post; there are no swallowed decoys and the lock leaves no trace (U-68, U-69). The security event insert is forced to server values (U-71). |
+| R-3 | Restated: forcing the web lock needs about 15 well-formed wrong codes against requests of the configured username in 24 hours, which needs the username; Telegram stays available and `/web_unlock` lifts it. |
+| R-5 | Accepted: the limiter keys an IPv6 client by /64 and has no total per /48, so a LAN device with many /64 networks can send more than 30 requests a minute; the database caps (5 codes an hour, 5 attempts per code) still hold. Reviewed on 2027-05-10 with R-1. |
+| Data | Added: `web_notice_token` (pre-change values, burst id, bearer token) is purged when expired (U-71). |
