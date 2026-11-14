@@ -428,11 +428,10 @@ def _document() -> dict[str, Any]:
     return json.loads(DEFAULT_TARGET.read_text(encoding="utf-8"))
 
 
-def test_given_the_openapi_when_read_then_put_settings_is_listed_with_its_answers_and_no_reset_route() -> None:
+def test_given_the_openapi_when_read_then_put_settings_is_listed_with_its_answers() -> None:
     document = _document()
     put = document["paths"]["/api/settings"]["put"]
 
-    assert "/api/settings/reset" not in document["paths"]
     assert {"200", "401", "403", "409", "415", "422", "429", "500"} <= set(put["responses"])
     assert put["requestBody"]["content"]["application/json"]["schema"] == {
         "$ref": "#/components/schemas/SettingsUpdate"

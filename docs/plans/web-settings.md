@@ -70,7 +70,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
 - Migration 0008 is the first migration of R1 (U-06); the challenge fixes add 0009 (U-56, merged first), 0010 (U-53) and 0011 (U-54). The R2 purge adds no migration. If another migration lands first, rename before merge; do not renumber after.
 - A unit that adds an environment variable or a role must carry every consumer of it in the same PR: U-08 carries `WEB_ROLE_PASSWORD` in the job, the agent's compose file, the CI `runtime-role` job's `.env` line and the worker chart's Secret together, so `main` stays green. The same for U-37: the removal of `proxy_pass` from the web image and the new edge arrive together with the update of the existing `e2e` job.
 - A one-shot compose service (migrate) is not part of `up --wait` (it exits and counts as failed). The CI job runs it with `docker compose run --rm` before `up --wait` (U-42).
-- The R1 build exposes no R2 surface: U-05 (no `/api/settings/reset` in the route inventory and in `openapi.json`), U-32 (no Reset button in the DOM) and U-43 (the path answers 404 through the edge). U-45 and U-46 add them together with their tests.
+- The R1 build exposes no R2 surface: U-05 (no `/api/settings/reset` in the route inventory and in `openapi.json`), U-32 (no Reset button in the DOM) and U-43 (the path answers 404 through the edge). U-45 and U-46 add them together with their tests. U-45 (backend and edge side) flipped U-05, U-22 and U-43: the path is on the allow-list and in `openapi.json`, and through the edge GET answers 405 and an unauthenticated POST answers 401; the web side (U-32) is flipped by U-46.
 
 ## Units
 
@@ -160,7 +160,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   4. Given an HTML response the api serves, When inspected, Then the CSP has exactly the four directives and no `unsafe-inline` (AC-14, W-5) (type: security; level: api). Superseded by U-59: one deny-all CSP (`default-src 'none'; frame-ancestors 'none'`) on every API response.
   5. Given a request with `X-Request-Id: attacker`, When answered, Then the response header is the id from `IdSource` (W-13) (type: security; level: api).
   6. Given production settings, When `/docs`, `/redoc` and `/openapi.json` are requested, Then 404 each (AC-19, W-6) (type: security; level: api).
-  7. Given a route outside the allow-list, a route without a `public` or `session` marker, and `/api/settings/reset`, When the inventory runs, Then each fails naming the path (AC-15; the R1 build has no R2 surface) (type: security; level: unit).
+  7. Given a route outside the allow-list, a route without a `public` or `session` marker, and a `POST` write without the csrf marker, When the inventory runs, Then each fails naming the path (AC-15; flipped by U-45: `/api/settings/reset` is on the allow-list since R2) (type: security; level: unit).
   8. Given a route with the default `LimitGuard`, When called, Then it passes; Given a guard that raises, Then the response is the 429 problem with an integer `Retry-After` and the body names no limit or client (type: edge; level: api).
   9. Given `uv run python -m app.export_openapi --check`, When run, Then it passes and every exported path is on the allow-list (AC-15) (type: happy; level: ci).
 
@@ -480,7 +480,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   7. Given no session, a session without the token, a wrong `Origin` and a locked web, When `PUT`, Then 401 or 403 and nothing is written (AC-2, AC-8, AC-27) (type: security; level: api).
   8. Given a body over 8192 bytes, When the real guard is in place (U-24) or a stub guard refuses, Then the request never reaches validation (AC-16) (type: edge; level: api).
   9. Given a write whose audit trigger fails, When `PUT`, Then a generic 500 and nothing stored (AC-17) (type: security; level: db).
-  10. Given the OpenAPI, When regenerated, Then `PUT /api/settings` is listed with the session and csrf markers and `/api/settings/reset` is absent (AC-15) (type: security; level: ci).
+  10. Given the OpenAPI, When regenerated, Then `PUT /api/settings` is listed with the session and csrf markers (AC-15; U-45 lists `POST /api/settings/reset` too) (type: security; level: ci).
 
 ### U-web-settings-23: Places route (R1)
 
@@ -865,7 +865,7 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   4. Given two browser contexts on version 1, When context B saves and context A saves afterwards, Then A gets the conflict banner with "Use mine" and "Keep Telegram's" (AC-11, AC-28) (type: edge; level: playwright).
   5. Given the session row is aged by owner SQL, When Save is pressed, and separately when a background refetch runs, Then nothing is stored and the browser goes to `/login?notice=expired`; after signing in `/settings` shows the stored values (AC-12 first half) (type: edge; level: playwright).
   6. Given an injected inline script and an external script, When the page loads, Then a `securitypolicyviolation` event fires, the script does not run, and the CSP header matches (AC-14, W-5) (type: security; level: playwright).
-  7. Given `/docs`, `/redoc`, `/openapi.json`, `/healthz`, `/readyz`, `/metrics`, `/api/docs`, `/api/openapi.json`, `/api/readyz` and `/api/settings/reset` through the edge, When requested, Then 404 each; plain HTTP redirects with HSTS (AC-18, AC-19, R1 has no R2 surface) (type: security; level: playwright).
+  7. Given `/docs`, `/redoc`, `/openapi.json`, `/healthz`, `/readyz`, `/metrics`, `/api/docs`, `/api/openapi.json`, `/api/readyz` through the edge, When requested, Then 404 each; `GET /api/settings/reset` answers 405 and a `POST` without a session 401 (flipped by U-45); plain HTTP redirects with HSTS (AC-18, AC-19) (type: security; level: playwright).
   8. Given a zone change, When saved, Then the preview, the saved banner with the real notice interval and the last-change line show (AC-28) (type: happy; level: playwright).
   9. Given the sign-in and settings pages at 375 and 1280 px over HTTPS with the real backend, When axe runs, Then no violation (AC-22) (type: a11y; level: playwright).
   10. Given a locked web (the lock row inserted by owner SQL), When the signed-in user calls the API and when a new code is requested and verified, Then 401, and the verify answer is identical in status and body (request id aside) to the answer for a wrong code (AC-27) (type: security; level: playwright).

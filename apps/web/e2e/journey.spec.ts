@@ -243,7 +243,7 @@ test("an injected inline script and an external script do not run, the browser r
 });
 
 // 7 (AC-18, AC-19)
-test("the documentation, health, metrics and reset paths are 404 through the edge; plain HTTP redirects; HSTS is set", async ({
+test("the documentation, health and metrics paths are 404 through the edge; plain HTTP redirects; HSTS is set", async ({
   request,
   baseURL,
 }) => {
@@ -257,13 +257,17 @@ test("the documentation, health, metrics and reset paths are 404 through the edg
     "/api/docs",
     "/api/openapi.json",
     "/api/readyz",
-    "/api/settings/reset",
   ];
   for (const path of paths) {
     expect((await request.get(path)).status(), `GET ${path}`).toBe(404);
   }
-  const post = await request.post("/api/settings/reset", { data: {}, headers: { Origin: baseURL ?? PUBLIC_ORIGIN } });
-  expect(post.status(), "POST /api/settings/reset").toBe(404);
+  // The reset route exists since R2 (U-web-settings-45): GET is refused, and POST needs a session.
+  expect((await request.get("/api/settings/reset")).status(), "GET /api/settings/reset").toBe(405);
+  const post = await request.post("/api/settings/reset", {
+    data: { version: 0 },
+    headers: { Origin: baseURL ?? PUBLIC_ORIGIN },
+  });
+  expect(post.status(), "POST /api/settings/reset without a session").toBe(401);
 
   const secure = await request.get("/login");
   expect(secure.headers()["strict-transport-security"]).toBe("max-age=31536000");
