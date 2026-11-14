@@ -133,6 +133,8 @@ The local mail catcher (port 8025) in the dev and prod-like stacks, from which t
 
 ## Open points before staging
 
+The conditions for production are collected in the [production release checklist](../release/web-settings-prod.md).
+
 - The local host name, the private certificate authority and the SMTP account (send-only) are decided before staging (ADR-0036, ADR-0037).
 - Two-step verification on Marco's mailbox is a condition for production.
 - The agent's run interval that the page text quotes.
