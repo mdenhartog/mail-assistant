@@ -20,6 +20,10 @@ LOCAL_VALUES = ROOT / "deploy" / "envs" / "local" / "values.yaml"
 README = CHART / "README.md"
 HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
+# The chart defaults name no proxy (U-web-settings-52): an environment sets them while the ingress is enabled.
+PROXY = "api.config.trustedProxyCidrs={10.244.0.0/16}"
+# Rendering the bare defaults: the environment must say it is not production (no digest, no alert) and name an HSTS key.
+BARE = ("environment=local", "ingress.hstsAnnotation.key=example.test/hsts")
 
 SECRET_ENV = {
     "APP_DATABASE_URL": "database-url",
@@ -110,7 +114,7 @@ def test_given_the_rendered_api_deployment_when_read_then_it_has_one_replica_and
 
 @needs_helm
 def test_given_the_chart_defaults_when_rendered_then_the_api_still_has_one_replica() -> None:
-    docs = render(values=False)
+    docs = render(PROXY, *BARE, values=False)
 
     assert deployment(docs, "api")["spec"]["replicas"] == 1
     assert not [h for h in of_kind(docs, "HorizontalPodAutoscaler") if h["metadata"]["name"] == "app-api"]
@@ -307,7 +311,7 @@ def test_given_the_readme_when_read_then_it_documents_the_asyncpg_ssl_verify_ful
 @needs_helm
 def test_given_the_cert_alert_is_off_when_rendered_then_no_prometheus_rule_exists() -> None:
     assert not of_kind(render(), "PrometheusRule")
-    assert not of_kind(render(values=False), "PrometheusRule")
+    assert not of_kind(render(PROXY, *BARE, values=False), "PrometheusRule")
 
 
 @needs_helm

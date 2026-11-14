@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [
+    "environment",
+    "image"
+  ],
+  "properties": {
+    "environment": {
+      "enum": [
+        "production",
+        "development",
+        "test"
+      ]
+    },
+    "image": {
+      "type": "object",
+      "required": [
+        "repository"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^(|sha256:[a-f0-9]{64})$"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "enum": [
+            "IfNotPresent",
+            "Always",
+            "Never"
+          ]
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "pattern": "^([Ee][Nn][Vv][Ii][Rr][Oo][Nn][Mm][Ee][Nn][Tt]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]_.*|[Rr][Uu][Nn][Tt][Ii][Mm][Ee]_[Rr][Oo][Ll][Ee]_[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd]|[Ww][Ee][Bb]_[Rr][Oo][Ll][Ee]_[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd])$"
+        }
+      }
+    }
+  },
+  "if": {
+    "required": [
+      "environment"
+    ],
+    "properties": {
+      "environment": {
+        "const": "production"
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "image": {
+        "required": [
+          "digest"
+        ],
+        "properties": {
+          "digest": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        }
+      }
+    }
+  }
+}

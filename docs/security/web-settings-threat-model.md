@@ -29,7 +29,12 @@ A login page where Marco gives a username and a one-time code sent by e-mail (AD
 | Allowed username | internal | Configuration. An unknown username is never logged in clear. |
 | Quiet hours, overview time, reminder default | internal | See the Telegram model. |
 | Time zone | personal data (low) | Reveals travel location. |
-| Security event log | internal | Result, hashed username when unknown, request id. |
+| Security event log | internal | Kind, result, request id, `window` (minute) and `count` (wrong codes of that client in that minute). Kept 90 days. |
+| `client_key`, `client_hash` | internal | Keyed digest (HMAC-SHA-256, own subkey) of the client address or IPv6 /64, 64 hex characters, on security events and login requests. Never an address. |
+| Kind `code_invalid` | internal | A refusal that is not counted by the alert or the lock (no cookie, malformed body, dead or decoy request). |
+| Keyed digest of a typed username | internal | 64 hex characters on `code_request_refused`, `mail_failed` (and `csrf_refused`, `session_start`, `session_end` with the configured username), and `username_key` on login requests; never the username in clear. |
+| `web_notice_token` (agent database) | secret | Pre-change values, the burst id and the bearer token of the Undo buttons, in clear text; the token alone does not allow anything without the allowed Telegram chat. Purged when expired. |
+| Username hash key | secret | Its own key, at least 32 random bytes, different from the code-hash key and the CSRF key (start-up refuses equal keys); SealedSecret. |
 
 ## Diagram
 
@@ -62,7 +67,7 @@ Removed (ADR-0037): scanning and probing from the internet, a public certificate
 | W-10 | web changes | R | A web change is not attributable. | M | M | The same append-only audit record as in the Telegram model, with the configured username as actor (hashed in `updated_by`). | AC-9 | V16 |
 | W-11 | stolen session or mailbox | T, S | Someone who reads Marco's mailbox, or holds his session, signs in and shifts the zone or hours so that urgent alerts are held, and the confirmation is shown only on the page the attacker uses. | M | H | Every web change is announced out of band: at the next run the agent sends Marco a Telegram notice with old and new values, the channel and Undo and "Undo and lock web sign-in" buttons. Optional later: re-authentication for writes. See accepted risk R-1. | AC-13, AC-27 | V6, V16 |
 | W-12 | stale form | T | A saved page overwrites a change made in Telegram, or a double submit writes twice. | M | M | The page sends the row version; an old version gets 409 and the page reloads the values; the Save button is disabled while saving. | AC-11, AC-23 | V2 |
-| W-13 | security events | R | A slow guessing or takeover attempt is invisible; audit rows grow without limit. | M | M | Security events are logged (wrong, expired and reused codes, refused code requests, session start and end, CSRF refusals, 429s) with result and request id; 5 wrong or expired codes in 10 minutes alert Marco in Telegram (R2); audit retention is 1 year with a cleanup under the owner role. | AC-20, AC-21, AC-31 | V16 |
+| W-13 | security events | R | A slow guessing or takeover attempt is invisible; audit rows grow without limit. | M | M | Security events are logged (wrong, expired and reused codes, refused code requests, session start and end, CSRF refusals, 429s) with result and request id; 5 wrong or expired codes in 10 minutes alert Marco in Telegram (R2); retention is 90 days for security events and one year for the settings audit, purged by the owner role as the last step of the migrate job (U-49, D-19); no CronJob and no runtime role deletes. | AC-20, AC-21, AC-31 | V16 |
 | W-14 | B3 e-mail in transit and in the mailbox | I | The e-mail with the code is read in transit between the backend and the relay, or by a mail scanner or preview; a link in the mail is fetched before Marco uses it. | L | H | SMTP with STARTTLS and a verified certificate (start-up refuses a non-STARTTLS setting); no link in the mail, so nothing to prefetch; the code is not in the subject; the mail carries no request details; the code is short-lived and single use. Mailbox compromise is accepted risk R-1. | AC-4, AC-29 | V12, V6 |
 | W-15 | logs, errors and responses | I | The code, the full username or the e-mail address appears in a log, an error, a URL or a response. | M | H | Only the HMAC-SHA-256 hash of the code is stored; the code is never in a URL (it is posted in a body), a log or an error; security events carry no code and no full unknown username; responses show only the masked address; no query string appears in any log (grep test in the prod-like job). | AC-20, AC-29, AC-30 | V16, V14 |
 | W-16 | B3 SMTP credential | I, E | The send-only SMTP credential leaks or is used to send other mail. | L | M | The account is send-only and has no mailbox access; the credential is a SealedSecret (ADR-0029), never in code, values or logs; egress from the api to SMTP is limited to the configured host and port; sending failures answer with a generic message and never show the cause. | AC-4, AC-29 | V13, V12 |
@@ -111,3 +116,38 @@ Caused by ADR-0036 (replaces ADR-0024) and ADR-0037 (replaces ADR-0032).
 | W-14 to W-17 | New: e-mail interception (I), codes, username and address in logs and responses (I), the SMTP credential (I, E), other devices on the local network and a misrouted exposure (S, D). |
 | R-1 | Restated: whoever reads Marco's mailbox can sign in; two-step verification on the mailbox is a condition for production; R-2 added for the local network. |
 | Data | Added: one-time code, SMTP credential, code-hash key, e-mail address. |
+
+## Delta 2026-11-13 (phase 6 challenge, ADR-0039)
+
+| id | change |
+| --- | --- |
+| W-7 | Limits are per client (IPv6 per /64) and bounded; the chart sets trusted proxies and production refuses an empty list; session routes are limited before the lookup; decoys never count against the configured username and a request from another client does not replace his live request. Fixed by U-51 to U-54. |
+| W-13 | Wrong-code events are counted, not deduplicated; the alert (U-48) is R1; 15 wrong codes in 24 hours set the web lock (U-55); client keys are stored as digests. |
+| R-3 | Accepted: a guesser who knows the username can force the web lock with 15 wrong codes a day, and a group of devices can use the 5 codes an hour of the username. Telegram stays available, Marco unlocks with `/web_unlock`, the events show it. Reviewed on 2027-05-10 with R-1. |
+
+## Delta 2026-11-13 (phase 6, round 2)
+
+| id | change |
+| --- | --- |
+| W-7 | A full decoy class no longer refuses where the owner would not (U-64); a request replaces a live one only with the same login cookie; the limiter evicts old keys instead of refusing the owner. A neighbour device in the same IPv6 /64 or behind the same NAT shares one client key; this is part of R-4. |
+| W-8 | The web role may only increment `count` by one (trigger, U-65); the agent role reads only `id`, `kind`, `at`, `count`; `/readyz` is 503 on a database that does not match the api contract version. |
+| W-13 | The lock and the notice count only wrong codes against an existing login request; no-cookie, malformed and dead-request refusals are `code_invalid` (U-63). Retention: 90 days for security events and one year for audit in R1 (U-49, gate before production); an index on `(kind, at)` (U-65). |
+| R-3 | Restated: a person who sends 15 well-formed wrong codes against existing login requests in 24 hours (which needs a username and a live request) can force the web lock; Telegram stays available and `/web_unlock` lifts it. |
+| R-4 | Accepted: a person who knows the username can use up the 5 codes an hour from one device and keep Marco from requesting a code; the code mails and the security events show it. Reviewed on 2027-05-10 with R-1 (ADR-0039 amendment). |
+| Data | Added: the client digest on login requests and security events, `count`, and the `code_invalid` kind; stored as keyed digests, never the clear address. |
+
+## Delta 2026-11-13 (phase 6, round 3)
+
+| id | change |
+| --- | --- |
+| W-7, W-13 | The lock counts only wrong codes against the configured username's real requests; guesses against decoys are `code_invalid`; an expired request dies on its first post; there are no swallowed decoys and the lock leaves no trace (U-68, U-69). The security event insert is forced to server values (U-71). |
+| R-3 | Restated: forcing the web lock needs about 15 well-formed wrong codes against requests of the configured username in 24 hours, which needs the username; Telegram stays available and `/web_unlock` lifts it. |
+| R-5 | Accepted: the limiter keys an IPv6 client by /64 and has no total per /48, so a LAN device with many /64 networks can send more than 30 requests a minute; the database caps (5 codes an hour, 5 attempts per code) still hold. Reviewed on 2027-05-10 with R-1. |
+| Data | Added: `web_notice_token` (pre-change values, burst id, bearer token) is purged when expired (U-71). |
+
+## Delta 2026-11-14 (phase 8)
+
+| id | change |
+| --- | --- |
+| Data | The classification table now lists the client digests, `window`, `count`, `code_invalid`, the digest of a typed username, `web_notice_token` and the username hash key. |
+| W-13 | The alert, the lock and the purge are R1 and built (U-48, U-49, U-55). The open items for production (ingress controller, certificate expiry alert, trusted proxy CIDRs) are in `docs/release/web-settings-prod.md`. |

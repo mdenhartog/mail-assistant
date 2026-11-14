@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", extra="forbid")
 
     app_name: str = "Mail Assistant"
-    environment: Literal["development", "test", "production"] = "development"
+    # Production unless set otherwise: a missing variable must never switch the docs or the TLS rules off (ADR-0039).
+    environment: Literal["development", "test", "production"] = "production"
 
     # The one user and where the code goes (C-1).
     username: str = ""
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
     # Mail sender: STARTTLS is required (W-14).
     smtp_host: str = ""
     smtp_port: int | None = None
+    smtp_from: str = ""
     smtp_user: str = ""
     smtp_password: SecretStr = SecretStr("")
     smtp_starttls: bool = True
@@ -57,12 +59,20 @@ class Settings(BaseSettings):
     # Limits (C-4); tests lower them.
     rate_limit_per_minute: int = 30
     rate_window_seconds: int = 60
+    # Most counters the in-process limiter holds per window; a new key over it is refused (SEC-06).
+    rate_max_counters: int = Field(default=10000, gt=0)
     body_limit_bytes: int = 8192
     code_ttl_seconds: int = 600
     resend_cooldown_seconds: int = 60
     codes_per_hour: int = 5
     max_attempts: int = 5
-    open_login_request_cap: int = 100
+    # Login requests (ADR-0039): there is no cap for all decoys together; storage is bounded by the per-client numbers
+    # below. A client key is stored as a keyed digest.
+    live_requests_per_username: int = Field(default=3, gt=0, description="Live login requests of one username.")
+    open_login_requests_per_client: int = Field(default=10, gt=0, description="Open login requests of one client.")
+    login_requests_per_client_per_hour: int = Field(
+        default=20, gt=0, description="Login requests of one client an hour."
+    )
     idle_seconds: int = int(IDLE.total_seconds())
     absolute_seconds: int = int(ABSOLUTE.total_seconds())
 

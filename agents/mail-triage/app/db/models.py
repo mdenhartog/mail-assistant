@@ -18,6 +18,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Identity,
+    Index,
     Integer,
     LargeBinary,
     SmallInteger,
@@ -235,6 +236,7 @@ _SECURITY_EVENT_KINDS = (
     "csrf_refused",
     "rate_limited",
     "lock_refused",
+    "code_invalid",
 )
 
 
@@ -249,6 +251,7 @@ class LoginRequest(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
     username_key: Mapped[str] = mapped_column(CHAR(64))
+    client_hash: Mapped[str] = mapped_column(CHAR(64))  # keyed digest of the client key (ADR-0039), never an address
     code_hash: Mapped[str] = mapped_column(CHAR(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(SmallInteger, server_default="0")
@@ -278,11 +281,13 @@ class SecurityEvent(Base):
             "kind IN (" + ", ".join(f"'{kind}'" for kind in _SECURITY_EVENT_KINDS) + ")", name="ck_security_event_kind"
         ),
         CheckConstraint("result IN ('ok', 'refused', 'failed')", name="ck_security_event_result"),
+        CheckConstraint("count >= 1", name="ck_security_event_count"),
         UniqueConstraint("kind", "client_key", "window", name="uq_security_event_kind_client_window"),
+        Index("ix_security_event_kind_at", "kind", "at"),  # the alert query: one kind, newer than a time
         {"schema": "web_auth"},
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     kind: Mapped[str] = mapped_column(String(24))
     result: Mapped[str] = mapped_column(String(16))
@@ -290,6 +295,7 @@ class SecurityEvent(Base):
     request_id: Mapped[str] = mapped_column(String(64))
     client_key: Mapped[str] = mapped_column(String(64))
     window: Mapped[int] = mapped_column(BigInteger)
+    count: Mapped[int] = mapped_column(Integer, server_default=text("1"))
 
 
 class WebLock(Base):
@@ -312,3 +318,5 @@ class WebNoticeToken(Base):
     before: Mapped[dict[str, object]] = mapped_column(JSONB)  # the values Undo restores
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    burst_id: Mapped[str] = mapped_column(String(64), index=True)  # the same for every notice of one burst
+    first_version: Mapped[int] = mapped_column(Integer)  # the first change of the burst

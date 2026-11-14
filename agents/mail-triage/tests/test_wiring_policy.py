@@ -8,11 +8,12 @@ from typing import Any
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.db.engine import DatabaseTls, make_engine
 from app.db.pg_policy_source import PgPolicySource
 from app.settings import load_settings
 from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.web_notice_actions import WebNoticeActions
-from app.wiring import build_runner, make_engine
+from app.wiring import build_runner
 from tests.test_settings import VALID
 
 
@@ -73,7 +74,7 @@ def runner_handlers(router: Any) -> Any:
 
 
 def test_given_the_engine_factory_when_an_engine_is_made_then_bound_parameters_are_hidden() -> None:
-    engine = make_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")
+    engine = make_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none", DatabaseTls("disable"))
 
     assert engine.sync_engine.hide_parameters is True
 

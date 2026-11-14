@@ -164,6 +164,8 @@ async def test_given_a_runtime_role_with_a_membership_when_the_command_runs_then
     await migrate_database(owner_url, PASSWORDS)
     await owner.execute(f"GRANT pg_read_all_data TO {RUNTIME_ROLE}")
     settings = MigrateSettings(
+        environment="test",  # the test database has no TLS
+        database_ssl="disable",
         database_owner_url=SecretStr(owner_url),
         runtime_role_password=SecretStr(PASSWORD),
         web_role_password=SecretStr(WEB_PASSWORD),
@@ -185,6 +187,8 @@ async def test_given_a_web_role_with_replication_and_a_membership_when_the_job_r
     await owner.execute(f"ALTER ROLE {WEB_ROLE} REPLICATION BYPASSRLS")
     await owner.execute(f"GRANT pg_read_all_data TO {WEB_ROLE}")
     settings = MigrateSettings(
+        environment="test",  # the test database has no TLS
+        database_ssl="disable",
         database_owner_url=SecretStr(owner_url),
         runtime_role_password=SecretStr(PASSWORD),
         web_role_password=SecretStr(WEB_PASSWORD),

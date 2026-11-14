@@ -35,3 +35,6 @@ deploy/prod-like/certs/
 # claude-sdlc-kit 0.5.0
 .sdlc/run/
 .claude/settings.local.json
+
+# Saved browser session of the Playwright setup project (U-web-settings-42)
+playwright/.auth/

@@ -53,7 +53,9 @@ jobs:
       - run: uv run vulture
       - run: uv run xenon --max-absolute B --max-modules A --max-average A app
       - run: uv run deptry .
-      - run: uv run pytest
+      - run: uv run pytest --junitxml="$RUNNER_TEMP/junit.xml"
+      - name: The database tests ran (a skipped database test is green; the floor is in tests/db_floor.py)
+        run: uv run python -m tests.db_floor "$RUNNER_TEMP/junit.xml"
       - run: uv run python -m app.export_openapi --check
       - run: uv run pip-audit
 
@@ -130,11 +132,18 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: node packages/tokens/build.mjs --check
+      - run: pnpm --filter web gen:api:check
       - run: pnpm -r lint
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: pnpm knip
       - run: pnpm run audit
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Playwright ui-states (every login and settings state against a stubbed API, no backend)
+        run: pnpm --filter web exec playwright test --project=ui-states
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: ui-states-report, path: apps/web/playwright-report, if-no-files-found: ignore }
 
   security:
     needs: [changes]
@@ -203,20 +212,53 @@ jobs:
       - name: kube-linter
         run: helm template mail-triage deploy/charts/worker -f deploy/envs/local/mail-triage.yaml > /tmp/render-worker.yaml && docker run --rm -v /tmp:/tmp stackrox/kube-linter:v0.8.3 lint /tmp/render-worker.yaml
 
-  e2e:
+  prod-like:
+    # One job over the prod-like stack, brought up once (U-web-settings-42): migrate apart from `up --wait`, the database,
+    # mail, role and edge checks, the Playwright `setup` project (signs in with the code from the catcher) and the smoke
+    # test, then the log check. Replaces the former `e2e` and `runtime-role` jobs; their checks are kept below.
     runs-on: ubuntu-latest
     needs: [changes, images]
-    if: ${{ !cancelled() && !failure() && needs.changes.outputs.e2e == 'true' }}
+    # Also runs for components and deploy changes: the runtime-role checks it replaces ran for those areas too.
+    if: ${{ !cancelled() && !failure() && (needs.changes.outputs.e2e == 'true' || needs.changes.outputs.components == 'true' || needs.changes.outputs.deploy == 'true') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
-      - run: echo "POSTGRES_PASSWORD=ci-$(openssl rand -hex 12)" > .env
-      - name: private CA and edge certificate
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - name: .env with throwaway secrets (the api keys are 32 bytes or more and different from each other)
+        run: |
+          printf 'POSTGRES_PASSWORD=ci-%s\nMAIL_TRIAGE_RUNTIME_PASSWORD=ci-%s\nWEB_ROLE_PASSWORD=ci-%s\n' "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" > .env
+          printf 'MAIL_SMTP_PASSWORD=ci-%s\nAPP_CODE_HASH_KEY=%s\nAPP_CSRF_KEY=%s\nAPP_USERNAME_HASH_KEY=%s\n' "$(openssl rand -hex 12)" "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
+      - name: private CA, edge, database and mail certificates
         run: deploy/prod-like/certs.sh
+      - name: compose has no literal password (W-9; the unresolved file, so the .env values are not in it)
+        run: |
+          rendered="$(docker compose --profile prod-like config --no-interpolate)"
+          if echo "$rendered" | grep -E '://[^:/[:space:]]+:[^$[:space:]@][^@[:space:]]*@'; then echo "a URL with a literal password"; exit 1; fi
+          if echo "$rendered" | grep -E '(PASSWORD|SECRET)[A-Z_]*: +[^$[:space:]]'; then echo "a literal password"; exit 1; fi
+      - name: database and mail catcher first (the migrate service needs the database; the api needs the catcher)
+        run: |
+          mkdir -p prodlike-logs
+          docker compose --profile prod-like up -d --wait db mail
+      - name: migrate (owner credentials; creates both roles; over verify-full TLS as in production; a one-shot service cannot be part of `up --wait`)
+        run: |
+          set -o pipefail
+          docker compose run --rm --build -e ENVIRONMENT=production -e DATABASE_SSL=verify-full mail-triage-migrate 2>&1 | tee prodlike-logs/migrate.log
       - run: docker compose --profile prod-like up -d --build --wait
+      - name: database over TLS (verify-full, host name, CA, plain refusal, roles), the catcher, the log canaries and /readyz of the api
+        run: |
+          echo "127.0.0.1 db mail-assistant.localhost" | sudo tee -a /etc/hosts
+          answer="$(docker compose --profile prod-like exec -T api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/readyz').status)")"
+          test "$answer" = 200 || { echo "readyz answered $answer"; exit 1; }
+          set -a; . ./.env; set +a
+          E2E_CANARY_FILE="$PWD/prodlike-logs/canaries.txt" E2E_PROD_LIKE=1 uv run --frozen --project backend pytest --no-cov backend/tests/e2e
+      - name: role checks (AC-17, AC-30; the agent role, then the web role)
+        run: |
+          set -a; . ./.env; set +a
+          uv run --frozen --project agents/mail-triage pytest -c tests/e2e/pytest.ini tests/e2e
+          E2E_PROD_LIKE=1 uv run --frozen --project agents/mail-triage pytest --no-cov agents/mail-triage/tests/e2e
       - name: edge checks (redirect, HSTS, 404 matrix, query-free log)
         run: |
           base=https://mail-assistant.localhost:8443
@@ -228,6 +270,7 @@ jobs:
           if echo "$headers" | grep -qi 'includesubdomains\|preload'; then echo "HSTS is too broad"; exit 1; fi
           echo "$headers" | grep -i '^content-security-policy:'
           echo "$headers" | grep -i '^x-content-type-options: nosniff'
+          scripts/prodlike-checks.sh headers
           for path in / /login /settings; do
             code="$(curl_edge -o /dev/null -w '%{http_code}' "$base$path")"
             test "$code" = 200 || { echo "$path answered $code"; exit 1; }
@@ -251,37 +294,25 @@ jobs:
           certutil -d "sql:$HOME/.pki/nssdb" -N --empty-password
           certutil -d "sql:$HOME/.pki/nssdb" -A -t "C,," -n mail-assistant-ci-ca -i deploy/prod-like/certs/ca.crt
       - run: pnpm --filter web exec playwright install --with-deps chromium
-      - run: pnpm --filter web e2e
-        env: { E2E_BASE_URL: "https://mail-assistant.localhost:8443" }
+      - name: Playwright (the setup project signs in, then the smoke test and the other specs)
+        run: pnpm --filter web e2e
+        env:
+          E2E_BASE_URL: "https://mail-assistant.localhost:8443"
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/deploy/prod-like/certs/ca.crt
+      - name: no code, username, zone, password or cookie in the logs of api, web, edge, db and migrate
+        run: |
+          set -a; . ./.env; set +a
+          E2E_CANARY_FILE="$PWD/prodlike-logs/canaries.txt" PRODLIKE_LOG_DIR="$PWD/prodlike-logs" scripts/prodlike-checks.sh logs
       - if: failure()
-        run: docker compose --profile prod-like logs --no-color edge web api
+        run: |
+          docker compose --profile prod-like logs --no-color edge web api db mail > prodlike-logs/stack.log || true
+          docker compose --profile prod-like ps --all >> prodlike-logs/stack.log || true
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
-        with: { name: playwright-report, path: apps/web/playwright-report }
-
-  runtime-role:
-    # AC-30 (INT-002): after the migrate job has run against the prod-like database, the runtime role cannot
-    # run DDL, change the audit rows or create roles, while normal settings work still succeeds.
-    # Runs when the database, the backend, the compose stack or the agent changes (e2e or components area).
-    needs: [changes]
-    if: needs.changes.outputs.e2e == 'true' || needs.changes.outputs.components == 'true' || needs.changes.outputs.deploy == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - run: printf 'POSTGRES_PASSWORD=ci-%s\nMAIL_TRIAGE_RUNTIME_PASSWORD=ci-%s\nWEB_ROLE_PASSWORD=ci-%s\n' "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" > .env
-      - run: deploy/prod-like/certs.sh
-      - run: docker compose --profile prod-like up -d --build --wait
-      - name: migrate (creates the runtime role; a one-shot service cannot be part of `up --wait`)
-        run: |
-          set -a; . ./.env; set +a
-          docker compose run --rm --build mail-triage-migrate
-      - name: runtime role checks
-        run: |
-          set -a; . ./.env; set +a
-          uv run --frozen --project agents/mail-triage pytest -c tests/e2e/pytest.ini tests/e2e
+        with: { name: playwright-report, path: apps/web/playwright-report, if-no-files-found: ignore }
       - if: failure()
-        run: docker compose --profile prod-like logs --no-color db
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with: { name: prod-like-logs, path: prodlike-logs, if-no-files-found: ignore }
       - if: always()
         run: docker compose --profile prod-like down --volumes
 
@@ -297,7 +328,10 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm gxp:check
-      - run: echo "POSTGRES_PASSWORD=ci-$(openssl rand -hex 12)" > .env
+      - name: .env with throwaway secrets (the api keys are 32 bytes or more and different from each other)
+        run: |
+          printf 'POSTGRES_PASSWORD=ci-%s\nMAIL_TRIAGE_RUNTIME_PASSWORD=ci-%s\nWEB_ROLE_PASSWORD=ci-%s\n' "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" > .env
+          printf 'MAIL_SMTP_PASSWORD=ci-%s\nAPP_CODE_HASH_KEY=%s\nAPP_CSRF_KEY=%s\nAPP_USERNAME_HASH_KEY=%s\n' "$(openssl rand -hex 12)" "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" >> .env
       - run: deploy/prod-like/certs.sh
       - run: docker compose --profile prod-like up -d --build --wait
       - run: pnpm --filter web exec playwright install --with-deps chromium

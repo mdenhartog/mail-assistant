@@ -1,5 +1,5 @@
 # pure module (mutation-gated)
-"""Pure rules of the security events: kinds, results, window, client class (U-web-settings-13)."""
+"""Pure rules of the security events: kinds, results, counting, window, client class (U-web-settings-13, -54)."""
 
 import ipaddress
 import re
@@ -8,6 +8,7 @@ from datetime import datetime
 WINDOW_SECONDS = 60
 _RESULTS = {
     "code_refused": "refused",
+    "code_invalid": "refused",
     "code_request_refused": "refused",
     "mail_failed": "failed",
     "session_start": "ok",
@@ -16,6 +17,7 @@ _RESULTS = {
     "rate_limited": "refused",
     "lock_refused": "refused",
 }
+_COUNTED = frozenset({"code_refused"})
 _DIGEST = re.compile(r"[0-9a-f]{32}|[0-9a-f]{64}")
 
 
@@ -31,15 +33,29 @@ def result_for(kind: str) -> str:
         raise UnknownEventKindError("unknown event kind") from None
 
 
+def counts_repeats(kind: str) -> bool:
+    """Return True when a repeat of the kind in one window is counted; False when it is dropped.
+
+    Wrong codes against an existing login request are counted: the alert adds them up (SEC-04). ``code_invalid`` (no
+    request, malformed body, dead request) is not. Every other kind is a flood answer, which must write
+    no more than one row a window however many requests come.
+    """
+    result_for(kind)
+    return kind in _COUNTED
+
+
 def event_window(now: datetime) -> int:
     """Return the one-minute window of a time: floor(epoch seconds / 60)."""
     return int(now.timestamp() // WINDOW_SECONDS)
 
 
 def client_class(client: str) -> str:
-    """Return `ipv4`, `ipv6` or `other` for a client key; the key itself is never logged."""
+    """Return `ipv4`, `ipv6` or `other` for a client key, an address or a prefix like `2001:db8::/64`.
+
+    The key itself is never logged.
+    """
     try:
-        return f"ipv{ipaddress.ip_address(client).version}"
+        return f"ipv{ipaddress.ip_network(client, strict=False).version}"
     except ValueError:
         return "other"
 

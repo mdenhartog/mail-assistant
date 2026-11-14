@@ -19,8 +19,8 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-# The contract version the migration `0008` publishes as `settings.contract_version()`; raised together with it.
-EXPECTED_CONTRACT_VERSION: Final = 1
+# The contract version the migrations publish as `settings.contract_version()` (0008: 1, 0012: 2); raise both together.
+EXPECTED_CONTRACT_VERSION: Final = 2
 CONNECT_TIMEOUT_SECONDS: Final = 10
 _MODES: Final = ("require", "verify-ca", "verify-full")
 _URL_SSL_KEYS: Final = ("sslmode", "ssl")

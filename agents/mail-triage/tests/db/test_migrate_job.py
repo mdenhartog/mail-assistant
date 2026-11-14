@@ -11,7 +11,18 @@ from alembic import command
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.db.migrate import MIGRATION_LOCK_KEY, RUNTIME_ROLE, WEB_ROLE, SchemaNotReady, check_schema, migrate_database
+from app.db.migrate import (
+    MIGRATION_LOCK_KEY,
+    RUNTIME_ROLE,
+    WEB_ROLE,
+    MigrationStepFailed,
+    SchemaNotReady,
+    check_schema,
+    expected_head,
+    migrate_database,
+)
+from app.db.purge import PurgeCounts
+from schedule_policy.testing import FakeClock
 from tests.db.conftest import alembic_config
 
 if TYPE_CHECKING:
@@ -296,3 +307,58 @@ async def test_given_a_missing_web_role_password_when_the_command_runs_then_it_e
     assert database_url not in err
     tables = await owner.fetchval("select count(*) from pg_tables where schemaname = 'public'")
     assert tables == 0  # not even the schema was touched
+
+
+# --- U-web-settings-49: the purge is the last step of the job (AC-21) ---
+
+
+async def test_given_the_job_when_it_runs_then_the_purge_comes_after_the_migration_and_the_grants(
+    database_url: str, owner: asyncpg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    async def spy(connection: asyncpg.Connection, clock: object) -> PurgeCounts:
+        seen["head"] = await connection.fetchval("select version_num from alembic_version")
+        seen["grant"] = await connection.fetchval(
+            "select has_table_privilege($1, 'web_auth.session', 'SELECT')", WEB_ROLE
+        )
+        seen["clock"] = clock
+        return PurgeCounts(0, 0, 0, 0, 0)
+
+    monkeypatch.setattr("app.db.migrate.purge_expired", spy)
+    clock = FakeClock()
+
+    await migrate_database(database_url, PASSWORDS, clock=clock)
+
+    assert seen == {"head": expected_head(), "grant": True, "clock": clock}
+
+
+async def test_given_a_failing_purge_when_the_job_runs_then_it_raises_naming_the_step_and_no_secret(
+    database_url: str, owner: asyncpg.Connection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def boom(connection: asyncpg.Connection, clock: object) -> PurgeCounts:
+        raise RuntimeError("postgresql://owner:hunter2@db/x")
+
+    monkeypatch.setattr("app.db.migrate.purge_expired", boom)
+
+    with pytest.raises(MigrationStepFailed) as failed:
+        await migrate_database(database_url, PASSWORDS)
+
+    assert failed.value.step == "purge"
+    assert "purge" in str(failed.value)
+    assert "hunter2" not in str(failed.value)
+    assert await owner.fetchval("select 1 from pg_roles where rolname = $1", RUNTIME_ROLE) == 1  # earlier steps stand
+
+
+async def test_given_the_job_when_it_runs_then_old_audit_rows_are_removed_in_the_same_run(
+    database_url: str, owner: asyncpg.Connection
+) -> None:
+    await asyncio.to_thread(command.upgrade, alembic_config(database_url), "head")
+    await owner.execute(
+        "insert into settings.settings_change (at, via, by, db_role, new) "
+        "values (now() - interval '400 days', 'web', 'x', 'r', '{}')"
+    )
+
+    await migrate_database(database_url, PASSWORDS)
+
+    assert await owner.fetchval("select count(*) from settings.settings_change") == 0

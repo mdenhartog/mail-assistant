@@ -38,21 +38,21 @@ async def test_given_another_contract_version_when_readyz_then_503_with_a_generi
 ) -> None:
     await owner.execute(
         "CREATE OR REPLACE FUNCTION settings.contract_version() RETURNS integer "
-        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 2 $$"
+        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 7 $$"
     )
 
     response = await ready_client.get("/readyz")
 
     assert response.status_code == 503
     assert "contract" not in response.text.lower()
-    assert "2" not in response.text
+    assert "7" not in response.text
 
 
 async def test_given_the_web_role_when_it_calls_the_contract_version_then_it_is_allowed_but_owns_nothing(
     web_database: Database,
 ) -> None:
     async with web_database.session() as session:
-        assert (await session.execute(text("select settings.contract_version()"))).scalar_one() == 1
+        assert (await session.execute(text("select settings.contract_version()"))).scalar_one() == 2
         with pytest.raises(Exception, match="permission denied"):
             await session.execute(text("select count(*) from settings.settings_change"))
 
@@ -63,8 +63,8 @@ async def test_given_expired_and_valid_rows_when_the_app_starts_then_only_the_ex
     clock = FakeClock()
     now = clock.now()
     login = (
-        "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at) "
-        "values ($1, $2, $2, $3, $4)"
+        "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
+        "values ($1, $2, $2, $2, $3, $4)"
     )
     # Old and expired: gone. Expired a little ago: kept an hour so the hourly cap can still count it. Open: kept.
     await owner.execute(login, "old", A64, now - timedelta(hours=2) + timedelta(minutes=10), now - timedelta(hours=2))

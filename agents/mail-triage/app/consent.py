@@ -174,12 +174,18 @@ async def main() -> None:  # pragma: no cover - thin shell around the tested pie
     import webbrowser  # noqa: PLC0415
 
     from pydantic import SecretStr  # noqa: PLC0415
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: PLC0415
 
     from app.adapters.token_store import TokenCipher, TokenStore  # noqa: PLC0415
+    from app.db.engine import make_engine  # noqa: PLC0415
+    from app.settings import SettingsError, load_database_tls  # noqa: PLC0415
 
     redirect_uri = f"http://{LOOPBACK}:{REDIRECT_PORT}{CALLBACK_PATH}"
-    engine = create_async_engine(os.environ["DATABASE_URL"])
+    try:
+        tls = load_database_tls()
+    except SettingsError as error:
+        raise SystemExit(str(error)) from None
+    engine = make_engine(os.environ["DATABASE_URL"], tls)
     try:
         await require_schema(engine)  # the migrate job creates the token table; consent only checks it
     except ConsentError as error:

@@ -43,13 +43,24 @@ class WebChange:
 
 @dataclass(frozen=True, slots=True)
 class NoticeToken:
-    """The own Undo token of one notice: the announced version and the values Undo restores."""
+    """The own Undo token of one notice: the announced version, the values Undo restores and the burst it is in."""
 
     token: str
     version: int
     before: dict[str, object]
     created_at: datetime
     expires_at: datetime
+    burst_id: str  # the same for every notice of one burst; never derived from ``before``
+    first_version: int  # the first change of the burst
+
+
+@dataclass(frozen=True, slots=True)
+class OpenBurst:
+    """A burst that was recorded but not fully announced: its id, first version and the values Undo restores."""
+
+    burst_id: str
+    first_version: int
+    before: dict[str, object]
 
 
 class NoticeStore(Protocol):
@@ -61,6 +72,10 @@ class NoticeStore(Protocol):
 
     async def pending_after(self, version: int) -> list[WebChange]:
         """Web changes above ``version``, lowest version first."""
+        ...
+
+    async def open_burst(self, after: int, now: datetime) -> OpenBurst | None:
+        """The burst of the lowest unexpired token record above version ``after``; ``None`` when there is none."""
         ...
 
     async def record_token(self, token: NoticeToken) -> None:
@@ -103,13 +118,24 @@ class WebNotice:
         self._new_token = new_token
 
     async def run(self, now: datetime) -> None:
-        """Send one notice per web change not yet announced, in version order; stop at the first failure."""
-        pending = await self._store.pending_after(await self._store.last_announced())
+        """Send one notice per web change not yet announced, in version order; stop at the first failure.
+
+        All token records are written before the first send. A run that stopped half way left records above the
+        cursor; the next run joins that burst, so Undo on the first notice still restores the values from before it.
+        """
+        cursor = await self._store.last_announced()
+        pending = await self._store.pending_after(cursor)
         if not pending:
             return
-        before = _values(pending[0].old)  # Undo goes back to before the first change Marco was not yet told about
-        for change in pending:
-            token = self._new_token()
-            await self._store.record_token(NoticeToken(token, change.version, before, now, now + NOTICE_TTL))
+        burst = await self._store.open_burst(cursor, now) or OpenBurst(
+            self._new_token(), pending[0].version, _values(pending[0].old)
+        )
+        notices = [(change, self._new_token()) for change in pending]
+        for change, token in notices:
+            record = NoticeToken(
+                token, change.version, burst.before, now, now + NOTICE_TTL, burst.burst_id, burst.first_version
+            )
+            await self._store.record_token(record)
+        for change, token in notices:
             await self._chat.send(settings_text.web_notice(change.version, change.at, change.old, change.new, token))
             await self._store.advance(change.version)

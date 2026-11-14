@@ -2,7 +2,7 @@
 
 File-level and config-level checks: nginx.conf, compose.yaml, the Caddyfile and the CI workflow are parsed as files.
 What only a running stack proves (redirect, HSTS on the wire, the 404 matrix through the edge, the log line) is
-checked in the `e2e` CI job.
+checked in the `prod-like` CI job.
 """
 
 import re
@@ -14,6 +14,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 NGINX = ROOT / "apps" / "web" / "nginx.conf"
+SNIPPET = ROOT / "apps" / "web" / "snippets" / "security-headers.conf"
+SNIPPET_PATH = "/etc/nginx/snippets/security-headers.conf"
 DOCKERFILE = ROOT / "apps" / "web" / "Dockerfile"
 COMPOSE = ROOT / "compose.yaml"
 CADDYFILE = ROOT / "deploy" / "prod-like" / "Caddyfile"
@@ -79,7 +81,7 @@ def caddy() -> str:
 
 
 def e2e_steps(key: str) -> str:
-    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["e2e"]
+    job = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["prod-like"]
     return "\n".join(str(step.get(key, "")) for step in job["steps"])
 
 
@@ -110,13 +112,13 @@ def test_given_any_other_path_when_resolved_then_the_answer_is_404(path: str) ->
 
 
 @pytest.mark.parametrize("key", [(True, "/"), (True, "/login"), (True, "/settings")])
-def test_given_a_page_location_when_read_then_it_carries_the_csp_nosniff_and_no_cache(key: tuple[bool, str]) -> None:
+def test_given_a_page_location_when_read_then_it_is_not_cached_and_has_the_security_include(
+    key: tuple[bool, str],
+) -> None:
     body = locations()[key]
 
-    assert "Content-Security-Policy" in body
-    assert "default-src 'self'" in body
-    assert 'X-Content-Type-Options "nosniff"' in body
     assert 'Cache-Control "no-cache"' in body
+    assert f"include {SNIPPET_PATH};" in body
 
 
 @pytest.mark.parametrize("key", [(True, "/"), (True, "/login"), (True, "/settings")])
@@ -127,19 +129,65 @@ def test_given_a_page_location_when_read_then_the_index_is_served_by_a_rewrite_i
     assert "try_files" not in body  # try_files may re-enter location matching and hit the 404
 
 
-def test_given_the_assets_location_when_read_then_it_is_immutable_with_nosniff() -> None:
-    body = locations()[(False, "/assets/")]
-
-    assert "max-age=31536000, immutable" in body
-    assert 'X-Content-Type-Options "nosniff"' in body
+def test_given_the_assets_location_when_read_then_it_is_immutable() -> None:
+    assert "max-age=31536000, immutable" in locations()[(False, "/assets/")]
 
 
-def test_given_the_fallback_location_when_read_then_it_inherits_the_server_headers() -> None:
-    body = locations()[(False, "/")]
+EXPECTED_SECURITY_HEADERS = {
+    "Content-Security-Policy",
+    "X-Content-Type-Options",
+    "Referrer-Policy",
+    "Permissions-Policy",
+    "Cross-Origin-Opener-Policy",
+    "Cross-Origin-Resource-Policy",
+}
 
-    assert "add_header" not in body  # a location with its own add_header drops the server-level ones
-    assert "Content-Security-Policy" in nginx_text()
-    assert "nosniff" in nginx_text()
+
+def snippet_headers() -> dict[str, str]:
+    text = without_comments(SNIPPET.read_text(encoding="utf-8"))
+    found = re.findall(r'add_header\s+(\S+)\s+"([^"]*)"\s+always;', text)
+    assert len(found) == text.count("add_header"), "every header is a quoted value with `always`"
+    return dict(found)
+
+
+@pytest.mark.parametrize("key", sorted(locations()))
+def test_given_every_location_when_read_then_it_includes_the_one_security_headers_file(key: tuple[bool, str]) -> None:
+    body = locations()[key]
+
+    assert f"include {SNIPPET_PATH};" in body  # a location with its own add_header drops the inherited ones
+
+
+def test_given_the_security_headers_file_when_read_then_it_has_the_six_headers() -> None:
+    headers = snippet_headers()
+
+    assert set(headers) == EXPECTED_SECURITY_HEADERS
+    assert headers["X-Content-Type-Options"] == "nosniff"
+    assert headers["Cross-Origin-Opener-Policy"] == "same-origin"
+    assert headers["Cross-Origin-Resource-Policy"] == "same-origin"
+    assert headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
+    assert "default-src 'self'" in headers["Content-Security-Policy"]
+    assert "unsafe-inline" not in headers["Content-Security-Policy"]
+
+
+def test_given_the_web_config_when_read_then_no_security_header_is_set_outside_the_one_file() -> None:
+    text = nginx_text()
+
+    assert not re.findall(r"add_header\s+(?:Content-Security|X-Content|Referrer|Permissions|Cross-Origin)", text)
+    assert "Content-Security-Policy" not in text
+
+
+def test_given_the_web_image_when_built_then_the_security_headers_file_is_copied_to_the_include_path() -> None:
+    text = DOCKERFILE.read_text(encoding="utf-8")
+
+    assert f"COPY apps/web/snippets/security-headers.conf {SNIPPET_PATH}" in text
+
+
+def test_given_the_caddyfile_when_read_then_it_sets_no_header_the_upstreams_already_set() -> None:
+    text = caddy()
+    header_names = re.findall(r"^\s*header\s+[-+]?(\S+)", text, flags=re.MULTILINE)
+
+    assert header_names == ["Strict-Transport-Security"]  # the api and nginx own all the others
 
 
 def test_given_the_web_config_when_read_then_hsts_is_left_to_the_edge() -> None:
@@ -262,7 +310,9 @@ def test_given_the_compose_file_when_read_then_there_is_no_literal_secret() -> N
     literal = [
         line.strip()
         for line in text.splitlines()
-        if re.search(r"(PASSWORD|SECRET|TOKEN|KEY)\w*\s*:", line) and "${" not in line
+        if re.search(r"(PASSWORD|SECRET|TOKEN|KEY)\w*\s*:", line)
+        and "${" not in line
+        and not re.search(r":\s+/certs/\S+$", line)  # the path of a key file is not a secret
     ]
     assert literal == []
 
@@ -270,7 +320,7 @@ def test_given_the_compose_file_when_read_then_there_is_no_literal_secret() -> N
 # --- CI and Playwright (criterion 1) ---
 
 
-def test_given_the_e2e_job_when_read_then_it_makes_the_certs_trusts_the_ca_and_runs_through_the_edge() -> None:
+def test_given_the_prod_like_job_when_read_then_it_makes_the_certs_trusts_the_ca_and_runs_through_the_edge() -> None:
     steps = e2e_steps("run") + e2e_steps("env")
 
     assert "deploy/prod-like/certs.sh" in steps
@@ -280,7 +330,7 @@ def test_given_the_e2e_job_when_read_then_it_makes_the_certs_trusts_the_ca_and_r
     assert steps.index("certs.sh") < steps.index("up -d --build --wait")
 
 
-def test_given_the_e2e_job_when_read_then_it_checks_the_edge_with_curl() -> None:
+def test_given_the_prod_like_job_when_read_then_it_checks_the_edge_with_curl() -> None:
     steps = e2e_steps("run")
 
     assert "Strict-Transport-Security" in steps
@@ -299,3 +349,56 @@ def test_given_the_playwright_config_when_read_then_the_base_url_is_the_edge_and
 
     assert f"https://{HOST}:8443" in text
     assert "ignoreHTTPSErrors" not in text
+
+
+# --- U-web-settings-42: the setup project, the smoke projects and the log check ---
+
+
+def test_given_the_playwright_config_when_read_then_a_setup_project_signs_in_and_smoke_reuses_it() -> None:
+    text = PLAYWRIGHT.read_text(encoding="utf-8")
+
+    assert 'name: "setup"' in text
+    assert "testMatch: /setup" in text
+    for project in ("smoke-375", "smoke-1280"):
+        assert f'name: "{project}"' in text
+    assert text.count("storageState: STORAGE_STATE") == 2  # both smoke projects start signed in
+    assert 'dependencies: ["setup"]' in text
+    assert 'dependencies: ["smoke-375"]' in text  # one after the other: both save the one settings row
+    assert "width: 375" in text
+    assert "width: 1280" in text
+
+
+def test_given_the_session_state_file_when_checked_into_git_then_it_is_ignored() -> None:
+    assert "playwright/.auth/" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_given_the_log_check_when_read_then_it_greps_the_logs_and_prints_no_secret() -> None:
+    script = (ROOT / "scripts" / "prodlike-checks.sh").read_text(encoding="utf-8")
+
+    assert script.startswith("#!/usr/bin/env bash")
+    assert "set -euo pipefail" in script
+    for service in ("api", "web", "edge", "db"):
+        assert service in script
+    assert "migrate.log" in script
+    for kind in ("sign-in-code", "canary", "smtp-password", "session-cookie"):
+        assert kind in script
+    assert "code=" in script
+    assert 'echo "$value"' not in script  # a hit names the kind and the file, never the value
+
+
+# --- U-web-settings-59: the prod-like job proves the headers on the wire ---
+
+
+def test_given_the_prod_like_job_when_read_then_it_checks_the_security_headers_of_web_and_api_through_the_edge() -> (
+    None
+):
+    steps = e2e_steps("run")
+    script = (ROOT / "scripts" / "prodlike-checks.sh").read_text(encoding="utf-8")
+
+    assert "scripts/prodlike-checks.sh headers" in steps
+    assert '"$mode" = "headers"' in script
+    for name in ("content-security-policy", "cross-origin-opener-policy", "cross-origin-resource-policy"):
+        assert name in script
+    for path in ("/settings", "/assets/", "/api/settings", "/anything"):
+        assert path in script
+    assert "default-src 'none'; frame-ancestors 'none'" in script

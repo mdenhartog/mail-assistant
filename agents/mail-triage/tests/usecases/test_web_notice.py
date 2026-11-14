@@ -209,3 +209,54 @@ async def test_given_a_failure_with_a_canary_zone_and_token_when_the_agent_runs_
     assert "Canary" not in caplog.text
     assert "CANARYTOKEN" not in caplog.text
     assert "T0000" not in caplog.text
+
+
+async def test_given_a_burst_when_the_agent_runs_then_its_tokens_share_one_burst_id_and_the_first_version() -> None:
+    store = FakeNoticeStore([change(3), change(4, old_start=22, new_start=21)], cursor=2)
+
+    await _notice(store, RecordingChat()).run(AT)
+
+    assert len({t.burst_id for t in store.tokens}) == 1
+    assert {t.first_version for t in store.tokens} == {3}
+
+
+async def test_given_two_bursts_with_equal_before_values_when_the_agent_runs_then_they_have_different_burst_ids() -> (
+    None
+):
+    store, chat, tokens = FakeNoticeStore([change(3, old_start=23, new_start=22)], cursor=2), RecordingChat(), Tokens()
+    await WebNotice(store, chat, tokens).run(AT)
+    store.changes.append(change(4, old_start=23, new_start=22))  # the same values before as burst one
+
+    await WebNotice(store, chat, tokens).run(AT)
+
+    first, second = store.tokens
+    assert first.before == second.before
+    assert first.burst_id != second.burst_id
+    assert (first.first_version, second.first_version) == (3, 4)
+
+
+async def test_given_a_send_failure_after_the_first_notice_when_run_again_then_the_retry_joins_the_burst() -> None:
+    store, chat = FakeNoticeStore([change(3), change(4, old_start=22, new_start=21)], cursor=2), RecordingChat()
+    chat.fail_on_text = "change 4"
+    notice = _notice(store, chat)
+
+    with pytest.raises(RuntimeError):
+        await notice.run(AT)
+    await notice.run(AT)
+
+    sent = [t for t in store.tokens if t.version == 4]
+    assert {t.burst_id for t in store.tokens} == {store.tokens[0].burst_id}
+    assert {t.first_version for t in store.tokens} == {3}
+    assert {t.before["quiet_start"] for t in sent} == {23 * 60}  # the values before change 3, not before change 4
+
+
+async def test_given_an_expired_unsent_record_when_the_agent_runs_then_a_new_burst_starts() -> None:
+    store, chat = FakeNoticeStore([change(3)], cursor=2), RecordingChat()
+    chat.fail_next = True
+    notice = _notice(store, chat)
+    with pytest.raises(RuntimeError):
+        await notice.run(AT)
+
+    await notice.run(AT + timedelta(hours=25))
+
+    assert len({t.burst_id for t in store.tokens}) == 2

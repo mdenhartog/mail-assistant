@@ -37,3 +37,9 @@ The spec accepts risk R-1: anyone who can read Marco's mailbox can sign in (the 
 - One Undo per notice as in Telegram: fails after a burst of changes; rejected.
 - Re-authentication for every write: more friction for Marco on a phone, and it does not help when the mailbox itself is taken; kept as an option for later.
 - A Telegram command only to lock: slower in the moment than a button on the notice.
+
+## Amendment 2026-11-14 (phase 8, what was built)
+
+- **Agent grants.** Besides insert and update on `web_auth.web_lock`, the agent role has `DELETE` on it (`/web_unlock` removes the row) and on `web_notice_token` (expired tokens are removed), and column `SELECT (id, kind, at, count)` on `web_auth.security_event` for the wrong-code alert (ADR-0039). It has nothing else in `web_auth`. Only the owner purge deletes from `settings.settings_change`.
+- **Commands.** `/web_lock` sets the lock from the allowed Telegram chat and says whether it was already set; `/web_unlock` lifts it. The sign-in e-mail names `/web_lock` for the case that Marco did not ask for the code. The agent also sets the lock by itself after 15 wrong codes in 24 hours (ADR-0039).
+- **Alert and lock are R1**, not R2.

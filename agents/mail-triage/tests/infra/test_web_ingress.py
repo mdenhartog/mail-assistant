@@ -17,6 +17,10 @@ LOCAL_VALUES = ROOT / "deploy" / "envs" / "local" / "values.yaml"
 HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
 HIDDEN_PATHS = ("/docs", "/openapi.json", "/healthz", "/readyz", "/metrics")
+# The chart defaults name no proxy (U-web-settings-52): an environment sets them while the ingress is enabled.
+PROXY = "api.config.trustedProxyCidrs={10.244.0.0/16}"
+# Rendering the bare defaults: the environment must say it is not production (no digest, no alert) and name an HSTS key.
+BARE = ("environment=local", "ingress.hstsAnnotation.key=example.test/hsts")
 
 
 def helm(command: str, *args: str, values: bool = True) -> subprocess.CompletedProcess[str]:
@@ -123,9 +127,9 @@ def test_given_the_local_values_when_rendered_then_the_body_cap_tls_minimum_and_
 
 @needs_helm
 def test_given_the_chart_defaults_when_rendered_then_no_controller_specific_annotation_exists() -> None:
-    annotations = ingress(values=False)["metadata"]["annotations"]
+    annotations = ingress(PROXY, *BARE, values=False)["metadata"]["annotations"]
 
-    assert set(annotations) == {"cert-manager.io/cluster-issuer"}
+    assert set(annotations) == {"cert-manager.io/cluster-issuer", "example.test/hsts"}
 
 
 def values_files() -> list[Path]:

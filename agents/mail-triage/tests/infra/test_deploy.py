@@ -25,11 +25,24 @@ SECRET_PATTERNS = (
 )
 HELM = shutil.which("helm")
 needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
+DIGEST = "sha256:" + "d" * 64  # production (the chart default) needs a digest (U-web-settings-66)
 
 
 def render(*sets: str) -> list[dict[str, Any]]:
     assert HELM is not None
-    command = [HELM, "template", "mail-triage", str(CHART), "--set", "image.repository=registry.example/mail-triage"]
+    command = [
+        HELM,
+        "template",
+        "mail-triage",
+        str(CHART),
+        "--set",
+        "image.repository=registry.example/mail-triage",
+        "--set",
+        "image.digest=" + DIGEST,
+        "--set",
+        "database.tls.caConfigMap=mail-triage-db-ca",
+    ]
+    command += ["--set", "database.tls.caConfigMap=mail-triage-db-ca"]  # production needs the CA (SEC-10)
     for item in sets:
         command += ["--set", item]
     result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=60)  # noqa: S603
@@ -47,7 +60,17 @@ def container(docs: list[dict[str, Any]]) -> dict[str, Any]:
 @needs_helm
 def test_given_the_chart_when_linted_then_it_has_no_errors() -> None:
     result = subprocess.run(  # noqa: S603
-        [HELM or "", "lint", str(CHART), "--set", "image.repository=registry.example/mail-triage"],
+        [
+            HELM or "",
+            "lint",
+            str(CHART),
+            "--set",
+            "image.repository=registry.example/mail-triage",
+            "--set",
+            "image.digest=" + DIGEST,
+            "--set",
+            "database.tls.caConfigMap=mail-triage-db-ca",
+        ],
         capture_output=True,
         text=True,
         timeout=60,
@@ -223,7 +246,18 @@ def test_given_the_migration_is_off_when_rendered_then_there_is_no_job() -> None
 @needs_helm
 def test_given_the_chart_with_the_migration_when_linted_strictly_then_it_has_no_findings() -> None:
     result = subprocess.run(  # noqa: S603
-        [HELM or "", "lint", "--strict", str(CHART), "--set", "image.repository=registry.example/mail-triage"]
+        [
+            HELM or "",
+            "lint",
+            "--strict",
+            str(CHART),
+            "--set",
+            "image.repository=registry.example/mail-triage",
+            "--set",
+            "image.digest=" + DIGEST,
+            "--set",
+            "database.tls.caConfigMap=mail-triage-db-ca",
+        ]
         + [arg for item in MIGRATION for arg in ("--set", item)],
         capture_output=True,
         text=True,
@@ -315,6 +349,10 @@ def test_given_the_migration_without_a_secret_name_when_rendered_then_it_fails_n
             "--set",
             "image.repository=r/x",
             "--set",
+            "image.digest=" + DIGEST,
+            "--set",
+            "database.tls.caConfigMap=mail-triage-db-ca",
+            "--set",
             "migration.enabled=true",
         ],
         capture_output=True,
@@ -359,7 +397,7 @@ def test_given_the_compose_file_when_read_then_a_one_shot_migrate_service_uses_t
     assert migrate["cap_drop"] == ["ALL"]
     assert "no-new-privileges:true" in migrate["security_opt"]
     assert "ports" not in migrate
-    assert set(migrate["environment"]) == set(OWNER_KEYS)
+    assert set(migrate["environment"]) == {*OWNER_KEYS, "ENVIRONMENT", "DATABASE_SSL", "DATABASE_CA_FILE"}
     assert "app:${POSTGRES_PASSWORD" in migrate["environment"]["DATABASE_OWNER_URL"]  # the bootstrap owner of the db
 
 
@@ -452,22 +490,58 @@ def test_given_the_prod_like_profile_when_compose_renders_then_it_holds_no_one_s
     assert "mail-triage" not in services  # the agent needs real Gmail, Telegram and Anthropic credentials
 
 
-def test_given_the_ci_workflow_when_read_then_a_job_migrates_and_runs_the_role_checks_against_the_stack() -> None:
-    commands = run_steps(ci_jobs()["runtime-role"])
+def test_given_the_ci_workflow_when_read_then_one_prod_like_job_replaces_the_e2e_and_runtime_role_jobs() -> None:
+    jobs = ci_jobs()
 
-    assert "docker compose --profile prod-like up -d --build --wait" in commands
-    assert "docker compose run --rm --build mail-triage-migrate" in commands
-    assert commands.index("up -d --build --wait") < commands.index("mail-triage-migrate")  # the stack first
-    assert commands.index("mail-triage-migrate") < commands.index("tests/e2e")  # the role exists before it is checked
+    assert "prod-like" in jobs
+    assert "e2e" not in jobs
+    assert "runtime-role" not in jobs
+
+
+def test_given_the_prod_like_job_when_read_then_it_runs_the_stated_sequence_once() -> None:
+    commands = run_steps(ci_jobs()["prod-like"])
+    in_order = [
+        "up -d --wait db mail",  # the database and the mail catcher first
+        # then the migration, apart from `up --wait`, over verify-full TLS as in production (U-web-settings-58)
+        "docker compose run --rm --build -e ENVIRONMENT=production -e DATABASE_SSL=verify-full mail-triage-migrate",
+        "docker compose --profile prod-like up -d --build --wait",
+        "readyz",
+        "backend/tests/e2e",  # TLS database, mail catcher, log canaries
+        "agents/mail-triage/tests/e2e",  # the agent role and the web role
+        "pnpm --filter web e2e",  # setup project, smoke test
+        "scripts/prodlike-checks.sh logs",  # the log grep comes last
+    ]
+    positions = [commands.index(part) for part in in_order]
+
+    assert positions == sorted(positions)
+    assert commands.count("mail-triage-migrate") == 1
     assert "MAIL_TRIAGE_RUNTIME_PASSWORD=" in commands  # the migrate job stops without it (exit code 2)
     assert "WEB_ROLE_PASSWORD=" in commands  # the job stops without this one too (U-web-settings-08)
 
 
-@pytest.mark.parametrize("job_name", ["e2e", "gxp"])
-def test_given_a_job_that_starts_the_prod_like_stack_when_read_then_it_does_not_run_the_migration(
-    job_name: str,
-) -> None:
-    assert "mail-triage-migrate" not in run_steps(ci_jobs()[job_name])
+def test_given_the_prod_like_job_when_it_ends_then_the_reports_and_logs_are_uploaded_and_stack_goes_down() -> None:
+    steps = ci_jobs()["prod-like"]["steps"]
+    uploads = [step for step in steps if "upload-artifact" in str(step.get("uses", ""))]
+
+    assert {step["with"]["name"] for step in uploads} == {"playwright-report", "prod-like-logs"}
+    assert all(step.get("if") in {"failure()", "always()"} for step in uploads)
+    assert any("down --volumes" in str(step.get("run", "")) and step.get("if") == "always()" for step in steps)
+
+
+def test_given_the_prod_like_job_when_the_migration_fails_then_it_stops_before_the_stack_and_keeps_the_log() -> None:
+    steps = ci_jobs()["prod-like"]["steps"]
+    migrate = next(i for i, step in enumerate(steps) if "mail-triage-migrate" in str(step.get("run", "")))
+    up = next(i for i, step in enumerate(steps) if "up -d --build --wait" in str(step.get("run", "")))
+    uploads = [step for step in steps if "prod-like-logs" in str(step.get("with", ""))]
+
+    assert migrate < up  # a failed migration stops the job before the stack is started
+    assert "set -o pipefail" in steps[migrate]["run"]  # the pipe into tee must not hide the failure
+    assert "prodlike-logs/migrate.log" in steps[migrate]["run"]
+    assert [step["with"]["path"] for step in uploads] == ["prodlike-logs"]  # the log is uploaded from a failed run
+
+
+def test_given_the_gxp_job_when_read_then_it_does_not_run_the_migration() -> None:
+    assert "mail-triage-migrate" not in run_steps(ci_jobs()["gxp"])
 
 
 def test_given_the_ci_workflow_when_read_then_the_mail_triage_image_is_scanned_for_high_and_critical() -> None:
@@ -569,10 +643,16 @@ def test_given_the_mutation_workflow_when_read_then_each_module_is_mutated_and_r
     assert (ROOT / directory / "cosmic-ray.toml").is_file()
 
 
+RATING = re.compile(r"cr-rate|mutation/run\.py")
+
+
 def test_given_the_mutation_workflow_when_a_job_fails_then_the_surviving_mutants_are_still_listed() -> None:
     for name, job in load_workflow(MUTATION_WORKFLOW)["jobs"].items():
         steps = job["steps"]
-        rate = next(i for i, step in enumerate(steps) if "cr-rate" in step.get("run", ""))
+        if name == "backend-matrix":  # only lists the modules for the backend jobs
+            continue
+        # the backend runner (backend/mutation/run.py) rates every module itself with cr-rate
+        rate = next(i for i, step in enumerate(steps) if RATING.search(step.get("run", "")))
         report = next(i for i, step in enumerate(steps) if "cr-report" in step.get("run", ""))
 
         assert report > rate, name  # after the rating, so a failing rating does not hide the list
@@ -727,3 +807,21 @@ def test_given_the_chart_readme_when_read_then_it_names_the_web_password_key_and
     assert "WEB_ROLE_PASSWORD" in text
     assert "--from-literal=" not in text
     assert "--from-env-file=/dev/stdin" in text
+
+
+# --- U-web-settings-49: the purge runs inside the migrate Job; nothing else holds the owner secret (AC-21, W-13) ---
+
+
+@needs_helm
+def test_given_the_chart_when_searched_then_no_cron_job_and_only_the_migrate_job_holds_the_owner_secret() -> None:
+    docs = render(*MIGRATION, "envFromSecret=mail-triage-secrets")
+
+    assert "CronJob" not in {doc["kind"] for doc in docs}
+    holders = [doc for doc in docs if "mail-triage-migration" in yaml.safe_dump(doc)]
+    assert [(doc["kind"], doc["metadata"]["name"]) for doc in holders] == [
+        ("Job", migration_job(docs)["metadata"]["name"])
+    ]
+    for doc in docs:
+        if doc["kind"] != "Job":
+            assert not any(key in yaml.safe_dump(doc) for key in OWNER_KEYS)
+    assert job_container(docs)["command"] == ["python", "-m", "app", "migrate"]  # the purge is a step of this command

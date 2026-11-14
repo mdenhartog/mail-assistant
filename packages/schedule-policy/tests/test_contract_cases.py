@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from schedule_policy import RULES
 from schedule_policy.policy import TimePolicy, validate
 
 PACKAGE = Path(__file__).resolve().parents[1]
@@ -51,3 +52,15 @@ def test_given_the_boundaries_when_listed_then_valid_and_invalid_rows_exist_on_b
     assert {"window_59_minutes", "window_721_minutes", "overview_at_quiet_start_is_inside"} <= {
         case["id"] for case in CASES if case["rules"]
     }
+
+
+def test_given_the_exported_rules_when_compared_with_the_validation_source_then_they_are_the_same_set():
+    source = (PACKAGE / "schedule_policy" / "policy.py").read_text("utf-8")
+    emitted = set(re.findall(r'(?:Problem\(|\()\s*"([a-z]+(?:_[a-z]+)+)"', source))
+
+    assert len(RULES) == len(set(RULES))
+    assert set(RULES) == emitted
+
+
+def test_given_the_contract_cases_when_their_rules_are_listed_then_each_is_an_exported_rule():
+    assert {rule for case in CASES for rule in case["rules"]} <= set(RULES)

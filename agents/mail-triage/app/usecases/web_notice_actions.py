@@ -2,9 +2,11 @@
 
 ``webundo:<token>`` puts back the values as they were before the first web change of the burst the notice belongs to
 (the token record holds them). The restore is an ordinary audited write guarded by a version: the highest version of
-that burst, so a change that came later (Telegram, or a newer web change) makes it refuse and write nothing.
+that burst, found by its own id and never by comparing values. A change that came later (Telegram, or a newer web
+change) makes it refuse and write nothing.
 ``weblock:<token>`` first sets ``web_auth.web_lock`` (setting it again changes nothing), then does the same undo, so
-the lock holds even when the undo conflicts. ``/web_unlock`` deletes the lock row.
+the lock holds even when the undo conflicts. ``/web_lock`` sets the same row from the allowed chat and says whether it
+was already set; ``/web_unlock`` deletes the lock row.
 
 A token is used once: its record is deleted after the answer. A token past its life answers "Expired" and writes
 nothing; one that is gone (used, or never made) answers "Already done". Nothing here touches the conversation row, so a
@@ -41,8 +43,8 @@ class TokenStore(Protocol):
         """The record of ``token``, expired or not; ``None`` when there is none (never made, or used)."""
         ...
 
-    async def burst_end(self, before: dict[str, object]) -> int:
-        """The highest announced version among the tokens that restore the same ``before``."""
+    async def burst_end(self, burst_id: str, first_version: int) -> int:
+        """The highest announced version among the tokens of the burst ``burst_id`` (0 when none)."""
         ...
 
     async def consume(self, token: str) -> bool:
@@ -53,8 +55,8 @@ class TokenStore(Protocol):
 class LockStore(Protocol):
     """``web_auth.web_lock``."""
 
-    async def lock(self, now: datetime) -> None:
-        """Set the lock; setting it again changes nothing."""
+    async def lock(self, now: datetime) -> bool:
+        """Set the lock; ``True`` when this call set it. Setting it again changes nothing."""
         ...
 
     async def unlock(self) -> bool:
@@ -101,7 +103,7 @@ def _policy_before(before: Mapping[str, object]) -> TimePolicy | None:
 
 
 class WebNoticeActions:
-    """Handles ``webundo``, ``weblock`` and ``/web_unlock``."""
+    """Handles ``webundo``, ``weblock``, ``/web_lock`` and ``/web_unlock``."""
 
     def __init__(  # noqa: PLR0913 - every dependency is injected for tests
         self,
@@ -147,7 +149,7 @@ class WebNoticeActions:
         policy = _policy_before(record.before)
         if policy is None:
             return settings_text.UNDO_REFUSED if record.before else settings_text.NOTHING_TO_UNDO
-        guard = max(record.version, await self._tokens.burst_end(record.before))
+        guard = max(record.version, await self._tokens.burst_end(record.burst_id, record.first_version))
         try:
             await self._settings.write(policy, guard, VIA, self._by)
         except VersionConflict:
@@ -162,3 +164,10 @@ class WebNoticeActions:
             return
         was_locked = await self._lock.unlock()
         await self._chat.say(settings_text.WEB_UNLOCKED if was_locked else settings_text.WEB_NOT_LOCKED)
+
+    async def lock(self, command: Command) -> None:
+        """Lock web sign-in on Marco's command and say whether it was already locked; another chat gets no answer."""
+        if command.chat_id != self._chat_id:
+            return
+        newly_set = await self._lock.lock(self._now())
+        await self._chat.say(settings_text.WEB_LOCKED_NOW if newly_set else settings_text.WEB_ALREADY_LOCKED)

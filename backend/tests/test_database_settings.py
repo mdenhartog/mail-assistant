@@ -60,13 +60,17 @@ def test_given_settings_when_driver_arguments_built_then_context_is_verify_full_
 @pytest.mark.parametrize("mode", ["require", "verify-ca"])
 def test_given_production_with_a_weaker_mode_when_checked_then_refused_naming_database_url(mode: str) -> None:
     with pytest.raises(ConfigurationError) as raised:
-        validate_startup(make_settings(environment="production", database_ssl=mode))
+        validate_startup(
+            make_settings(environment="production", database_ssl=mode, trusted_proxy_cidrs=["10.244.0.0/16"])
+        )
 
     assert raised.value.fields == ("database_url",)
 
 
 def test_given_production_with_verify_full_when_checked_then_accepted() -> None:
-    validate_startup(make_settings(environment="production", database_ssl="verify-full"))
+    validate_startup(
+        make_settings(environment="production", database_ssl="verify-full", trusted_proxy_cidrs=["10.244.0.0/16"])
+    )
 
 
 def test_given_development_with_require_when_checked_then_accepted() -> None:

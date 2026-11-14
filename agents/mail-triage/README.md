@@ -16,6 +16,9 @@ All values come from the environment (`.env` locally, a Kubernetes secret in pro
 | `MODEL_SMALL`, `MODEL_LARGE` | Model ids; never literals in code |
 | `DATABASE_URL` | PostgreSQL connection string of the **runtime role** `mail_triage_runtime` (contains the password) |
 | `POLL_INTERVAL_SECONDS` | Optional; default 60 |
+| `ENVIRONMENT` | Optional; `production` (default), `development` or `test`. Production refuses a `DATABASE_SSL` other than `verify-full` |
+| `DATABASE_SSL` | Optional; `verify-full` (default), `verify-ca`, `require` or `disable`. Also read by the migrate command |
+| `DATABASE_CA_FILE` | Optional; PEM file with the CA of the database certificate; empty uses the system trust store |
 
 These are the names the process reads. In `.env` and `.env.example` the same values carry the prefix `MAIL_TRIAGE_` where compose maps them (see the table below).
 
@@ -26,12 +29,22 @@ The agent starts in two steps. The first runs once as the database owner, the se
 1. `python -m app migrate` is the one-shot job (compose service `mail-triage-migrate`, Helm PreSync Job; see [the worker chart](../../deploy/charts/worker/README.md)). It connects as the owner role and, under a PostgreSQL advisory lock so that two jobs never migrate at the same time:
    - applies the Alembic migrations;
    - creates or updates the login role `mail_triage_runtime` with a SCRAM-SHA-256 verifier that the job computes itself, so the clear password never reaches the server or its log. The job also sets `NOREPLICATION NOBYPASSRLS` and fails if the role is a member of another role;
-   - applies `app/db/grants.sql`.
+   - applies `app/db/grants.sql`;
+   - runs the retention purge as its last step (below).
 
-   It can be run again safely. It reads only `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` and `WEB_ROLE_PASSWORD` (all secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6. The `?ssl=` setting of the owner URL is honoured (`verify-full`, and so on).
+   It can be run again safely. It reads only `DATABASE_OWNER_URL`, `RUNTIME_ROLE_PASSWORD` and `WEB_ROLE_PASSWORD` (all secrets); a missing key stops it with exit code 2 naming the key, and any other failure exits with 6; a failing purge exits with 6 and the log names the `purge` step. TLS comes from `DATABASE_SSL` and `DATABASE_CA_FILE`, not from the URL (an `ssl` value inside it is ignored).
 2. `python -m app` (= `serve`) runs the agent as the runtime role, which owns nothing and cannot run DDL. It does not migrate: at start it only checks that the schema is at the Alembic head of its image, and otherwise exits with code 5 ("run the migrate job"). The agent never receives the owner URL.
 
 `python -m app.consent` (the one-time Gmail consent) no longer creates tables either. It stops and names the migrate job when the schema is not current, so run the migrate job first.
+
+### Retention purge (U-web-settings-49)
+
+The last step of the migrate job, run as the owner role, deletes `settings.settings_change` rows older than one year and
+`web_auth.security_event` rows older than 90 days (a row goes when it is strictly older than the cutoff; one that is
+exactly as old stays until the next run), plus expired `web_auth.login_request` and `web_auth.session` rows. It logs only
+the number of removed rows per table and is safe to repeat. `python -m app purge` runs the step alone with the same
+owner settings. It is the one delete path for `settings_change`: the runtime roles still cannot delete or truncate it.
+There is no CronJob and no other workload holds the owner secret.
 
 | Exit code | Meaning |
 |---|---|
@@ -39,7 +52,7 @@ The agent starts in two steps. The first runs once as the database owner, the se
 | 3 | No Gmail consent stored yet |
 | 4 | Another copy of the agent holds the lock |
 | 5 | `serve`: the schema is not at the expected head, run the migrate job |
-| 6 | `migrate`: the migration failed |
+| 6 | `migrate` or `purge`: the migration or the purge failed |
 
 | Where | Variable | Meaning |
 |---|---|---|
@@ -58,8 +71,9 @@ Locally, `docker compose --profile dev up` (or `--profile components`) starts `m
 
 - the mail audit trail (`audit_log`, `overview_log`) is append-only: select and insert, never update or delete;
 - mail, alert, draft, token, poll and catch-up tables: select, insert and update, never delete;
-- `conversation` (the one pending dialogue): the only table with delete;
-- `settings.schedule`: select, insert and update of the single settings row. The change history `settings.settings_change` can only be read.
+- `conversation` (the one pending dialogue) and the web tables the agent keeps itself (`web_notice_token`, the one row of `web_auth.web_lock`): the only tables with delete (`grants.sql`);
+- `web_auth.security_event`: column select of `id`, `kind`, `at` and `count`, nothing else (the wrong-code alert, ADR-0039);
+- `settings.schedule`: select, insert and update of the single settings row. The change history `settings.settings_change` can only be read; only the owner purge deletes from it (below).
 
 Two triggers on `settings.schedule` make the database, not the application, decide what a change is. The guard refuses a write that does not raise `version` by exactly one and a write whose channel does not match the login role. The audit trigger writes one record per change (time, channel, actor, old and new values, and the login role taken from `session_user`), so the runtime role means the channel `telegram` and cannot claim another one. The runtime role cannot insert into the history directly.
 

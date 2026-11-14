@@ -1,0 +1,21 @@
+# Nightly checks that are too noisy for a pull request: the wall-clock comparison of the decoy and real username paths
+# (CR-05). The structural check of the recorded steps (AC-30) runs in every pull request.
+name: nightly
+on:
+  schedule:
+    - cron: "47 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  decoy-timing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults: { run: { working-directory: backend } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run pytest -m timing --no-cov

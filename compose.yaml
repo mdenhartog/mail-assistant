@@ -2,7 +2,7 @@
 #   dev       — hot reload backend + Vite dev server
 #   prod-like — the production images (read-only, non-root) for e2e, ZAP and demos
 #   test      — runs the backend and web test suites in containers, like CI
-# db and mail always run. The IdP (Keycloak) is added once identity-architecture decides on it.
+# db always runs; mail (the STARTTLS catcher) belongs to prod-like. The IdP (Keycloak) is added once identity-architecture decides on it.
 name: mail-assistant
 include:
   - agents/mail-triage/compose.yaml
@@ -16,38 +16,81 @@ x-hardening: &hardening
   cap_drop: ["ALL"]
   tmpfs: ["/tmp"]
 
+# Settings both api services share, by reference: the .env file holds the values, nothing sensitive is written here.
+# An unset reference is empty, and the api then refuses to start naming the field (AC-4).
+x-api-environment: &api-environment
+  APP_USERNAME: ${E2E_USERNAME:-e2e-owner}
+  APP_EMAIL_ADDRESS: ${E2E_EMAIL_ADDRESS:-owner@example.test}
+  APP_SMTP_HOST: mail
+  APP_SMTP_PORT: "1025"
+  APP_SMTP_FROM: ${MAIL_SMTP_FROM:-assistant@example.test}
+  APP_SMTP_USER: ${MAIL_SMTP_USER:-send-only}
+  APP_SMTP_PASSWORD: ${MAIL_SMTP_PASSWORD:-}
+  APP_CODE_HASH_KEY: ${APP_CODE_HASH_KEY:-}
+  APP_CSRF_KEY: ${APP_CSRF_KEY:-}
+  APP_USERNAME_HASH_KEY: ${APP_USERNAME_HASH_KEY:-}
+  APP_DATABASE_URL: postgresql+asyncpg://web_settings_runtime:${WEB_ROLE_PASSWORD:-}@db:5432/app
+
 services:
   db:
-    image: postgres:18-alpine
+    image: postgres:18-alpine@sha256:1018733457011bf88d81db98cf43aac6d5150afc18787dbe204771fedf80ff95
     environment:
       POSTGRES_DB: app
       POSTGRES_USER: app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
-    volumes: ["db-data:/var/lib/postgresql"]
+    # TLS (ADR-0037, W-9): when deploy/prod-like/certs.sh has made db.crt and db.key, db-tls.sh turns TLS on and loads the
+    # pg_hba.conf that lets the web role in over TLS only. Without them (dev, test) the database starts as before.
+    entrypoint: ["/bin/sh", "/usr/local/bin/db-tls.sh"]
+    command: ["postgres"]
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./deploy/prod-like/db-tls.sh:/usr/local/bin/db-tls.sh:ro
+      - ./deploy/prod-like/pg_hba.conf:/etc/postgresql-tls/pg_hba.conf:ro
+      - ./deploy/prod-like/certs:/certs:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U app -d app"]
       interval: 5s
       retries: 10
 
+  # The mail catcher (prod-like only: no other profile sends mail). SMTP on 1025 inside the network accepts STARTTLS only,
+  # with the certificate for the host name `mail` that deploy/prod-like/mail-tls.sh signed with the private CA, and a
+  # send-only login. The web interface on 8025 is published on the loopback for the e2e mailbox helper.
   mail:
-    image: axllent/mailpit:v1.32.0
+    profiles: ["prod-like"]
+    <<: *hardening
+    image: axllent/mailpit:v1.32.0@sha256:0790692be935ea4420d085694f7985b1f692ca6a8771ab0e0bd8ba75ac180498
+    environment:
+      MP_SMTP_TLS_CERT: /certs/mail.crt
+      MP_SMTP_TLS_KEY: /certs/mail.key
+      MP_SMTP_REQUIRE_STARTTLS: "true"
+      MP_SMTP_AUTH: ${MAIL_SMTP_USER:-send-only}:${MAIL_SMTP_PASSWORD:-}
     ports: ["127.0.0.1:${MAIL_PORT:-8025}:8025"]
+    volumes:
+      - ./deploy/prod-like/certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      retries: 10
 
   api-dev:
     profiles: ["dev"]
     build: { context: ., dockerfile: backend/Dockerfile, target: build }
-    command: ["uv", "run", "--frozen", "uvicorn", "app.main:create_app", "--factory", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uv", "run", "--frozen", "uvicorn", "app.production:create_production_app", "--factory", "--reload", "--host", "0.0.0.0", "--port", "8000"]
     working_dir: /srv/backend
     environment:
+      <<: *api-environment
       APP_ENVIRONMENT: development
+      # No TLS database and no mail catcher in this profile: readiness reports 503 and a send fails, the app runs.
+      APP_DATABASE_SSL: require
+      APP_PUBLIC_ORIGIN: https://localhost:${WEB_DEV_PORT:-5173}
     volumes: ["./backend/app:/srv/backend/app"]
     ports: ["127.0.0.1:${API_DEV_PORT:-8000}:8000"]
     depends_on: { db: { condition: service_healthy } }
 
   web-dev:
     profiles: ["dev"]
-    image: node:24-bookworm-slim
+    image: node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
     working_dir: /repo
     command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm --filter web dev"]
     volumes: [".:/repo", "web-node-modules:/repo/node_modules"]
@@ -56,20 +99,42 @@ services:
   api:
     profiles: ["prod-like"]
     <<: *hardening
+    # Not pinned by digest on purpose: built here from backend/Dockerfile (whose bases are pinned); the lint test lists it.
     image: mail-assistant-api:local
     build: { context: ., dockerfile: backend/Dockerfile }
     environment:
+      <<: *api-environment
       APP_ENVIRONMENT: production
+      # The web role over TLS with the host name checked against the private CA (asyncpg `ssl`, not libpq `sslmode`).
+      # The role and its password are made by the migrate service (WEB_ROLE_PASSWORD); the owner credentials stay there.
+      APP_DATABASE_SSL: verify-full
+      APP_DATABASE_CA_FILE: /certs/ca.crt
+      # The same private CA verifies the mail catcher's STARTTLS certificate (compose only; the chart has no such setting).
+      SSL_CERT_FILE: /certs/ca.crt
+      APP_PUBLIC_ORIGIN: https://mail-assistant.localhost:${EDGE_HTTPS_PORT:-8443}
+      # The edge is the one proxy in front of the api; private ranges cover the compose network.
+      APP_TRUSTED_PROXY_CIDRS: '["10.0.0.0/8","172.16.0.0/12","192.168.0.0/16"]'
+      # Raised limits for the e2e runs only (this profile); the defaults of the spec apply everywhere else.
+      APP_RATE_LIMIT_PER_MINUTE: "1000"
+      APP_RESEND_COOLDOWN_SECONDS: "1"
+      APP_CODES_PER_HOUR: "1000"
+      APP_OPEN_LOGIN_REQUESTS_PER_CLIENT: "1000"
+      APP_LOGIN_REQUESTS_PER_CLIENT_PER_HOUR: "1000"
+    volumes:
+      - ./deploy/prod-like/certs/ca.crt:/certs/ca.crt:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
       interval: 5s
       retries: 10
-    depends_on: { db: { condition: service_healthy } }
+    depends_on:
+      db: { condition: service_healthy }
+      mail: { condition: service_healthy }
 
   web:
     profiles: ["prod-like"]
     <<: *hardening
     tmpfs: ["/tmp", "/var/cache/nginx"]
+    # Not pinned by digest on purpose: built here from apps/web/Dockerfile (whose bases are pinned); the lint test lists it.
     image: mail-assistant-web:local
     build: { context: ., dockerfile: apps/web/Dockerfile }
     ports: ["127.0.0.1:${WEB_PORT:-8080}:8080"]
@@ -80,7 +145,7 @@ services:
   edge:
     profiles: ["prod-like"]
     <<: *hardening
-    image: caddy:2.10.2-alpine
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     user: "10001:10001"
     # The caddy image sets the file capability cap_net_bind_service on /usr/bin/caddy; with the bounding set emptied by
     # cap_drop ALL the kernel refuses to exec it (EPERM, exit 255). Only this one capability is added back, for the exec:
@@ -118,7 +183,7 @@ services:
 
   web-test:
     profiles: ["test"]
-    image: node:24-bookworm-slim
+    image: node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
     working_dir: /repo
     command: ["sh", "-c", "corepack enable && pnpm install --frozen-lockfile && pnpm -r test"]
     volumes: [".:/repo", "web-node-modules:/repo/node_modules"]

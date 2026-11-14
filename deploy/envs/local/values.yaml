@@ -1,4 +1,5 @@
 # kind cluster (/sdlc:k8s-local). Images are loaded into kind from the local prod-like build.
+environment: local # tags instead of digests and no certificate alert; any other value gets the production rules
 api:
   image: { repository: "mail-assistant-api", tag: "local", pullPolicy: Never }
   replicas: 1
@@ -8,6 +9,10 @@ api:
     emailAddress: owner@home.arpa
     publicOrigin: https://app.localhost
     noticeIntervalMinutes: 1
+    # The kind pod network (default 10.244.0.0/16): the ingress controller pod is addressed from it. The controller
+    # itself is an open hosting point (D-7); only the pod CIDR is fixed here.
+    trustedProxyCidrs: ["10.244.0.0/16"]
+    trustedProxyHops: 1
     smtp: { host: smtp.home.arpa, port: 587, from: mail-assistant@home.arpa }
 web:
   image: { repository: "mail-assistant-web", tag: "local", pullPolicy: Never }
@@ -30,7 +35,6 @@ ingress:
   controllerConfig:
     ssl-protocols: TLSv1.2 TLSv1.3
     log-format-upstream: '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time'
-podDisruptionBudget: { minAvailable: 0 }
 networkPolicy:
   ingressController: { namespace: ingress-nginx, podLabels: { app.kubernetes.io/name: ingress-nginx } }
   # Placeholder addresses of the kind cluster; the real database and SMTP host are decided before staging.

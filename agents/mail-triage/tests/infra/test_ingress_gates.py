@@ -1,0 +1,467 @@
+"""U-web-settings-57: ingress gates for HSTS, the certificate alert and image digests (ADR-0037, ADR-0039).
+
+Findings RT-10, SEC-05, SEC-07; AC-18, W-9. The ingress controller is still an open point (D-7), so the gates read what
+the rendered Ingress annotations and the declared controller config say, not which controller consumes them.
+"""
+
+from __future__ import annotations
+
+import fnmatch
+import json
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[4]
+CHART = ROOT / "deploy" / "charts" / "app"
+ENVS = ROOT / "deploy" / "envs"
+LOCAL_VALUES = ENVS / "local" / "values.yaml"
+HELM = shutil.which("helm")
+needs_helm = pytest.mark.skipif(HELM is None, reason="helm is needed to render the chart")
+DIGEST = "sha256:" + "a" * 64  # a well-formed digest for the schema; not an image anybody runs
+REDIRECT_KEYS = ("ssl-redirect", "force-ssl-redirect")
+ALLOWED_TLS = {"TLSv1.2", "TLSv1.3", "VersionTLS12", "VersionTLS13", "tls1.2", "tls1.3", "1.2", "1.3"}
+
+
+def helm(command: str, values: Path, *sets: str) -> subprocess.CompletedProcess[str]:
+    assert HELM is not None
+    base = [HELM, command, "app", str(CHART)] if command == "template" else [HELM, command, str(CHART), "--strict"]
+    base += ["-f", str(values)]
+    for item in sets:
+        base += ["--set-json" if item.startswith("json:") else "--set", item.removeprefix("json:")]
+    return subprocess.run(base, capture_output=True, text=True, timeout=60, check=False)  # noqa: S603
+
+
+def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    """Merge like Helm does: maps merge, anything else replaces, and null deletes the key."""
+    merged = dict(base)
+    for key, value in over.items():
+        inner = merged.get(key)
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = deep_merge(inner, value) if isinstance(inner, dict) and isinstance(value, dict) else value
+    return merged
+
+
+def env_value_files() -> list[Path]:
+    return sorted(ENVS.glob("*/values.yaml"))
+
+
+def tls_findings(config: dict[str, str]) -> list[str]:
+    versions = [
+        (k, v)
+        for k, v in config.items()
+        if re.search(r"ssl-protocols|tls-?(min|version)|min-?version", k, re.IGNORECASE)
+    ]
+    if not versions:
+        return ["a TLS minimum (a controllerConfig key such as ssl-protocols or minVersion)"]
+    return [
+        f"a TLS minimum of 1.2 ({key}={value!r} allows an older version)"
+        for key, value in versions
+        if not set(re.split(r"[\s,]+", value.strip())) <= ALLOWED_TLS
+    ]
+
+
+def weakened(override: dict[str, Any], tmp: Path) -> Path:
+    """Write a copy of the local values with `override` merged in (null deletes a key)."""
+    merged = deep_merge(yaml.safe_load(LOCAL_VALUES.read_text(encoding="utf-8")), override)
+    path = tmp / "values.yaml"
+    path.write_text(yaml.safe_dump(merged), encoding="utf-8")
+    return path
+
+
+def missing_gates(values: Path) -> list[str]:
+    """Return what an environment is missing: the HSTS directive, the HTTP redirect and the TLS minimum."""
+    result = helm("template", values)
+    if result.returncode != 0:
+        return [f"a chart that renders ({result.stderr.strip()})"]
+    docs = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+    ingress = next((d for d in docs if d["kind"] == "Ingress"), None)
+    if ingress is None:
+        return ["an Ingress"]
+    annotations: dict[str, str] = ingress["metadata"]["annotations"]
+    merged = deep_merge(
+        yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8")),
+        yaml.safe_load(values.read_text(encoding="utf-8")),
+    )
+    config: dict[str, str] = merged["ingress"].get("controllerConfig", {})
+    missing: list[str] = []
+
+    hsts = [v for v in annotations.values() if "max-age=" in v]
+    if not hsts:
+        missing.append("an HSTS directive (an annotation value with max-age=)")
+    elif any(re.search(r"includeSubDomains|preload", v) for v in hsts):
+        missing.append("an HSTS directive without includeSubDomains and preload")
+
+    redirects = {k: v for k, v in annotations.items() if "redirect" in k.lower() or "redirect" in v.lower()}
+    if not redirects or all(v.strip().lower() in {"false", "off", "0"} for v in redirects.values()):
+        missing.append("an HTTP to HTTPS redirect (an annotation naming a redirect that is not switched off)")
+
+    missing.extend(tls_findings(config))
+    return missing
+
+
+def test_given_the_repository_when_environments_are_listed_then_the_local_values_are_checked() -> None:
+    assert LOCAL_VALUES in env_value_files()
+
+
+@needs_helm
+@pytest.mark.parametrize("values", env_value_files(), ids=lambda p: p.parent.name)
+def test_given_an_environment_values_file_when_rendered_then_hsts_redirect_and_tls_minimum_are_present(
+    values: Path,
+) -> None:
+    missing = missing_gates(values)
+
+    assert not missing, f"{values.relative_to(ROOT)} is missing: " + "; ".join(missing)
+
+
+@needs_helm
+@pytest.mark.parametrize(
+    ("override", "expected"),
+    [
+        (
+            {"ingress": {"annotations": {f"nginx.ingress.kubernetes.io/{k}": None for k in REDIRECT_KEYS}}},
+            "redirect",
+        ),
+        (
+            {"ingress": {"annotations": {f"nginx.ingress.kubernetes.io/{k}": "false" for k in REDIRECT_KEYS}}},
+            "redirect",
+        ),
+        ({"ingress": {"controllerConfig": {"ssl-protocols": None}}}, "TLS minimum"),
+        ({"ingress": {"controllerConfig": {"ssl-protocols": "TLSv1 TLSv1.1 TLSv1.2"}}}, "TLS minimum of 1.2"),
+        ({"ingress": {"hstsAnnotation": {"format": "%s; preload"}}}, "a chart that renders"),
+    ],
+)
+def test_given_an_environment_that_drops_a_gate_when_checked_then_the_missing_item_is_named(
+    override: dict[str, Any], expected: str, tmp_path: Path
+) -> None:
+    missing = missing_gates(weakened(override, tmp_path))
+
+    assert any(expected in item for item in missing), missing
+
+
+@needs_helm
+@pytest.mark.parametrize("key", ["", " "])
+def test_given_hsts_true_and_an_empty_annotation_key_when_the_schema_runs_then_it_refuses(key: str) -> None:
+    for command in ("template", "lint"):
+        result = helm(command, LOCAL_VALUES, f"ingress.hstsAnnotation.key={key}")
+
+        assert result.returncode != 0, command
+        assert "hstsAnnotation" in result.stdout + result.stderr
+
+
+@needs_helm
+def test_given_hsts_true_and_no_annotation_object_when_the_schema_runs_then_it_refuses() -> None:
+    result = helm("template", LOCAL_VALUES, "json:ingress.hstsAnnotation=null")
+
+    assert result.returncode != 0
+    assert "hstsAnnotation" in result.stderr
+
+
+@needs_helm
+@pytest.mark.parametrize(
+    ("sets", "expected"),
+    [
+        (("json:certAlert.enabled=false", f"api.image.digest={DIGEST}", f"web.image.digest={DIGEST}"), "certAlert"),
+        (("json:certAlert.enabled=true", f"web.image.digest={DIGEST}"), "digest"),
+        (("json:certAlert.enabled=true", f"api.image.digest={DIGEST}"), "digest"),
+        (("json:certAlert.enabled=true", "api.image.digest=", "web.image.digest="), "digest"),
+    ],
+)
+def test_given_production_values_without_the_cert_alert_or_a_digest_when_the_schema_runs_then_it_refuses(
+    sets: tuple[str, ...], expected: str
+) -> None:
+    result = helm("template", LOCAL_VALUES, "environment=production", *sets)
+
+    assert result.returncode != 0
+    assert expected in result.stderr
+
+
+@needs_helm
+def test_given_production_values_with_the_cert_alert_and_digests_when_rendered_then_the_alert_exists() -> None:
+    sets = ("environment=production", "json:certAlert.enabled=true", f"api.image.digest={DIGEST}")
+    result = helm("template", LOCAL_VALUES, *sets, f"web.image.digest={DIGEST}")
+
+    assert result.returncode == 0, result.stderr
+    kinds = {d["kind"] for d in yaml.safe_load_all(result.stdout) if d}
+    assert "PrometheusRule" in kinds
+
+
+@needs_helm
+def test_given_the_chart_defaults_when_rendered_then_the_environment_is_production_and_refuses() -> None:
+    """Secure by default: an environment that does not say what it is gets the production rules."""
+    values = yaml.safe_load((CHART / "values.yaml").read_text(encoding="utf-8"))
+
+    assert values["environment"] == "production"
+
+
+@needs_helm
+def test_given_the_local_values_when_rendered_then_they_say_local_and_need_no_digest() -> None:
+    values = yaml.safe_load(LOCAL_VALUES.read_text(encoding="utf-8"))
+
+    assert values["environment"] == "local"
+    assert helm("template", LOCAL_VALUES).returncode == 0
+    assert json.dumps(values).count("sha256:") == 0
+
+
+SKIP_DIRS = {"node_modules", ".venv", ".git", ".claude", "dist", "build"}
+DIGEST_PIN = re.compile(r"@sha256:[a-f0-9]{64}$")
+# Images that are not pulled from a registry by name and tag, so a digest cannot exist (U-web-settings-66, SEC2-05).
+# Every entry needs a reason; the test refuses an exception that no compose file uses any more.
+COMPOSE_EXCEPTIONS = {
+    "mail-assistant-api:local": "built from backend/Dockerfile by the same compose service (build: next to image:)",
+    "mail-assistant-web:local": "built from apps/web/Dockerfile by the same compose service (build: next to image:)",
+}
+# A Dockerfile FROM that is not pinned is listed here with the reason; empty on purpose.
+DOCKERFILE_EXCEPTIONS: dict[str, str] = {}
+
+
+def repo_files(*names: str) -> list[Path]:
+    found = [
+        p
+        for p in ROOT.rglob("*")
+        if p.is_file()
+        and not SKIP_DIRS & set(p.relative_to(ROOT).parts)
+        and any(fnmatch.fnmatch(p.name, n) for n in names)
+    ]
+    return sorted(found)
+
+
+def dockerfiles() -> list[Path]:
+    return repo_files("Dockerfile", "Dockerfile.*", "*.Dockerfile")
+
+
+def compose_files() -> list[Path]:
+    return repo_files("compose.y*ml", "docker-compose*.y*ml")
+
+
+def display(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix() if path.is_relative_to(ROOT) else path.as_posix()
+
+
+def dockerfile_froms(path: Path) -> list[str]:
+    stages: set[str] = set()
+    problems: list[str] = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        match = re.match(r"^FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?", line, re.IGNORECASE)
+        if not match:
+            continue
+        image, alias = match.groups()
+        where = f"{display(path)}:{number}"
+        if image not in stages and not DIGEST_PIN.search(image) and where not in DOCKERFILE_EXCEPTIONS:
+            problems.append(f"{where} FROM {image} has no @sha256 digest")
+        if alias:
+            stages.add(alias)
+    return problems
+
+
+def compose_images(path: Path) -> list[str]:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    images = [svc["image"] for svc in (doc.get("services") or {}).values() if isinstance(svc, dict) and "image" in svc]
+    return [str(i) for i in images]
+
+
+def unpinned_compose_images() -> list[str]:
+    return [
+        f"{path.relative_to(ROOT).as_posix()}: image {image} has no @sha256 digest"
+        for path in compose_files()
+        for image in compose_images(path)
+        if not DIGEST_PIN.search(image) and image not in COMPOSE_EXCEPTIONS
+    ]
+
+
+def test_given_the_repository_when_scanned_then_every_dockerfile_and_compose_file_is_found() -> None:
+    names = {p.relative_to(ROOT).as_posix() for p in dockerfiles()}
+    assert {
+        "backend/Dockerfile",
+        "apps/web/Dockerfile",
+        "agents/mail-triage/Dockerfile",
+        "agents/assistant/Dockerfile",
+        "channels/chat-gateway/Dockerfile",
+        "mcp-servers/tools/Dockerfile",
+    } <= names
+    assert ROOT / "compose.yaml" in compose_files()
+
+
+def test_given_every_dockerfile_in_the_repo_when_linted_then_every_from_is_pinned_by_digest() -> None:
+    problems = [problem for dockerfile in dockerfiles() for problem in dockerfile_froms(dockerfile)]
+
+    assert problems == []
+
+
+def test_given_every_compose_image_in_the_repo_when_linted_then_each_has_a_digest_or_a_documented_exception() -> None:
+    assert unpinned_compose_images() == []
+
+
+def test_given_the_compose_exceptions_when_listed_then_each_is_used_built_locally_and_explained() -> None:
+    used = {image for path in compose_files() for image in compose_images(path)}
+
+    assert set(COMPOSE_EXCEPTIONS) <= used, "an exception that no compose file uses any more must be removed"
+    assert all(len(reason) > 20 for reason in COMPOSE_EXCEPTIONS.values())
+    doc = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))
+    for image in COMPOSE_EXCEPTIONS:
+        service = next(s for s in doc["services"].values() if s.get("image") == image)
+        assert "build" in service, f"{image} is exempt only because the same service builds it"
+
+
+def test_given_an_unpinned_from_when_linted_then_the_linter_names_the_line(tmp_path: Path) -> None:
+    dockerfile = tmp_path / "Dockerfile"
+    pinned = "caddy:2@sha256:" + "b" * 64
+    lines = ["FROM python:3.13-slim AS a", "FROM a AS b", f"FROM {pinned}"]
+    dockerfile.write_text(chr(10).join(lines), encoding="utf-8")
+
+    problems = dockerfile_froms(dockerfile)
+
+    assert len(problems) == 1
+    assert ":1 FROM python:3.13-slim has no @sha256 digest" in problems[0]
+
+
+def test_given_the_renovate_config_when_read_then_it_keeps_the_digest_pins_up_to_date() -> None:
+    config = json.loads((ROOT / "renovate.json").read_text(encoding="utf-8"))
+
+    assert "docker:pinDigests" in config["extends"]
+
+
+def test_given_the_renovate_config_when_read_then_compose_files_and_dockerfiles_stay_in_its_managers() -> None:
+    config = json.loads((ROOT / "renovate.json").read_text(encoding="utf-8"))
+    enabled = config.get("enabledManagers")
+    disabled = [r for r in config.get("packageRules", []) if r.get("enabled") is False]
+
+    assert "config:recommended" in config["extends"]
+    assert enabled is None or {"dockerfile", "docker-compose"} <= set(enabled)
+    assert not [r for r in disabled if {"dockerfile", "docker-compose"} & set(r.get("matchManagers", []))]
+
+
+# --- U-web-settings-70 (RT3-06): every image reference in the charts and the environment values -------------------
+
+CHARTS = ROOT / "deploy" / "charts"
+TEMPLATE_IMAGE = re.compile(r"^\s*-?\s*image:\s*(\S.*?)\s*$")
+CHART_IMAGE_EXCEPTIONS = {
+    'deploy/charts/app/templates/workloads.yaml: {{ include "app.image" $c.image }}': (
+        "composed by the app.image helper from api.image and web.image; values.schema.json requires a digest for both "
+        "unless environment is local or staging"
+    ),
+    'deploy/charts/worker/templates/migration.yaml: {{ include "worker.image" . }}': (
+        "composed by the worker.image helper from image.*; values.schema.json requires a digest in production"
+    ),
+    'deploy/charts/worker/templates/worker.yaml: {{ include "worker.image" . }}': (
+        "composed by the worker.image helper from image.*; values.schema.json requires a digest in production"
+    ),
+    'deploy/charts/component/templates/component.yaml: {{ include "component.image" . }}': (
+        "scaffold chart for a component that is not deployed yet; its image comes from values and has no schema"
+    ),
+    "deploy/charts/app/values.yaml: api.image": (
+        "empty digest by default on purpose; the schema refuses it unless environment is local or staging"
+    ),
+    "deploy/charts/app/values.yaml: web.image": (
+        "empty digest by default on purpose; the schema refuses it unless environment is local or staging"
+    ),
+    "deploy/charts/worker/values.yaml: image": (
+        "digest is empty by default on purpose; the schema refuses an empty digest in production"
+    ),
+    "deploy/charts/component/values.yaml: image": "scaffold chart; the digest is set by the release that deploys it",
+    "deploy/envs/local/values.yaml: api.image": "local kind cluster: an image loaded from the local build, tag local",
+    "deploy/envs/local/values.yaml: web.image": "local kind cluster: an image loaded from the local build, tag local",
+    "deploy/envs/local/mail-triage.yaml: image": "local values; any production release sets image.digest (schema)",
+}
+
+
+def chart_template_files(root: Path) -> list[Path]:
+    return sorted(
+        p
+        for p in (root / "deploy" / "charts").glob("*/templates/**/*")
+        if p.is_file() and p.suffix in {".yaml", ".yml", ".tpl"}
+    )
+
+
+def chart_values_files(root: Path) -> list[Path]:
+    found = list((root / "deploy" / "charts").glob("*/values.y*ml")) + list((root / "deploy" / "envs").rglob("*.y*ml"))
+    return sorted(found)
+
+
+def image_mappings(node: Any, trail: str = "") -> list[tuple[str, Any]]:
+    found: list[tuple[str, Any]] = []
+    if isinstance(node, dict):
+        for key, value in node.items():
+            here = f"{trail}.{key}" if trail else str(key)
+            if key == "image" and isinstance(value, dict | str):
+                found.append((here, value))
+            else:
+                found += image_mappings(value, here)
+    return found
+
+
+def chart_image_findings(root: Path) -> tuple[list[str], set[str]]:
+    """The unpinned image references under root, and the exception keys that were used."""
+    problems: list[str] = []
+    used: set[str] = set()
+    for key, message in _unpinned_template_images(root) + _unpinned_values_images(root):
+        if key in CHART_IMAGE_EXCEPTIONS:
+            used.add(key)
+        else:
+            problems.append(message)
+    return problems, used
+
+
+def _unpinned_template_images(root: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for path in chart_template_files(root):
+        name = path.relative_to(root).as_posix()
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            match = TEMPLATE_IMAGE.match(line)
+            if match and not DIGEST_PIN.search(match.group(1)):
+                image = match.group(1)
+                found.append((f"{name}: {image}", f"{name}:{number} image {image} has no @sha256 digest"))
+    return found
+
+
+def _unpinned_values_images(root: Path) -> list[tuple[str, str]]:
+    found: list[tuple[str, str]] = []
+    for path in chart_values_files(root):
+        name = path.relative_to(root).as_posix()
+        for trail, image in image_mappings(yaml.safe_load(path.read_text(encoding="utf-8")) or {}):
+            digest = image.get("digest", "") if isinstance(image, dict) else image
+            if not re.fullmatch(r"(?:.*@)?sha256:[a-f0-9]{64}", str(digest)):
+                found.append((f"{name}: {trail}", f"{name}: {trail} has no @sha256 digest"))
+    return found
+
+
+def test_given_every_chart_and_environment_image_when_linted_then_each_has_a_digest_or_an_exception() -> None:
+    problems, _ = chart_image_findings(ROOT)
+
+    assert problems == []
+
+
+def test_given_the_chart_image_exceptions_when_listed_then_each_is_used_and_explained() -> None:
+    _, used = chart_image_findings(ROOT)
+
+    assert set(CHART_IMAGE_EXCEPTIONS) == used, "remove an exception that no chart file uses any more"
+    assert all(len(reason) > 30 for reason in CHART_IMAGE_EXCEPTIONS.values())
+
+
+def test_given_an_unpinned_image_in_a_chart_template_when_linted_then_the_linter_names_the_line(tmp_path: Path) -> None:
+    templates = tmp_path / "deploy" / "charts" / "x" / "templates"
+    templates.mkdir(parents=True)
+    pinned = "curlimages/curl:8.17.0@sha256:" + "e" * 64
+    (templates / "t.yaml").write_text(
+        f"containers:\n  - name: a\n    image: curlimages/curl:8.17.0\n  - name: b\n    image: {pinned}\n",
+        encoding="utf-8",
+    )
+
+    problems, _ = chart_image_findings(tmp_path)
+
+    assert problems == ["deploy/charts/x/templates/t.yaml:3 image curlimages/curl:8.17.0 has no @sha256 digest"]
+
+
+def test_given_the_test_pod_when_read_then_its_image_is_pinned_by_digest() -> None:
+    text = (ROOT / "deploy" / "charts" / "app" / "templates" / "tests" / "test-health.yaml").read_text(encoding="utf-8")
+    images = [m.group(1) for line in text.splitlines() if (m := TEMPLATE_IMAGE.match(line))]
+
+    assert images
+    assert all(DIGEST_PIN.search(image) for image in images), images

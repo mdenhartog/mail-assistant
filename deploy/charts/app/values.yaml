@@ -1,15 +1,23 @@
 # Secure defaults (guardrail-kubernetes / guardrail-helm). Environments override only what differs.
+# Secure by default: an environment that does not say what it is gets the production rules (U-web-settings-57), which the
+# schema enforces: certAlert.enabled true and an image digest for api and web. local and staging may use tags.
+environment: production # local | staging | production
 api:
   image: { repository: ghcr.io/mdenhartog/mail-assistant/api, digest: "", tag: "0.1.0", pullPolicy: IfNotPresent }
   replicas: 1 # exactly one (ADR-0034): the sign-in limits and the code store are per process
   port: 8000
-  env:
-    APP_ENVIRONMENT: production
+  # Plain extra settings. The environment, the database, the trusted proxies and every limit are refused here: the chart
+  # sets them from `environment` and `config` (ADR-0039, schema and template).
+  env: {}
   # Plain settings (not secrets). The address is personal data, so it is set per environment, never here.
   config:
     username: owner
     emailAddress: owner@home.arpa
     publicOrigin: https://app.home.arpa
+    # The addresses of the ingress controller pods, as a JSON list in the env. Required while ingress.enabled: without
+    # them every client shares one rate-limit bucket (ADR-0039). Set per environment to the controller's pod network.
+    trustedProxyCidrs: []
+    trustedProxyHops: 1 # proxies in front of the api; the client is the address the last trusted one appended
     noticeIntervalMinutes: 1 # must equal the agent run interval, rounded up to whole minutes
     smtp:
       host: smtp.home.arpa
@@ -40,12 +48,15 @@ ingress:
   clusterIssuer: private-ca # a cert-manager issuer backed by the private CA
   tls: { enabled: true } # only true is accepted
   hsts: true # only true is accepted; max-age=31536000, no includeSubDomains, no preload
-  # Controller-specific parts come from the environment values (hosting is an open point); none by default.
+  # Controller-specific parts come from the environment values (hosting is an open point, D-7). The HSTS mechanism has no
+  # default: the schema refuses an empty key, so an environment always names how the header is sent.
   hstsAnnotation: { key: "", format: "%s" } # annotation that carries the header; format gets "max-age=..."
   annotations: {}
   controllerConfig: {} # settings of the controller's own ConfigMap (TLS minimum, log format); not rendered here
 
-podDisruptionBudget: { minAvailable: 1 }
+# One api copy (ADR-0034) and a budget that allows one disruption, so a node drain is not blocked. maxUnavailable XOR
+# minAvailable; minAvailable must stay below the replicas (schema and template), or no pod could ever be evicted.
+podDisruptionBudget: { maxUnavailable: 1 }
 networkPolicy:
   enabled: true
   # The one ingress peer for api and web: the controller's namespace AND its pods (never an empty selector).

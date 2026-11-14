@@ -1,8 +1,10 @@
-"""Local mutation run of one pure module with cosmic-ray (plan: test rules and levels, U-web-settings-10).
+"""Mutation gate of the pure security modules with cosmic-ray (ADR-0030 item 4; U-web-settings-10, -11, -44).
 
-Run from `backend/`, one module at a time, without docker:
+`cosmic-ray.toml` lists the modules, the tests that must kill the mutants and the thresholds. Run from `backend/`
+without docker, one module or the whole gate (foreground; the exit code is 1 when a module is over the gate):
 
-    uv run --with cosmic-ray python mutation/run.py app/auth/code_hash.py
+    uv run python mutation/run.py app/auth/code_hash.py
+    uv run python mutation/run.py --all
 
 The session file and the generated config live outside the repository (default: the system temp directory).
 Type annotations are excluded: CPython 3.14 evaluates them lazily, so a mutant in an annotation is equivalent.
@@ -13,19 +15,66 @@ the `ast` module (parameters, return values and annotated assignments). Skipped 
 import argparse
 import ast
 import importlib
+import re
 import shutil
 import subprocess  # the runner only starts cosmic-ray with fixed argument lists
 import sys
 import tempfile
+import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 Position = tuple[int, int]
 Range = tuple[Position, Position]
 
-DEFAULT_TESTS = ("tests/auth", "tests/test_pure_modules.py")
+GATE_CONFIG = Path(__file__).resolve().parents[1] / "cosmic-ray.toml"
 TEST_TIMEOUT_SECONDS = 30
-PASS_THRESHOLD_PERCENT = 85.0
+
+
+@dataclass(frozen=True)
+class Gate:
+    """The mutation gate read from cosmic-ray.toml."""
+
+    modules: tuple[str, ...]
+    tests: tuple[str, ...]
+    max_survived_percent: float
+    target_survived_percent: float
+    skip_annotations: bool
+
+
+def load_gate(path: Path = GATE_CONFIG) -> Gate:
+    """Read the gate from the config file."""
+    section = tomllib.loads(path.read_text(encoding="utf-8"))["mutation"]
+    return Gate(
+        modules=tuple(section["modules"]),
+        tests=tuple(section["tests"]),
+        max_survived_percent=float(section["max-survived-percent"]),
+        target_survived_percent=float(section["target-survived-percent"]),
+        skip_annotations=bool(section["skip-annotations"]),
+    )
+
+
+def missing_from_gate(gate: Gate, marked: set[str]) -> set[str]:
+    """Return the marked modules the gate does not list."""
+    return marked - set(gate.modules)
+
+
+def survival_percent(output: str) -> float:
+    """Read the percentage of surviving mutants from the cr-rate output."""
+    found = re.search(r"\d+(?:\.\d+)?", output)
+    if found is None:
+        raise ValueError(f"cannot read a number from the cr-rate output: {output!r}")
+    return float(found.group())
+
+
+def verdict(gate: Gate, survived_percent: float) -> str:
+    """Return pass, above-target or fail for a module score."""
+    if survived_percent > gate.max_survived_percent:
+        return "fail"
+    if survived_percent > gate.target_survived_percent:
+        return "above-target"
+    return "pass"
 
 
 def annotation_ranges(source: str) -> list[Range]:
@@ -101,25 +150,47 @@ def _run(*command: str) -> None:
     subprocess.run(command, check=True)  # noqa: S603
 
 
+def mutate(gate: Gate, module: str, session_dir: Path, tests: tuple[str, ...]) -> float:
+    """Initialise, filter, execute and rate one module; return the percentage of surviving mutants."""
+    path = Path(module)
+    session_dir.mkdir(parents=True, exist_ok=True)
+    config = session_dir / f"{path.stem}.toml"
+    session = session_dir / f"{path.stem}.sqlite"
+    session.unlink(missing_ok=True)
+    write_config(config, path.as_posix(), tests)
+    _run(_tool("cosmic-ray"), "init", str(config), str(session))
+    if gate.skip_annotations:
+        sys.stdout.write(f"skipped annotation mutants: {_skip_annotation_mutants(session)}\n")
+    _run(_tool("cosmic-ray"), "exec", str(config), str(session))
+    rated = subprocess.run(  # noqa: S603
+        (_tool("cr-rate"), str(session)), check=True, capture_output=True, text=True
+    )
+    return survival_percent(rated.stdout)
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Initialise, filter, execute and rate one module."""
+    """Run one module or the whole gate; exit 1 when a module has more survivors than the gate allows."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("module", help="module path relative to backend/, e.g. app/auth/code_hash.py")
-    parser.add_argument("--tests", nargs="+", default=list(DEFAULT_TESTS), help="test paths that must kill the mutants")
+    parser.add_argument("module", nargs="?", help="module path relative to backend/, e.g. app/auth/code_hash.py")
+    parser.add_argument("--all", action="store_true", help="run every module of the gate (cosmic-ray.toml)")
+    parser.add_argument("--tests", nargs="+", help="test paths that must kill the mutants (default: the gate's)")
     parser.add_argument("--session-dir", type=Path, default=Path(tempfile.gettempdir()) / "mail-assistant-mutation")
     args = parser.parse_args(argv)
+    if args.all == (args.module is not None):
+        parser.error("give either one module or --all")
 
-    module = Path(args.module)
-    args.session_dir.mkdir(parents=True, exist_ok=True)
-    config = args.session_dir / f"{module.stem}.toml"
-    session = args.session_dir / f"{module.stem}.sqlite"
-    session.unlink(missing_ok=True)
-    write_config(config, module.as_posix(), tuple(args.tests))
-    _run(_tool("cosmic-ray"), "init", str(config), str(session))
-    sys.stdout.write(f"skipped annotation mutants: {_skip_annotation_mutants(session)}\n")
-    _run(_tool("cosmic-ray"), "exec", str(config), str(session))
-    _run(_tool("cr-rate"), str(session), "--fail-over", str(100 - PASS_THRESHOLD_PERCENT))
-    return 0
+    gate = load_gate()
+    tests = tuple(args.tests) if args.tests else gate.tests
+    modules = gate.modules if args.all else (Path(args.module).as_posix(),)
+    scores: dict[str, float] = {}
+    for module in modules:
+        scores[module] = mutate(gate, module, args.session_dir, tests)
+        sys.stdout.write(f"{module}: {scores[module]:.2f} % survived ({verdict(gate, scores[module])})\n")
+    limits = f"gate {gate.max_survived_percent:g} %, target {gate.target_survived_percent:g} %"
+    sys.stdout.write(f"\nsummary (survived mutants; {limits})\n")
+    for module, score in scores.items():
+        sys.stdout.write(f"  {score:6.2f} %  {verdict(gate, score):12}  {module}\n")
+    return 1 if any(verdict(gate, score) == "fail" for score in scores.values()) else 0
 
 
 if __name__ == "__main__":

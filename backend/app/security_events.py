@@ -1,9 +1,12 @@
-"""Security event store: one row per kind, client and minute in `web_auth.security_event` (U-web-settings-13).
+"""Security event store: one row per kind, client and minute in `web_auth.security_event` (U-web-settings-13, -54).
 
-The web role may only select and insert there. Repeats of the same kind from one client in one window hit the unique
-constraint and are dropped (``ON CONFLICT DO NOTHING``), so a flood cannot grow the table. The row holds no free text:
-the username only as its keyed digest, never an address or an error message. A failing insert never reaches the
-caller, which is busy refusing a request; only the error class is logged.
+The web role may select and insert there, and update the column ``count`` only. A repeat of the same kind from one
+client in one window hits the unique constraint. For a counted kind (wrong codes) it raises ``count``, so the alert can
+add the wrong codes up. For any other kind the count stays, so a flood writes one row a window. Both run the same
+statement, so a real and a decoy login request take the same steps (AC-30). The row holds no free text: the username
+and the client only as keyed digests, never an address or an error message. A failing insert never reaches the caller,
+which is busy refusing a request; only the
+error class is logged.
 """
 
 import logging
@@ -11,26 +14,31 @@ import logging
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.auth.event_rules import client_class, event_window, result_for, valid_username_hash
+from app.auth.event_rules import client_class, counts_repeats, event_window, result_for, valid_username_hash
+from app.auth.request_code_rules import client_hash
 from app.clock import Clock
 from app.db import Database, DatabaseUnavailable
 
 logger = logging.getLogger(__name__)
 
-_INSERT = text(
+# One statement for every kind, so every refusal takes the same step (AC-30): a repeat raises ``count`` by 1 for a
+# counted kind and changes nothing for any other (the guard of migration 0012 allows no other change).
+_RECORD = text(
     'INSERT INTO web_auth.security_event (kind, result, username_hash, request_id, client_key, "window") '
     "VALUES (:kind, :result, :username_hash, :request_id, :client_key, :window) "
-    "ON CONFLICT ON CONSTRAINT uq_security_event_kind_client_window DO NOTHING"
+    "ON CONFLICT ON CONSTRAINT uq_security_event_kind_client_window "
+    "DO UPDATE SET count = web_auth.security_event.count + 1 WHERE :counted"
 )
 
 
 class SecurityEvents:
     """Writes `web_auth.security_event` as the web role."""
 
-    def __init__(self, database: Database, clock: Clock) -> None:
-        """Keep the database access and the clock."""
+    def __init__(self, database: Database, clock: Clock, hash_key: bytes) -> None:
+        """Keep the database access, the clock and the key of the client digest."""
         self._database = database
         self._clock = clock
+        self._hash_key = hash_key
 
     async def record(self, kind: str, request_id: str, client: str, username_hash: str | None = None) -> None:
         """Record one event and log one line about it.
@@ -38,7 +46,7 @@ class SecurityEvents:
         Args:
             kind: One of the kinds of the table.
             request_id: The request id of the refused or logged request.
-            client: The client key (U-24); only its family is logged.
+            client: The client key (U-24); only its family is logged and only its keyed digest is stored.
             username_hash: The keyed digest of a username (U-10), never the username.
 
         Raises:
@@ -55,11 +63,12 @@ class SecurityEvents:
             "result": result,
             "username_hash": username_hash,
             "request_id": request_id,
-            "client_key": client,
+            "client_key": client_hash(self._hash_key, client),
             "window": event_window(self._clock.now()),
+            "counted": counts_repeats(kind),
         }
         try:
             async with self._database.session() as session, session.begin():
-                await session.execute(_INSERT, parameters)
+                await session.execute(_RECORD, parameters)
         except (DatabaseUnavailable, SQLAlchemyError) as error:
             logger.error("security_event.failed kind=%s error_class=%s", kind, type(error).__name__)

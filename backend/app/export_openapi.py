@@ -36,6 +36,7 @@ def _document_settings() -> Settings:
         email_address="export@example.invalid",
         smtp_host="smtp.example.invalid",
         smtp_port=587,
+        smtp_from="export@example.invalid",
         smtp_user="export",
         smtp_password=SecretStr("export"),
         code_hash_key=SecretStr("a" * 32),

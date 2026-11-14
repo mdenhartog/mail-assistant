@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, time
 from typing import TYPE_CHECKING
 
-from app.usecases.web_notice import WebChange
+from app.usecases.web_notice import OpenBurst, WebChange
 from schedule_policy.policy import TimePolicy
 
 if TYPE_CHECKING:
@@ -45,6 +45,10 @@ class FakeNoticeStore:
 
     async def pending_after(self, version: int) -> list[WebChange]:
         return sorted((c for c in self.changes if c.version > version), key=lambda c: c.version)
+
+    async def open_burst(self, after: int, now: datetime) -> OpenBurst | None:
+        live = sorted((t for t in self.tokens if t.version > after and t.expires_at > now), key=lambda t: t.version)
+        return OpenBurst(live[0].burst_id, live[0].first_version, live[0].before) if live else None
 
     async def record_token(self, token: NoticeToken) -> None:
         self._maybe_fail("record_token")

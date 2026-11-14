@@ -89,7 +89,7 @@ async def test_given_the_web_role_when_it_inserts_selects_and_updates_the_allowe
 
     assert await web.fetchval("select quiet_start from settings.schedule") == 660
     assert await owner.fetchval("select count(*) from settings.settings_change") == 3
-    assert await web.fetchval("select settings.contract_version()") == 1
+    assert await web.fetchval("select settings.contract_version()") == 2
 
 
 @pytest.mark.parametrize(
@@ -170,8 +170,8 @@ async def test_given_the_web_role_when_it_works_the_web_auth_tables_then_it_has_
     web: asyncpg.Connection,
 ) -> None:
     await web.execute(
-        "insert into web_auth.login_request (id, username_key, code_hash, expires_at, created_at) "
-        f"values ('r1', '{'a' * 64}', '{'b' * 64}', now(), now())"
+        "insert into web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
+        f"values ('r1', '{'a' * 64}', '{'e' * 64}', '{'b' * 64}', now(), now())"
     )
     await web.execute("update web_auth.login_request set attempts = 1")
     await web.execute(
@@ -181,7 +181,7 @@ async def test_given_the_web_role_when_it_works_the_web_auth_tables_then_it_has_
     await web.execute("update web_auth.session set last_seen_at = now()")
     await web.execute(
         'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
-        "values ('session_start', 'ok', 'q1', 'k1', 1)"
+        "values ('session_start', 'ok', 'q1', 'k1', floor(extract(epoch from now()) / 60))"
     )
 
     assert await web.fetchval("select count(*) from web_auth.security_event") == 1
@@ -243,7 +243,6 @@ async def test_given_the_agent_role_when_it_inserts_and_updates_the_web_lock_the
     [
         "select * from web_auth.session",
         "select * from web_auth.login_request",
-        "select * from web_auth.security_event",
         'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
         "values ('session_start', 'ok', 'q1', 'k1', 1)",
         "delete from web_auth.session",
@@ -264,8 +263,8 @@ async def test_given_the_agent_role_when_it_works_the_notice_token_and_the_curso
     await agent.execute("insert into poll_state (id, history_id) values (1, '1')")
     await agent.execute("update poll_state set web_notice_version = 4")
     await agent.execute(
-        "insert into web_notice_token (token, version, before, created_at, expires_at) "
-        "values ('t1', 2, '{}', now(), now())"
+        "insert into web_notice_token (token, version, before, created_at, expires_at, burst_id, first_version) "
+        "values ('t1', 2, '{}', now(), now(), 'b1', 2)"
     )
     await agent.execute("update web_notice_token set version = 3")
 

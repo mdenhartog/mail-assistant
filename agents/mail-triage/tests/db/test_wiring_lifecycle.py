@@ -28,6 +28,8 @@ def _settings(database_url: str, password: str = "runtime-lifecycle-test-only") 
             "DATABASE_OWNER_URL": database_url,
             "RUNTIME_ROLE_PASSWORD": password,
             "WEB_ROLE_PASSWORD": "web-lifecycle-test-only",
+            "ENVIRONMENT": "test",  # the test database has no TLS
+            "DATABASE_SSL": "disable",
         }
     )
 

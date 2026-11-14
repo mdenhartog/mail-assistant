@@ -21,6 +21,7 @@ dev = [
     "alembic>=1.20.1",
     "asyncpg-stubs>=0.31.2",
     "bandit>=1.9.4",
+    "cosmic-ray>=8.7.0",
     "cryptography>=50.0.2",
     "deptry>=0.25.1",
     "diff-cover>=11.0.1",
@@ -93,7 +94,8 @@ venv = ".venv"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
-addopts = "-q --strict-markers --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90"
+markers = ["timing: wall-clock comparison of the decoy and real paths; noisy, so it runs in the nightly workflow only"]
+addopts = '-q --strict-markers -m "not timing" --cov=app --cov-branch --cov-report=term-missing --cov-fail-under=90'
 
 [tool.coverage.run]
 omit = ["app/__main__.py"]
@@ -102,7 +104,7 @@ omit = ["app/__main__.py"]
 exclude_dirs = ["tests", ".venv"]
 
 [tool.deptry.per_rule_ignores]
-DEP002 = ["uvicorn", "schedule-policy", "asyncpg"]  # asyncpg: the driver SQLAlchemy loads by name; uvicorn: the server in the Dockerfile; schedule-policy: no code imports it yet (U-web-settings-03+)
+DEP002 = ["uvicorn", "asyncpg"]  # asyncpg: the driver SQLAlchemy loads by name; uvicorn: the server in the Dockerfile
 
 [tool.vulture]
 paths = ["app"]

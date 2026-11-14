@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
   "required": [
+    "environment",
     "api",
     "web",
     "ingress",
@@ -63,6 +64,11 @@
           "type": "object",
           "additionalProperties": {
             "type": "string"
+          },
+          "propertyNames": {
+            "not": {
+              "pattern": "^[Aa][Pp][Pp]_([Ee][Nn][Vv][Ii][Rr][Oo][Nn][Mm][Ee][Nn][Tt]|[Dd][Aa][Tt][Aa][Bb][Aa][Ss][Ee]_.*|[Tt][Rr][Uu][Ss][Tt][Ee][Dd]_[Pp][Rr][Oo][Xx][Yy]_.*|.*_[Pp][Ee][Rr]_.*|[Cc][Oo][Dd][Ee][Ss]_[Pp][Ee][Rr]_[Hh][Oo][Uu][Rr]|[Mm][Aa][Xx]_[Aa][Tt][Tt][Ee][Mm][Pp][Tt][Ss]|[Rr][Aa][Tt][Ee]_.*|[Oo][Pp][Ee][Nn]_[Ll][Oo][Gg][Ii][Nn]_.*|[Ll][Ii][Vv][Ee]_.*|[Ll][Oo][Gg][Ii][Nn]_[Rr][Ee][Qq][Uu][Ee][Ss][Tt][Ss]_.*|[Bb][Oo][Dd][Yy]_[Ll][Ii][Mm][Ii][Tt]_[Bb][Yy][Tt][Ee][Ss]|[Cc][Oo][Dd][Ee]_[Tt][Tt][Ll]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Rr][Ee][Ss][Ee][Nn][Dd]_[Cc][Oo][Oo][Ll][Dd][Oo][Ww][Nn]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Ii][Dd][Ll][Ee]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Aa][Bb][Ss][Oo][Ll][Uu][Tt][Ee]_[Ss][Ee][Cc][Oo][Nn][Dd][Ss]|[Uu][Ss][Ee][Rr][Nn][Aa][Mm][Ee]|[Ee][Mm][Aa][Ii][Ll]_[Aa][Dd][Dd][Rr][Ee][Ss][Ss]|[Ss][Mm][Tt][Pp]_[Hh][Oo][Ss][Tt]|[Ss][Mm][Tt][Pp]_[Pp][Oo][Rr][Tt]|[Ss][Mm][Tt][Pp]_[Ff][Rr][Oo][Mm]|[Pp][Uu][Bb][Ll][Ii][Cc]_[Oo][Rr][Ii][Gg][Ii][Nn]|[Nn][Oo][Tt][Ii][Cc][Ee]_[Ii][Nn][Tt][Ee][Rr][Vv][Aa][Ll]_[Mm][Ii][Nn][Uu][Tt][Ee][Ss]|[Cc][Oo][Dd][Ee]_[Hh][Aa][Ss][Hh]_[Kk][Ee][Yy]|[Cc][Ss][Rr][Ff]_[Kk][Ee][Yy]|[Uu][Ss][Ee][Rr][Nn][Aa][Mm][Ee]_[Hh][Aa][Ss][Hh]_[Kk][Ee][Yy]|[Ss][Mm][Tt][Pp]_[Uu][Ss][Ee][Rr]|[Ss][Mm][Tt][Pp]_[Pp][Aa][Ss][Ss][Ww][Oo][Rr][Dd])$"
+            }
           }
         },
         "resources": {
@@ -134,6 +140,13 @@
     }
   },
   "properties": {
+    "environment": {
+      "enum": [
+        "local",
+        "staging",
+        "production"
+      ]
+    },
     "api": {
       "allOf": [
         {
@@ -168,7 +181,9 @@
                 "emailAddress",
                 "publicOrigin",
                 "noticeIntervalMinutes",
-                "smtp"
+                "smtp",
+                "trustedProxyCidrs",
+                "trustedProxyHops"
               ],
               "properties": {
                 "username": {
@@ -208,6 +223,18 @@
                       "pattern": "^[^@\\s]+@[^@\\s]+$"
                     }
                   }
+                },
+                "trustedProxyCidrs": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[0-9a-fA-F:.]+/[0-9]{1,3}$"
+                  },
+                  "uniqueItems": true
+                },
+                "trustedProxyHops": {
+                  "type": "integer",
+                  "minimum": 1
                 }
               }
             }
@@ -226,7 +253,8 @@
         "localDomainSuffix",
         "clusterIssuer",
         "tls",
-        "hsts"
+        "hsts",
+        "hstsAnnotation"
       ],
       "allOf": [
         {
@@ -362,7 +390,9 @@
           "additionalProperties": false,
           "properties": {
             "key": {
-              "type": "string"
+              "type": "string",
+              "pattern": "^\\S+$",
+              "description": "The annotation that carries the HSTS header; the mechanism is controller specific and must not be empty."
             },
             "format": {
               "type": "string",
@@ -371,7 +401,11 @@
                 "pattern": "includeSubDomains|preload"
               }
             }
-          }
+          },
+          "required": [
+            "key",
+            "format"
+          ]
         },
         "annotations": {
           "type": "object",
@@ -389,8 +423,30 @@
     },
     "podDisruptionBudget": {
       "type": "object",
-      "required": [
-        "minAvailable"
+      "additionalProperties": false,
+      "properties": {
+        "maxUnavailable": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minAvailable": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 0,
+          "description": "Must stay below api.replicas, which is exactly 1 (ADR-0034), so only 0 is valid; the template also checks web."
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "maxUnavailable"
+          ]
+        },
+        {
+          "required": [
+            "minAvailable"
+          ]
+        }
       ]
     },
     "networkPolicy": {
@@ -484,5 +540,97 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "ingress"
+        ],
+        "properties": {
+          "ingress": {
+            "required": [
+              "enabled"
+            ],
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "api": {
+            "properties": {
+              "config": {
+                "properties": {
+                  "trustedProxyCidrs": {
+                    "minItems": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "environment"
+        ],
+        "properties": {
+          "environment": {
+            "const": "production"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "certAlert"
+        ],
+        "properties": {
+          "certAlert": {
+            "properties": {
+              "enabled": {
+                "const": true
+              }
+            }
+          },
+          "api": {
+            "properties": {
+              "image": {
+                "required": [
+                  "digest"
+                ],
+                "properties": {
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          },
+          "web": {
+            "properties": {
+              "image": {
+                "required": [
+                  "digest"
+                ],
+                "properties": {
+                  "digest": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

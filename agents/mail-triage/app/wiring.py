@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.adapters.gmail_read import GmailReader
 from app.adapters.gmail_send import GmailSender
@@ -26,17 +26,29 @@ from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
-from app.db.migrate import ROLES, RuntimeRoleNotSafe, SchemaNotReady, check_schema, migrate_database
+from app.db.engine import make_engine
+from app.db.migrate import (
+    ROLES,
+    MigrationStepFailed,
+    RuntimeRoleNotSafe,
+    SchemaNotReady,
+    check_schema,
+    migrate_database,
+    purge_database,
+)
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
+from app.db.pg_security_events import PgSecurityEvents
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
 from app.db.pg_web_lock import PgWebLock
 from app.db.pg_web_notice import PgWebNotice
+from app.db.purge import SYSTEM_CLOCK
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
+from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
 from app.usecases.overview import OverviewService
@@ -55,14 +67,10 @@ if TYPE_CHECKING:
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
+    from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
 
 logger = logging.getLogger(__name__)
-
-
-def make_engine(url: str) -> AsyncEngine:
-    """The one database engine; bound parameters (a stored time zone, a typed answer) never reach an error or a log."""
-    return create_async_engine(url, hide_parameters=True)
 
 
 HEARTBEAT = Path("/tmp/heartbeat")  # noqa: S108  # nosec B108 - the container's own tmpfs; the probe reads it
@@ -153,10 +161,11 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         SettingsDialog(settings_store, outbox, conversations, settings.telegram_allowed_user_id, now, policy.in_use)
     )
     web_notices = PgWebNotice(sessions)
+    web_lock = PgWebLock(sessions)
     router.register_web_actions(
         WebNoticeActions(
             web_notices,
-            PgWebLock(sessions),
+            web_lock,
             settings_store,
             outbox,
             chat_id=settings.telegram_allowed_chat_id,
@@ -171,6 +180,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),
         web_notice=WebNotice(web_notices, outbox, new_token),
+        code_alert=CodeAlert(PgSecurityEvents(sessions), web_lock, outbox),
         store=store,
         inbox=inbox,
         router=router,
@@ -198,9 +208,9 @@ async def migrate(settings: MigrateSettings) -> int:
     """The migrate command: schema, runtime role and grants, as the owner role. Returns an exit code."""
     try:
         passwords = {role.name: getattr(settings, role.password_setting).get_secret_value() for role in ROLES}
-        await migrate_database(settings.database_owner_url.get_secret_value(), passwords)
-    except RuntimeRoleNotSafe as error:
-        logger.error("migration failed: %s", error)  # names the role only, never a password or a URL
+        await migrate_database(settings.database_owner_url.get_secret_value(), passwords, settings.database_tls)
+    except (RuntimeRoleNotSafe, MigrationStepFailed) as error:
+        logger.error("migration failed: %s", error)  # names the role or the step only, never a password or a URL
         return EXIT_MIGRATION_FAILED
     except Exception as error:  # whatever failed, the job must end non-zero without echoing a value
         logger.error("migration failed: %s", type(error).__name__)  # no traceback: it may carry the URL
@@ -209,12 +219,22 @@ async def migrate(settings: MigrateSettings) -> int:
     return EXIT_OK
 
 
+async def purge(settings: MigrateSettings, clock: Clock = SYSTEM_CLOCK) -> int:
+    """The purge command: the retention purge alone, as the owner role. Returns an exit code."""
+    try:
+        await purge_database(settings.database_owner_url.get_secret_value(), settings.database_tls, clock)
+    except Exception as error:  # whatever failed, the command must end non-zero without echoing a value
+        logger.error("purge failed: %s", type(error).__name__)  # no traceback: it may carry the URL
+        return EXIT_MIGRATION_FAILED
+    return EXIT_OK
+
+
 async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real Google, Telegram and database
     """Run the agent until it is told to stop. Returns an exit code."""
     from google.oauth2.credentials import Credentials  # noqa: PLC0415
     from googleapiclient.discovery import build  # noqa: PLC0415
 
-    engine = make_engine(settings.database_url.get_secret_value())
+    engine = make_engine(settings.database_url.get_secret_value(), settings.database_tls)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.connect() as lock_connection:
         if not await repos.try_lock(lock_connection):

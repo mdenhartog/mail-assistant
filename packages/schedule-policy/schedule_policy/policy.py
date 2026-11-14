@@ -15,6 +15,17 @@ MIN_WINDOW_MINUTES = 60
 MAX_WINDOW_MINUTES = 12 * 60
 MAX_SHOWN_LENGTH = 64  # a refused zone text is echoed back at most this long
 
+# Every rule id ``validate`` can report: a consumer that maps rules to fields checks its map against this list.
+RULES: tuple[str, ...] = (
+    "zone_unknown",
+    "time_not_whole_minute",
+    "time_has_zone",
+    "quiet_window_empty",
+    "quiet_window_length",
+    "overview_in_quiet_hours",
+    "remind_in_quiet_hours",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class TimePolicy:

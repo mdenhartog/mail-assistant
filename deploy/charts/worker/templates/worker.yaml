@@ -32,12 +32,11 @@ spec:
         - name: worker
           image: {{ include "worker.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if .Values.env }}
           env:
+            {{- include "worker.dbTls.env" . | nindent 12 }}
             {{- range $k, $v := .Values.env }}
             - { name: {{ $k }}, value: {{ $v | quote }} }
             {{- end }}
-          {{- end }}
           {{- if .Values.envFromSecret }}
           envFrom:
             - secretRef: { name: {{ .Values.envFromSecret }} }
@@ -56,8 +55,10 @@ spec:
             periodSeconds: 30
           volumeMounts:
             - { name: tmp, mountPath: /tmp }
+            {{- include "worker.dbTls.mount" . | nindent 12 }}
       volumes:
         - { name: tmp, emptyDir: {} }
+        {{- include "worker.dbTls.volume" . | nindent 8 }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
