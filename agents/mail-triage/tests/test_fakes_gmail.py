@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from googleapiclient.errors import HttpError
 
@@ -12,7 +14,7 @@ def labels_of(gmail: FakeGmail, mid: str) -> set[str]:
     return set(gmail.users().messages().get(userId="me", id=mid).execute()["labelIds"])
 
 
-def modify(gmail: FakeGmail, mid: str, add: list[str] | None = None, remove: list[str] | None = None) -> dict:
+def modify(gmail: FakeGmail, mid: str, add: list[str] | None = None, remove: list[str] | None = None) -> dict[str, Any]:
     body = {"addLabelIds": add or [], "removeLabelIds": remove or []}
     return gmail.users().messages().modify(userId="me", id=mid, body=body).execute()
 
