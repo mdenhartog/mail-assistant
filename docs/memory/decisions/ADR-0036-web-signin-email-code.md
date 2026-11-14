@@ -40,3 +40,8 @@ Sign-in by **username and a one-time code sent by e-mail**. There is no identity
 - A link in the e-mail (magic link): no typing, but mail scanners and link previews can use the link before Marco does.
 - Password with a second factor: more stored secrets and more surface for one user.
 - The agent sends the e-mail through Gmail: no mail credential in the backend, but the code would arrive only after the next agent run, too slow for a code with a short life.
+
+## Amendment 2026-11-14 (phase 8, consistency with D-16 and ADR-0039)
+
+- **Every request counts towards the hourly cap.** The sentence under Limits, "the cooldown counts every request; the hour counts only sent codes", is superseded by D-16 (Marco, 2026-11-13; see the paragraph "A failed send does not change the answer"): the cooldown and the cap of 5 an hour count every code request from its creation time, also one whose send failed and for known and unknown usernames alike. Spec AC-29, AC-30 and AC-31 say the same.
+- **The wrong-code alert is R1.** "Still R2" in the same bullet is superseded by ADR-0039: the alert after 5 wrong or expired codes in 10 minutes and the automatic web lock after 15 wrong codes in 24 hours are built and part of R1. What counts as a wrong code is in ADR-0039 amendments 1 and 2 (D-17, D-20).

@@ -71,7 +71,8 @@ Locally, `docker compose --profile dev up` (or `--profile components`) starts `m
 
 - the mail audit trail (`audit_log`, `overview_log`) is append-only: select and insert, never update or delete;
 - mail, alert, draft, token, poll and catch-up tables: select, insert and update, never delete;
-- `conversation` (the one pending dialogue): the only table with delete;
+- `conversation` (the one pending dialogue) and the web tables the agent keeps itself (`web_notice_token`, the one row of `web_auth.web_lock`): the only tables with delete (`grants.sql`);
+- `web_auth.security_event`: column select of `id`, `kind`, `at` and `count`, nothing else (the wrong-code alert, ADR-0039);
 - `settings.schedule`: select, insert and update of the single settings row. The change history `settings.settings_change` can only be read; only the owner purge deletes from it (below).
 
 Two triggers on `settings.schedule` make the database, not the application, decide what a change is. The guard refuses a write that does not raise `version` by exactly one and a write whose channel does not match the login role. The audit trigger writes one record per change (time, channel, actor, old and new values, and the login role taken from `session_user`), so the runtime role means the channel `telegram` and cannot claim another one. The runtime role cannot insert into the history directly.
