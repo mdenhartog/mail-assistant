@@ -206,11 +206,20 @@ def _facts(**overrides: list[datetime]) -> RequestFacts:
     return RequestFacts(**values)
 
 
-def test_given_a_client_key_when_hashed_then_it_is_a_keyed_hmac_with_its_own_label() -> None:
-    expected = hmac.new(b"k" * 32, b"client:10.0.0.1", hashlib.sha256).hexdigest()
+def _old_client_hash(key: bytes, client: str) -> str:
+    return hmac.new(key, b"client:" + client.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def test_given_a_client_key_when_hashed_then_it_is_a_hmac_under_a_derived_subkey() -> None:
+    subkey = hmac.new(b"k" * 32, b"client-key", hashlib.sha256).digest()
+    expected = hmac.new(subkey, b"10.0.0.1", hashlib.sha256).hexdigest()
 
     assert client_hash(b"k" * 32, "10.0.0.1") == expected
     assert len(expected) == 64
+
+
+def test_given_a_client_key_when_hashed_then_it_differs_from_the_old_formula() -> None:
+    assert client_hash(b"k" * 32, "10.0.0.5") != _old_client_hash(b"k" * 32, "10.0.0.5")
 
 
 def test_given_other_keys_or_clients_when_hashed_then_the_result_differs_and_is_not_the_username_key() -> None:
@@ -219,7 +228,16 @@ def test_given_other_keys_or_clients_when_hashed_then_the_result_differs_and_is_
     assert client_hash(b"j" * 32, "10.0.0.1") != base
     assert client_hash(b"k" * 32, "10.0.0.2") != base
     assert client_hash(b"k" * 32, "10.0.0.1") == base
-    assert username_key(b"k" * 32, "10.0.0.1") != base  # a username typed like an address cannot collide
+    assert username_key(b"k" * 32, "10.0.0.1") != base
+
+
+@pytest.mark.parametrize("key", [b"k" * 32, b"j" * 32])
+def test_given_a_username_typed_like_a_client_label_when_keyed_then_it_never_equals_the_client_digest(
+    key: bytes,
+) -> None:
+    assert username_key(key, "client:10.0.0.5") != client_hash(key, "10.0.0.5")
+    assert username_key(key, "10.0.0.5") != client_hash(key, "10.0.0.5")
+    assert username_key(key, "client:10.0.0.5") == hmac.new(key, b"client:10.0.0.5", hashlib.sha256).hexdigest()
 
 
 def test_given_fewer_held_than_the_limit_when_asked_then_no_wait() -> None:

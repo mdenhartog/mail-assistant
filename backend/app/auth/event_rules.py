@@ -50,9 +50,12 @@ def event_window(now: datetime) -> int:
 
 
 def client_class(client: str) -> str:
-    """Return `ipv4`, `ipv6` or `other` for a client key; the key itself is never logged."""
+    """Return `ipv4`, `ipv6` or `other` for a client key, an address or a prefix like `2001:db8::/64`.
+
+    The key itself is never logged.
+    """
     try:
-        return f"ipv{ipaddress.ip_address(client).version}"
+        return f"ipv{ipaddress.ip_network(client, strict=False).version}"
     except ValueError:
         return "other"
 
