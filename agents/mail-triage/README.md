@@ -37,6 +37,8 @@ The agent starts in two steps. The first runs once as the database owner, the se
 
 `python -m app.consent` (the one-time Gmail consent) no longer creates tables either. It stops and names the migrate job when the schema is not current, so run the migrate job first.
 
+`CONSENT_BIND_HOST` (default `127.0.0.1`; only `127.0.0.1` and `0.0.0.0` are accepted) sets where the one-shot callback server listens. In a container the host browser cannot reach 127.0.0.1 inside it, so the local stack service `mail-triage-consent` sets `0.0.0.0` and publishes the port on `127.0.0.1:8765` of the host only. The redirect address that Google and the browser see is always `http://127.0.0.1:8765/callback` (register exactly that in the Google client). The state, PKCE, the single request and the 300 second wait are unchanged. Saving the token replaces the one row of `oauth_token`; the old ciphertext is never read. In the local stack run `node scripts/local-stack.mjs consent`.
+
 ### Retention purge (U-web-settings-49)
 
 The last step of the migrate job, run as the owner role, deletes `settings.settings_change` rows older than one year and
@@ -49,7 +51,7 @@ There is no CronJob and no other workload holds the owner secret.
 | Exit code | Meaning |
 |---|---|
 | 2 | Missing or invalid configuration (names the key, never the value) |
-| 3 | No Gmail consent stored yet |
+| 3 | No Gmail consent stored yet, or the stored token cannot be decrypted with the current `TOKEN_ENCRYPTION_KEY` (run the consent again) |
 | 4 | Another copy of the agent holds the lock |
 | 5 | `serve`: the schema is not at the expected head, run the migrate job |
 | 6 | `migrate` or `purge`: the migration or the purge failed |

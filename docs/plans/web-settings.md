@@ -1322,6 +1322,26 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   3. Given the name in neither file, When `up` runs, Then it stops before any docker call naming the key (type: error; level: unit).
   4. Given the script source, When searched, Then it never writes to `.env` (type: security; level: unit).
 
+### U-web-settings-76: The Gmail consent runs in the agent container for the local stack (R1; test environment; D-23)
+
+- Layer: infra, tooling, agent
+- Contract: `python -m app.consent` takes its bind host from `CONSENT_BIND_HOST` (default `127.0.0.1`; only `127.0.0.1` and `0.0.0.0` are accepted), and the redirect address that the browser and Google see stays `http://127.0.0.1:8765/callback`; state, PKCE, the one-shot server and the 300 second wait are unchanged. The compose profile `local` gets a one-shot service `mail-triage-consent` (the same image definition, hardening, CA mount, database and Google settings as `mail-triage`, shared by YAML anchor, and no Telegram or model secret; `CONSENT_BIND_HOST=0.0.0.0` inside the container; `restart: "no"`; port published as `127.0.0.1:8765:8765` only, ADR-0037; after the database is healthy and the migrate job has completed). `node scripts/local-stack.mjs consent` refuses when the database is not running or a Google setting is missing (names only), runs `run --rm --build --service-ports -T mail-triage-consent` with the project name and env files of the stack, passes the terminal through, prints only the Google address (the output of the module) and tells Marco to run `up` again. Saving the token replaces the one row of `oauth_token`. A stored token that cannot be decrypted (a new `TOKEN_ENCRYPTION_KEY`) stops `serve` with exit code 3 and the message "the stored Gmail token cannot be decrypted with the current TOKEN_ENCRYPTION_KEY: run node scripts/local-stack.mjs consent", without a traceback and without a key or token in the log. Documentation: `docs/operations/local-stack.md`, `deploy/local/README.md`, the agent README (exit code 3, `CONSENT_BIND_HOST`).
+- Files: `agents/mail-triage/app/consent.py`, `agents/mail-triage/app/wiring.py`, `agents/mail-triage/compose.yaml`, `scripts/local-stack.mjs`, `scripts/local-stack.test.mjs`, `agents/mail-triage/tests/test_consent.py`, `agents/mail-triage/tests/test_token_unreadable.py`, `agents/mail-triage/tests/adapters/test_token_store.py`, `agents/mail-triage/tests/infra/test_local_stack.py`, `agents/mail-triage/README.md`, `docs/operations/local-stack.md`, `deploy/local/README.md`
+- Depends on: U-web-settings-73, U-web-settings-75
+- Parallel: yes
+- Guardrails: guardrail-oauth2-oidc, guardrail-gmail, guardrail-compose, guardrail-docker, guardrail-tls-certificates
+- Criteria:
+  1. Given no setting, `CONSENT_BIND_HOST=0.0.0.0` or any other value, When the bind host is read, Then it is `127.0.0.1`, `0.0.0.0` or a refusal, and the redirect address is `http://127.0.0.1:8765/callback` in every case (type: security; level: unit).
+  2. Given a server bound to `0.0.0.0`, When the browser calls back on the loopback, Then the query is received once, other paths get 404, and without a callback the wait ends with "no redirect arrived in time" (type: edge; level: unit).
+  3. Given the compose files, When parsed, Then `mail-triage-consent` is in the profile `local` only, is one-shot, publishes only `127.0.0.1:8765:8765`, has the hardening, the CA mount and the database and Google settings of the agent by anchor, and holds no Telegram or model secret (type: security; level: unit).
+  4. Given the database running, When `consent` runs, Then it calls `run --rm --build --service-ports -T mail-triage-consent` with the project name and the three env files, passes the terminal through and says to run `up` (type: happy; level: unit).
+  5. Given the database not running, a missing Google setting or extra arguments, When `consent` runs, Then it stops before the one-shot run and names what to do (type: error; level: unit).
+  6. Given any outcome, When `consent` ends, Then no value of `.env` was printed (type: security; level: unit).
+  7. Given a row sealed with a lost key, When the consent saves with the new key, Then row 1 is replaced and the old ciphertext is never read (type: edge; level: db).
+  8. Given an undecryptable stored token, When `serve` loads it, Then it stops with exit code 3 and the message, with no traceback, key or token logged (type: error; level: unit).
+  9. Given the authorisation address, When prompted, Then only the instruction and the address are printed, flushed (type: security; level: unit).
+  10. Given the docs, When read, Then they name the consent step, the redirect address to register, the new-key case and exit code 3 (type: happy; level: unit).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1465,6 +1485,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-19 U-49 (retention purge, 90 days for security events, one year for audit) and an index on `(kind, at)` move into R1 and are a gate before production (Marco, 2026-11-13; U-49, U-65).
 - D-20 the lock counts only wrong codes against the owner's real requests, there are no swallowed decoys and the lock leaves no trace (challenge round 3, moderator decision; ADR-0039 amendment 2; U-68, U-69, U-71).
 - D-21 the ingress controller is Traefik (ADR-0040, Marco agreed 2026-11-14);  HSTS, redirect and TLS minimum are a gate before production (round 3, SEC3-02, formerly mixed up with D-7 which is the certificate expiry alert).
+- D-23 the Gmail consent runs in the agent container for the local stack (Marco, 2026-11-14).
 - D-22 the feature is tested for a week in Docker before any production step: the stack runs from the main checkout under the project name `mail-assistant`, reachable from this computer only, with the real limits (U-73); production is prepared, not deployed (U-74) (Marco, 2026-11-14).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
@@ -1476,7 +1497,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 75 units (72 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73 and U-74 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 76 units (73 in R1, 3 in R2 (U-45, U-46, U-47: built 2026-11-14); U-73, U-74, U-75 and U-76 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 

@@ -306,5 +306,17 @@ def test_given_the_compose_source_when_read_then_the_consent_service_shares_the_
 
     assert "<<: *" in text
     assert text.count("DATABASE_CA_FILE: /certs/ca.crt") == 2  # migrate has its own; the agent and consent share one
-    assert text.count("GOOGLE_CLIENT_SECRET:") == 1
-    assert text.count("TOKEN_ENCRYPTION_KEY:") == 1
+    assert len(re.findall(r"^\s+GOOGLE_CLIENT_SECRET:", text, re.MULTILINE)) == 1
+    assert len(re.findall(r"^\s+TOKEN_ENCRYPTION_KEY:", text, re.MULTILINE)) == 1
+
+
+def test_given_the_docs_when_read_then_they_explain_the_consent_step_the_redirect_uri_and_the_new_key() -> None:
+    operations = (ROOT / "docs" / "operations" / "local-stack.md").read_text(encoding="utf-8")
+    deploy = (ROOT / "deploy" / "local" / "README.md").read_text(encoding="utf-8")
+    readme = (ROOT / "agents" / "mail-triage" / "README.md").read_text(encoding="utf-8")
+
+    for text in (operations, deploy):
+        assert "node scripts/local-stack.mjs consent" in text
+        assert "http://127.0.0.1:8765/callback" in text
+    assert "TOKEN_ENCRYPTION_KEY" in operations
+    assert re.search(r"^\| 3 \|.*cannot be decrypted", readme, re.MULTILINE)
