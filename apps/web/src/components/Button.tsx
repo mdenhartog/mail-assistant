@@ -10,16 +10,17 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const BASE =
-  "inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-pill border-2 border-transparent " +
-  "font-semibold text-center motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-spring " +
+  "inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-pill " +
+  "text-center motion-safe:transition-transform motion-safe:duration-200 motion-safe:ease-spring " +
   "motion-safe:active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 aria-disabled:cursor-not-allowed " +
   "aria-disabled:opacity-60";
 
 const VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-primary px-6 text-primary-contrast",
-  secondary: "border-border bg-surface-raised px-5 text-text",
-  ghost: "px-3 text-text",
-  danger: "bg-danger px-6 text-surface-raised",
+  primary: "border-2 border-transparent bg-primary px-6 font-semibold text-primary-contrast",
+  secondary: "border-2 border-border bg-surface-raised px-5 font-semibold text-text",
+  ghost: "border-2 border-transparent px-3 font-semibold text-text",
+  // Heavier border and weight on top of the colour, so the destructive choice is also readable in greyscale.
+  danger: "border-4 border-text bg-danger px-6 font-bold text-surface-raised",
 };
 
 function flag(on: boolean): true | undefined {

@@ -23,6 +23,7 @@ export interface Handlers {
   verifyCode?: Handler;
   getSettings?: Handler;
   putSettings?: Handler;
+  resetSettings?: Handler;
   logout?: Handler;
   places?: Handler;
 }
@@ -121,24 +122,47 @@ const putEcho: Handler = async (route, { state }) => {
   })(route, { n: 0, state });
 };
 
+/** The reset answers with the defaults on the next version, like the API does. */
+const resetToDefaults: Handler = async (route, { state }) => {
+  const sent = (route.request().postDataJSON() ?? {}) as { version?: number };
+  await reply(200, {
+    updatedAt: "2026-11-12T20:42:00Z",
+    updatedVia: "web",
+    version: (sent.version ?? STORED.version) + 1,
+    values: STORED.values,
+  })(route, { n: 0, state });
+};
+
 type Endpoint = keyof Stub["calls"];
 
-function tableOf(handlers: Handlers): [Endpoint, string, string, Handler][] {
+function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
+  const own: Required<Omit<Handlers, "signedIn">> = {
+    session: sessionByState,
+    requestCode: requestCodeOk,
+    verifyCode: verifyOk,
+    getSettings: reply(200, STORED),
+    putSettings: putEcho,
+    resetSettings: resetToDefaults,
+    logout: reply(204),
+    places: reply(200, PLACES),
+    ...given,
+  };
   return [
-    ["session", "/api/session", "GET", handlers.session ?? sessionByState],
-    ["requestCode", "/auth/request-code", "POST", handlers.requestCode ?? requestCodeOk],
-    ["verifyCode", "/auth/verify-code", "POST", handlers.verifyCode ?? verifyOk],
-    ["getSettings", "/api/settings", "GET", handlers.getSettings ?? reply(200, STORED)],
-    ["putSettings", "/api/settings", "PUT", handlers.putSettings ?? putEcho],
-    ["logout", "/auth/logout", "POST", handlers.logout ?? reply(204)],
-    ["places", "/api/places", "GET", handlers.places ?? reply(200, PLACES)],
+    ["session", "/api/session", "GET", own.session],
+    ["requestCode", "/auth/request-code", "POST", own.requestCode],
+    ["verifyCode", "/auth/verify-code", "POST", own.verifyCode],
+    ["getSettings", "/api/settings", "GET", own.getSettings],
+    ["putSettings", "/api/settings", "PUT", own.putSettings],
+    ["resetSettings", "/api/settings/reset", "POST", own.resetSettings],
+    ["logout", "/auth/logout", "POST", own.logout],
+    ["places", "/api/places", "GET", own.places],
   ];
 }
 
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, logout: 0, places: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),

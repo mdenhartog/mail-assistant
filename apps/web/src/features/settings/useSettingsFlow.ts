@@ -4,20 +4,22 @@ import { emptyFieldErrors, fieldErrors } from "@/features/settings/fieldErrors";
 import type { FieldErrors } from "@/features/settings/fieldErrors";
 import { useDraft } from "@/features/settings/useDraft";
 import type { DraftStore } from "@/features/settings/useDraft";
-import { FIELD_KEYS, classifySaveError, useSaveSettings } from "@/features/settings/useSettings";
+import { FIELD_KEYS, classifySaveError, useResetSettings, useSaveSettings } from "@/features/settings/useSettings";
 import type { ConflictState, FieldKey, SaveOutcome, Settings, SettingsValues } from "@/features/settings/useSettings";
 
-/** A save that did not store anything and has no field to blame. */
-export type SaveFailure = "failed" | "refused";
+/** A save or reset that did not store anything and has no field to blame. */
+export type SaveFailure = "failed" | "refused" | "reset-failed";
 
 /** What the last save left behind; at most one of the three is set. */
 interface SaveResult {
   failure: SaveFailure | null;
   conflict: ConflictState | null;
   saved: Settings | null;
+  /** The last write was a reset and it went through. */
+  defaultsRestored: boolean;
 }
 
-const NO_RESULT: SaveResult = { failure: null, conflict: null, saved: null };
+const NO_RESULT: SaveResult = { failure: null, conflict: null, saved: null, defaultsRestored: false };
 
 export interface SettingsFlow extends SaveResult {
   draft: SettingsValues;
@@ -30,6 +32,15 @@ export interface SettingsFlow extends SaveResult {
   errorStamp: number;
   setField: (field: FieldKey, value: string) => void;
   submit: () => void;
+  /** Replaces the stored values with the defaults (the page asked and Marco confirmed). */
+  reset: () => void;
+}
+
+/** What a write (save or reset) tells the flow when it ends. */
+interface WriteCallbacks {
+  onSuccess: (stored: Settings) => void;
+  onError: (error: Error) => void;
+  onSettled: () => void;
 }
 
 /** How the page starts: the stored values, or the values typed before the last session ended. */
@@ -65,11 +76,11 @@ function startOf(store: DraftStore, settings: Settings): Start {
 }
 
 /** What a save that stored nothing leaves on the page: the conflict, or the failure without a field to blame. */
-function resultOf(outcome: SaveOutcome, mine: SettingsValues, settings: Settings): SaveResult {
+function resultOf(outcome: SaveOutcome, mine: SettingsValues, settings: Settings, whenFailed: SaveFailure): SaveResult {
   if (outcome.kind === "conflict") {
     return { ...NO_RESULT, conflict: { current: outcome.current, mine, base: settings.values } };
   }
-  return { ...NO_RESULT, failure: outcome.kind === "failed" ? "failed" : "refused" };
+  return { ...NO_RESULT, failure: outcome.kind === "failed" ? whenFailed : "refused" };
 }
 
 /** The draft of this tab: where the page starts, and the two ways to keep it in step with the form. */
@@ -126,33 +137,52 @@ function useFieldErrors(): {
   };
 }
 
-/**
- * The state of the form between load and save: the draft, the errors, the outcome of the last save.
- * The draft starts from the stored copy and starts over whenever the stored version changes
- * (after a save, or after a 409 handed back the current settings).
- */
-export function useSettingsFlow(settings: Settings): SettingsFlow {
+interface WritesInput {
+  settings: Settings;
+  draft: SettingsValues;
+  setResult: (result: SaveResult) => void;
+  forget: () => void;
+  show: (errors: FieldErrors) => void;
+  clearAll: () => void;
+}
+
+/** What a write that stored nothing shows: the errors of the fields it names, or the failure, or the conflict. */
+function showOutcome(input: WritesInput, outcome: SaveOutcome, whenFailed: SaveFailure): void {
+  const mapped = outcome.kind === "invalid" ? fieldErrors(outcome.problems) : {};
+  if (Object.keys(mapped).length > 0) {
+    input.show(mapped);
+  } else {
+    input.setResult(resultOf(outcome, input.draft, input.settings, whenFailed));
+  }
+}
+
+/** The two ways to write the row, a save of the draft and a reset to the defaults; one runs at a time. */
+function useWrites(input: WritesInput): {
+  submit: () => void;
+  reset: () => void;
+  saving: boolean;
+} {
+  const { settings, draft, setResult, forget, clearAll, show } = input;
   const save = useSaveSettings();
-  const { start, keep, forget } = useKeptDraft(settings);
-  const [draft, setDraft] = useState(start.values);
-  const [baseVersion, setBaseVersion] = useState(settings.version);
-  const [result, setResult] = useState(start.result);
-  const { errors, errorStamp, show, clearFor, clearAll } = useFieldErrors();
+  const resetting = useResetSettings();
   const inFlight = useRef(false);
 
-  if (baseVersion !== settings.version) {
-    setBaseVersion(settings.version);
-    setDraft(settings.values);
+  const write = (send: (callbacks: WriteCallbacks) => void, done: (stored: Settings) => SaveResult, whenFailed: SaveFailure): void => {
+    inFlight.current = true;
     clearAll();
-  }
-
-  const handleOutcome = (outcome: SaveOutcome): void => {
-    const mapped = outcome.kind === "invalid" ? fieldErrors(outcome.problems) : {};
-    if (Object.keys(mapped).length > 0) {
-      show(mapped);
-    } else {
-      setResult(resultOf(outcome, draft, settings));
-    }
+    setResult(NO_RESULT);
+    send({
+      onSuccess: (stored) => {
+        forget();
+        setResult(done(stored));
+      },
+      onError: (error) => {
+        showOutcome(input, classifySaveError(error), whenFailed);
+      },
+      onSettled: () => {
+        inFlight.current = false;
+      },
+    });
   };
 
   const submit = (): void => {
@@ -162,27 +192,50 @@ export function useSettingsFlow(settings: Settings): SettingsFlow {
     }
     if (Object.keys(missing).length > 0) {
       show(missing);
-      return;
+    } else {
+      write(
+        (callbacks) => {
+          save.mutate({ values: draft, version: settings.version }, callbacks);
+        },
+        (stored) => ({ ...NO_RESULT, saved: stored }),
+        "failed",
+      );
     }
-    inFlight.current = true;
-    clearAll();
-    setResult(NO_RESULT);
-    save.mutate(
-      { values: draft, version: settings.version },
-      {
-        onSuccess: (stored) => {
-          forget();
-          setResult({ ...NO_RESULT, saved: stored });
-        },
-        onError: (error) => {
-          handleOutcome(classifySaveError(error));
-        },
-        onSettled: () => {
-          inFlight.current = false;
-        },
-      },
-    );
   };
+
+  const reset = (): void => {
+    if (!inFlight.current) {
+      write(
+        (callbacks) => {
+          resetting.mutate(settings.version, callbacks);
+        },
+        () => ({ ...NO_RESULT, defaultsRestored: true }),
+        "reset-failed",
+      );
+    }
+  };
+
+  return { submit, reset, saving: save.isPending || resetting.isPending };
+}
+
+/**
+ * The state of the form between load and save: the draft, the errors, the outcome of the last save.
+ * The draft starts from the stored copy and starts over whenever the stored version changes
+ * (after a save, or after a 409 handed back the current settings).
+ */
+export function useSettingsFlow(settings: Settings): SettingsFlow {
+  const { start, keep, forget } = useKeptDraft(settings);
+  const [draft, setDraft] = useState(start.values);
+  const [baseVersion, setBaseVersion] = useState(settings.version);
+  const [result, setResult] = useState(start.result);
+  const { errors, errorStamp, show, clearFor, clearAll } = useFieldErrors();
+  const { submit, reset, saving } = useWrites({ settings, draft, setResult, forget, show, clearAll });
+
+  if (baseVersion !== settings.version) {
+    setBaseVersion(settings.version);
+    setDraft(settings.values);
+    clearAll();
+  }
 
   const setField = (field: FieldKey, value: string): void => {
     const next = { ...draft, [field]: value };
@@ -192,5 +245,5 @@ export function useSettingsFlow(settings: Settings): SettingsFlow {
   };
 
   const dirty = isDirty(draft, settings);
-  return { ...result, draft, restored: start.restored && dirty, dirty, saving: save.isPending, errors, errorStamp, setField, submit };
+  return { ...result, draft, restored: start.restored && dirty, dirty, saving, errors, errorStamp, setField, submit, reset };
 }
