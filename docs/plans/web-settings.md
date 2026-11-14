@@ -1278,6 +1278,36 @@ Build-green rules (lessons of `adjustable-quiet-hours`, section "Changes made du
   2. Given an expired and a live notice token, When the purge runs, Then only the expired one is gone (W-11) (type: happy; level: db).
   3. Given migration 0013, When run up, down and up, Then it is reversible (type: edge; level: db).
 
+### U-web-settings-73: The local week-test stack: the whole feature in Docker with the real limits (R1; test environment; D-22)
+
+- Layer: infra, tooling
+- Contract: a compose profile `local` runs everything on one computer with the limits of the spec and TLS everywhere, for a week of testing by Marco (nothing is exposed beyond `127.0.0.1`, ADR-0037): `db` (TLS only, through `deploy/prod-like/db-tls.sh`), `mail` (the STARTTLS catcher; its web interface on `127.0.0.1:8025` shows the sign-in codes), `mail-triage-migrate` and `mail-triage` (with `ENVIRONMENT=production` and `DATABASE_SSL=verify-full` against the private CA, Marco's `.env` for Telegram, Gmail and the model), `api`, `web` and `edge` (<https://mail-assistant.localhost:8443>). The e2e limits (rate limit 1000, cooldown 1 s, codes per hour 1000, per-client caps 1000) belong to the e2e runs only: they move out of the service definition into variables that the CI `prod-like` job sets and that default to the spec values, so the `local` profile runs with the real limits (rebuild, no second copy of the services). `scripts/local-stack.mjs` has the commands `init` (makes the private CA and the certificates with `deploy/prod-like/certs.sh`; writes `deploy/local/secrets.env`, git-ignored, with fresh random `APP_CODE_HASH_KEY`, `APP_CSRF_KEY`, `APP_USERNAME_HASH_KEY` (three distinct keys), `WEB_ROLE_PASSWORD`, `MAIL_SMTP_PASSWORD`, and the configured `WEB_USERNAME` and `WEB_EMAIL_ADDRESS` with the defaults `marco` and `marco@example.test`, never overwriting an existing value and never printing a secret), `up`, `down`, `status`, `logs`, `backup` (a `pg_dump` of the database to `deploy/local/backups/`, git-ignored) and `trust-ca` (prints how to trust `ca.crt` in the browser; it changes no trust store itself). `up` runs `backup` first when the database volume exists. Documentation: `docs/operations/local-stack.md` (start, update, stop, where the codes appear, the week-test checklist of things to try and tune, certificates expire after 30 days: how to renew).
+- Files: `compose.yaml`, `agents/mail-triage/compose.yaml`, `scripts/local-stack.mjs`, `deploy/local/README.md`, `.gitignore`, `.github/workflows/ci.yml`, `docs/operations/local-stack.md`, `agents/mail-triage/tests/infra/test_local_stack.py`, `backend/tests/test_edge_config.py`
+- Depends on: U-web-settings-58, U-web-settings-66, U-web-settings-39
+- Parallel: yes
+- Guardrails: guardrail-compose, guardrail-docker, guardrail-tls-certificates, guardrail-playwright
+- Criteria:
+  1. Given the compose files, When parsed, Then the services of the `local` profile are exactly db, mail, mail-triage-migrate, mail-triage, api, web and edge, every published port is bound to `127.0.0.1`, and the `local` profile sets none of the e2e limit overrides (type: security; level: unit).
+  2. Given the compose files, When parsed, Then the e2e limits come from variables that default to the spec values (30 a minute, 60 s cooldown, 5 codes an hour, 5 attempts, 10 open and 20 an hour per client) and the CI `prod-like` job sets the raised values (type: edge; level: unit).
+  3. Given `local-stack.mjs init` in an empty temp directory, When run twice, Then the secrets file exists with five distinct random values, the second run changes nothing, no secret appears on stdout, and the file is git-ignored (type: security; level: unit).
+  4. Given the agent services of the `local` profile, When parsed, Then they run with `ENVIRONMENT=production`, `DATABASE_SSL=verify-full` and the CA mounted read-only, and the dev profile keeps `development` and `disable` (type: security; level: unit).
+  5. Given `up` with an existing database volume, When started, Then `backup` runs first and a failing backup stops `up` (type: error; level: unit).
+  6. Given the CI `prod-like` job, When it runs, Then the e2e journey still passes with the raised limits set by the job (type: happy; level: ci).
+
+### U-web-settings-74: Production prepared, not deployed (R1; no rollout; D-21)
+
+- Layer: infra
+- Contract: everything for a production release exists but nothing is applied: `deploy/envs/production/values.yaml` and `deploy/envs/production/mail-triage.yaml` with the environment `production`, the trusted proxy settings, the HSTS and TLS mechanism of the chosen ingress controller (decision D-21, an ADR before this unit starts), `certAlert.enabled`, and every value Marco must supply marked `# REQUIRED` with a name (image digests, ingress host, the certificate issuer, the SMTP host and port, the sealed secrets); the controller's native objects for HSTS (no `includeSubDomains`, no preload), the HTTP to HTTPS redirect, the TLS minimum 1.2 and the 8 KB body cap rendered by the chart; an Argo CD `Application` manifest under `deploy/argocd/` that is not applied by anything in CI; and a test that renders the production values with the REQUIRED values supplied (`--set`) and refuses to render without any one of them. `docs/release/web-settings-prod.md` gets the exact commands and the staging probe of the checklist. Nothing is deployed and no production approval is implied.
+- Files: `deploy/envs/production/values.yaml`, `deploy/envs/production/mail-triage.yaml`, `deploy/charts/app/templates/ingress.yaml`, `deploy/charts/app/values.schema.json`, `deploy/argocd/application.yaml`, `docs/release/web-settings-prod.md`, `agents/mail-triage/tests/infra/test_production_ready.py`
+- Depends on: U-web-settings-57, U-web-settings-66, U-web-settings-70
+- Parallel: yes
+- Guardrails: guardrail-helm, guardrail-kubernetes, guardrail-tls-certificates, guardrail-compose
+- Criteria:
+  1. Given the production values with every REQUIRED value supplied, When rendered, Then the chart passes the schema and the gates of U-57, U-66 and U-70 (digests, certificate alert, trusted proxies, forbidden keys) (type: happy; level: chart).
+  2. Given the production values, When any one REQUIRED value is missing, Then the render fails naming it (type: error; level: chart).
+  3. Given the rendered ingress objects, When searched, Then HSTS without `includeSubDomains` and preload, an HTTP to HTTPS redirect, the TLS minimum 1.2 and the 8 KB body cap are present for the chosen controller (AC-18, W-9) (type: security; level: chart).
+  4. Given the repository, When searched, Then no workflow applies the Argo CD manifest or the production values (type: security; level: unit).
+
 ## Coverage of the acceptance criteria
 
 | AC | Units |
@@ -1421,6 +1451,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - D-19 U-49 (retention purge, 90 days for security events, one year for audit) and an index on `(kind, at)` move into R1 and are a gate before production (Marco, 2026-11-13; U-49, U-65).
 - D-20 the lock counts only wrong codes against the owner's real requests, there are no swallowed decoys and the lock leaves no trace (challenge round 3, moderator decision; ADR-0039 amendment 2; U-68, U-69, U-71).
 - D-21 the ingress controller is its own decision, still open; HSTS, redirect and TLS minimum are a gate before production (round 3, SEC3-02, formerly mixed up with D-7 which is the certificate expiry alert).
+- D-22 the feature is tested for a week in Docker before any production step: the stack runs from the main checkout under the project name `mail-assistant`, reachable from this computer only, with the real limits (U-73); production is prepared, not deployed (U-74) (Marco, 2026-11-14).
 - D-13 unknown usernames get a decoy login request and `attemptsLeft` is shown every time (Marco, 2026-11-12; ADR-0038; U-50). This replaces the earlier rule "`attemptsLeft` only for a live login request".
 - Fixed inside the units: cookie lifetimes (`__Host-login` Max-Age 600, `__Host-session` Max-Age 43200), HSTS without `includeSubDomains`, the SMTP library (`aiosmtplib`), and `attemptsLeft` in the generic verify failure body for any login request cookie, real or decoy (D-13).
 
@@ -1431,7 +1462,7 @@ Approved by Marco on 2026-11-10 (phase 4 gate):
 - Two-step verification on Marco's mailbox is a condition for production (R-1); R-1 is reviewed on 2027-05-10. R-2 (anything on the local network can reach the login page) is bounded by U-24 and U-16.
 - The agent is not in the prod-like stack, so web notices, Undo and the lock are tested at agent level with a real database (U-26, U-27), and the api side of the lock in U-15, U-18 and U-43. A full chain test across both belongs to staging.
 - Documentation (phase 8) is not a unit here: the user-guide page for the settings page with screenshots, the API guide and the generated reference are written from what is built.
-- Total: 72 units (69 in R1, 3 in R2; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
+- Total: 74 units (71 in R1, 3 in R2 (U-45, U-46, U-47: Marco wants them built before the production release, 2026-11-14); U-73 and U-74 added 2026-11-14; U-68 to U-72 come from challenge round 3; U-49 moved into R1 as well and U-63 to U-67 come from challenge round 2; U-48 moved into R1 and U-51 to U-62 are challenge fixes), above the target of about 35 and the later ceiling of about 40. The excess comes from the QA splits (clock and code source, security events and logging hygiene, the TLS edge, the TLS database and the mail catcher, CI sequence and journey) and the sign-in units the e-mailed code adds (code rules, mail sender, login request store, two endpoints, two login-page units). Merge candidates if fewer are wanted: U-10 with U-11, U-30 with U-31, U-40 with U-41, U-13 with U-14, U-25 with U-22; each merge costs single responsibility.
 
 ## Changes made during the build
 
