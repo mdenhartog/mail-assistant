@@ -94,12 +94,10 @@ export function useSettings(): UseQueryResult<Settings> {
   });
 }
 
-/** Saves the whole row on the version it was based on; the answer, or the 409's current, becomes the stored copy. */
-export function useSaveSettings(): UseMutationResult<Settings, Error, SaveVariables> {
+/** What both writes do with an answer: the stored row, or the 409's current one, becomes the stored copy. */
+function useStoredCopy(): { onSuccess: (saved: Settings) => void; onError: (error: Error) => void } {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (variables: SaveVariables) =>
-      readSettings(await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify(variables) })),
+  return {
     onSuccess: (saved) => {
       queryClient.setQueryData(settingsKey, saved);
     },
@@ -109,5 +107,23 @@ export function useSaveSettings(): UseMutationResult<Settings, Error, SaveVariab
         queryClient.setQueryData(settingsKey, outcome.current);
       }
     },
+  };
+}
+
+/** Saves the whole row on the version it was based on; the answer, or the 409's current, becomes the stored copy. */
+export function useSaveSettings(): UseMutationResult<Settings, Error, SaveVariables> {
+  return useMutation({
+    mutationFn: async (variables: SaveVariables) =>
+      readSettings(await apiFetch("/api/settings", { method: "PUT", body: JSON.stringify(variables) })),
+    ...useStoredCopy(),
+  });
+}
+
+/** Replaces the stored values, the time zone included, with the defaults on the version the page shows (R2). */
+export function useResetSettings(): UseMutationResult<Settings, Error, number> {
+  return useMutation({
+    mutationFn: async (version: number) =>
+      readSettings(await apiFetch("/api/settings/reset", { method: "POST", body: JSON.stringify({ version }) })),
+    ...useStoredCopy(),
   });
 }

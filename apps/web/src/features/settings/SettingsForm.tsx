@@ -5,6 +5,7 @@ import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { ConflictLayer } from "@/features/settings/ConflictLayer";
 import { DraftBanner } from "@/features/settings/DraftBanner";
+import { ResetSlot } from "@/features/settings/ResetSlot";
 import { SaveFeedback } from "@/features/settings/SaveFeedback";
 import { SettingsFields } from "@/features/settings/SettingsFields";
 import type { Settings } from "@/features/settings/useSettings";
@@ -21,6 +22,13 @@ function useFocusFirstInvalid(form: RefObject<HTMLFormElement | null>, stamp: nu
 }
 
 function FailureBanner({ failure, onRetry }: { failure: SaveFailure; onRetry: () => void }): ReactElement {
+  if (failure === "reset-failed") {
+    return (
+      <Banner kind="danger" title="Could not reset. Nothing was changed.">
+        Check your connection and try again.
+      </Banner>
+    );
+  }
   if (failure === "refused") {
     return (
       <Banner kind="danger" title="Some values were not accepted.">
@@ -37,8 +45,8 @@ function FailureBanner({ failure, onRetry }: { failure: SaveFailure; onRetry: ()
 
 /**
  * The loaded settings as a form: load happened in the page, this validates (the server's 422 per
- * field) and saves. The three slot files fill the gaps for later units: `ZoneField` (inside the
- * fields), `ConflictLayer` above them and `SaveFeedback` below them.
+ * field) and saves. The slot files fill the gaps for later units: `ZoneField` (inside the
+ * fields), `ConflictLayer` above them, `SaveFeedback` below them and `ResetSlot` beside Save.
  */
 export function SettingsForm({ settings }: { settings: Settings }): ReactElement {
   const flow = useSettingsFlow(settings);
@@ -54,11 +62,17 @@ export function SettingsForm({ settings }: { settings: Settings }): ReactElement
       <ConflictLayer conflict={flow.conflict} setValue={flow.setField} values={flow.draft} />
       <SettingsFields errors={flow.errors} readOnly={flow.saving} savedZone={settings.values.timeZone} setField={flow.setField} values={flow.draft} />
       <SaveFeedback saved={flow.saved} settings={settings} values={flow.draft} />
+      {flow.defaultsRestored ? (
+        <Banner kind="success" title="Defaults restored.">
+          The Undo button is in the Telegram message.
+        </Banner>
+      ) : null}
       {flow.failure ? <FailureBanner failure={flow.failure} onRetry={flow.submit} /> : null}
-      <div>
+      <div className="flex flex-col items-start gap-4 sm:flex-row sm:justify-between">
         <Button disabled={!flow.dirty} loading={flow.saving} type="submit" variant="primary">
           Save changes
         </Button>
+        <ResetSlot busy={flow.saving} onReset={flow.reset} />
       </div>
       <p className="sr-only" role="status">
         {flow.saving ? "Saving your settings." : ""}
