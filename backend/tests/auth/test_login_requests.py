@@ -26,7 +26,6 @@ T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
 KEY = b"k" * 32
 TTL = timedelta(seconds=600)
 MAX_ATTEMPTS = 5
-CAP = 100
 USER = "u" * 64
 OTHER = "o" * 64
 CLIENT = "c" * 64
@@ -38,7 +37,6 @@ OPEN: Final = RequestLimits(
     live_per_username=1000,
     open_per_client=1000,
     requests_per_client_per_hour=1000,
-    class_open_cap=CAP,
 )
 RIGHT = "123456"
 WRONG = "000000"
@@ -55,7 +53,7 @@ async def make(  # noqa: PLR0913  # a request is described by who, what and when
     limits: RequestLimits = OPEN,
 ) -> LoginRequest:
     """A code request of the owner (USER is the configured username) from a client, under no limit unless given."""
-    return await store.create(Applicant(username_key, USER, client, cookie, known=True), code, now, limits)
+    return await store.create(Applicant(username_key, client, cookie), code, now, limits)
 
 
 async def decoy(  # noqa: PLR0913  # a request is described by who and when
@@ -67,7 +65,7 @@ async def decoy(  # noqa: PLR0913  # a request is described by who and when
     cookie: str | None = None,
     limits: RequestLimits = OPEN,
 ) -> LoginRequest:
-    return await store.create_decoy(Applicant(username_key, USER, client, cookie, known=False), now, limits)
+    return await store.create_decoy(Applicant(username_key, client, cookie), now, limits)
 
 
 def lowered(**overrides: int | timedelta) -> RequestLimits:
@@ -77,7 +75,6 @@ def lowered(**overrides: int | timedelta) -> RequestLimits:
         "live_per_username": OPEN.live_per_username,
         "open_per_client": OPEN.open_per_client,
         "requests_per_client_per_hour": OPEN.requests_per_client_per_hour,
-        "class_open_cap": OPEN.class_open_cap,
     }
     values.update(overrides)
     return RequestLimits(**values)  # pyright: ignore[reportArgumentType]
@@ -97,8 +94,8 @@ async def test_given_the_right_code_at_9_59_when_checked_then_ok_and_the_same_co
 ) -> None:
     request = await make(store, USER, RIGHT, T0)
 
-    first = await store.check(request.id, RIGHT, T0 + timedelta(minutes=9, seconds=59))
-    second = await store.check(request.id, RIGHT, T0 + timedelta(minutes=9, seconds=59))
+    first = await store.check(request.id, RIGHT, T0 + timedelta(minutes=9, seconds=59), USER)
+    second = await store.check(request.id, RIGHT, T0 + timedelta(minutes=9, seconds=59), USER)
 
     assert first == Ok()
     assert second == Dead()
@@ -107,7 +104,7 @@ async def test_given_the_right_code_at_9_59_when_checked_then_ok_and_the_same_co
 async def test_given_the_right_code_at_10_00_when_checked_then_dead(store: LoginRequests) -> None:
     request = await make(store, USER, RIGHT, T0)
 
-    verdict = await store.check(request.id, RIGHT, T0 + timedelta(minutes=10))
+    verdict = await store.check(request.id, RIGHT, T0 + timedelta(minutes=10), USER)
 
     assert verdict == Dead(existing=True)
     assert request.expires_at == T0 + TTL
@@ -118,33 +115,39 @@ async def test_given_five_wrong_codes_when_checked_then_attempts_left_count_down
 ) -> None:
     request = await make(store, USER, RIGHT, T0)
 
-    verdicts = [await store.check(request.id, WRONG, T0) for _ in range(5)]
-    after = await store.check(request.id, RIGHT, T0)
+    verdicts = [await store.check(request.id, WRONG, T0, USER) for _ in range(5)]
+    after = await store.check(request.id, RIGHT, T0, USER)
 
-    assert verdicts == [Wrong(4), Wrong(3), Wrong(2), Wrong(1), Dead(existing=True)]
+    assert verdicts == [
+        Wrong(4, existing=True),
+        Wrong(3, existing=True),
+        Wrong(2, existing=True),
+        Wrong(1, existing=True),
+        Dead(existing=True),
+    ]
     assert after == Dead()
 
 
 async def test_given_four_wrong_codes_when_the_right_one_is_checked_then_ok(store: LoginRequests) -> None:
     request = await make(store, USER, RIGHT, T0)
     for _ in range(4):
-        await store.check(request.id, WRONG, T0)
+        await store.check(request.id, WRONG, T0, USER)
 
-    assert await store.check(request.id, RIGHT, T0) == Ok()
+    assert await store.check(request.id, RIGHT, T0, USER) == Ok()
 
 
 async def test_given_a_malformed_code_when_checked_then_it_counts_as_a_wrong_attempt(store: LoginRequests) -> None:
     request = await make(store, USER, RIGHT, T0)
 
-    assert await store.check(request.id, "12", T0) == Wrong(4)
+    assert await store.check(request.id, "12", T0, USER) == Wrong(4, existing=True)
 
 
 async def test_given_an_old_and_a_newer_code_when_the_old_is_checked_then_dead(store: LoginRequests) -> None:
     old = await make(store, USER, "111111", T0)
     new = await make(store, USER, "222222", T0 + timedelta(minutes=2), cookie=old.id)
 
-    assert await store.check(old.id, "111111", T0 + timedelta(minutes=3)) == Dead()
-    assert await store.check(new.id, "222222", T0 + timedelta(minutes=3)) == Ok()
+    assert await store.check(old.id, "111111", T0 + timedelta(minutes=3), USER) == Dead()
+    assert await store.check(new.id, "222222", T0 + timedelta(minutes=3), USER) == Ok()
 
 
 async def test_given_another_browsers_dead_unknown_and_missing_ids_when_checked_then_dead_and_no_attempt_counted(
@@ -152,13 +155,13 @@ async def test_given_another_browsers_dead_unknown_and_missing_ids_when_checked_
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     other = await make(store, OTHER, "111111", T0)
-    await store.check(other.id, "111111", T0)  # used, so dead
+    await store.check(other.id, "111111", T0, USER)  # used, so dead
     await make(store, USER, RIGHT, T0)
 
     verdicts = [
-        await store.check(other.id, WRONG, T0),
-        await store.check("unknown-id", WRONG, T0),
-        await store.check(None, WRONG, T0),
+        await store.check(other.id, WRONG, T0, USER),
+        await store.check("unknown-id", WRONG, T0, USER),
+        await store.check(None, WRONG, T0, USER),
     ]
 
     attempts = await owner.fetch("SELECT attempts FROM web_auth.login_request")
@@ -173,7 +176,7 @@ async def test_given_a_wrong_code_for_one_request_when_checked_then_only_that_ro
     first = await make(store, USER, RIGHT, T0)
     second = await make(store, OTHER, RIGHT, T0)
 
-    await store.check(first.id, WRONG, T0)
+    await store.check(first.id, WRONG, T0, USER)
 
     rows = {row["id"]: row["attempts"] for row in await owner.fetch("SELECT id, attempts FROM web_auth.login_request")}
     assert rows == {first.id: 1, second.id: 0}
@@ -187,7 +190,7 @@ async def test_given_two_simultaneous_checks_of_the_right_code_when_run_then_exa
 
     async def attempt() -> object:
         await barrier.wait()
-        return await store.check(request.id, RIGHT, T0)
+        return await store.check(request.id, RIGHT, T0, USER)
 
     verdicts = await asyncio.gather(attempt(), attempt())
 
@@ -216,7 +219,7 @@ async def test_given_the_production_id_source_when_a_request_is_created_then_the
     request = await make(store, USER, RIGHT, T0)
 
     assert len(request.id) == 32  # VARCHAR(32) of migration 0008
-    assert await store.check(request.id, RIGHT, T0) == Ok()
+    assert await store.check(request.id, RIGHT, T0, USER) == Ok()
 
 
 async def test_given_a_stored_request_when_read_as_the_owner_then_only_the_hash_of_the_code_is_stored(
@@ -239,12 +242,12 @@ async def test_given_requests_in_every_state_when_attempts_left_is_read_then_onl
 ) -> None:
     live = await make(store, USER, RIGHT, T0)
     assert await store.attempts_left(live.id, T0) == MAX_ATTEMPTS
-    await store.check(live.id, WRONG, T0)
+    await store.check(live.id, WRONG, T0, USER)
     assert await store.attempts_left(live.id, T0) == MAX_ATTEMPTS - 1
     assert await store.attempts_left(live.id, T0 + TTL) is None
     assert await store.attempts_left("n" * 32, T0) is None
     assert await store.attempts_left(None, T0) is None
-    await store.check(live.id, RIGHT, T0)
+    await store.check(live.id, RIGHT, T0, USER)
     assert await store.attempts_left(live.id, T0) is None
     assert await owner.fetchval("SELECT attempts FROM web_auth.login_request") == 1
 
@@ -252,47 +255,81 @@ async def test_given_requests_in_every_state_when_attempts_left_is_read_then_onl
 # ---- U-web-settings-53 ---------------------------------------------------------------------------------------------
 
 
-# Criterion 1 (RT-01, AC-16)
-async def test_given_decoys_at_their_cap_when_the_owner_creates_a_request_then_it_is_created_and_a_decoy_is_not_stored(
-    store: LoginRequests,
-) -> None:
-    limits = lowered(class_open_cap=3)
-    for index in range(3):
-        await decoy(store, f"{index}" * 64, T0, client=f"{index}" * 64, limits=limits)
-
-    owner_request = await make(store, USER, RIGHT, T0, client=ELSEWHERE, limits=limits)
-
-    assert owner_request.id
-    swallowed = await decoy(store, "9" * 64, T0 + timedelta(seconds=100), client="9" * 64, limits=limits)
-    assert swallowed.id
-    assert not swallowed.stored  # the usual answer, never a refusal the owner would not get (RT2-03)
-
-
-# Criterion 1
-async def test_given_the_owner_rows_when_a_decoy_is_counted_then_the_owner_rows_do_not_count_against_the_decoy_cap(
-    store: LoginRequests,
-) -> None:
-    limits = lowered(class_open_cap=1)
-    await make(store, USER, RIGHT, T0, client=ELSEWHERE, limits=limits)
-
-    created = await decoy(store, "1" * 64, T0, limits=limits)
-
-    assert created.id
-
-
-# Criterion 1
-async def test_given_a_decoy_at_a_full_class_when_read_then_nothing_was_written_and_nothing_was_killed(
+# Criterion 1 (RT-01, AC-16), rebuilt in U-web-settings-69 (RT3-02): there is no decoy cap, so no decoy is swallowed
+async def test_given_100_live_decoys_when_the_owner_and_one_more_decoy_ask_then_every_request_has_a_row(
     store: LoginRequests,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    limits = lowered(class_open_cap=1)
-    first = await decoy(store, "1" * 64, T0, client="1" * 64, limits=limits)
+    for index in range(101):
+        await decoy(store, f"{index:064d}", T0, client=f"{index // 10:064d}")
 
-    swallowed = await decoy(store, "2" * 64, T0, client="2" * 64, limits=limits)
+    owner_request = await make(store, USER, RIGHT, T0, client=ELSEWHERE)
 
-    assert not swallowed.stored
-    assert await live_ids(owner) == {first.id}
-    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 1
+    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == 102
+    assert owner_request.id in await live_ids(owner)
+
+
+# Criterion 3 (U-web-settings-69): storage is bounded by the clients times their caps, and nothing is swallowed
+async def test_given_many_clients_within_their_caps_when_they_ask_for_decoys_then_every_decoy_has_its_own_row(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    limits = lowered(open_per_client=10, requests_per_client_per_hour=20)
+    clients = 30
+
+    for client in range(clients):
+        for name in range(10):
+            await decoy(store, f"{client:032d}{name:032d}", T0, client=f"{client:064d}", limits=limits)
+        with pytest.raises(LoginRequestRefused):  # the eleventh open request of a client is the client's limit
+            await decoy(store, "f" * 64, T0 + timedelta(seconds=1), client=f"{client:064d}", limits=limits)
+
+    assert await owner.fetchval("SELECT count(*) FROM web_auth.login_request") == clients * 10
+
+
+# Criterion 2 (AC-27, RT3-03): the lock stores the owner's row with a hash no code matches
+async def test_given_the_web_lock_when_the_owner_creates_a_request_then_a_row_is_stored_that_no_code_opens(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, $1)", T0)
+
+    request = await make(store, USER, RIGHT, T0)
+
+    assert await live_ids(owner) == {request.id}
+    assert await store.check(request.id, RIGHT, T0, USER) == Wrong(4, existing=True)
+
+
+# Criterion 2
+async def test_given_the_web_lock_when_a_request_is_made_twice_then_the_cooldown_and_the_hourly_count_apply_as_ever(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    limits = lowered(cooldown=timedelta(seconds=60), codes_per_hour=2)
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, $1)", T0)
+    await make(store, USER, RIGHT, T0, limits=limits)
+
+    with pytest.raises(LoginRequestRefused) as early:
+        await make(store, USER, RIGHT, T0 + timedelta(seconds=10), limits=limits)
+    await make(store, USER, RIGHT, T0 + timedelta(seconds=60), limits=limits)
+    with pytest.raises(LoginRequestRefused) as hourly:
+        await make(store, USER, RIGHT, T0 + timedelta(seconds=120), limits=limits)
+
+    assert early.value.wait_seconds == 50
+    assert hourly.value.wait_seconds == 3600 - 120
+
+
+# Criterion 2
+async def test_given_the_web_lock_when_a_decoy_is_requested_then_it_is_stored_and_its_attempts_count_down(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, $1)", T0)
+
+    request = await decoy(store, OTHER, T0)
+
+    assert await live_ids(owner) == {request.id}
+    assert await store.attempts_left(request.id, T0) == MAX_ATTEMPTS
+    assert await store.check(request.id, WRONG, T0, USER) == Wrong(4, existing=False)
 
 
 # Criterion 2 (W-7)
@@ -353,7 +390,7 @@ async def test_given_a_live_request_when_another_client_asks_then_the_first_stay
     second = await make(store, USER, "222222", T0 + timedelta(minutes=2), client=ELSEWHERE)
 
     assert await live_ids(owner) == {first.id, second.id}
-    assert await store.check(first.id, "111111", T0 + timedelta(minutes=3)) == Ok()
+    assert await store.check(first.id, "111111", T0 + timedelta(minutes=3), USER) == Ok()
 
 
 # Criterion 3
@@ -478,3 +515,90 @@ async def test_given_sent_and_unsent_rows_when_the_hourly_cap_counts_then_both_c
 
 
 # Criterion 6 is in agents/mail-triage/tests/db/test_login_request_client_migration.py
+
+
+# ---- U-web-settings-68 (RT3-01, RT3-04, SEC3-01): only the owner's real request counts, an expired one dies once ----
+
+
+# Criterion 1
+async def test_given_a_decoy_when_wrong_codes_are_checked_then_the_attempts_count_down_and_none_is_an_existing_guess(
+    store: LoginRequests,
+) -> None:
+    request = await decoy(store, OTHER, T0)
+
+    verdicts = [await store.check(request.id, WRONG, T0, USER) for _ in range(5)]
+
+    assert verdicts == [
+        Wrong(4, existing=False),
+        Wrong(3, existing=False),
+        Wrong(2, existing=False),
+        Wrong(1, existing=False),
+        Dead(existing=False),
+    ]
+    assert await store.check(request.id, WRONG, T0, USER) == Dead()
+
+
+# Criterion 1
+async def test_given_a_request_of_the_owner_when_checked_with_another_owner_key_then_it_is_not_an_existing_guess(
+    store: LoginRequests,
+) -> None:
+    request = await make(store, USER, RIGHT, T0)
+
+    assert await store.check(request.id, WRONG, T0, OTHER) == Wrong(4, existing=False)
+
+
+# Criterion 2
+async def test_given_the_owners_request_when_wrong_codes_are_checked_then_every_one_is_an_existing_guess(
+    store: LoginRequests,
+) -> None:
+    request = await make(store, USER, RIGHT, T0)
+
+    verdicts = [await store.check(request.id, WRONG, T0, USER) for _ in range(5)]
+
+    assert verdicts == [
+        Wrong(4, existing=True),
+        Wrong(3, existing=True),
+        Wrong(2, existing=True),
+        Wrong(1, existing=True),
+        Dead(existing=True),
+    ]
+
+
+# Criterion 3 (RT3-04)
+async def test_given_an_expired_owner_request_when_checked_ten_times_then_only_the_first_is_an_existing_guess(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    request = await make(store, USER, RIGHT, T0)
+    late = T0 + timedelta(minutes=11)
+
+    verdicts = [await store.check(request.id, RIGHT, late, USER) for _ in range(10)]
+
+    assert verdicts == [Dead(existing=True)] + [Dead()] * 9
+    assert await owner.fetchval("SELECT dead_at FROM web_auth.login_request WHERE id = $1", request.id) == late
+
+
+# Criterion 3
+async def test_given_an_expired_decoy_when_checked_then_it_is_never_an_existing_guess_and_it_dies_all_the_same(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    request = await decoy(store, OTHER, T0)
+    late = T0 + timedelta(minutes=11)
+
+    verdicts = [await store.check(request.id, RIGHT, late, USER) for _ in range(3)]
+
+    assert verdicts == [Dead(), Dead(), Dead()]
+    assert await owner.fetchval("SELECT dead_at FROM web_auth.login_request WHERE id = $1", request.id) == late
+
+
+# Criterion 3: an expired request that was replaced or used stays what it was
+async def test_given_an_expired_request_that_is_already_dead_when_checked_then_its_dead_at_does_not_move(
+    store: LoginRequests,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    request = await make(store, USER, RIGHT, T0)
+    assert await store.check(request.id, RIGHT, T0, USER) == Ok()
+
+    assert await store.check(request.id, RIGHT, T0 + timedelta(minutes=11), USER) == Dead()
+    assert await owner.fetchval("SELECT dead_at FROM web_auth.login_request WHERE id = $1", request.id) == T0

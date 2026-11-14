@@ -188,6 +188,21 @@ async def test_given_five_wrong_codes_from_one_client_in_one_minute_when_recorde
     assert [(r["kind"], r["count"], r["request_id"]) for r in rows] == [("code_refused", 5, "req-0")]
 
 
+# U-web-settings-68: every kind runs one statement (AC-30); the repeat of an uncounted kind must not trip the guard
+@pytest.mark.parametrize("kind", ["code_invalid", "code_request_refused", "rate_limited", "lock_refused"])
+async def test_given_a_repeat_of_an_uncounted_kind_when_recorded_then_one_row_with_count_one_and_no_failure_is_logged(
+    events: SecurityEvents, owner: asyncpg.Connection, caplog: pytest.LogCaptureFixture, kind: str
+) -> None:
+    caplog.set_level(logging.INFO, logger="app.security_events")
+
+    for number in range(3):
+        await events.record(kind, f"req-{number}", CLIENT)
+
+    rows = await owner.fetch(SELECT)
+    assert [(r["kind"], r["count"], r["request_id"]) for r in rows] == [(kind, 1, "req-0")]
+    assert not [line for line in _lines(caplog.records) if "failed" in line]
+
+
 async def test_given_wrong_codes_in_two_windows_when_recorded_then_each_window_has_its_own_count(
     events: SecurityEvents, owner: asyncpg.Connection, clock: FakeClock
 ) -> None:

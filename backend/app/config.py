@@ -66,9 +66,8 @@ class Settings(BaseSettings):
     resend_cooldown_seconds: int = 60
     codes_per_hour: int = 5
     max_attempts: int = 5
-    # Login requests (ADR-0039): the cap is for decoys only; a request for the configured username is never refused
-    # because of decoy rows. A client key is stored as a keyed digest.
-    open_login_request_cap: int = Field(default=100, gt=0, description="Open decoy login requests, all usernames.")
+    # Login requests (ADR-0039): there is no cap for all decoys together; storage is bounded by the per-client numbers
+    # below. A client key is stored as a keyed digest.
     live_requests_per_username: int = Field(default=3, gt=0, description="Live login requests of one username.")
     open_login_requests_per_client: int = Field(default=10, gt=0, description="Open login requests of one client.")
     login_requests_per_client_per_hour: int = Field(

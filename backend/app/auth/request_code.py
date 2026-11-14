@@ -7,17 +7,18 @@ cookie, expiry, attempt counter and cooldown, no code and no message, so the coo
 attempts answer alike.
 
 Web lock (AC-27, SEC-08). While ``web_auth.web_lock`` is set the request takes every step and gives the answer it
-would give otherwise, but no login request row is written and no message is sent: the mails stop and the lock does
-not show. The lock is read in the transaction of the row, so the check cannot be missed.
+would give otherwise, and the row is stored all the same (with a hash no code matches, like a decoy's): only the message
+is not sent. Cooldown, caps and attempts behave the same locked and unlocked and the lock leaves no trace (RT3-03).
+The lock is read in the transaction of the row, so the check cannot be missed.
 
-Limits (ADR-0039). Decoys have their own cap of open requests and never count against the configured username; when
-that class is full, a decoy request is answered like any other but stores no row, because a refusal there would be one
-the owner never gets (RT2-03). Open requests and requests an hour are also capped per client (a keyed digest of the
-client key is stored, never the address). A new request replaces a live one only when it carries the same login
-cookie, never by client alone (a neighbour in the same /64 or behind the same NAT shares the client key, RT2-04), so
-the owner's live request in one browser survives a request from another device; a username holds at most
-``live_requests_per_username`` live requests, and its codes stay capped at ``codes_per_hour``, so the guessing budget
-does not grow. Every refusal carries the real time until its limit frees.
+Limits (ADR-0039). There is no cap on decoys as a class: a decoy is always stored with its own cooldown, hourly count
+and attempts, like the row of the configured username, so no username can be told apart by a missing row (RT3-02).
+Storage stays bounded by the per-client caps, the rate limiter and the hourly purge. Open requests and requests an hour
+are capped per client (a keyed digest of the client key is stored, never the address). A new request replaces a live
+one only when it carries the same login cookie, never by client alone (a neighbour in the same /64 or behind the same
+NAT shares the client key, RT2-04), so the owner's live request in one browser survives a request from another device;
+a username holds at most ``live_requests_per_username`` live requests, and its codes stay capped at ``codes_per_hour``,
+so the guessing budget does not grow. Every refusal carries the real time until its limit frees.
 
 Failed sends (D-11 against AC-30). The hourly caps count rows from ``created_at``, sent or not, for a real and a
 decoy username alike. A decoy has no mailer, so any rule that gave a failed send back to the owner would answer the
@@ -113,23 +114,24 @@ class CodeRequests:
         now = self._clock.now()
         key = username_key(self._username_hash_key, username)
         known = same_key(key, self._configured)
-        who = Applicant(key, self._configured, client_hash(self._username_hash_key, client), cookie, known=known)
+        who = Applicant(key, client_hash(self._username_hash_key, client), cookie)
         try:
             if known:
                 code = self._codes.six_digits()
-                created = await self._store.create(who, code, now, self._limits(known=True))
+                created = await self._store.create(who, code, now, self._limits())
+                # While the web lock is set the row is stored, and only the mail is skipped (AC-27).
                 delivery = (
-                    Delivery(created.id, code, created.expires_at, key, client, request_id) if created.stored else None
+                    None if created.locked else Delivery(created.id, code, created.expires_at, key, client, request_id)
                 )
             else:
-                created = await self._store.create_decoy(who, now, self._limits(known=False))
+                created = await self._store.create_decoy(who, now, self._limits())
                 delivery = None
         except LoginRequestRefused as refused:
             await self._refuse(key, client, request_id)
             raise RateLimited(refused.wait_seconds) from None
         return self._issued(created.id, created.expires_at, delivery)
 
-    def _limits(self, *, known: bool) -> RequestLimits:
+    def _limits(self) -> RequestLimits:
         settings = self._settings
         return RequestLimits(
             cooldown=self._cooldown,
@@ -137,8 +139,6 @@ class CodeRequests:
             live_per_username=settings.live_requests_per_username,
             open_per_client=settings.open_login_requests_per_client,
             requests_per_client_per_hour=settings.login_requests_per_client_per_hour,
-            # The owner's class is its own rows, bounded by the live number; the decoys share one cap.
-            class_open_cap=settings.live_requests_per_username if known else settings.open_login_request_cap,
         )
 
     async def deliver(self, delivery: Delivery) -> None:

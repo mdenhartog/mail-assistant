@@ -36,7 +36,6 @@ def _limits(**overrides: int | timedelta) -> RequestLimits:
         "live_per_username": 3,
         "open_per_client": 10,
         "requests_per_client_per_hour": 20,
-        "class_open_cap": 100,
     }
     values.update(overrides)
     return RequestLimits(**values)  # pyright: ignore[reportArgumentType]
@@ -53,7 +52,6 @@ def wait_seconds(
         username_live=[],
         client_created=[],
         client_live=[],
-        class_live=[],
     )
     return request_wait(facts, now, _limits(cooldown=cooldown, codes_per_hour=cap))
 
@@ -200,7 +198,6 @@ def _facts(**overrides: list[datetime]) -> RequestFacts:
         "username_live": [],
         "client_created": [],
         "client_live": [],
-        "class_live": [],
     }
     values.update(overrides)
     return RequestFacts(**values)
@@ -297,26 +294,17 @@ def test_given_the_client_open_number_reached_when_asked_then_the_wait_is_the_ea
     assert request_wait(facts, T0, _limits(open_per_client=3)) == 0
 
 
-def test_given_the_class_cap_reached_when_asked_then_the_wait_is_the_earliest_expiry() -> None:
-    facts = _facts(class_live=_sent(630, 600, 640))
-
-    assert request_wait(facts, T0 + timedelta(seconds=10), _limits(class_open_cap=3)) == 590
-    assert request_wait(facts, T0 + timedelta(seconds=10), _limits(class_open_cap=4)) == 0
-
-
 def test_given_several_limits_when_asked_then_the_longest_wait_counts() -> None:
     facts = _facts(
         username_created=_sent(0),  # cooldown: 60
         username_live=_sent(600),  # live limit 1: 600
         client_live=_sent(700),  # open limit 1: 700
-        class_live=_sent(500),  # class cap 1: 500
     )
-    limits = _limits(live_per_username=1, open_per_client=1, class_open_cap=1)
+    limits = _limits(live_per_username=1, open_per_client=1)
 
     assert request_wait(facts, T0, limits) == 700
-    assert request_wait(facts, T0, _limits(live_per_username=1, open_per_client=9, class_open_cap=1)) == 600
-    assert request_wait(facts, T0, _limits(live_per_username=9, open_per_client=9, class_open_cap=1)) == 500
-    assert request_wait(facts, T0, _limits(live_per_username=9, open_per_client=9, class_open_cap=9)) == 60
+    assert request_wait(facts, T0, _limits(live_per_username=1, open_per_client=9)) == 600
+    assert request_wait(facts, T0, _limits(live_per_username=9, open_per_client=9)) == 60
 
 
 def test_given_the_hourly_cap_of_the_username_and_the_client_when_asked_then_each_counts_from_created_at() -> None:

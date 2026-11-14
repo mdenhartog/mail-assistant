@@ -49,6 +49,7 @@ UNKNOWN = "somebody-else"
 CODES = [f"{n:06d}" for n in range(111111, 111111 + 20 * 111111, 111111)]
 PATH = "/auth/request-code"
 ADDRESS = "marco@example.test"
+OWNER_KEY = username_key(b"c" * 32, USERNAME)
 
 
 class RecordingGuard:
@@ -133,7 +134,7 @@ async def test_given_the_cookie_when_the_code_is_checked_then_it_is_the_id_of_th
 
     value, _ = _cookie(response)
 
-    assert await api.store.check(value, "111111", T0) == Ok()
+    assert await api.store.check(value, "111111", T0, OWNER_KEY) == Ok()
 
 
 async def test_given_the_configured_and_an_unknown_username_when_requested_then_the_answers_are_identical(
@@ -239,9 +240,9 @@ async def test_given_a_second_request_at_59_and_60_seconds_when_requested_then_4
     assert early.headers["retry-after"] == "1"
     assert "set-cookie" not in early.headers
     assert on_time.status_code == 200
-    assert await api.store.check(first_cookie, "111111", api.clock.now()) != Ok()
+    assert await api.store.check(first_cookie, "111111", api.clock.now(), OWNER_KEY) != Ok()
     # the refused request drew a code too (222222) and threw it away, so the issued one is the third
-    assert await api.store.check(_cookie(on_time)[0], "333333", api.clock.now()) == Ok()
+    assert await api.store.check(_cookie(on_time)[0], "333333", api.clock.now(), OWNER_KEY) == Ok()
 
 
 async def test_given_five_sent_codes_in_an_hour_when_a_sixth_is_requested_then_429_until_the_oldest_falls_out(
@@ -398,8 +399,8 @@ async def _lock(owner: asyncpg.Connection) -> None:  # noqa: F811
     await owner.execute("INSERT INTO web_auth.web_lock (id, locked_at) VALUES (1, now())")
 
 
-# Criterion 3 (AC-27, SEC-08): the lock stops the mail and the rows, the answer stays the same
-async def test_given_the_web_lock_when_the_owner_asks_then_the_usual_answer_with_no_row_and_no_mail(
+# Criterion 3 (AC-27, SEC-08), rebuilt in U-web-settings-69 (RT3-03): the lock stops the mail, it leaves no other trace
+async def test_given_the_web_lock_when_the_owner_asks_then_the_usual_answer_a_row_no_code_matches_and_no_mail(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
@@ -416,11 +417,17 @@ async def test_given_the_web_lock_when_the_owner_asks_then_the_usual_answer_with
     assert locked.json()["resendAfterSeconds"] == usual.json()["resendAfterSeconds"]
     assert sorted(locked.headers) == sorted(usual.headers)
     assert _cookie(locked)[1] == _cookie(usual)[1]
-    assert await _rows(owner) == 0
+    assert await _rows(owner) == 1
     assert api.mailer.sent == []
+    stored = await owner.fetchrow("SELECT username_key, dead_at FROM web_auth.login_request")
+    assert stored is not None
+    assert stored["username_key"].strip() == OWNER_KEY
+    assert stored["dead_at"] is None
+    for code in CODES[:3]:  # whatever code the lock withheld, no code opens the row
+        assert await api.store.check(_cookie(locked)[0], code, api.clock.now(), OWNER_KEY) != Ok()
 
 
-async def test_given_the_web_lock_when_a_known_and_an_unknown_username_ask_then_identical_answers_and_no_rows(
+async def test_given_the_web_lock_when_a_known_and_an_unknown_username_ask_then_identical_answers_and_both_have_a_row(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
@@ -435,11 +442,25 @@ async def test_given_the_web_lock_when_a_known_and_an_unknown_username_ask_then_
     assert _cookie(known)[1] == _cookie(unknown)[1]
     assert len(_cookie(known)[0]) == len(_cookie(unknown)[0])
     assert _cookie(known)[0] != _cookie(unknown)[0]
-    assert await _rows(owner) == 0
+    assert await _rows(owner) == 2
     assert api.mailer.sent == []
 
 
-async def test_given_the_web_lock_when_it_is_lifted_then_the_next_request_stores_a_row_and_sends_the_mail(
+async def test_given_the_web_lock_when_the_owner_asks_twice_within_the_cooldown_then_the_second_is_refused_as_ever(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await _lock(owner)
+    await api.request()
+    api.clock.advance(timedelta(seconds=10))
+
+    second = await api.request()
+
+    assert second.status_code == 429
+    assert second.headers["retry-after"] == "50"
+
+
+async def test_given_the_web_lock_when_it_is_lifted_then_the_cooldown_still_holds_and_the_next_request_is_mailed(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
@@ -447,7 +468,11 @@ async def test_given_the_web_lock_when_it_is_lifted_then_the_next_request_stores
     await api.request()
     await owner.execute("DELETE FROM web_auth.web_lock")
 
-    await api.request()
+    early = await api.request()
+    api.clock.advance(timedelta(seconds=60))
+    later = await api.request()
 
-    assert await _rows(owner) == 1
+    assert early.status_code == 429
+    assert later.status_code == 200
+    assert await _rows(owner) == 2
     assert len(api.mailer.sent) == 1

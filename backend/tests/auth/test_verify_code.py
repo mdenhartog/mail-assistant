@@ -566,11 +566,11 @@ async def test_given_a_used_replaced_or_dead_request_when_a_code_is_posted_then_
     assert await _counted(owner, "code_invalid") == 1
 
 
-async def test_given_a_decoy_swallowed_by_a_full_class_when_a_code_is_posted_then_it_is_code_invalid_no_row_exists(
+async def test_given_100_live_decoys_when_a_code_is_posted_to_one_more_then_it_meets_a_row_and_counts_down(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    # U-web-settings-64: a decoy swallowed by a full class has no row, so the post meets no login request
+    # U-web-settings-69 (RT3-02): a decoy is never swallowed, so a post to the 101st meets its row like any other
     for index in range(100):
         await owner.execute(
             "INSERT INTO web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
@@ -586,7 +586,8 @@ async def test_given_a_decoy_swallowed_by_a_full_class_when_a_code_is_posted_the
 
     answer = await api.verify(FIRST, cookie)
 
-    _assert_refused(answer)
+    assert answer.status_code == 400
+    assert answer.json()["attemptsLeft"] == 4
     assert await _counted(owner, "code_refused") == 0
     assert await _counted(owner, "code_invalid") == 1
 
@@ -634,15 +635,90 @@ async def test_given_an_expired_request_when_a_well_formed_code_is_posted_then_i
     assert await _counted(owner, "code_invalid") == 0
 
 
-# Criterion 3
-async def test_given_a_decoy_request_when_wrong_codes_are_posted_then_they_count_as_code_refused_like_a_real_one(
+async def _age(owner: asyncpg.Connection, age: timedelta) -> None:  # noqa: F811
+    """Make every login request older by ``age``; the clock stays at the real minute the event window needs."""
+    await owner.execute(
+        "UPDATE web_auth.login_request "
+        "SET created_at = created_at - $1::interval, expires_at = expires_at - $1::interval",
+        age,
+    )
+
+
+# U-web-settings-68 (RT3-01, RT3-04, SEC3-01): only the owner's real requests count
+# Criterion 1
+async def test_given_no_request_for_the_owner_when_three_unknown_names_get_5_wrong_codes_each_then_code_refused_is_0(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
+    cookies = [await api.issue(name) for name in ("stranger-1", "stranger-2", "stranger-3")]
+
+    for cookie in cookies:
+        for _ in range(5):
+            assert (await api.verify(SECOND, cookie)).status_code == 400
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1  # one row a client and window, however many posts
+
+
+# Criterion 3 (RT3-04)
+async def test_given_an_owner_request_11_minutes_old_when_10_codes_are_posted_then_one_is_code_refused_and_nine_not(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue()
+    await _age(owner, timedelta(minutes=11))
+
+    for _ in range(10):
+        _assert_refused(await api.verify(FIRST, cookie))
+
+    assert await _counted(owner, "code_refused") == 1
+    assert await _counted(owner, "code_invalid") == 1  # the nine others: one row a client and window
+
+
+# Criterion 3
+async def test_given_a_decoy_request_11_minutes_old_when_10_codes_are_posted_then_none_is_code_refused(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue(UNKNOWN)
+    await _age(owner, timedelta(minutes=11))
+
+    for _ in range(10):
+        _assert_refused(await api.verify(FIRST, cookie))
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1  # one row a client and window
+
+
+# Criterion 1: the exhausting guess of a decoy is not counted either
+async def test_given_a_decoy_request_when_6_wrong_codes_are_posted_then_none_is_code_refused(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue(UNKNOWN)
+
+    for _ in range(6):
+        await api.verify(SECOND, cookie)
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1  # one row a client and window
+
+
+# Criterion 4 (AC-30)
+@pytest.mark.parametrize("age", [timedelta(0), timedelta(minutes=11)])
+async def test_given_an_owner_and_a_decoy_request_when_wrong_codes_are_posted_then_the_answers_have_the_same_shape(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    age: timedelta,
+) -> None:
+    real = await api.issue()
     decoy = await api.issue(UNKNOWN)
+    await _age(owner, age)
 
-    for _ in range(5):
-        await api.verify(SECOND, decoy)
+    for _ in range(7):
+        real_answer = await api.verify(SECOND, real)
+        decoy_answer = await api.verify(SECOND, decoy)
 
-    assert await _counted(owner, "code_refused") == 5
-    assert await _counted(owner, "code_invalid") == 0
+        assert real_answer.status_code == decoy_answer.status_code == 400
+        assert real_answer.json() == decoy_answer.json()
+        assert real_answer.headers.get_list("set-cookie") == decoy_answer.headers.get_list("set-cookie")

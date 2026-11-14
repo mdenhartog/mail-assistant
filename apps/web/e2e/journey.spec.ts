@@ -343,8 +343,11 @@ test("a locked web refuses the signed-in user and answers a right code exactly l
   const code = await newestCode();
   const locked = await request.post("/auth/verify-code", { data: { code }, headers });
 
-  // The reference: a wrong code from a browser that has no live login request.
+  // The reference: a wrong code from a browser that holds a live login request (a decoy of an unknown username). While
+  // the lock is set the owner's request is stored like that one, so the lock leaves no trace (U-web-settings-69).
   const stranger = await browser.newContext(baseURL ? { baseURL } : {});
+  const decoy = await stranger.request.post("/auth/request-code", { data: { username: "somebody-else" }, headers });
+  expect(decoy.status()).toBe(200);
   const reference = await stranger.request.post("/auth/verify-code", { data: { code: "000000" }, headers });
 
   expect(locked.status()).toBe(400);

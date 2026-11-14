@@ -2,9 +2,10 @@
 
 Every failure gives the same 400 with the same cookie handling; ``attemptsLeft`` is added only while the cookie names a
 live login request. A right code while the web lock is set gets the answer of a dead request, so the lock is not
-explained (AC-27). Only a well-formed wrong, expired or exhausting code against a login request that exists (real or
-decoy) is recorded as ``code_refused``, the kind the agent counts; every other refusal is ``code_invalid``, which is not
-counted (SEC2-01). The code, the cookie value and the username never reach an event or a log.
+explained (AC-27). Only a well-formed wrong, expired or exhausting code against a live login request of the configured
+username is recorded as ``code_refused``, the kind the agent counts; a guess against a decoy and every other refusal is
+``code_invalid``, which is not counted (SEC2-01, SEC3-01). The visitor sees no difference. The code, the cookie value
+and the username never reach an event or a log.
 """
 
 from typing import Annotated, Final
@@ -17,6 +18,7 @@ from pydantic.alias_generators import to_camel
 from app.auth.cookies import clear_login_cookie, session_cookie
 from app.auth.digest import username_digest
 from app.auth.login_requests import Dead, LoginRequests, Wrong
+from app.auth.request_code_rules import username_key
 from app.auth.return_to import safe_return_to
 from app.auth.session import SessionStore, WebLocked
 from app.auth.verify_code_rules import code_well_formed, login_id_well_formed, refusal_body
@@ -63,9 +65,9 @@ class VerifyCode:
         self._logins = logins
         self._sessions = sessions
         self._events = events
-        self._username_hash = username_digest(
-            settings.username_hash_key.get_secret_value().encode("utf-8"), settings.username
-        )
+        hash_key = settings.username_hash_key.get_secret_value().encode("utf-8")
+        self._username_hash = username_digest(hash_key, settings.username)
+        self._owner_key = username_key(hash_key, settings.username)
 
     async def verify(self, raw_body: bytes, cookie: str | None, client: str, request_id: str) -> Response:
         """Answer a code check.
@@ -85,9 +87,10 @@ class VerifyCode:
         if body is None:  # a format error is not a guess: answered like any refusal, recorded but never counted
             left = await self._logins.attempts_left(login_id, now)
             return await self._refuse("code_invalid", left, client, request_id)
-        verdict = await self._logins.check(login_id, body.code, now)
+        verdict = await self._logins.check(login_id, body.code, now, self._owner_key)
         if isinstance(verdict, Wrong):
-            return await self._refuse("code_refused", verdict.attempts_left, client, request_id)
+            kind = "code_refused" if verdict.existing else "code_invalid"
+            return await self._refuse(kind, verdict.attempts_left, client, request_id)
         if isinstance(verdict, Dead):
             return await self._refuse("code_refused" if verdict.existing else "code_invalid", None, client, request_id)
         try:
