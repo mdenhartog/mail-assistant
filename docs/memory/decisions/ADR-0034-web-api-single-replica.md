@@ -14,7 +14,7 @@ AC-16 asks for at most 30 requests a minute per client on sign-in and on the set
 
 ## Decision
 
-The api runs as **one replica** (decision of Marco, 2026-11-10); the chart sets `replicas: 1` and a test renders it. Rate limits are in-process, in a fixed window per client and bucket (`signin`, `api`), configured by settings so tests can lower them.
+The api runs as **one replica** (decision of the user, 2026-11-10); the chart sets `replicas: 1` and a test renders it. Rate limits are in-process, in a fixed window per client and bucket (`signin`, `api`), configured by settings so tests can lower them.
 
 - The client address is the address the last trusted proxy appended to `X-Forwarded-For`; trusted proxies are the ingress pod CIDR and a hop count, both configured. A request from any other peer is keyed by its own address.
 - The limit is checked before any `login_flow` row is written, and the number of open `login_flow` rows has a cap above which sign-in answers 429.

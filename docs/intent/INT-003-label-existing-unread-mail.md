@@ -1,22 +1,22 @@
 ---
 id: INT-003
 title: Label the unread mail already in my inbox
-originator: Marco
+originator: the user
 status: confirmed
 date: 2026-11-08
 ---
 
 ## What I want
 
-(English version, to be approved by Marco; his own words are kept under *Original wording*.)
+(English version, to be approved by the user; their own words are kept under *Original wording*.)
 
 The agent also labels the unread mails that were already in my inbox when it was first started, not only the mails that arrive afterwards. I expected those mails to be categorised and could not see that happening.
 
-Scope, as chosen by Marco: all **unread** mail in the inbox, handled once, started automatically by the agent on its first start (no command and no switch). If a mail among them looks urgent, I may get a Telegram alert for it, at most 5 alerts; the other urgent ones appear in the overview instead.
+Scope, as chosen by the user: all **unread** mail in the inbox, handled once, started automatically by the agent on its first start (no command and no switch). If a mail among them looks urgent, I may get a Telegram alert for it, at most 5 alerts; the other urgent ones appear in the overview instead.
 
 ## Why (the problem, who has it, how often)
 
-Marco, for his personal mailbox. After starting the agent, his inbox shows little change: plenty of unread mails that he expected to be labelled stay as they were, so he still misses mails among them. This was seen on the first real run, on 2026-11-08. It touches the goal of INT-001 (a better overview of the mailbox) because the mails that matter most today are the old unread ones.
+The user, for their personal mailbox. After starting the agent, their inbox shows little change: plenty of unread mails that they expected to be labelled stay as they were, so they still misses mails among them. This was seen on the first real run, on 2026-11-08. It touches the goal of INT-001 (a better overview of the mailbox) because the mails that matter most today are the old unread ones.
 
 ## How I will know it works
 
@@ -34,10 +34,10 @@ Marco, for his personal mailbox. After starting the agent, his inbox shows littl
 ## Open questions
 
 - The agent is already running here with a stored Gmail position, so "first start" has already passed. How does the one-time catch-up run for an installation that already started? (design)
-- How many unread mails can there be, and does the daily model budget (`MAIL_TRIAGE_DAILY_MODEL_BUDGET`) cover them? What happens to the rest: wait for the next day, or stop? (Marco)
+- How many unread mails can there be, and does the daily model budget (`MAIL_TRIAGE_DAILY_MODEL_BUDGET`) cover them? What happens to the rest: wait for the next day, or stop? (the user)
 - The old mails are sent to the Anthropic API in bulk. Does this change the threat model and the data-retention choice of ADR-0017? (threat-model)
-- Which 5 alerts are sent when more urgent mails are found: the newest, or the ones the agent is most sure about? (Marco)
-- Is this one intent or part of INT-001? It adds a missing rule to the same feature (the spec only covers "mail that arrived since the last run"); the spec of mail-triage is to be changed, not a new feature started. (Marco)
+- Which 5 alerts are sent when more urgent mails are found: the newest, or the ones the agent is most sure about? (the user)
+- Is this one intent or part of INT-001? It adds a missing rule to the same feature (the spec only covers "mail that arrived since the last run"); the spec of mail-triage is to be changed, not a new feature started. (the user)
 
 ## Original wording
 

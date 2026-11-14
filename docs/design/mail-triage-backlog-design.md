@@ -44,7 +44,7 @@ Gmail already is the list: a filed mail loses its inbox label, so the next query
 | `runner.py` | New port `CatchUpPort` and one `_guard("catchup", ...)` step after `pipeline`. |
 | `wiring.py` | Builds `CatchUp` with the same mailbox, judge, store and the same `DailyBudget` instance. |
 
-## Decisions (my calls; Marco may change them)
+## Decisions (my calls; the user may change them)
 
 1. **Budget reserve of 50 calls per day.** The daily budget is 200. The catch-up may use only the calls above a reserve, so it never takes the budget that a mail arriving later today needs. 75 mails need about 75 to 150 calls, so the catch-up finishes in one or two days. The reserve is a constant in code, like the quiet hours (C7), not a setting.
 2. **Alert cap counted in the database**, not in memory: `backlog_alerts() >= 5` means "no alert for this mail". It survives restarts. The mail is still filed with `urgent = true`, and the overview lists it.

@@ -1,6 +1,6 @@
 # Mail Assistant
 
-A personal assistant for Marco's Gmail. The first feature, [mail triage](docs/specs/mail-triage.md), reads incoming mail, files each mail under a category and warns Marco in Telegram only when a mail needs his immediate attention. Nothing is sent without his confirmation and nothing is ever deleted.
+A personal assistant for the user's Gmail. The first feature, [mail triage](docs/specs/mail-triage.md), reads incoming mail, files each mail under a category and warns the user in Telegram only when a mail needs their immediate attention. Nothing is sent without their confirmation and nothing is ever deleted.
 
 Built with the [claude-sdlc-kit](CLAUDE.md): specs, ADRs and plans live in the repository and every change goes through a pull request.
 

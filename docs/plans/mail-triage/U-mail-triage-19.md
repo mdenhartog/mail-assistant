@@ -12,7 +12,7 @@ feature: mail-triage
 - Parallel: no
 - Guardrails: guardrail-pytest
 - Criteria:
-  1. Given a test mailbox, When a personal request, a newsletter and an automatic notice arrive, Then the first alerts Marco and the other two are only filed (happy; AC-3, AC-4).
+  1. Given a test mailbox, When a personal request, a newsletter and an automatic notice arrive, Then the first alerts the user and the other two are only filed (happy; AC-3, AC-4).
   2. Given the alert, When "Reply" is used and confirmed, Then the mail arrives at the test sender and no reminder follows (happy; AC-7).
   3. Given "remind me later" with a short time, When it passes, Then one new alert arrives (happy; AC-9).
   4. Given an injected mail, When processed, Then nothing is sent or deleted (security; AC-19).

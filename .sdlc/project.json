@@ -39,7 +39,7 @@
       "specs": "repo-docs",
       "specsPath": "docs/specs/",
       "plansPath": "docs/plans/",
-      "approver": "Marco"
+      "approver": "the user"
     },
     "sourceControl": {
       "host": "github",

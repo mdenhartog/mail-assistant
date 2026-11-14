@@ -10,7 +10,7 @@ guardrails: [guardrail-gmail, guardrail-llm, guardrail-sqlalchemy-alembic]
 
 ## Context
 
-The agent only handled mail that arrived after it first started. Marco's unread mail from before (213, later 75) was never filed (INT-003). The base spec only says "mail that arrived since the last run".
+The agent only handled mail that arrived after it first started. The user's unread mail from before (213, later 75) was never filed (INT-003). The base spec only says "mail that arrived since the last run".
 
 ## Decision
 
@@ -28,5 +28,5 @@ Add a separate `CatchUp` use case, run once after the normal pipeline in each ma
 
 - Move the stored Gmail history position back: history is limited in time and cannot select "unread only". Rejected.
 - Copy all old ids into a database queue: duplicates what Gmail already knows and can drift. Rejected.
-- A Telegram command that starts the catch-up: Marco chose an automatic start. Rejected.
+- A Telegram command that starts the catch-up: The user chose an automatic start. Rejected.
 - Treat old mail like new mail when the budget runs out (file as needs-attention): would label old mail urgent only because the budget ended. Rejected (spec AC-B8).

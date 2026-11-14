@@ -1,14 +1,14 @@
 ---
 id: INT-005
 title: Send the app's mail to my own SMTP server
-originator: Marco
+originator: the user
 status: confirmed
 date: 2026-11-14
 ---
 
 ## What I want
 
-(English version, approved by Marco on 2026-11-14; his own words are kept under *Original wording*.)
+(English version, approved by the user on 2026-11-14; their own words are kept under *Original wording*.)
 
 The mails of the app (for now the sign-in codes of the settings page) arrive in the SMTP server that already runs in my Docker stack, the container `smtp4dev`, so that I can check them there and see what they look like. I do not want a separate mail catcher of the project next to it. For this test week the current mail catcher may keep working, but the change belongs in the R2 variant and should happen as soon as possible.
 

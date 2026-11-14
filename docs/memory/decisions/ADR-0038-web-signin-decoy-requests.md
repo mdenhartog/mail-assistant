@@ -14,7 +14,7 @@ ADR-0036 says the sign-in answers the same way whether or not the username is kn
 
 ## Decision
 
-Marco decided on 2026-11-12: **show `attemptsLeft` every time, also for an unknown username.**
+The user decided on 2026-11-12: **show `attemptsLeft` every time, also for an unknown username.**
 
 - A request for an unknown username creates a **decoy login request**: the same row, the same `__Host-login` cookie, the same expiry (10 minutes), the same attempt counter and the same 60 second cooldown as a real one. No code is sent and no code hash is stored that can match.
 - Verifying against a decoy counts attempts exactly like a real request, answers `attemptsLeft` in the same way, and after 5 wrong attempts it is dead, with the same cookie clearing. A right-looking code is always refused with the generic answer.
@@ -30,5 +30,5 @@ Marco decided on 2026-11-12: **show `attemptsLeft` every time, also for an unkno
 
 ## Alternatives
 
-- Never show `attemptsLeft`: simplest, but Marco no longer sees how many attempts are left.
+- Never show `attemptsLeft`: simplest, but the user no longer sees how many attempts are left.
 - Accept the leak, because the page is local only (ADR-0037): needs an accepted risk in the threat model; not chosen.

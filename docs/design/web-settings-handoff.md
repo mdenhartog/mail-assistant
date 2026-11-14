@@ -4,7 +4,7 @@ intent: INT-002
 brief: docs/design/web-settings-brief.md
 prototype: docs/design/web-settings-prototype.html
 status: approved
-approver: Marco
+approver: the user
 date: 2026-11-10
 ---
 
@@ -36,7 +36,7 @@ The source of the tokens is the `:root` and `:root[data-theme=dark]` blocks at t
 - Zone-change preview line while the form is dirty.
 - Saving state keeps focus on Save (`aria-disabled`), inputs read-only, polite status "Saving your settings."
 - Saved banner with the real notice interval instead of the fixed "about 5 minutes"; last-change line.
-- Conflict: banner with focus, unedited fields take the new values, edited fields keep Marco's value and show both values with "Use mine" and "Keep Telegram's" as toggle buttons with text "Using ...", nothing saved until Save is pressed again.
+- Conflict: banner with focus, unedited fields take the new values, edited fields keep the user's value and show both values with "Use mine" and "Keep Telegram's" as toggle buttons with text "Using ...", nothing saved until Save is pressed again.
 
 ## Differences from the screens document and the production design
 

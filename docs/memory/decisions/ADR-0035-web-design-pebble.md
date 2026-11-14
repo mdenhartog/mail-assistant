@@ -11,11 +11,11 @@ guardrails: [guardrail-tailwind, guardrail-a11y]
 
 ## Context
 
-ADR-0031 chose the Paper Trail direction on 2026-11-10. The same day, after the design was merged, Marco asked for the **Pebble** theme instead. Three directions had been drawn for the login page, the settings page and their states, in light and dark, at phone and desktop width; the text pairs of all three passed WCAG 2.2 AA when measured on the rendered page.
+ADR-0031 chose the Paper Trail direction on 2026-11-10. The same day, after the design was merged, the user asked for the **Pebble** theme instead. Three directions had been drawn for the login page, the settings page and their states, in light and dark, at phone and desktop width; the text pairs of all three passed WCAG 2.2 AA when measured on the rendered page.
 
 ## Decision
 
-Direction **C, Pebble**, chosen by Marco: a friendly companion with soft edges. Blush and berry (rendered starting values: surface `#FAF1EE`, primary `#8A2F63`, text `#2A1823`), Bricolage Grotesque for headings with Figtree for text, radii of 14 px (controls) and 24 px (cards, bubble), pill buttons, one soft card per setting (a 2 by 2 grid on desktop, stacked on a phone), a soft shadow, and a short spring motion (about 200 ms).
+Direction **C, Pebble**, chosen by the user: a friendly companion with soft edges. Blush and berry (rendered starting values: surface `#FAF1EE`, primary `#8A2F63`, text `#2A1823`), Bricolage Grotesque for headings with Figtree for text, radii of 14 px (controls) and 24 px (cards, bubble), pill buttons, one soft card per setting (a 2 by 2 grid on desktop, stacked on a phone), a soft shadow, and a short spring motion (about 200 ms).
 
 - The values (palette, type, radius, spacing, shadow, motion) become `packages/tokens` through `design-tokens-bridge` in the prototype unit, before any production screen. The placeholder tokens are replaced then, with semantic names and a light and a dark value for each colour.
 - The contrast test of `packages/tokens` covers text pairs at 4.5:1 and borders, focus rings and controls at 3:1, and runs in CI.
@@ -32,5 +32,5 @@ Direction **C, Pebble**, chosen by Marco: a friendly companion with soft edges. 
 
 ## Alternatives
 
-- A, Paper Trail (ADR-0031, superseded): calmer and cheaper to keep accessible; replaced at Marco's request.
+- A, Paper Trail (ADR-0031, superseded): calmer and cheaper to keep accessible; replaced at the user's request.
 - B, Signal Desk: fits a future control panel; closest to the admin look ADR-0010 wants to avoid.

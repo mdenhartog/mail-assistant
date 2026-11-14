@@ -14,7 +14,7 @@ feature: web-settings
 - Criteria:
   1. Given 100 open decoy requests from one client, When the configured username asks for a code from another client, Then it gets 200 and a mail is sent (AC-16) (type: security; level: db).
   2. Given one client, When it opens more than the per-client number of requests or codes in an hour, Then it is refused while other clients are not (W-7) (type: security; level: db).
-  3. Given Marco's live request in browser A, When another client asks for a code for his username, Then A's code still verifies; a request with A's cookie replaces it (type: security; level: db).
+  3. Given the user's live request in browser A, When another client asks for a code for their username, Then A's code still verifies; a request with A's cookie replaces it (type: security; level: db).
   4. Given a refused request, When the 429 is read, Then `Retry-After` equals the real time until the limit frees (type: edge; level: api).
   5. Given five requests then a sixth for a known and an unknown username at identical times, also when the mailer fails, When answered, Then status and `Retry-After` are identical (AC-30) (type: security; level: api).
   6. Given migration 0010, When run up, down and up, Then it is reversible and the web role gets only the grants it needs (type: edge; level: db).

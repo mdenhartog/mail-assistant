@@ -11,7 +11,7 @@ A manual run of the whole agent against a Gmail **test** account, a Telegram tes
 never run in CI. Automated tests already run the same flow against a real PostgreSQL with fake Gmail, Telegram and
 Anthropic (`tests/db/test_end_to_end.py`); this run proves the real services behave the same.
 
-## What you need (from Marco)
+## What you need (from the user)
 
 | Item | Where to get it | Goes into |
 | --- | --- | --- |

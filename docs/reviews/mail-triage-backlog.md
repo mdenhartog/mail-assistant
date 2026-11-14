@@ -17,10 +17,10 @@ All eleven units of the plan (U-01 to U-11), test first, on the branch `feat/mai
 
 | Gate | Result |
 | --- | --- |
-| Intent confirmed by the originator | INT-003, confirmed by Marco on 2026-11-08 |
-| Spec approved | `mail-triage-backlog.md`, approved by Marco; the reserve of 50 calls (C-B4, AC-B15) added in phase 3 and approved by Marco |
-| Threat model (delta T-18 to T-27) approved | approved by Marco |
-| Design and ADR-0021 approved | approved by Marco |
+| Intent confirmed by the originator | INT-003, confirmed by the user on 2026-11-08 |
+| Spec approved | `mail-triage-backlog.md`, approved by the user; the reserve of 50 calls (C-B4, AC-B15) added in phase 3 and approved by the user |
+| Threat model (delta T-18 to T-27) approved | approved by the user |
+| Design and ADR-0021 approved | approved by the user |
 | Plan reviewed by `qa-strategist` | done; findings added to the plan (section "QA review") |
 | Tests first, shown red before green | every unit |
 | Full suite, coverage | all tests green, coverage 98 % (floor 90 %) |
@@ -45,7 +45,7 @@ All eleven units of the plan (U-01 to U-11), test first, on the branch `feat/mai
 
 ## Decisions that differ from the plan
 
-- **One branch instead of one worktree per unit.** Marco asked for everything on one new branch (`feat/mail-triage`), so the units were built one after the other as separate commits on it.
+- **One branch instead of one worktree per unit.** The user asked for everything on one new branch (`feat/mail-triage`), so the units were built one after the other as separate commits on it.
 - **The overlapping-run test of the QA review was not written.** The agent holds a single-replica lock and the cycle awaits each run, so two runs cannot overlap; `claim()` returning `PENDING` for a claimed but unfinished mail is crash recovery by design. If more than one replica is ever allowed, this needs its own design and test.
 - **`mutmut` was not used** because it is not installed and adding a dependency needs a decision; a manual mutation check on the sensitive comparisons stands in for it.
 - **`build_runner` got an optional `today` argument** so the budget clock can be controlled in tests; production passes nothing.
@@ -53,6 +53,6 @@ All eleven units of the plan (U-01 to U-11), test first, on the branch `feat/mai
 
 ## Open
 
-- Run check 9 of `docs/reviews/mail-triage-e2e.md` against Marco's real mailbox (and confirm the old unread mail is labelled).
+- Run check 9 of `docs/reviews/mail-triage-e2e.md` against the user's real mailbox (and confirm the old unread mail is labelled).
 - The daily budget counter is in memory (as before), so a restart resets today's count and the reserve of 50 holds again only from the next day (ADR-0021).
 - Persisting the budget count, if that restart gap matters, is a separate change.

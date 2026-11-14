@@ -14,7 +14,7 @@ The feature was built through the pull requests #60 to #132 on `main` (one pull 
 
 | Phase | Result | Evidence |
 | --- | --- | --- |
-| 1 Spec | Approved by Marco, 2026-11-09, revised 2026-11-10 and 2026-11-14 (AC-32, AC-33, R1/R2 corrected) | `docs/specs/web-settings.md` |
+| 1 Spec | Approved by the user, 2026-11-09, revised 2026-11-10 and 2026-11-14 (AC-32, AC-33, R1/R2 corrected) | `docs/specs/web-settings.md` |
 | 2 Threat model | Written, deltas of 2026-11-10 (twice) and 2026-11-13 (three rounds), data classification current | `docs/security/web-settings-threat-model.md` |
 | 3 Design | Approved; ADR-0033 to ADR-0039 | `docs/design/web-settings-design.md`, `docs/memory/index.md`, prototype PR #55 |
 | 4 Plan | 78 units (75 R1, 3 R2), decisions D-1 to D-24 | `docs/plans/web-settings.md` |
@@ -61,7 +61,7 @@ Three rounds of red team (RT), security review (SEC) and code review (CR, round 
 | SEC2-05, RT2-08 (environment override, digests everywhere) | U-66 | #125 |
 | SEC2-07, SEC2-08 (digest domain separation, IPv6 event class) | U-67 | #128 |
 | Retention (purge of security events and audit) into R1 | U-49 (D-19) | #126 |
-| RT2-02 (one device with the username uses up the hourly budget) | Accepted as R-4 (Marco, 2026-11-13) | release checklist |
+| RT2-02 (one device with the username uses up the hourly budget) | Accepted as R-4 (the user, 2026-11-13) | release checklist |
 | SEC2-04 (ingress controller) | Open: gate before production, D-21 | release checklist items 2 and 3 |
 | SEC2-06 (security events kept forever until the purge) | Closed by U-49 (purge, 90 days) and U-71 (also expired `web_notice_token`). Residual: the purge runs only at deploy time (PreSync), tracked as release condition 9 (SEC3-04) | #126, #131 |
 | SEC2-09 (spec, plan and ADR text no longer matches the build) | Closed by this documentation pull request (U-web-settings-72) | this PR |
@@ -90,13 +90,13 @@ Three rounds of red team (RT), security review (SEC) and code review (CR, round 
 - Residual of SEC2-06: the purge runs only at deploy time (PreSync); release condition 9 asks for a sync at least every 30 days or an accepted retention bound.
 - Scope of `done`: R1 and R2 are built and merged. C-5 (keeping typed values), C-6 (Reset to defaults), AC-12 (second half) and AC-25 are described as built in the spec. Nothing is released.
 - The documents disagreed in places, which the documentation pull requests corrected: the hourly cap counts every request including a failed send (D-16, AC-31); the alert, the lock and the purge are R1; AC-32 and AC-33 are new; R2 was marked "not built" until the R2 pull requests of 2026-11-14 were merged.
-- The week test (D-22): Marco tests the local stack from 2026-11-14 for a week and records the outcome. The agent waits for the Gmail consent: Marco creates a new OAuth client in Google Cloud and runs the consent (see the [local stack notes](../operations/local-stack.md)).
+- The week test (D-22): The user tests the local stack from 2026-11-14 for a week and records the outcome. The agent waits for the Gmail consent: The user creates a new OAuth client in Google Cloud and runs the consent (see the [local stack notes](../operations/local-stack.md)).
 - INT-005 (an own SMTP server, smtp4dev, for the sign-in mail): confirmed 2026-11-14; the specification follows after the week test and is an R2 variant.
 - The conditions for production are in the [production release checklist](../release/web-settings-prod.md): rows 12 to 18 are new since the local stack work (week test, SealedSecret location, Traefik access log, Gmail client status, `TOKEN_ENCRYPTION_KEY`, origin against host, INT-005).
 
 ## Approvals
 
-All by Marco unless stated otherwise.
+All by the user unless stated otherwise.
 
 | Date | Decision |
 | --- | --- |
@@ -110,6 +110,6 @@ All by Marco unless stated otherwise.
 
 ## Deploy
 
-Not deployed, neither to staging nor to production, and the production values files (U-74) are files only: nothing applies them. The conditions, owners and evidence are in the [production release checklist](../release/web-settings-prod.md). No production approval has been given; phase 9 is not started until Marco gives it explicitly.
+Not deployed, neither to staging nor to production, and the production values files (U-74) are files only: nothing applies them. The conditions, owners and evidence are in the [production release checklist](../release/web-settings-prod.md). No production approval has been given; phase 9 is not started until the user gives it explicitly.
 
 Rollback plan: nothing to roll back yet. The database side (the web role, the `web_auth` schema, the notice cursor) comes from migration 0008 and later ones in the agent chain, and the rollback of the application is the rollback of the Argo CD release. Locking web sign-in from Telegram (`/web_lock`) refuses every web sign-in without a redeploy.

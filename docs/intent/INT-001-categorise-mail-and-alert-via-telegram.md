@@ -1,7 +1,7 @@
 ---
 id: INT-001
 title: Categorise mail and alert me via Telegram
-originator: Marco
+originator: the user
 status: confirmed
 date: 2026-11-08
 ---
@@ -12,7 +12,7 @@ Incoming email is read and categorised by what it is for, so that I get a better
 
 ## Why (the problem, who has it, how often)
 
-I very often do not have time for my personal mail. Because of that I sometimes miss mails, which is not handy. I want to improve that. (Who: me, Marco, for my personal mailbox. How often: "very often"; the cost is missed mails.)
+I very often do not have time for my personal mail. Because of that I sometimes miss mails, which is not handy. I want to improve that. (Who: me, the user, for my personal mailbox. How often: "very often"; the cost is missed mails.)
 
 ## How I will know it works
 

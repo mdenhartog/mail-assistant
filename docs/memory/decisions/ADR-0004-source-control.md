@@ -15,7 +15,7 @@ The project needs a source control host, CI pipeline, PR workflow, and a release
 
 - Host: **GitHub** — repository `mdenhartog/mail-assistant`
 - CI: GitHub Actions (`./github/workflows/ci.yml`, `release.yml`)
-- Branch protection: `main` is protected; at least one approving review required (Marco)
+- Branch protection: `main` is protected; at least one approving review required (the user)
 - Release: release-please + GHCR; cosign keyless signing
 - Merge queue enabled; direct pushes to `main` are blocked
 

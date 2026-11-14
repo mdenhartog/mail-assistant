@@ -10,10 +10,10 @@ guardrails: [guardrail-telegram, guardrail-oauth2-oidc]
 
 ## Context
 
-The spec accepts risk R-1: anyone who can read Marco's mailbox can sign in (the web sign-in is a username and a code sent by e-mail, ADR-0036). What limits the damage is the Telegram notice with Undo for every web change (W-11, AC-13). The design round table found that this control, as first designed, does not hold for someone with a session:
+The spec accepts risk R-1: anyone who can read the user's mailbox can sign in (the web sign-in is a username and a code sent by e-mail, ADR-0036). What limits the damage is the Telegram notice with Undo for every web change (W-11, AC-13). The design round table found that this control, as first designed, does not hold for someone with a session:
 
 - Undo restores one step and only while the row is still at that version. After two quick web saves, the Undo of the first notice fails and the Undo of the second restores the attacker's first change.
-- The Undo of a quiet-hours change lives in the single conversation row (ADR-0026) with a 24 hour life; a web notice that used the same row would replace a Telegram dialogue Marco is in.
+- The Undo of a quiet-hours change lives in the single conversation row (ADR-0026) with a 24 hour life; a web notice that used the same row would replace a Telegram dialogue the user is in.
 - A web session lives up to 12 hours and nothing ends it from Telegram.
 
 ## Decision
@@ -35,11 +35,11 @@ The spec accepts risk R-1: anyone who can read Marco's mailbox can sign in (the 
 ## Alternatives
 
 - One Undo per notice as in Telegram: fails after a burst of changes; rejected.
-- Re-authentication for every write: more friction for Marco on a phone, and it does not help when the mailbox itself is taken; kept as an option for later.
+- Re-authentication for every write: more friction for the user on a phone, and it does not help when the mailbox itself is taken; kept as an option for later.
 - A Telegram command only to lock: slower in the moment than a button on the notice.
 
 ## Amendment 2026-11-14 (phase 8, what was built)
 
 - **Agent grants.** Besides insert and update on `web_auth.web_lock`, the agent role has `DELETE` on it (`/web_unlock` removes the row) and on `web_notice_token` (expired tokens are removed), and column `SELECT (id, kind, at, count)` on `web_auth.security_event` for the wrong-code alert (ADR-0039). It has nothing else in `web_auth`. Only the owner purge deletes from `settings.settings_change`.
-- **Commands.** `/web_lock` sets the lock from the allowed Telegram chat and says whether it was already set; `/web_unlock` lifts it. The sign-in e-mail names `/web_lock` for the case that Marco did not ask for the code. The agent also sets the lock by itself after 15 wrong codes in 24 hours (ADR-0039).
+- **Commands.** `/web_lock` sets the lock from the allowed Telegram chat and says whether it was already set; `/web_unlock` lifts it. The sign-in e-mail names `/web_lock` for the case that the user did not ask for the code. The agent also sets the lock by itself after 15 wrong codes in 24 hours (ADR-0039).
 - **Alert and lock are R1**, not R2.

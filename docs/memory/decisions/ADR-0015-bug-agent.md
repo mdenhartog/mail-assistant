@@ -20,7 +20,7 @@ Bug agent mode: **fix**
 - Maximum concurrent open fix PRs: **3**
 - Scope: all bugs detected in the watch window that are reproducible as a failing test
 
-The agent will: detect → register in backlog → reproduce as failing test → fix → open a PR. Marco reviews and merges fix PRs.
+The agent will: detect → register in backlog → reproduce as failing test → fix → open a PR. The user reviews and merges fix PRs.
 
 ## Consequences
 

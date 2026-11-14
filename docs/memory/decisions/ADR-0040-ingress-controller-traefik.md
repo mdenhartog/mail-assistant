@@ -14,7 +14,7 @@ The phase 6 reviews (SEC2-04, SEC3-02) found that HSTS, the HTTP to HTTPS redire
 
 ## Decision
 
-Marco agreed on 2026-11-14 to the recommendation: **Traefik** is the ingress controller for the local cluster and for production.
+The user agreed on 2026-11-14 to the recommendation: **Traefik** is the ingress controller for the local cluster and for production.
 
 - The chart renders Traefik's own objects, not annotation text: a `Middleware` for the headers (`Strict-Transport-Security: max-age=31536000`, no `includeSubDomains`, no preload) and for the body limit (`buffering.maxRequestBodyBytes: 8192`), a `Middleware` or entry point redirect from HTTP to HTTPS, and a `TLSOption` with `minVersion: VersionTLS12`.
 - The ingress allow-list peers of the NetworkPolicy and the trusted proxy CIDRs of the api (U-52) name the Traefik pods.
@@ -23,7 +23,7 @@ Marco agreed on 2026-11-14 to the recommendation: **Traefik** is the ingress con
 ## Consequences
 
 - `ingress-nginx` vocabulary leaves the values files, the schema gates and the tests (U-57, U-66 are adapted by U-74).
-- Production still needs the Traefik installation, its certificate resolver or cert-manager issuer and the private CA (D-9) from Marco; nothing is deployed by this ADR.
+- Production still needs the Traefik installation, its certificate resolver or cert-manager issuer and the private CA (D-9) from the user; nothing is deployed by this ADR.
 - Changing the controller later is a rebuild of the ingress objects, not a flag.
 
 ## Alternatives

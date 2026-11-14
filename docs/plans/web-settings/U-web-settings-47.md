@@ -16,7 +16,7 @@ feature: web-settings
   2. Given the restored draft, When the page loads, Then Save is enabled and nothing is saved until it is pressed (AC-12) (type: edge; level: component).
   3. Given the draft store, When read, Then it holds the five values and the version only, never a token, address or CSRF value (AC-8, W-4) (type: security; level: component).
   4. Given sign-out, a successful save or "Keep Telegram's" for every field, When completed, Then the draft is removed (type: edge; level: component).
-  5. Given the stored version is older than the server's after sign-in, When restored, Then the conflict flow of U-35 shows with the draft as Marco's values (AC-11, AC-28) (type: edge; level: component).
+  5. Given the stored version is older than the server's after sign-in, When restored, Then the conflict flow of U-35 shows with the draft as the user's values (AC-11, AC-28) (type: edge; level: component).
   6. Given a draft saved 11 h 59 min and 12 h 00 min ago, When the page loads, Then restored, then discarded (type: edge; level: component).
   7. Given the login page with a draft present and without, When rendered, Then "what you typed is kept" appears only with a draft (type: edge; level: component).
   8. Given axe on the restore banner, When run, Then no violation and the banner is `role="status"` (AC-23) (type: a11y; level: component).

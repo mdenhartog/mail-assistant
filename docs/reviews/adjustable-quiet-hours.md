@@ -14,7 +14,7 @@ The units were merged through pull requests #16 to #46 (list below); the intent,
 
 | Phase | Result | Evidence |
 | --- | --- | --- |
-| 1 Spec | Approved by Marco, 2026-11-09 | `docs/specs/adjustable-quiet-hours.md` front matter, PR #15 |
+| 1 Spec | Approved by the user, 2026-11-09 | `docs/specs/adjustable-quiet-hours.md` front matter, PR #15 |
 | 2 Threat model | Written, mitigations traced to tests | `docs/security/adjustable-quiet-hours-threat-model.md` |
 | 3 Design | ADR-0023 to ADR-0028 | `docs/memory/index.md` |
 | 4 Plan | 43 units, then 16a to 16f from the challenge round | `docs/plans/adjustable-quiet-hours.md` |
@@ -31,7 +31,7 @@ The units were merged through pull requests #16 to #46 (list below); the intent,
 - `pip-audit` for mail-triage: no known vulnerabilities. The local package `schedule-policy` cannot be audited from PyPI by hand; its own CI job runs `pip-audit`.
 - CI on main: `backend`, `components` (includes the Trivy scan of the image, no ignores), `images`, `helm`, `helm-worker`, `e2e`, `runtime-role`, `schedule-policy`, `security`, `web`, `docs` all green; `gxp` is skipped because the system is not GxP (ADR-0006).
 - `runtime-role` job: the migrate job runs against the prod-like database, then 19 forbidden statements as the runtime role must fail with SQLSTATE 42501 and the allowed paths must work.
-- Mutation testing (workflow `mutation.yml`, CI on Linux with CPython 3.14.4): first run 42865370873 on main gave `schedule_policy` 86.93 % and `app/core/time_policy.py` 89.83 % killed (criteria U-01 #10 and U-03 #11, both 85 %). Marco asked for a margin of at least 5 points, so units 16g and 16h added tests for every survivor that a behavioural test can kill. Result in CI on main (run 42883754433): `schedule_policy` 90.15 % and `time_policy.py` 90.40 % killed. The remaining survivors are equivalent mutants. About 30 of them replace `|` in a type annotation; CPython 3.14 evaluates annotations lazily (PEP 649), so on CI such a mutant changes nothing, while on 3.13 it fails at import and counts as killed (local scores were about 6 points higher). The score was not raised by excluding operators or by reshaping production code.
+- Mutation testing (workflow `mutation.yml`, CI on Linux with CPython 3.14.4): first run 42865370873 on main gave `schedule_policy` 86.93 % and `app/core/time_policy.py` 89.83 % killed (criteria U-01 #10 and U-03 #11, both 85 %). The user asked for a margin of at least 5 points, so units 16g and 16h added tests for every survivor that a behavioural test can kill. Result in CI on main (run 42883754433): `schedule_policy` 90.15 % and `time_policy.py` 90.40 % killed. The remaining survivors are equivalent mutants. About 30 of them replace `|` in a type annotation; CPython 3.14 evaluates annotations lazily (PEP 649), so on CI such a mutant changes nothing, while on 3.13 it fails at import and counts as killed (local scores were about 6 points higher). The score was not raised by excluding operators or by reshaping production code.
 - Not run locally: the end-to-end suite against a local Docker stack (it would use the developer's own stack; CI runs the same prod-like stack) and a live run against real Gmail, Telegram and Anthropic (manual run in `docs/reviews/mail-triage-e2e.md`).
 
 ## Challenge
@@ -63,10 +63,10 @@ Known follow-ups, not blocking: move-button wording (16:00 vs 03:00), canary zon
 
 | What | Who | When |
 | --- | --- | --- |
-| Spec | Marco | 2026-11-09 (front matter of the spec) |
-| Merging every pull request after green CI | Marco, standing instruction | during the build |
-| ADR-0029 Sealed Secrets | Marco | 2026-11-10 |
-| ADR-0030: SCRAM verifier set by the client, mutation check nightly and on manual start | Marco | 2026-11-10 |
+| Spec | The user | 2026-11-09 (front matter of the spec) |
+| Merging every pull request after green CI | The user, standing instruction | during the build |
+| ADR-0029 Sealed Secrets | The user | 2026-11-10 |
+| ADR-0030: SCRAM verifier set by the client, mutation check nightly and on manual start | The user | 2026-11-10 |
 | Production | Not asked yet | |
 
 ## Deploy

@@ -65,7 +65,7 @@ Every criterion of the spec is covered by at least one unit. The migration (U-01
 
 ## Done when
 
-All units are merged through their own pull requests, the full suite is green with coverage of at least 90%, `/sdlc:verify` is green, and the end-to-end check in the runbook (check 9) passes against Marco's real mailbox.
+All units are merged through their own pull requests, the full suite is green with coverage of at least 90%, `/sdlc:verify` is green, and the end-to-end check in the runbook (check 9) passes against the user's real mailbox.
 
 ## QA review (phase 4): additions to the criteria above
 

@@ -1,6 +1,6 @@
 # mail-triage
 
-Reads Marco's incoming Gmail, files each mail under a category, warns him through Telegram when a mail needs immediate attention, and sends a confirmed reply. Spec: `docs/specs/mail-triage.md`; design: `docs/design/mail-triage-design.md`; plan: `docs/plans/mail-triage.md`.
+Reads the user's incoming Gmail, files each mail under a category, warns the user through Telegram when a mail needs immediate attention, and sends a confirmed reply. Spec: `docs/specs/mail-triage.md`; design: `docs/design/mail-triage-design.md`; plan: `docs/plans/mail-triage.md`.
 
 Status: in use. Adjustable quiet hours (INT-002, spec `docs/specs/adjustable-quiet-hours.md`) are built; the web settings page is the separate, later feature `web-settings`.
 
@@ -12,7 +12,7 @@ All values come from the environment (`.env` locally, a Kubernetes secret in pro
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API key (secret) |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token (secret) |
-| `TELEGRAM_ALLOWED_USER_ID`, `TELEGRAM_ALLOWED_CHAT_ID` | The only user and chat the bot answers (Marco) |
+| `TELEGRAM_ALLOWED_USER_ID`, `TELEGRAM_ALLOWED_CHAT_ID` | The only user and chat the bot answers (the user) |
 | `MODEL_SMALL`, `MODEL_LARGE` | Model ids; never literals in code |
 | `DATABASE_URL` | PostgreSQL connection string of the **runtime role** `mail_triage_runtime` (contains the password) |
 | `POLL_INTERVAL_SECONDS` | Optional; default 60 |
@@ -79,9 +79,9 @@ Locally, `docker compose --profile dev up` (or `--profile components`) starts `m
 
 Two triggers on `settings.schedule` make the database, not the application, decide what a change is. The guard refuses a write that does not raise `version` by exactly one and a write whose channel does not match the login role. The audit trigger writes one record per change (time, channel, actor, old and new values, and the login role taken from `session_user`), so the runtime role means the channel `telegram` and cannot claim another one. The runtime role cannot insert into the history directly.
 
-## Settings that Marco changes
+## Settings that the user changes
 
-Quiet hours, the daily overview time, the remind-me-later default and the time zone are stored in the database (schema `settings`, ADR-0025) and changed with `/settings` in Telegram; the user guide is [Quiet hours and other settings in Telegram](../../docs/user-guide/quiet-hours.md). Validation and the place list (ADR-0028) live in the shared package `packages/schedule-policy`, and the dialogue keeps its state in one `conversation` table (ADR-0026). Wall-clock rules for gaps and repeated hours are in ADR-0027. With no stored row the agent uses the first-release values. If the stored row cannot be read or is invalid, the agent uses the last good values (or the defaults) and sends Marco one Telegram notice per incident.
+Quiet hours, the daily overview time, the remind-me-later default and the time zone are stored in the database (schema `settings`, ADR-0025) and changed with `/settings` in Telegram; the user guide is [Quiet hours and other settings in Telegram](../../docs/user-guide/quiet-hours.md). Validation and the place list (ADR-0028) live in the shared package `packages/schedule-policy`, and the dialogue keeps its state in one `conversation` table (ADR-0026). Wall-clock rules for gaps and repeated hours are in ADR-0027. With no stored row the agent uses the first-release values. If the stored row cannot be read or is invalid, the agent uses the last good values (or the defaults) and sends the user one Telegram notice per incident.
 
 ### Telegram update id
 

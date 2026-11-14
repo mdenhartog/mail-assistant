@@ -19,7 +19,7 @@ All work artefacts live in the Git repository:
 - `docs/plans/<feature>.md` — unit plans (phase 4)
 - ADRs, threat models and validation evidence in `docs/memory/` and `docs/security/`
 
-Specs are reviewed and approved via GitHub pull requests. Marco is the spec approver.
+Specs are reviewed and approved via GitHub pull requests. The user is the spec approver.
 
 ## Consequences
 

@@ -4,7 +4,7 @@ intent: INT-002
 extends: mail-triage
 status: done
 date: 2026-11-09
-approver: Marco
+approver: the user
 sibling: web-settings
 docs: docs/user-guide/quiet-hours.md
 ---
@@ -13,24 +13,24 @@ docs: docs/user-guide/quiet-hours.md
 
 ## Summary
 
-The first release of `mail-triage` keeps four values fixed in the code (`agents/mail-triage/app/core/time_policy.py`, base spec C7): quiet hours 23:00 to 07:00, the daily overview at 18:00, the "tomorrow" default of a reminder at 09:00 and the time zone Europe/Amsterdam. This feature lets Marco see and change these four values in Telegram through a guided conversation. The settings are stored in a shared PostgreSQL schema so that the web UI (feature `web-settings`, same intent) can use the same values later.
+The first release of `mail-triage` keeps four values fixed in the code (`agents/mail-triage/app/core/time_policy.py`, base spec C7): quiet hours 23:00 to 07:00, the daily overview at 18:00, the "tomorrow" default of a reminder at 09:00 and the time zone Europe/Amsterdam. This feature lets the user see and change these four values in Telegram through a guided conversation. The settings are stored in a shared PostgreSQL schema so that the web UI (feature `web-settings`, same intent) can use the same values later.
 
-Why: Marco travels (for example to the USA) and a fixed Amsterdam clock does not fit his day (INT-002). Changing the time zone is the must-have; the other three values are convenience and are cut first if the work has to shrink.
+Why: The user travels (for example to the USA) and a fixed Amsterdam clock does not fit their day (INT-002). Changing the time zone is the must-have; the other three values are convenience and are cut first if the work has to shrink.
 
-Success: during the next trip no alert arrives inside local quiet hours, and Marco changes the zone in Telegram alone, within 2 minutes.
+Success: during the next trip no alert arrives inside local quiet hours, and the user changes the zone in Telegram alone, within 2 minutes.
 
-Review: round table of 2026-11-09 (product owner, architect, security architect, UX critic, QA strategist). Its findings are folded into this version; INT-002 was split into this feature and `web-settings` at Marco's decision.
+Review: round table of 2026-11-09 (product owner, architect, security architect, UX critic, QA strategist). Its findings are folded into this version; INT-002 was split into this feature and `web-settings` at the user's decision.
 
 ## Who it is for
 
-Marco, the single owner. No other users and no roles.
+The user, the single owner. No other users and no roles.
 
 ## Goals
 
-1. Marco can see and change the four values in Telegram.
+1. The user can see and change the four values in Telegram.
 2. Every alert that arises after a change is judged with the new values; alerts already held or snoozed keep the time they were given.
 3. With no stored settings the agent behaves exactly like the first release.
-4. A bad stored value can never silence the agent, and Marco is told when the agent falls back.
+4. A bad stored value can never silence the agent, and the user is told when the agent falls back.
 
 ## Non-goals
 
@@ -41,12 +41,12 @@ Marco, the single owner. No other users and no roles.
 ## Anti-goals (a failure even if it technically works)
 
 - A nonsensical value is stored, and the agent stops alerting or alerts all night.
-- Someone other than Marco changes a value.
+- Someone other than the user changes a value.
 - A change made in two places at once is lost or leaves a row that breaks the rules.
-- Marco answers a question for one setting and changes another, or a snooze answer is read as a city.
-- The agent falls back to Amsterdam times while Marco is abroad and he is not told.
+- The user answers a question for one setting and changes another, or a snooze answer is read as a city.
+- The agent falls back to Amsterdam times while the user is abroad and they are not told.
 
-## Decisions made by Marco
+## Decisions made by the user
 
 | # | Decision | Source |
 | --- | --- | --- |
@@ -60,7 +60,7 @@ Marco, the single owner. No other users and no roles.
 | S8 | Values are validated; nonsensical values are refused. | INT-002 |
 | S9 | The settings live in the existing PostgreSQL, read by the agent and written by Telegram (here) and the web backend (later). | brainstorm (ADR-0023, ADR-0025) |
 
-## My calls (Marco may change these)
+## My calls (the user may change these)
 
 - C-1: **Defaults.** With no row, or with the table absent, the agent uses 23:00, 07:00, 18:00, 09:00 and Europe/Amsterdam (first-release behaviour).
 - C-2: **Valid values.** Times are whole minutes. The quiet window is 1 to 12 hours long, measured in clock minutes, start differs from end, and it may or may not cross midnight. The overview time and the reminder default must lie outside quiet hours (start inclusive, end exclusive, as `in_quiet_hours` does today). The zone is a name from the IANA database. One shared validation (package `packages/schedule-policy`) checks the whole row; every write is checked as a whole row, not per field.
@@ -70,7 +70,7 @@ Marco, the single owner. No other users and no roles.
 - C-6: **Time-zone lookup.** Typed text is matched without regard to case and accents against a bundled list of cities, countries and common aliases ("NYC", "Wien"), which maps to IANA zones. Several hits show at most 5 buttons labelled like "Paris, France (UTC+1)". A near miss offers "Did you mean New York?". A country with several zones shows its zones with city names. A typed IANA name (`Europe/Paris`) is also accepted if it is in the list. No network call. The source of the list is an ADR in phase 3.
 - C-7: **Confirmation.** After a change the bot shows the full picture, for example: "Time zone: America/New_York (UTC-5). It is 17:05 there, 23:05 in Amsterdam. Quiet hours 23:00 to 07:00 New York time (05:00 to 13:00 Amsterdam). Next overview: today 18:00." It adds the next clock change within 14 days, and an **Undo** button.
 - C-8: **Conversation.** One conversation at a time, held in one stored conversation state (ADR-0026) that also carries the existing snooze and reply questions. Starting a new one replaces the old one and says so. A settings question expires after 15 minutes; the old message is edited to "Expired" without buttons and offers "Start again". Snooze and reply questions keep their current behaviour. Buttons carry a random token and an index, never a value.
-- C-9: **Fallback.** If the stored row cannot be read or is invalid, the agent uses the last good values, or the defaults if there were none, and sends Marco one Telegram notice per incident naming the values in use.
+- C-9: **Fallback.** If the stored row cannot be read or is invalid, the agent uses the last good values, or the defaults if there were none, and sends the user one Telegram notice per incident naming the values in use.
 - C-10: **Wording.** English, 24-hour time. Terms: "Quiet hours", "Daily overview", "Remind-me-later default", "Time zone" (as in the alert texts). A change takes effect within one run interval.
 - C-11: **Audit.** Every change writes an append-only record (time, channel, actor, old and new values) filled by a database trigger. No history screen.
 
@@ -92,15 +92,15 @@ Marco, the single owner. No other users and no roles.
 | AC-2 | **Given** the allowed user, **when** they send `/settings`, **then** the four values are shown with their labels and a "Change" button each. |
 | AC-3 | **Given** a user or chat that is not allowed, **when** they send `/settings` or tap a button, **then** nothing is answered or changed. |
 | AC-4 | **Given** a button from another chat's forward, or an old button whose token is not the current one, **when** it is tapped, **then** nothing changes and the bot says the card is out of date and shows a fresh one. |
-| AC-5 | **Given** a pending snooze or reply question, **when** Marco sends `/settings` and starts a change, **then** the old question is replaced, the bot says "I dropped the question about alert X", and his next typed text is read only as the settings answer. |
+| AC-5 | **Given** a pending snooze or reply question, **when** the user sends `/settings` and starts a change, **then** the old question is replaced, the bot says "I dropped the question about alert X", and their next typed text is read only as the settings answer. |
 | AC-6 | **Given** a settings question, **when** the answer comes at 14:59 it is used; at 15:00 or later it is not used, the question message shows "Expired" without buttons, and a "Start again" button is offered. |
-| AC-7 | **Given** any question, **when** Marco taps Cancel, **then** the old value stays and no row is written. |
+| AC-7 | **Given** any question, **when** the user taps Cancel, **then** the old value stays and no row is written. |
 | AC-8 | **Given** the typed times `7`, `7:00`, `07:00`, `0700`, `19.30`, `7am`, `7:30pm`, `24:00`, **when** answered, **then** each is read as the right clock time (one test row each). |
 | AC-9 | **Given** the texts `abc`, `25:00`, `07:00:30`, a full-width `０７:００`, empty text, a 65-character text, `../etc`, `'; DROP TABLE x;--`, a control character and an emoji, **when** answered, **then** each is refused, nothing is stored, and the zone lookup is never called with it. |
 | AC-10 | **Given** quiet windows 23:00-07:00 (valid), 07:00-19:00 (valid, 12 h), 07:00-19:01 (refused), 07:00-07:30 (refused), 07:00-08:00 (valid, 1 h) and 23:00-23:00 (refused), **when** answered, **then** the result matches and the refusal names the rule and an example. |
 | AC-11 | **Given** overview 06:00 and a new quiet window 23:00-07:00, or overview 18:00 and a new window 17:00-03:00, **when** the window is saved, **then** it is refused with the reason and a one-tap move of the overview is offered; taking it stores both together. |
 | AC-12 | **Given** quiet hours 01:00-06:00, **when** an urgent mail arrives at 23:30, 03:00 and 06:00, **then** its alert is sent, held and sent. |
-| AC-13 | **Given** the quiet-hours question, **when** the start is valid and Marco cancels, or the end is invalid, or a database fault occurs between the two steps, **then** neither value is stored. |
+| AC-13 | **Given** the quiet-hours question, **when** the start is valid and the user cancels, or the end is invalid, or a database fault occurs between the two steps, **then** neither value is stored. |
 | AC-14 | **Given** the text "New York" (any case or accent), **when** answered, **then** America/New_York is stored. |
 | AC-15 | **Given** "Paris", "Sydney" or "Georgia", **when** answered, **then** at most 5 labelled buttons are shown and the chosen one is stored. |
 | AC-16 | **Given** "Nwe York", **when** answered, **then** the bot offers "Did you mean New York?". |
@@ -112,7 +112,7 @@ Marco, the single owner. No other users and no roles.
 | AC-22 | **Given** a stored change, **when** the next alert arises, **then** it is judged with the new values. |
 | AC-23 | **Given** zone America/New_York with quiet hours 23:00-07:00, **when** an urgent mail arrives at 23:30 New York time, **then** its alert is held. |
 | AC-24 | **Given** a snoozed alert, **when** a change is stored, **then** its due moment does not move. |
-| AC-25 | **Given** an alert held at 02:00 with release at 07:00, **when** Marco sets quiet hours to 23:00-05:00 at 03:00, **then** that alert is still released at 07:00; an alert held after the change uses the new hours. |
+| AC-25 | **Given** an alert held at 02:00 with release at 07:00, **when** the user sets quiet hours to 23:00-05:00 at 03:00, **then** that alert is still released at 07:00; an alert held after the change uses the new hours. |
 | AC-26 | **Given** a snooze that becomes due inside the new quiet hours, **then** it is held and released at the quiet end valid at that moment. |
 | AC-27 | **Given** the overview was sent today in Europe/Amsterdam, **when** the zone becomes America/New_York the same evening, **then** no second overview is sent for that local date, no filed mail is dropped, and the next overview is at 18:00 New York time. |
 | AC-28 | **Given** Europe/Amsterdam and America/New_York on their spring and autumn clock-change days and one zone with a change at midnight, **when** `in_quiet_hours`, `next_quiet_end`, `next_overview` and the "tomorrow" due moment run for a time inside the gap and a time that occurs twice, **then** results follow C-5 (and a 12 h window on a 23 h or 25 h day validates in clock minutes). |

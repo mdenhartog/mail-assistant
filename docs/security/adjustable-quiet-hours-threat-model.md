@@ -5,7 +5,7 @@ spec: docs/specs/adjustable-quiet-hours.md
 extends: mail-triage-threat-model
 status: approved
 date: 2026-11-09
-approver: Marco
+approver: the user
 asvs: "5.0"
 ---
 
@@ -21,8 +21,8 @@ The guided settings conversation in the `mail-triage` agent, the `settings` sche
 
 | Data | Class | Note |
 | --- | --- | --- |
-| Quiet hours, overview time, reminder default | internal | They reveal when Marco sleeps or is busy. |
-| Time zone | personal data (low) | Reveals where Marco travels. Telegram already carries all alerts (ADR-0018). Not written to logs. |
+| Quiet hours, overview time, reminder default | internal | They reveal when the user sleeps or is busy. |
+| Time zone | personal data (low) | Reveals where the user travels. Telegram already carries all alerts (ADR-0018). Not written to logs. |
 | Audit record (time, channel, actor, old, new) | personal data (low) | Contains zone values; kept in the database, fixed columns, no free text. |
 | Conversation state (nonce, partial answers) | internal | Short-lived, replaced by the next dialogue. |
 
@@ -31,7 +31,7 @@ The guided settings conversation in the `mail-triage` agent, the `settings` sche
 ```text
 Telegram user ──[B1: Bot API, allowed user + chat]──► mail-triage agent ──[B2: agent DB role]──► PostgreSQL schema settings
                                                              │
-                                          (reads one snapshot per operation; validates; falls back; tells Marco)
+                                          (reads one snapshot per operation; validates; falls back; tells the user)
 ```
 
 An archify data-flow diagram is added with the design in phase 3.
@@ -50,7 +50,7 @@ L = likelihood, I = impact (L/M/H). ASVS references are to ASVS 5.0 chapters.
 | T-6 | logs | I | The zone (travel location) or a token reaches a log or error. | L | M | Logs carry the key, not the value; existing redaction; a canary zone must never appear in captured logs. | AC-33 | V16 |
 | T-7 | B1 | D | A flood of messages or taps. | L | L | Only the allowed user is processed; one conversation at a time; one write per confirmed change. | AC-3, AC-5 | V2 |
 | T-8 | settings row | T | Two writers (Telegram, web later) lose each other's change or produce a row that breaks cross-field rules (overview inside quiet hours). | M | H | One row with a version; a write replaces the whole row, validated as a whole, with a version check; the loser is told "changed elsewhere"; CHECK constraints refuse invalid rows even from a direct insert. | AC-29, AC-34 | V2 |
-| T-9 | settings row read | D, T | An invalid row, an unreadable table or a slow read stops the agent from alerting correctly, or silently uses Amsterdam times while Marco is abroad. | M | H | The agent validates on read; falls back to the last good values or the defaults within a 2 s timeout; logs the error class; tells Marco once per incident which values are in use. | AC-31, AC-32 | V16 |
+| T-9 | settings row read | D, T | An invalid row, an unreadable table or a slow read stops the agent from alerting correctly, or silently uses Amsterdam times while the user is abroad. | M | H | The agent validates on read; falls back to the last good values or the defaults within a 2 s timeout; logs the error class; tells the user once per incident which values are in use. | AC-31, AC-32 | V16 |
 | T-10 | database roles | E | The agent's role can change or delete audit rows, or alter the schema at run time. | M | H | A separate owner role runs migrations; the agent role owns nothing and can only insert into the audit table. | AC-30 | V8 |
 | T-11 | held and snoozed alerts | T | A change re-times alerts that are already planned, breaking the intent. | M | M | A snoozed alert keeps its UTC due moment; a held alert keeps the release moment it got when held. | AC-24, AC-25, AC-26 | V2 |
 | T-12 | wall-clock rules | T | A time in a clock-change gap or a doubled hour makes quiet hours start or end at the wrong moment. | M | M | All scheduling on UTC moments; the rule of ADR-0027; table tests per zone. | AC-28 | V2 |
@@ -61,10 +61,10 @@ All six STRIDE types are covered: S (T-1), T (T-2, T-3, T-4, T-8, T-9, T-11, T-1
 
 | # | Risk | Reason |
 | --- | --- | --- |
-| R-1 | After Marco's own zone change, alerts fall in the local night of a far place. | This is the purpose (S6); the confirmation shows the local times (AC-20). |
-| R-2 | Telegram sees the zone Marco types and the values. | Telegram already sees every alert (ADR-0018). |
+| R-1 | After the user's own zone change, alerts fall in the local night of a far place. | This is the purpose (S6); the confirmation shows the local times (AC-20). |
+| R-2 | Telegram sees the zone the user types and the values. | Telegram already sees every alert (ADR-0018). |
 
 ## Open questions
 
 1. Source of the city and country list (phase 3, ADR).
-2. ADR-0025, ADR-0026 and ADR-0027 are proposed and need Marco's approval with the spec.
+2. ADR-0025, ADR-0026 and ADR-0027 are proposed and need the user's approval with the spec.

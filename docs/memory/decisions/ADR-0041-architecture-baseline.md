@@ -18,7 +18,7 @@ checked against.
 
 The baseline is `docs/architecture/model.json`, described in `docs/architecture/README.md` and drawn in
 `docs/architecture/system-architecture.html`. It was proposed by the `architect`, challenged by the `security-architect`
-and the `product-owner`, and approved by Marco on 2026-11-14.
+and the `product-owner`, and approved by the user on 2026-11-14.
 
 - Code components: `mail-triage`, `api`, `web`, `schedule-policy`, `tokens`, `platform`, and the unused scaffolds
   `assistant`, `chat-gateway`, `tools`.

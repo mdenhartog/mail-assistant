@@ -1,7 +1,7 @@
 ---
 id: INT-002
 title: Adjustable quiet hours
-originator: Marco
+originator: the user
 status: confirmed
 date: 2026-11-08
 ---
