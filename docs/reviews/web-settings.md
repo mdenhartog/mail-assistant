@@ -61,9 +61,11 @@ Three rounds of red team (RT), security review (SEC) and code review (CR, round 
 | SEC2-05, RT2-08 (environment override, digests everywhere) | U-66 | #125 |
 | SEC2-07, SEC2-08 (digest domain separation, IPv6 event class) | U-67 | #128 |
 | Retention (purge of security events and audit) into R1 | U-49 (D-19) | #126 |
-| RT2-02 (one device with the username uses up the hourly budget) | Accepted as R-4, 2026-11-13 | release checklist |
+| RT2-02 (one device with the username uses up the hourly budget) | Accepted as R-4 (Marco, 2026-11-13) | release checklist |
 | SEC2-04 (ingress controller) | Open: gate before production, D-21 | release checklist items 2 and 3 |
-| SEC2-06, SEC2-09, RT2-07 | Status unconfirmed: named in no fix unit and no document in the repository; the reports are not stored there | to be confirmed by the security reviewer |
+| SEC2-06 (security events kept forever until the purge) | Closed by U-49 (purge, 90 days) and U-71 (also expired `web_notice_token`). Residual: the purge runs only at deploy time (PreSync), tracked as release condition 9 (SEC3-04) | #126, #131 |
+| SEC2-09 (spec, plan and ADR text no longer matches the build) | Closed by this documentation pull request (U-web-settings-72) | this PR |
+| RT2-07 (the web lock is observable) | Closed by U-69: a request is still stored while locked and only the mail is skipped; cooldown, caps and `attemptsLeft` look the same | #132 |
 
 ### Round 3 (2026-11-13, `main` be5db2f): RT3-01 to RT3-08, SEC3-01 to SEC3-08
 
@@ -76,7 +78,7 @@ Three rounds of red team (RT), security review (SEC) and code review (CR, round 
 | SEC3-03, SEC3-05, SEC3-06 (contradictions between spec, ADRs, design and data classification) | This documentation pull request | |
 | SEC2-04 and SEC3-02 (ingress controller gate) | Open, D-21 | release checklist items 2 and 3 |
 | RT3-07 (no limiter total per /48) | Accepted as R-5 | release checklist |
-| SEC3-07 | Status unconfirmed (named in no fix unit and no document in the repository) | to be confirmed by the security reviewer |
+| SEC3-07 (traceability: D-7 meant two things, SEC2-04, -06 and -09 named nowhere) | Closed by this documentation pull request: D-7 is the certificate expiry alert, the ingress controller is D-21, D-20 is the moderator decision of round 3; statuses recorded in the plan | this PR |
 
 ### What remains open
 
@@ -85,7 +87,8 @@ Three rounds of red team (RT), security review (SEC) and code review (CR, round 
 - CR-08: hand-written boundary validation in `apps/web` (Low).
 - RT3-07 (R-5) and the other accepted risks R-1 to R-5, reviewed on 2027-05-10.
 - The "spent" rule of the wrong-code alert is kept in memory: after an agent restart the last 24 hours count again and the lock may be set once more.
-- SEC2-06, SEC2-09, RT2-07 and SEC3-07 are not traced to a unit (see above).
+- Residual of SEC2-06: the purge runs only at deploy time (PreSync); release condition 9 asks for a sync at least every 30 days or an accepted retention bound.
+- Scope of `done`: the spec is `status: done` for R1 only. C-5 (keeping typed values), C-6 (Reset to defaults), AC-12 (second half) and AC-25 are R2 and marked "R2, not built" in the spec.
 - The documents disagreed in places, which this pull request corrected: the hourly cap counts every request including a failed send (D-16, AC-31); the alert, the lock and the purge are R1; AC-32 and AC-33 are new. R2 (AC-25 and the second half of AC-12) is not built, so the spec is `done` for R1 only.
 
 ## Approvals
