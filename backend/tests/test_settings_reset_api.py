@@ -153,7 +153,9 @@ async def test_given_the_reset_when_the_audit_is_read_then_one_web_record_with_t
 
     await _post(api, {"version": 2})
 
-    last = await owner.fetchrow("select via, by from settings.settings_change order by at desc, id desc limit 1")
+    last = await owner.fetchrow(
+        "select via, by from settings.settings_change order by at desc, (new->>'version')::int desc limit 1"
+    )
     assert last is not None
     assert await owner.fetchval(AUDITS) == before + 1
     assert (last["via"], last["by"]) == ("web", f"web:{USER}")
@@ -183,7 +185,7 @@ async def test_given_an_old_version_when_reset_then_409_with_the_current_setting
 
 @pytest.mark.parametrize(
     "body",
-    [{}, {"version": -1}, {"version": "1"}, {"version": 2, "values": DEFAULTS}, {"version": 2, "zone": "UTC"}],
+    [{}, {"version": -1}, {"version": 1.5}, {"version": 2, "values": DEFAULTS}, {"version": 2, "zone": "UTC"}],
 )
 async def test_given_a_malformed_body_when_reset_then_422_and_nothing_changes(
     api: Api,
@@ -320,9 +322,11 @@ async def test_given_the_reset_when_the_audit_is_read_then_it_is_a_web_change_by
 
     await _post(api, {"version": 2})
 
-    row = await owner.fetchrow("select via, db_role, old, new from settings.settings_change order by at desc, id desc")
+    row = await owner.fetchrow(
+        "select via, db_role, old, new from settings.settings_change order by (new->>'version')::int desc"
+    )
     assert row is not None
-    assert (row["via"], row["db_role"]) == ("web", "web")
+    assert (row["via"], row["db_role"]) == ("web", "web_settings_runtime")
     old, new = (json.loads(row[key]) if isinstance(row[key], str) else row[key] for key in ("old", "new"))
     assert old["zone"] == "Pacific/Kiritimati"
     assert (new["zone"], new["version"]) == ("Europe/Amsterdam", 3)

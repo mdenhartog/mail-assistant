@@ -103,6 +103,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Settings
+         * @description Replace the stored values, the time zone included, with the defaults if the row is still at the version.
+         *
+         *     Args:
+         *         body: The version the reset is based on.
+         *         request: The request, whose app holds the database access.
+         *         current: The live session; its keyed digest is the actor of the change.
+         *
+         *     Returns:
+         *         The stored defaults at the next version, or a 409 with the current settings.
+         */
+        post: operations["reset_settings_api_settings_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/logout": {
         parameters: {
             query?: never;
@@ -261,6 +289,11 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /**
          * HealthResponse
          * @description Probe result.
@@ -384,6 +417,14 @@ export interface components {
             version: number;
         };
         /**
+         * SettingsReset
+         * @description The body of the reset route (U-web-settings-45): only the version the reset is based on.
+         */
+        SettingsReset: {
+            /** Version */
+            version: number;
+        };
+        /**
          * SettingsUpdate
          * @description The body of the write route (U-web-settings-22): new values and the version they were based on.
          */
@@ -407,6 +448,19 @@ export interface components {
             remindAt: string;
             /** Timezone */
             timeZone: string;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
     };
     responses: never;
@@ -596,6 +650,84 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Problem422"];
                     "application/problem+json": components["schemas"]["Problem422"];
+                };
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The change could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reset_settings_api_settings_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingsReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The settings changed since the version sent; carries the current */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Conflict409"];
+                    "application/problem+json": components["schemas"]["Conflict409"];
+                };
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Too many requests; see Retry-After */

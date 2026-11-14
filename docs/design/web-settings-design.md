@@ -54,7 +54,7 @@ AC-12 (second half) and AC-25 stay in R2 by decision of Marco; they are not buil
 
 ## API contract (OpenAPI 3.1, generated and checked in)
 
-Exact path allow-list (AC-15): `/auth/request-code`, `/auth/verify-code`, `/auth/logout`, `/api/session`, `/api/settings`, `/api/places` in R1; `/api/settings/reset` in R2.
+Exact path allow-list (AC-15): `/auth/request-code`, `/auth/verify-code`, `/auth/logout`, `/api/session`, `/api/settings`, `/api/places`, `/api/settings/reset` (R2, U-web-settings-45).
 
 | Method and path | Auth | Result |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ Exact path allow-list (AC-15): `/auth/request-code`, `/auth/verify-code`, `/auth
 | GET `/api/settings` | session | `Settings` (defaults with `version: 0` when no row exists) |
 | PUT `/api/settings` | session, CSRF, Origin | body `{values, version}`; 200 `Settings`, 409, 422 |
 | GET `/api/places?q=` | session, limited | up to 5 `{zone, label, utcOffsetMinutes}` and a suggestion; same lookup and aliases as Telegram (ADR-0028); the live local time is computed in the browser |
-| POST `/api/settings/reset` (R2) | session, CSRF, Origin | body `{version}`; writes `DEFAULT_POLICY` through the same write path |
+| POST `/api/settings/reset` | session, CSRF, Origin | body `{version}`; writes `DEFAULT_POLICY` through the same write path |
 
 `Settings` is `{values: {timeZone, quietStart, quietEnd, overviewAt, remindAt}, version, updatedAt, updatedVia}` with `HH:MM` strings and `additionalProperties: false`; the actor is never returned.
 

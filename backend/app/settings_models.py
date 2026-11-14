@@ -70,6 +70,14 @@ class SettingsUpdate(BaseModel):
     version: Annotated[int, Field(ge=0)]
 
 
+class SettingsReset(BaseModel):
+    """The body of the reset route (U-web-settings-45): only the version the reset is based on."""
+
+    model_config = _CONFIG
+
+    version: Annotated[int, Field(ge=0)]
+
+
 class ProblemItem(BaseModel):
     """One refused field."""
 

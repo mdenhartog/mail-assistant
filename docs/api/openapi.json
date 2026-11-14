@@ -31,6 +31,19 @@
         "title": "Conflict409",
         "type": "object"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "HealthResponse": {
         "description": "Probe result.",
         "properties": {
@@ -293,6 +306,22 @@
         "title": "Settings",
         "type": "object"
       },
+      "SettingsReset": {
+        "additionalProperties": false,
+        "description": "The body of the reset route (U-web-settings-45): only the version the reset is based on.",
+        "properties": {
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "SettingsReset",
+        "type": "object"
+      },
       "SettingsUpdate": {
         "additionalProperties": false,
         "description": "The body of the write route (U-web-settings-22): new values and the version they were based on.",
@@ -351,6 +380,46 @@
           "remindAt"
         ],
         "title": "SettingsValues",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       }
     }
@@ -534,6 +603,78 @@
           }
         },
         "summary": "Write Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/reset": {
+      "post": {
+        "description": "Replace the stored values, the time zone included, with the defaults if the row is still at the version.\n\nArgs:\n    body: The version the reset is based on.\n    request: The request, whose app holds the database access.\n    current: The live session; its keyed digest is the actor of the change.\n\nReturns:\n    The stored defaults at the next version, or a 409 with the current settings.",
+        "operationId": "reset_settings_api_settings_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Settings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict409"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict409"
+                }
+              }
+            },
+            "description": "The settings changed since the version sent; carries the current"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          },
+          "500": {
+            "description": "The change could not be stored"
+          }
+        },
+        "summary": "Reset Settings",
         "tags": [
           "settings"
         ]
