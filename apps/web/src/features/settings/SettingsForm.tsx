@@ -4,6 +4,7 @@ import type { ReactElement, RefObject, SyntheticEvent } from "react";
 import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { ConflictLayer } from "@/features/settings/ConflictLayer";
+import { DraftBanner } from "@/features/settings/DraftBanner";
 import { SaveFeedback } from "@/features/settings/SaveFeedback";
 import { SettingsFields } from "@/features/settings/SettingsFields";
 import type { Settings } from "@/features/settings/useSettings";
@@ -49,6 +50,7 @@ export function SettingsForm({ settings }: { settings: Settings }): ReactElement
   };
   return (
     <form className="mt-6 flex flex-col gap-6" noValidate onSubmit={handleSubmit} ref={form}>
+      {flow.restored ? <DraftBanner /> : null}
       <ConflictLayer conflict={flow.conflict} setValue={flow.setField} values={flow.draft} />
       <SettingsFields errors={flow.errors} readOnly={flow.saving} savedZone={settings.values.timeZone} setField={flow.setField} values={flow.draft} />
       <SaveFeedback saved={flow.saved} settings={settings} values={flow.draft} />
