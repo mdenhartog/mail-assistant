@@ -26,7 +26,6 @@ T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
 KEY = b"k" * 32
 TTL = timedelta(seconds=600)
 MAX_ATTEMPTS = 5
-CAP = 100
 USER = "u" * 64
 OTHER = "o" * 64
 CLIENT = "c" * 64
@@ -38,7 +37,6 @@ OPEN: Final = RequestLimits(
     live_per_username=1000,
     open_per_client=1000,
     requests_per_client_per_hour=1000,
-    class_open_cap=CAP,
 )
 RIGHT = "123456"
 WRONG = "000000"
@@ -55,7 +53,7 @@ async def make(  # noqa: PLR0913  # a request is described by who, what and when
     limits: RequestLimits = OPEN,
 ) -> LoginRequest:
     """A code request of the owner (USER is the configured username) from a client, under no limit unless given."""
-    return await store.create(Applicant(username_key, USER, client, cookie, known=True), code, now, limits)
+    return await store.create(Applicant(username_key, client, cookie), code, now, limits)
 
 
 async def decoy(  # noqa: PLR0913  # a request is described by who and when
@@ -67,7 +65,7 @@ async def decoy(  # noqa: PLR0913  # a request is described by who and when
     cookie: str | None = None,
     limits: RequestLimits = OPEN,
 ) -> LoginRequest:
-    return await store.create_decoy(Applicant(username_key, USER, client, cookie, known=False), now, limits)
+    return await store.create_decoy(Applicant(username_key, client, cookie), now, limits)
 
 
 def lowered(**overrides: int | timedelta) -> RequestLimits:
@@ -77,7 +75,6 @@ def lowered(**overrides: int | timedelta) -> RequestLimits:
         "live_per_username": OPEN.live_per_username,
         "open_per_client": OPEN.open_per_client,
         "requests_per_client_per_hour": OPEN.requests_per_client_per_hour,
-        "class_open_cap": OPEN.class_open_cap,
     }
     values.update(overrides)
     return RequestLimits(**values)  # pyright: ignore[reportArgumentType]

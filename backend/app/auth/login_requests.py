@@ -1,7 +1,7 @@
 """Login request store (U-web-settings-16): persistence of the e-mailed sign-in code in ``web_auth.login_request``."""
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Final
 
@@ -41,11 +41,6 @@ _CLIENT_LIVE = text(
     "SELECT expires_at FROM web_auth.login_request "
     "WHERE client_hash = :client_hash AND dead_at IS NULL AND expires_at > :now"
 )
-# The class of a request: the owner's own rows, or every row that is not the owner's (the decoys).
-_CLASS_LIVE = text(
-    "SELECT expires_at FROM web_auth.login_request "
-    "WHERE dead_at IS NULL AND expires_at > :now AND (username_key = :owner_key) = :known"
-)
 _INSERT = text(
     "INSERT INTO web_auth.login_request "
     "(id, username_key, client_hash, code_hash, expires_at, created_at, sent_at) "
@@ -69,7 +64,7 @@ class LoginRequest:
     id: str
     created_at: datetime
     expires_at: datetime
-    stored: bool = True  # False while the web lock is set or the decoy class is full: the usual answer, no row
+    locked: bool  # the web lock was set: the row is stored all the same, with a hash no code matches, and no mail goes
 
 
 @dataclass(frozen=True)
@@ -104,13 +99,11 @@ Verdict = Ok | Wrong | Dead
 
 @dataclass(frozen=True)
 class Applicant:
-    """Who asks for a login request: the username, the owner, the client and the login cookie they came with."""
+    """Who asks for a login request: the username, the client and the login cookie they came with."""
 
     username_key: str  # keyed digest of the username as typed
-    owner_key: str  # keyed digest of the configured username
     client_hash: str  # keyed digest of the client key
     cookie: str | None  # the ``__Host-login`` value of the request, if any
-    known: bool  # whether the username is the configured one
 
 
 class LoginRequestRefused(Exception):  # noqa: N818  # a state, not a fault
@@ -148,7 +141,8 @@ class LoginRequests:
 
         Rows older than an hour go. The live request that carries the same cookie is replaced, never one that only
         shares the client; the others stay. Then the limits are read and, if one holds, nothing is kept (not even the
-        replacement). Creation is serialised so the limits hold under concurrency.
+        replacement). Creation is serialised so the limits hold under concurrency. While the web lock is set the row is
+        stored with a hash no code matches and the result says so, so that the caller sends no mail.
 
         Args:
             who: The asker.
@@ -157,7 +151,7 @@ class LoginRequests:
             limits: The numbers the request is held to.
 
         Returns:
-            The new request.
+            The new request; ``locked`` when the web lock is set.
 
         Raises:
             LoginRequestRefused: A limit holds; nothing was written.
@@ -170,7 +164,8 @@ class LoginRequests:
         """Store a decoy request of an unknown username (ADR-0038): the same row, the same rules as ``create``.
 
         No code exists. The stored hash is one no code can match. Nothing marks the row as a decoy, and the limits
-        read the same facts and run the same queries as for the configured username.
+        read the same facts and run the same queries as for the configured username. A decoy is always stored: there
+        is no cap on decoys as a class, only the limits of its own username and client (RT3-02).
 
         Args:
             who: The asker.
@@ -209,29 +204,25 @@ class LoginRequests:
                 username_live=await _times(session, _USERNAME_LIVE, username_key=who.username_key, now=now),
                 client_created=await _times(session, _CLIENT_CREATED, client_hash=who.client_hash, since=since),
                 client_live=await _times(session, _CLIENT_LIVE, client_hash=who.client_hash, now=now),
-                class_live=await _times(session, _CLASS_LIVE, owner_key=who.owner_key, known=who.known, now=now),
             )
             locked = (await session.execute(_WEB_LOCKED)).first() is not None
-            # A full decoy class never refuses (RT2-03): the owner's class cannot be full from decoys, so a refusal
-            # there would tell that the username is unknown. The decoy gets the usual answer and no row.
-            invisible = not who.known and len(facts.class_live) >= limits.class_open_cap
-            wait = request_wait(facts if who.known else replace(facts, class_live=()), now, limits)
+            wait = request_wait(facts, now, limits)
             if wait > 0:
                 raise LoginRequestRefused(wait)
-            # Every step above and the hash below run locked or not, for a real and a decoy username alike (AC-30).
+            # Every step above and the hash below run locked or not, for the owner and a decoy alike (AC-27, AC-30).
+            # While the web lock is set the row is stored all the same, with a hash no code matches: the cooldown, the
+            # caps and the attempts then answer as they do unlocked, so the lock leaves no trace (RT3-03).
             row = {
                 "id": request_id,
                 "username_key": who.username_key,
                 "client_hash": who.client_hash,
-                "code_hash": code_hash(request_id).hex(),
+                "code_hash": (decoy_hash(self._key, request_id) if locked else code_hash(request_id)).hex(),
                 "expires_at": expires_at,
                 "created_at": now,
                 "sent_at": sent_at,
             }
-            stored = not locked and not invisible  # the web lock or a full decoy class: answered, but no row (AC-27)
-            if stored:
-                await session.execute(_INSERT, row)
-        return LoginRequest(id=request_id, created_at=now, expires_at=expires_at, stored=stored)
+            await session.execute(_INSERT, row)
+        return LoginRequest(id=request_id, created_at=now, expires_at=expires_at, locked=locked)
 
     async def check(self, request_id: str | None, code: str, now: datetime, owner_key: str) -> Verdict:
         """Check a code: the row is locked, so two checks of one request run one after the other.

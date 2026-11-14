@@ -37,7 +37,6 @@ class RequestLimits:
     live_per_username: int  # live requests of one username side by side
     open_per_client: int  # live requests of one client
     requests_per_client_per_hour: int  # rows created by one client in the last hour
-    class_open_cap: int  # live requests of the same class: the owner's own, or all decoys
 
 
 @dataclass(frozen=True)
@@ -51,7 +50,6 @@ class RequestFacts:
     username_live: Sequence[datetime]
     client_created: Sequence[datetime]
     client_live: Sequence[datetime]
-    class_live: Sequence[datetime]
 
 
 def client_hash(key: bytes, client: str) -> str:
@@ -102,7 +100,6 @@ def request_wait(facts: RequestFacts, now: datetime, limits: RequestLimits) -> i
         wait_until_below(facts.username_live, now, limits.live_per_username),
         wait_until_below(_leaves_hour(facts.client_created), now, limits.requests_per_client_per_hour),
         wait_until_below(facts.client_live, now, limits.open_per_client),
-        wait_until_below(facts.class_live, now, limits.class_open_cap),
     )
 
 
