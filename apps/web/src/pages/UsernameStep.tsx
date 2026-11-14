@@ -14,6 +14,9 @@ export interface UsernameStepProps {
   onSubmit: (username: string) => void;
 }
 
+/** Fixed text: it says what the field wants and never whether a name exists (ADR-0038). */
+const USERNAME_HINT = "Your username, not your e-mail address.";
+
 const CONTROL =
   "min-h-11 w-full rounded-control border border-border bg-surface-raised px-3 text-text " +
   "aria-invalid:border-2 aria-invalid:border-danger read-only:opacity-80";
@@ -51,7 +54,7 @@ export function UsernameStep({ sending, failure, onSubmit }: UsernameStepProps):
         </Banner>
       ) : null}
       {failure && failure.kind !== "failed" ? <RefusalBanner refusal={failure} /> : null}
-      <Field label="Username" {...(missing ? { error: "Enter your username." } : {})}>
+      <Field hint={USERNAME_HINT} label="Username" {...(missing ? { error: "Enter your username." } : {})}>
         {(control) => (
           <input
             {...control}
