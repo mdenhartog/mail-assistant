@@ -54,7 +54,9 @@ ingress:
   annotations: {}
   controllerConfig: {} # settings of the controller's own ConfigMap (TLS minimum, log format); not rendered here
 
-podDisruptionBudget: { minAvailable: 1 }
+# One api copy (ADR-0034) and a budget that allows one disruption, so a node drain is not blocked. maxUnavailable XOR
+# minAvailable; minAvailable must stay below the replicas (schema and template), or no pod could ever be evicted.
+podDisruptionBudget: { maxUnavailable: 1 }
 networkPolicy:
   enabled: true
   # The one ingress peer for api and web: the controller's namespace AND its pods (never an empty selector).
