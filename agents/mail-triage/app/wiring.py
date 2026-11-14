@@ -27,7 +27,15 @@ from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenStore
 from app.db import repos
 from app.db.engine import make_engine
-from app.db.migrate import ROLES, RuntimeRoleNotSafe, SchemaNotReady, check_schema, migrate_database
+from app.db.migrate import (
+    ROLES,
+    MigrationStepFailed,
+    RuntimeRoleNotSafe,
+    SchemaNotReady,
+    check_schema,
+    migrate_database,
+    purge_database,
+)
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
@@ -37,6 +45,7 @@ from app.db.pg_store import PgStore
 from app.db.pg_update_cursor import PgUpdateCursor
 from app.db.pg_web_lock import PgWebLock
 from app.db.pg_web_notice import PgWebNotice
+from app.db.purge import SYSTEM_CLOCK
 from app.runner import FailureNotice, Runner
 from app.usecases.catchup import CatchUp
 from app.usecases.code_alert import CodeAlert
@@ -58,6 +67,7 @@ if TYPE_CHECKING:
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
+    from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
 
 logger = logging.getLogger(__name__)
@@ -199,13 +209,23 @@ async def migrate(settings: MigrateSettings) -> int:
     try:
         passwords = {role.name: getattr(settings, role.password_setting).get_secret_value() for role in ROLES}
         await migrate_database(settings.database_owner_url.get_secret_value(), passwords, settings.database_tls)
-    except RuntimeRoleNotSafe as error:
-        logger.error("migration failed: %s", error)  # names the role only, never a password or a URL
+    except (RuntimeRoleNotSafe, MigrationStepFailed) as error:
+        logger.error("migration failed: %s", error)  # names the role or the step only, never a password or a URL
         return EXIT_MIGRATION_FAILED
     except Exception as error:  # whatever failed, the job must end non-zero without echoing a value
         logger.error("migration failed: %s", type(error).__name__)  # no traceback: it may carry the URL
         return EXIT_MIGRATION_FAILED
     logger.info("migration finished; the database is at the head this build expects")
+    return EXIT_OK
+
+
+async def purge(settings: MigrateSettings, clock: Clock = SYSTEM_CLOCK) -> int:
+    """The purge command: the retention purge alone, as the owner role. Returns an exit code."""
+    try:
+        await purge_database(settings.database_owner_url.get_secret_value(), settings.database_tls, clock)
+    except Exception as error:  # whatever failed, the command must end non-zero without echoing a value
+        logger.error("purge failed: %s", type(error).__name__)  # no traceback: it may carry the URL
+        return EXIT_MIGRATION_FAILED
     return EXIT_OK
 
 

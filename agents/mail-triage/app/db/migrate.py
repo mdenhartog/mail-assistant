@@ -24,6 +24,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 
 from app.db.engine import connect_args
+from app.db.purge import SYSTEM_CLOCK, purge_expired
 from app.db.scram import verifier_for
 
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncEngine
 
     from app.db.engine import DatabaseTls
+    from app.db.purge import Clock, PurgeCounts
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 GRANTS = Path(__file__).resolve().parent / "grants.sql"
@@ -55,6 +57,15 @@ ROLES = (ManagedRole(RUNTIME_ROLE, "runtime_role_password"), ManagedRole(WEB_ROL
 
 class RuntimeRoleNotSafe(RuntimeError):  # noqa: N818 - reads as a state, not as an error class
     """The runtime role is wider than ADR-0030 allows. The message names the role only, never a password or a URL."""
+
+
+class MigrationStepFailed(RuntimeError):  # noqa: N818 - reads as a state, not as an error class
+    """A step of the job failed. ``step`` names it; the message never holds a URL or a password."""
+
+    def __init__(self, step: str) -> None:
+        """Name the step that failed."""
+        super().__init__(f"the {step} step failed")
+        self.step = step
 
 
 class SchemaNotReady(RuntimeError):  # noqa: N818 - reads as a state, not as an error class
@@ -141,12 +152,15 @@ async def _roles_with_membership(connection: asyncpg.Connection) -> list[str]:
     return [role.name for role in ROLES if role.name in found]
 
 
-async def migrate_database(owner_url: str, passwords: Mapping[str, str], tls: DatabaseTls | None = None) -> None:
+async def migrate_database(
+    owner_url: str, passwords: Mapping[str, str], tls: DatabaseTls | None = None, clock: Clock = SYSTEM_CLOCK
+) -> None:
     """Migrate as the owner, then make the roles of ``ROLES`` and their grants match this build. Safe to run again.
 
     ``passwords`` maps a role name to its clear password. ``tls`` is the connection mode of the settings; Alembic and
     the lock connection use the same one. The roles are hardened and committed first; a role with a
-    membership then stops the job (``RuntimeRoleNotSafe``) before the grants are applied.
+    membership then stops the job (``RuntimeRoleNotSafe``) before the grants are applied. The last step is the
+    retention purge (``clock`` says what time it is); if it fails the job raises MigrationStepFailed (step ``purge``).
     """
     lock = await _connect(owner_url, tls)
     try:
@@ -165,5 +179,19 @@ async def migrate_database(owner_url: str, passwords: Mapping[str, str], tls: Da
             )
         async with lock.transaction():
             await lock.execute(GRANTS.read_text(encoding="utf-8"))
+        try:
+            await purge_expired(lock, clock)
+        except Exception as error:  # whatever failed, the job names the step and never echoes a value
+            raise MigrationStepFailed("purge") from error
     finally:
         await lock.close()  # closing the connection also releases the lock
+
+
+async def purge_database(owner_url: str, tls: DatabaseTls | None, clock: Clock = SYSTEM_CLOCK) -> PurgeCounts:
+    """Run only the retention purge as the owner (the purge command), under the migration lock."""
+    connection = await _connect(owner_url, tls)
+    try:
+        await connection.execute("select pg_advisory_lock($1)", MIGRATION_LOCK_KEY)  # not while a job migrates
+        return await purge_expired(connection, clock)
+    finally:
+        await connection.close()

@@ -1,8 +1,9 @@
-"""Start-up of the mail-triage agent: ``python -m app [serve|migrate]``.
+"""Start-up of the mail-triage agent: ``python -m app [serve|migrate|purge]``.
 
 ``serve`` (the default) validates the configuration, checks that the schema is current and runs until stopped.
 ``migrate`` is the one-shot job of ADR-0025: it connects as the owner role, migrates, and sets up the runtime role.
-The two commands read different settings, so the running agent never holds the owner credentials.
+``purge`` is the retention purge alone (U-web-settings-49); the migrate job runs it as its last step.
+The commands read different settings, so the running agent never holds the owner credentials.
 
 A broken configuration stops the process before it touches anything. Every log handler gets the redaction filter with
 the secrets this process holds, so a secret that slips into a message never reaches a log (spec AC-24). The commands are
@@ -19,6 +20,7 @@ from typing import TYPE_CHECKING
 from app.obs.redaction import RedactionFilter, Redactor
 from app.settings import SettingsError, load_migrate_settings, load_settings
 from app.wiring import migrate as run_migration
+from app.wiring import purge as run_purge
 from app.wiring import serve as run_agent
 
 if TYPE_CHECKING:
@@ -31,7 +33,7 @@ if TYPE_CHECKING:
 
 EXIT_OK = 0
 EXIT_BAD_CONFIG = 2
-COMMANDS = ("serve", "migrate")
+COMMANDS = ("serve", "migrate", "purge")
 
 
 def _protect_logs(*secrets: SecretStr) -> None:
@@ -51,20 +53,21 @@ def main(
     serve: Callable[[Settings], Coroutine[Any, Any, int]] = run_agent,
     migrate: Callable[[MigrateSettings], Coroutine[Any, Any, int]] = run_migration,
     argv: Sequence[str] = (),
+    purge: Callable[[MigrateSettings], Coroutine[Any, Any, int]] = run_purge,
 ) -> int:
     """Return the process exit code."""
     command = argv[0] if argv else "serve"
     if command not in COMMANDS or len(argv) > 1:
         return _fail(f"usage: python -m app [{'|'.join(COMMANDS)}]")
     try:
-        if command == "migrate":
+        if command in ("migrate", "purge"):
             migrate_settings = load_migrate_settings(env)
             _protect_logs(
                 migrate_settings.database_owner_url,
                 migrate_settings.runtime_role_password,
                 migrate_settings.web_role_password,
             )
-            return asyncio.run(migrate(migrate_settings))
+            return asyncio.run((migrate if command == "migrate" else purge)(migrate_settings))
         settings = load_settings(env)
     except SettingsError as error:
         return _fail(error)
