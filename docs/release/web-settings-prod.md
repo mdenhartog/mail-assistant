@@ -9,9 +9,9 @@ date: 2026-11-14
 
 # Production release checklist: web settings
 
-Two rows are closed by U-web-settings-74 (rows 2 and 7: the controller is decided and the production values file exists); everything else is open. The web settings feature is built and merged (R1) but not deployed: the production values, the Traefik objects of the chart and the Argo CD manifest are files only, and nothing applies them. Phase 9 (release) is never started without Marco's explicit approval; the last row of the table is that approval.
+Two rows are closed by U-web-settings-74 (rows 2 and 7: the controller is decided and the production values file exists); everything else is open. The web settings feature is built and merged (R1 and R2) but not deployed: the production values, the Traefik objects of the chart and the Argo CD manifest are files only, and nothing applies them. Phase 9 (release) is never started without Marco's explicit approval; the last row of the table is that approval.
 
-The items come from the security reviews of the three challenge rounds (`docs/reviews/web-settings.md`), the threat model (`docs/security/web-settings-threat-model.md`) and the decisions D-7, D-9, D-10, D-19 and D-21 of the plan (`docs/plans/web-settings.md`). The owner of every item is Marco unless another name is given; the evidence column says what has to be shown before the status may change to done.
+The items come from the security reviews of the three challenge rounds (`docs/reviews/web-settings.md`), the threat model (`docs/security/web-settings-threat-model.md`) and the decisions D-7, D-9, D-10, D-19, D-21 and D-22 of the plan (`docs/plans/web-settings.md`). The owner of every item is Marco unless another name is given; the evidence column says what has to be shown before the status may change to done.
 
 ## Checklist
 
@@ -26,9 +26,16 @@ The items come from the security reviews of the three challenge rounds (`docs/re
 | 7 | The production values files exist (`deploy/envs/production/values.yaml` and `mail-triage.yaml`) with every value Marco supplies marked `# REQUIRED`; the chart gates pass for them once supplied (`test_production_ready.py`). The gates are: an ingress host under `home.arpa` (the local suffix), TLS and HSTS on, `certAlert.enabled: true`, an image digest for the api, web and agent images, the trusted proxy CIDRs set (the api refuses to start in production with an empty list), and no override of the environment, the database settings, the trusted proxies or any limit. | Marco | The files exist and render only with the REQUIRED values (U-74). Still open for Marco: supply them in a reviewed pull request, after which `helm lint` and `helm template` of the supplied values pass (commands below). | Files done (U-74); supplying the values is open |
 | 8 | Trusted proxy CIDRs of the real controller pods (`api.config.trustedProxyCidrs`, `trustedProxyHops`), and a staging test with two clients that land in separate rate-limit buckets. | Marco | The CIDRs in the values; a test that shows client A being limited (429) while client B is not. | Open |
 | 9 | The retention purge runs only at deploy: it is the last step of the migrate job, an Argo CD PreSync hook, with no CronJob (D-19, AC-21). Either require a sync at least every 30 days, or accept that data may stay longer than 90 days (security events) and one year (audit) when no sync happens. | Marco | The decision, written here: "sync at least every 30 days" (with how it is ensured) or "retention bound accepted as: ...". | Open |
-| 10 | Kit 0.5.0 architecture check (CR-01): PR #84 (`chore: upgrade to claude-sdlc-kit 0.5.0`) is open; `node scripts/architecture.mjs check` must be green in CI on `main`. | Marco | PR #84 merged and the CI job green on `main`. | Open |
+| 10 | Kit 0.5.0 architecture check (CR-01): PR #84 (`chore: upgrade to claude-sdlc-kit 0.5.0`) is merged. The architecture `model.json` is still a draft with empty responsibilities, so the check only warns. | Marco | The responsibilities of the model filled in and `node scripts/architecture.mjs check` free of warnings on `main`. | Merged (PR #84); the model is open |
 | 11 | Accepted risks R-1 to R-5 have owners and a review date (below). | Marco | The table below stays current; the review on 2027-05-10 is in the calendar. | Open |
-| 12 | Marco approves production explicitly. Phase 9 is not started before this. | Marco | His written approval in the pull request or the review record, with the date. | Not given |
+| 12 | A week of testing the local stack (D-22, started 2026-11-14): the whole feature with the real limits and TLS everywhere, in Docker on this computer, before any production step. The outcome is recorded by Marco. | Marco | A dated note by Marco in the review record: what worked, what did not, whether the week is passed. | Open (running) |
+| 13 | Where the SealedSecret files live in the GitOps repository (ADR-0029): not decided. | Marco | The location decided and written in the production values or an ADR; the sealed-secrets controller named. | Open |
+| 14 | The Traefik access log keeps the path and never the query string (an installation setting of Traefik, not of the chart). | Marco | The Traefik log setting, and a request with a query string in staging that shows no query string in the log. | Open |
+| 15 | The Gmail OAuth client in production: a Google Cloud project whose consent screen has the publishing status "In production". In the status "Testing" Google expires refresh tokens after 7 days and the agent loses its mail access. | Marco | The status "In production" of the consent screen, noted with the date, and a refresh token that is older than 7 days and still works. | Open |
+| 16 | Handling of `TOKEN_ENCRYPTION_KEY`: the key that encrypts the stored Gmail token. A lost or changed key means the stored token cannot be read and Marco gives consent again. | Marco | The place where the key is kept (as a SealedSecret value, never in Git) and a note that a lost key means a new consent. | Open |
+| 17 | `api.config.publicOrigin` and `ingress.host` must name the same host (the origin is `https://` plus the host). Nothing checks this yet; a check is to be added later. | Marco | The two values compared in the reviewed values pull request; later a chart gate that fails when they differ. | Open |
+| 18 | INT-005 changes how mail is sent: an own SMTP server (smtp4dev) replaces the relay of row 6 for the sign-in code. The specification follows after the week test and the change is an R2 variant. | Marco | The specification and the rows 6 and 17 revised for it, and a real code mail received in staging. | Open (not specified) |
+| 19 | Marco approves production explicitly. Phase 9 is not started before this. | Marco | His written approval in the pull request or the review record, with the date. | Not given |
 
 ## Review the production values (nothing is applied)
 
@@ -83,9 +90,9 @@ Attach the output with the host names removed to the review record. On kind (Tra
 
 ## Not closed by U-74
 
-- Traefik installed in the real cluster with its CRDs, its certificate handling and an access log that keeps the path and never the query string (rows 3 and 8; ADR-0040).
+- Traefik installed in the real cluster with its CRDs, its certificate handling and an access log that keeps the path and never the query string (rows 3, 8 and 14; ADR-0040).
 - Certificate alert delivery (D-7, row 4), the private CA and device trust (D-9, row 5), the SMTP relay (D-10, row 6), two-step verification on the mailbox (R-1, row 1) and the 30-day deploy cadence for the retention purge (D-19, row 9).
-- Where the SealedSecret files live in the GitOps repository (ADR-0029) and the sealed-secrets controller itself.
+- Where the SealedSecret files live in the GitOps repository (ADR-0029, row 13) and the sealed-secrets controller itself.
 
 ## Accepted risks
 
@@ -103,11 +110,12 @@ All five are accepted by Marco in the threat model and ADR-0039. Owner: Marco. R
 
 - The "spent" rule of the wrong-code alert is kept in memory in the agent. After an agent restart the events of the last 24 hours count again, so the lock may be set once more and the 10-minute notice may repeat. Marco lifts the lock with `/web_unlock`.
 - The agent is not in the prod-like stack, so a full chain test of the web notice across the api and the agent belongs to staging.
-- Reset to defaults (AC-25) and keeping typed values across a session end (second half of AC-12) are R2 and not built.
+- The local week-test stack (U-73, U-75, U-76) is a test environment on this computer; it proves nothing about the production ingress, the production mail relay or the production Gmail client.
 
 ## Related
 
 - [Review record](../reviews/web-settings.md)
+- [Local stack operations](../operations/local-stack.md)
 - [Specification](../specs/web-settings.md)
-- [Plan, decisions D-7 to D-21](../plans/web-settings.md)
+- [Plan, decisions D-7 to D-24](../plans/web-settings.md)
 - [Threat model](../security/web-settings-threat-model.md)

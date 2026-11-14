@@ -12,7 +12,7 @@ Sign in on a web page and see or change the same four settings as in Telegram: q
 ## Sign in
 
 1. Open the page. If you are not signed in you land on **Sign in**.
-2. Type your username (not your e-mail address) and choose **Send me a code**. Spaces before or after the name and capital letters do not matter. The page says it sends a one-time code to the e-mail address on file and never asks for access to your mail or calendar.
+2. Type your username, for example `marco`, and choose **Send me a code**. The field says "Your username, not your e-mail address." Spaces before or after the name and capital letters do not matter: `Marco` and ` marco ` are the same name. The page says it sends a one-time code to the e-mail address on file and never asks for access to your mail or calendar.
 3. The page changes to **Enter your code**. It names the hidden address the code went to and says the code is valid for 10 minutes.
 4. Open the mail "Your Mail Assistant sign-in code". It holds six digits and no link. Type the digits in the **Code** field (spaces are dropped when you paste) and choose **Sign in**.
 ![The sign-in page asks for a username](images/web-settings-sign-in.png)
@@ -49,7 +49,22 @@ The page gives the same answer whether or not the username is right, so a wrong 
 
 ### Sessions
 
-The session ends after 30 minutes without activity, and in any case after 12 hours. When it ends, the page sends you to **Sign in** with "Your session ended. Sign in again." After you sign in you return to **Settings** with the stored values; what you typed but did not save is not kept. Choose **Sign out** to end the session yourself.
+The session ends after 30 minutes without activity, and in any case after 12 hours. When it ends, the page sends you to **Sign in** with "Your session ended. Sign in again." After you sign in you return to **Settings**. Choose **Sign out** to end the session yourself.
+
+#### What you typed is kept
+
+If the session ended while you had typed changes you had not saved, the sign-in page says "Sign in again; what you typed is kept." Nothing is saved for you in the meantime.
+
+1. Sign in again. You return to **Settings**.
+2. A banner says "Welcome back. Your unsaved changes are restored. Check them and save." Your typed values are in the form and **Save changes** is available.
+3. Check the values and choose **Save changes**. Nothing is saved until you do.
+
+Good to know:
+
+- If Telegram or another web page changed the settings while you were signed out, your typed values do not replace them. The page shows the change as in [When the settings changed while you were editing](#when-the-settings-changed-while-you-were-editing) and you choose which value to keep.
+- What you typed is kept only in that browser tab, only the five values, and for 12 hours. After that it is dropped.
+- It is also dropped when it equals what is stored, after a save, after **Reset to defaults**, when you keep every stored value in a conflict, and when you choose **Sign out**.
+- If the browser does not allow this storage, the page works as before but nothing is kept.
 
 ## Change your settings
 
@@ -99,6 +114,18 @@ For every field you had edited that the other change moved as well, the page sho
 ![A conflict banner with Use mine and Keep Telegram's for the remind-me-later default](images/web-settings-conflict.png)
 
 Nothing is saved until you choose **Save changes** again.
+
+### Reset to defaults
+
+**Reset to defaults** sits beside **Save changes**.
+
+1. Choose **Reset to defaults**. A dialog asks "Reset to defaults?" and says: "This replaces your saved settings with: Time zone Europe/Amsterdam, quiet hours 23:00 to 07:00, daily overview 18:00, reminders 09:00. The time zone is reset too. It takes effect at once for new alerts."
+2. Choose **Replace my settings with defaults** to go on, or **Keep my settings** (or press Escape) to close the dialog; then nothing is sent and nothing changes.
+3. The form shows the defaults, the time zone included, and a green banner says "Defaults restored. The Undo button is in the Telegram message."
+
+Like every change on the web, a reset is announced in Telegram within about a minute, with the values before it and the buttons **Undo** and **Undo and lock web sign-in** (see below). **Undo** works as after any web change: after a reset on its own it puts back the values from before it.
+
+If the settings changed meanwhile, nothing is reset and the page shows the change as described above. If the request does not go through, the page says "Could not reset. Nothing was changed." and you can try again.
 
 ## The message in Telegram
 
