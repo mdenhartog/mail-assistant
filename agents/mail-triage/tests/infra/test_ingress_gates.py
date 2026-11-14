@@ -60,13 +60,13 @@ def weakened(override: dict[str, Any], tmp: Path) -> Path:
     return path
 
 
-def ingress_gate_findings(docs: list[dict[str, Any]]) -> list[str]:
-    """What the rendered objects are missing (ADR-0040): HSTS, the HTTP redirect, the TLS minimum and the body cap."""
-    middlewares = [d["spec"] for d in docs if d["kind"] == "Middleware"]
-    missing: list[str] = []
+WEB_ENTRYPOINT = "traefik.ingress.kubernetes.io/router.entrypoints"
 
+
+def hsts_findings(middlewares: list[dict[str, Any]]) -> list[str]:
     hsts = [m["headers"] for m in middlewares if "stsSeconds" in m.get("headers", {})]
     by_hand = [m for m in middlewares if "strict-transport-security" in str(m.get("headers", {})).lower()]
+    missing: list[str] = []
     if not hsts:
         missing.append("a Middleware with an HSTS directive (headers.stsSeconds)")
     elif hsts[0]["stsSeconds"] != 31536000:
@@ -75,17 +75,21 @@ def ingress_gate_findings(docs: list[dict[str, Any]]) -> list[str]:
         missing.append("exactly one HSTS directive (a second one is rendered)")
     if any(h.get("stsIncludeSubdomains") or h.get("stsPreload") for h in hsts):
         missing.append("an HSTS directive without includeSubDomains and preload")
+    return missing
+
+
+def ingress_gate_findings(docs: list[dict[str, Any]]) -> list[str]:
+    """What the rendered objects are missing (ADR-0040): HSTS, the HTTP redirect, the TLS minimum and the body cap."""
+    middlewares = [d["spec"] for d in docs if d["kind"] == "Middleware"]
+    missing = hsts_findings(middlewares)
 
     redirects = [m["redirectScheme"] for m in middlewares if "redirectScheme" in m]
     if not any(r.get("scheme") == "https" for r in redirects):
         missing.append("an HTTP to HTTPS redirect (a redirectScheme Middleware with scheme https)")
-    served_on_web = [
-        d
-        for d in docs
-        if d["kind"] == "Ingress"
-        and d["metadata"].get("annotations", {}).get("traefik.ingress.kubernetes.io/router.entrypoints") == "web"
+    on_web = [
+        d for d in docs if d["kind"] == "Ingress" and d["metadata"].get("annotations", {}).get(WEB_ENTRYPOINT) == "web"
     ]
-    if not served_on_web:
+    if not on_web:
         missing.append("an Ingress on the web entry point that carries the redirect")
 
     versions = [d["spec"].get("minVersion") for d in docs if d["kind"] == "TLSOption"]
@@ -117,43 +121,48 @@ def test_given_the_local_values_when_rendered_then_hsts_redirect_tls_minimum_and
     assert not missing, "deploy/envs/local/values.yaml renders without: " + "; ".join(missing)
 
 
-def mutate(docs: list[dict[str, Any]], kind: str, change: Any) -> list[dict[str, Any]]:
+DELETE = object()
+
+
+def mutate(docs: list[dict[str, Any]], kind: str, path: tuple[str, ...], value: Any) -> list[dict[str, Any]]:
+    """A copy of the docs with `path` of every `kind` object set to `value` or deleted; a missing parent is skipped."""
     copied = copy.deepcopy(docs)
     for doc in copied:
-        if doc["kind"] == kind:
-            change(doc)
+        node: Any = doc if doc["kind"] == kind else None
+        for part in path[:-1]:
+            node = node.get(part) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            if value is DELETE:
+                node.pop(path[-1], None)
+            else:
+                node[path[-1]] = value
     return copied
+
+
+HSTS_BY_HAND = {"Strict-Transport-Security": "max-age=1"}
 
 
 @needs_helm
 @pytest.mark.parametrize(
-    ("kind", "change", "expected"),
+    ("kind", "path", "value", "expected"),
     [
-        ("Middleware", lambda d: d["spec"].pop("headers", None), "HSTS directive (headers.stsSeconds)"),
-        ("Middleware", lambda d: d["spec"].get("headers", {}).update(stsIncludeSubdomains=True), "without includeSubDomains"),
-        ("Middleware", lambda d: d["spec"].get("headers", {}).update(stsPreload=True), "without includeSubDomains and preload"),
-        ("Middleware", lambda d: d["spec"].get("headers", {}).update(stsSeconds=300), "max-age of 31536000"),
-        (
-            "Middleware",
-            lambda d: d["spec"].get("headers", {}).update(customResponseHeaders={"Strict-Transport-Security": "max-age=1"}),
-            "exactly one HSTS directive",
-        ),
-        ("Middleware", lambda d: d["spec"].pop("redirectScheme", None), "HTTP to HTTPS redirect"),
-        ("Middleware", lambda d: d["spec"].pop("buffering", None), "body limit of 8192"),
-        ("Middleware", lambda d: d["spec"].get("buffering", {}).update(maxRequestBodyBytes=9000), "body limit of 8192"),
-        ("TLSOption", lambda d: d["spec"].update(minVersion="VersionTLS11"), "TLS minimum of 1.2"),
-        ("TLSOption", lambda d: d["spec"].pop("minVersion"), "a TLS minimum"),
-        (
-            "Ingress",
-            lambda d: d["metadata"]["annotations"].update({"traefik.ingress.kubernetes.io/router.entrypoints": "websecure"}),
-            "Ingress on the web entry point",
-        ),
+        ("Middleware", ("spec", "headers"), DELETE, "HSTS directive (headers.stsSeconds)"),
+        ("Middleware", ("spec", "headers", "stsIncludeSubdomains"), True, "without includeSubDomains"),
+        ("Middleware", ("spec", "headers", "stsPreload"), True, "without includeSubDomains and preload"),
+        ("Middleware", ("spec", "headers", "stsSeconds"), 300, "max-age of 31536000"),
+        ("Middleware", ("spec", "headers", "customResponseHeaders"), HSTS_BY_HAND, "exactly one HSTS directive"),
+        ("Middleware", ("spec", "redirectScheme"), DELETE, "HTTP to HTTPS redirect"),
+        ("Middleware", ("spec", "buffering"), DELETE, "body limit of 8192"),
+        ("Middleware", ("spec", "buffering", "maxRequestBodyBytes"), 9000, "body limit of 8192"),
+        ("TLSOption", ("spec", "minVersion"), "VersionTLS11", "TLS minimum of 1.2"),
+        ("TLSOption", ("spec", "minVersion"), DELETE, "a TLS minimum"),
+        ("Ingress", ("metadata", "annotations", WEB_ENTRYPOINT), "websecure", "Ingress on the web entry point"),
     ],
 )
 def test_given_a_render_that_drops_a_traefik_gate_when_checked_then_the_missing_item_is_named(
-    kind: str, change: Any, expected: str
+    kind: str, path: tuple[str, ...], value: Any, expected: str
 ) -> None:
-    missing = ingress_gate_findings(mutate(render_docs(LOCAL_VALUES), kind, change))
+    missing = ingress_gate_findings(mutate(render_docs(LOCAL_VALUES), kind, path, value))
 
     assert any(expected in item for item in missing), missing
 

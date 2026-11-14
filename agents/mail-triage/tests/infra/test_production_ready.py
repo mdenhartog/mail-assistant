@@ -107,6 +107,11 @@ def render(chart: Path, release: str, values: Path, *sets: str) -> subprocess.Co
     return run(*args)
 
 
+def names(path: str, output: str) -> bool:
+    """The output names the value: Helm's schema errors use `/api/config/x`, the chart's own errors `api.config.x`."""
+    return path in output or "/" + path.replace(".", "/") in output
+
+
 def docs_of(result: subprocess.CompletedProcess[str]) -> list[dict[str, Any]]:
     assert result.returncode == 0, result.stderr
     return [doc for doc in yaml.safe_load_all(result.stdout) if doc]
@@ -134,7 +139,9 @@ def test_given_the_production_files_when_read_then_they_exist_and_say_production
     assert load(PROD_WORKER)["environment"] == "production"
 
 
-@pytest.mark.parametrize(("path", "supply"), [(PROD_APP, APP_SUPPLY), (PROD_WORKER, WORKER_SUPPLY)], ids=["app", "worker"])
+@pytest.mark.parametrize(
+    ("path", "supply"), [(PROD_APP, APP_SUPPLY), (PROD_WORKER, WORKER_SUPPLY)], ids=["app", "worker"]
+)
 def test_given_the_production_values_when_read_then_every_required_value_has_a_fixture(
     path: Path, supply: dict[str, Any]
 ) -> None:
@@ -143,7 +150,9 @@ def test_given_the_production_values_when_read_then_every_required_value_has_a_f
 
 @pytest.mark.parametrize("path", [PROD_APP, PROD_WORKER, ARGO], ids=lambda p: p.name)
 def test_given_a_required_value_when_read_then_its_line_carries_a_required_comment_with_a_name(path: Path) -> None:
-    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if re.search(r":\s*\"?REQUIRED\"?\s*(#|$)", line)]
+    lines = [
+        line for line in path.read_text(encoding="utf-8").splitlines() if re.search(r":\s*\"?REQUIRED\"?\s*(#|$)", line)
+    ]
     assert lines, path.name
     for line in lines:
         assert re.search(r"#\s*REQUIRED\b\s*[:(-]?\s*\S{3,}", line), line
@@ -180,7 +189,7 @@ def test_given_the_app_values_when_one_required_value_is_missing_then_the_render
     result = render(APP_CHART, "app", values)
 
     assert result.returncode != 0, missing
-    assert missing in result.stderr, result.stderr
+    assert names(missing, result.stderr), result.stderr
 
 
 @needs_helm
@@ -193,7 +202,7 @@ def test_given_the_worker_values_when_one_required_value_is_missing_then_the_ren
     result = render(WORKER_CHART, "mail-triage", values)
 
     assert result.returncode != 0, missing
-    assert missing in result.stderr, result.stderr
+    assert names(missing, result.stderr), result.stderr
 
 
 @needs_helm
@@ -223,7 +232,9 @@ def test_given_the_rendered_production_app_when_read_then_digests_cert_alert_and
     docs = docs_of(render(APP_CHART, "app", supplied_app))
     deployments = {d["metadata"]["name"]: d for d in of_kind(docs, "Deployment")}
     images = {n: d["spec"]["template"]["spec"]["containers"][0]["image"] for n, d in deployments.items()}
-    api_env = {e["name"]: e.get("value") for e in deployments["app-api"]["spec"]["template"]["spec"]["containers"][0]["env"]}
+    api_env = {
+        e["name"]: e.get("value") for e in deployments["app-api"]["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
 
     assert images["app-api"].endswith(f"@{DIGEST_API}")
     assert images["app-web"].endswith(f"@{DIGEST_WEB}")
@@ -267,7 +278,7 @@ def test_given_the_production_values_when_a_forbidden_key_is_added_then_the_rend
     result = render(APP_CHART, "app", supplied_app, setting)
 
     assert result.returncode != 0
-    assert setting.split("=")[0].split(".")[-1] in result.stderr
+    assert setting.split("=", maxsplit=1)[0].rsplit(".", maxsplit=1)[-1] in result.stderr
 
 
 @needs_helm
@@ -355,7 +366,10 @@ def test_given_the_rendered_production_ingress_when_read_then_the_https_and_redi
     prefix = "traefik.ingress.kubernetes.io/router"
     https = next(d for d in of_kind(docs, "Ingress") if d["spec"].get("tls"))
     plain = next(d for d in of_kind(docs, "Ingress") if not d["spec"].get("tls"))
-    names = {f"default-{d['metadata']['name']}@kubernetescrd" for d in of_kind(docs, "Middleware") + of_kind(docs, "TLSOption")}
+    names = {
+        f"default-{d['metadata']['name']}@kubernetescrd"
+        for d in of_kind(docs, "Middleware") + of_kind(docs, "TLSOption")
+    }
 
     assert https["metadata"]["annotations"][f"{prefix}.entrypoints"] == "websecure"
     assert plain["metadata"]["annotations"][f"{prefix}.entrypoints"] == "web"
@@ -424,7 +438,10 @@ def test_given_a_workflow_line_that_applies_or_names_production_when_searched_th
 
 
 def test_given_a_workflow_line_for_the_local_values_when_searched_then_the_search_finds_nothing() -> None:
-    assert workflow_findings("  - run: helm lint --strict deploy/charts/app -f deploy/envs/local/values.yaml\n", "x.yml") == []
+    assert (
+        workflow_findings("  - run: helm lint --strict deploy/charts/app -f deploy/envs/local/values.yaml\n", "x.yml")
+        == []
+    )
 
 
 def test_given_the_repository_when_searched_then_no_script_applies_the_argo_manifest() -> None:
@@ -481,7 +498,16 @@ def test_given_the_production_render_when_checked_with_kubeconform_and_the_crd_c
 ) -> None:
     catalog = "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json"
     result = subprocess.run(  # noqa: S603
-        [shutil.which("kubeconform") or "", "-strict", "-summary", "-schema-location", "default", "-schema-location", catalog, "-"],
+        [
+            shutil.which("kubeconform") or "",
+            "-strict",
+            "-summary",
+            "-schema-location",
+            "default",
+            "-schema-location",
+            catalog,
+            "-",
+        ],
         input=render(APP_CHART, "app", supplied_app).stdout,
         capture_output=True,
         text=True,

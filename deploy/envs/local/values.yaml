@@ -9,8 +9,7 @@ api:
     emailAddress: owner@home.arpa
     publicOrigin: https://app.localhost
     noticeIntervalMinutes: 1
-    # The kind pod network (default 10.244.0.0/16): the ingress controller pod is addressed from it. The controller
-    # itself is an open hosting point (D-7); only the pod CIDR is fixed here.
+    # The kind pod network (default 10.244.0.0/16): the Traefik pod is addressed from it.
     trustedProxyCidrs: ["10.244.0.0/16"]
     trustedProxyHops: 1
     smtp: { host: smtp.home.arpa, port: 587, from: mail-assistant@home.arpa }
@@ -19,24 +18,14 @@ web:
   replicas: 1
   autoscaling: { enabled: false, minReplicas: 1, maxReplicas: 1, targetCPUUtilizationPercentage: 70 }
 ingress:
-  # Local only (ADR-0037). The controller-specific keys below follow the ingress-nginx vocabulary; the controller
-  # is an open hosting point, so this block is what changes when it is chosen.
+  # Local only (ADR-0037). Traefik is the controller (ADR-0040); deploy/kind/traefik-values.yaml installs it and its CRDs.
+  controller: traefik
   host: app.localhost
   localDomainSuffix: localhost
   clusterIssuer: selfsigned-local
-  hstsAnnotation:
-    key: nginx.ingress.kubernetes.io/configuration-snippet
-    format: 'more_set_headers "Strict-Transport-Security: %s";'
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: 8k
-  # Applied to the controller's own ConfigMap (not rendered by this chart): TLS 1.2 minimum, no query string in the log.
-  controllerConfig:
-    ssl-protocols: TLSv1.2 TLSv1.3
-    log-format-upstream: '$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time'
+  httpsPort: "8443" # kind maps the node port 30443 to 127.0.0.1:8443 (deploy/kind/kind-config.yaml)
 networkPolicy:
-  ingressController: { namespace: ingress-nginx, podLabels: { app.kubernetes.io/name: ingress-nginx } }
+  # The chart defaults name the Traefik namespace and pods (namespace traefik, label app.kubernetes.io/name=traefik).
   # Placeholder addresses of the kind cluster; the real database and SMTP host are decided before staging.
   egress:
     database: { cidr: 10.244.0.10/32, port: 5432 }

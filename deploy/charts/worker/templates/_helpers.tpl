@@ -48,6 +48,7 @@ so the match ignores case. values.schema.json forbids the same keys.
 
 {{/* Database TLS (SEC-10, W-8, W-9): the same three settings for the worker and the migration Job. */}}
 {{- define "worker.dbTls.validate" -}}
+{{- include "worker.required.validate" . -}}
 {{- $tls := .Values.database.tls -}}
 {{- if not (has $tls.sslMode (list "disable" "require" "verify-ca" "verify-full")) -}}
 {{- fail "database.tls.sslMode must be one of disable, require, verify-ca, verify-full" -}}
@@ -87,5 +88,14 @@ so the match ignores case. values.schema.json forbids the same keys.
     name: {{ .Values.database.tls.caConfigMap | quote }}
     items:
       - { key: ca.crt, path: ca.crt }
+{{- end -}}
+{{- end }}
+
+{{/* Names the environment must supply carry the sentinel REQUIRED in deploy/envs/<env>/mail-triage.yaml; the render stops and names the value. */}}
+{{- define "worker.required.validate" -}}
+{{- range $path, $value := dict "envFromSecret" .Values.envFromSecret "database.tls.caConfigMap" .Values.database.tls.caConfigMap "migration.secretName" .Values.migration.secretName -}}
+{{- if eq (toString $value) "REQUIRED" -}}
+{{- fail (printf "%s is REQUIRED: supply it in the environment values (it is still the sentinel)" $path) -}}
+{{- end -}}
 {{- end -}}
 {{- end }}

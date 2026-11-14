@@ -64,14 +64,17 @@ The database host name must be in the server certificate. The CA that signed it 
 
 - `environment` is `local`, `staging` or `production` and defaults to `production`. Production values are refused by the schema unless `certAlert.enabled` is true and `api.image.digest` and `web.image.digest` are set (`sha256:` plus 64 hex characters).
 - `api.env` and `web.env` refuse `APP_ENVIRONMENT`, `APP_DATABASE_*`, `APP_TRUSTED_PROXY_*` and every limit key of the api (`APP_*_PER_*`, `APP_CODES_PER_HOUR`, `APP_MAX_ATTEMPTS`, `APP_RATE_*`, `APP_OPEN_LOGIN_*`, `APP_LIVE_*`, `APP_LOGIN_REQUESTS_*` and the other limits in `backend/app/config.py`), in any letter case: the schema and `workloads.yaml` both fail naming the key. The chart renders `APP_ENVIRONMENT=production` for every `environment` (RT2-08).
-- `ingress.hstsAnnotation.key` must not be empty: the schema refuses `hsts: true` without a named mechanism. The controller stays an open point (D-7), so the key and the redirect and TLS minimum settings come from the environment values.
-- The tests in `agents/mail-triage/tests/infra/test_ingress_gates.py` render every `deploy/envs/*/values.yaml` and name what is missing: an HSTS directive, an HTTP redirect or a TLS minimum of 1.2.
+- `ingress.controller` is required and the schema allows `traefik` only (ADR-0040). The chart renders Traefik objects, no annotation text: a `Middleware` with `headers.stsSeconds: 31536000` (the only HSTS source, no `includeSubDomains`, no preload), a `Middleware` with `buffering.maxRequestBodyBytes: 8192`, a `redirectScheme` `Middleware` on a second Ingress at the `web` entry point (`ingress.httpsPort` names the HTTPS port when it is not 443) and a `TLSOption` with `minVersion: VersionTLS12`. The Ingress references them by `<namespace>-<name>@kubernetescrd`. Traefik and its CRDs (`traefik.io/v1alpha1`) must be installed; `kubeconform` needs the CRD catalog (see Checks).
+- The network policy peer and `api.config.trustedProxyCidrs` name the Traefik pods (namespace `traefik`, label `app.kubernetes.io/name: traefik`).
+- A value that must be supplied is the string `REQUIRED` in `deploy/envs/production/values.yaml`; the render stops and names it.
+- The tests in `agents/mail-triage/tests/infra/test_ingress_gates.py` render the environment values and name what is missing: the HSTS directive, the redirect, the TLS minimum of 1.2 or the body cap.
 - Base images in both Dockerfiles are pinned with `@sha256`; Renovate keeps the pins current (`docker:pinDigests`).
 
 ## Checks
 
 ```sh
 helm lint --strict deploy/charts/app -f deploy/envs/local/values.yaml
-helm template app deploy/charts/app -f deploy/envs/local/values.yaml | kubeconform -strict -summary -
+helm template app deploy/charts/app -f deploy/envs/local/values.yaml | kubeconform -strict -summary -schema-location default \
+  -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' -
 helm template app deploy/charts/app -f deploy/envs/local/values.yaml | kube-linter lint /dev/stdin
 ```

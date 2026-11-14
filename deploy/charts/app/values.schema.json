@@ -249,12 +249,12 @@
       "type": "object",
       "required": [
         "enabled",
+        "controller",
         "host",
         "localDomainSuffix",
         "clusterIssuer",
         "tls",
-        "hsts",
-        "hstsAnnotation"
+        "hsts"
       ],
       "allOf": [
         {
@@ -385,39 +385,16 @@
             true
           ]
         },
-        "hstsAnnotation": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "key": {
-              "type": "string",
-              "pattern": "^\\S+$",
-              "description": "The annotation that carries the HSTS header; the mechanism is controller specific and must not be empty."
-            },
-            "format": {
-              "type": "string",
-              "pattern": "^[^%]*%s[^%]*$",
-              "not": {
-                "pattern": "includeSubDomains|preload"
-              }
-            }
-          },
-          "required": [
-            "key",
-            "format"
-          ]
+        "controller": {
+          "enum": [
+            "traefik"
+          ],
+          "description": "The ingress controller whose objects the chart renders (ADR-0040); required, no default."
         },
-        "annotations": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "controllerConfig": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          }
+        "httpsPort": {
+          "type": "string",
+          "pattern": "^([0-9]{1,5})?$",
+          "description": "HTTPS port of the redirect target; empty is the default port."
         }
       }
     },

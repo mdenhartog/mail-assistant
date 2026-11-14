@@ -183,9 +183,10 @@ def test_given_the_local_values_when_rendered_then_the_body_cap_and_tls_minimum_
 
 @needs_helm
 def test_given_the_local_values_when_rendered_then_no_text_of_another_ingress_controller_is_left() -> None:
-    text = yaml.safe_dump(render())
+    docs = render()
+    text = yaml.safe_dump([d for d in docs if d["kind"] in {"Ingress", "Middleware", "TLSOption"}])
 
-    assert "nginx" not in text.lower()
+    assert "nginx" not in text.lower()  # the web image is nginx, but no ingress object speaks its vocabulary
     assert "configuration-snippet" not in text
 
 
@@ -263,7 +264,16 @@ def test_given_the_values_files_when_read_then_no_public_host_name_is_set() -> N
 def test_given_the_rendered_chart_when_checked_with_kubeconform_then_it_passes() -> None:
     manifests = helm("template").stdout
     result = subprocess.run(  # noqa: S603
-        [shutil.which("kubeconform") or "", "-strict", "-summary", "-schema-location", "default", "-schema-location", CRDS, "-"],
+        [
+            shutil.which("kubeconform") or "",
+            "-strict",
+            "-summary",
+            "-schema-location",
+            "default",
+            "-schema-location",
+            CRDS,
+            "-",
+        ],
         input=manifests,
         capture_output=True,
         text=True,
