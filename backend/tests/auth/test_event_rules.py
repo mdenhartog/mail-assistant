@@ -50,6 +50,8 @@ def test_window_floors_instead_of_truncating_before_the_epoch() -> None:
         ("2001:db8::/64", "ipv6"),
         ("2001:db8:1:2::/64", "ipv6"),
         ("203.0.113.0/24", "ipv4"),
+        ("2001:db8::1/64", "ipv6"),
+        ("203.0.113.7/24", "ipv4"),
         ("2001:db8::/129", "other"),
         ("203.0.113.7/33", "other"),
         ("/64", "other"),

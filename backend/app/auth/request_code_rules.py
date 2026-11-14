@@ -55,11 +55,13 @@ class RequestFacts:
 
 
 def client_hash(key: bytes, client: str) -> str:
-    """Return the 64 lower-case hex characters of the keyed HMAC-SHA-256 of the client key.
+    """Return the 64 lower-case hex characters of the HMAC-SHA-256 of the client key under a derived subkey.
 
-    The label keeps it apart from a username key made with the same secret.
+    The subkey is ``HMAC(key, b"client-key")``, so the client digests live in their own domain: no username, typed
+    like ``client:10.0.0.5`` or otherwise, can produce the digest of a client (``username_key`` uses ``key`` itself).
     """
-    return hmac.new(key, b"client:" + client.encode("utf-8"), hashlib.sha256).hexdigest()
+    subkey = hmac.new(key, b"client-key", hashlib.sha256).digest()
+    return hmac.new(subkey, client.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def wait_until_below(releases: Iterable[datetime], now: datetime, limit: int) -> int:
