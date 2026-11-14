@@ -151,7 +151,9 @@ const bar = (done, total) => (total === 0 ? "" : `${"▓".repeat(done)}${"░".r
 export function renderStatus(model, { escape = false } = {}) {
   const c = escape ? hostSafe : plain;
   const worktree = (u) => (u.worktree ? `\`${String(u.worktree).replace(/`/g, "")}\`` : "—");
-  const out = ["# Build status", "", "Generated from git and `docs/plans` by `node scripts/status.mjs`; do not edit.", "", "## Building now", ""];
+  const out = ["# Build status", "", "Generated from git and `docs/plans` by `node scripts/status.mjs`; do not edit.", ""];
+  if (model.integration) out.push(`Integration (full suite on the merged state of main): ${c(model.integration)}`, "");
+  out.push("## Building now", "");
   if (model.nowBuilding.length === 0) out.push("Nothing is being built right now.", "");
   else {
     out.push("| Unit | Name | Feature | Stage | Worktree |", "|---|---|---|---|---|");
@@ -212,6 +214,21 @@ function readPullRequests(cwd) {
   }
 }
 
+/** One line on the last rolling integration run (scripts/integrate.mjs), or "" when there is none. */
+export function integrationLine(main) {
+  try {
+    const state = JSON.parse(readFileSync(path.join(main, ".sdlc", "run", "integrate.json"), "utf8"));
+    const short = (sha) => String(sha ?? "").slice(0, 7);
+    if (state.running) {
+      try { process.kill(state.running.pid, 0); return `running on ${short(state.running.sha)}`; } catch { /* the runner is gone */ }
+    }
+    if (!state.last) return "";
+    return state.last.ok ? `green on ${short(state.last.ref)}` : `RED on ${short(state.last.ref)}: ${(state.last.failures ?? []).map((f) => f.name).join(", ")}`;
+  } catch {
+    return "";
+  }
+}
+
 export function collect(root, { prs = true } = {}) {
   const worktrees = readWorktrees(root);
   const main = worktrees[0]?.path ?? path.resolve(root);
@@ -225,7 +242,10 @@ export function collect(root, { prs = true } = {}) {
   const doneUnits = new Set([...git(["log", trunk, "--format=%B"], main).matchAll(/^Unit:\s*(U-[a-z0-9-]+-\d+)\s*$/gm)].map((m) => m[1]));
   const intents = readDir(path.join(main, "docs", "intent"), /^INT-\d+.*\.md$/).map(([f, text]) => parseIntent(text, f));
   const plans = readDir(path.join(main, "docs", "plans"), /\.md$/).map(([f, text]) => parsePlan(text, f)).filter((p) => p.units.length);
-  return { model: buildModel({ intents, plans, branches, doneUnits, prs: prs ? readPullRequests(main) : [] }), main };
+  const model = buildModel({ intents, plans, branches, doneUnits, prs: prs ? readPullRequests(main) : [] });
+  const integration = integrationLine(main);
+  if (integration) model.integration = integration;
+  return { model, main };
 }
 
 export function summary(model) {

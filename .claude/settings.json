@@ -1,11 +1,40 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "extraKnownMarketplaces": {
-    "claude-sdlc-kit": { "source": { "source": "github", "repo": "mdenhartog/claude-sdlc-kit", "ref": "main" } },
-    "superpowers-dev": { "source": { "source": "github", "repo": "obra/superpowers", "ref": "v7.0.1" } },
-    "ui-ux-pro-max-skill": { "source": { "source": "github", "repo": "nextlevelbuilder/ui-ux-pro-max-skill", "ref": "v2.15.0" } },
-    "expo-plugins": { "source": { "source": "github", "repo": "expo/skills" } },
-    "claude-hud": { "source": { "source": "github", "repo": "jarrodwatts/claude-hud", "ref": "v0.13.0" } }
+    "claude-sdlc-kit": {
+      "source": {
+        "source": "github",
+        "repo": "mdenhartog/claude-sdlc-kit",
+        "ref": "main"
+      }
+    },
+    "superpowers-dev": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers",
+        "ref": "v7.0.1"
+      }
+    },
+    "ui-ux-pro-max-skill": {
+      "source": {
+        "source": "github",
+        "repo": "nextlevelbuilder/ui-ux-pro-max-skill",
+        "ref": "v2.15.0"
+      }
+    },
+    "expo-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "expo/skills"
+      }
+    },
+    "claude-hud": {
+      "source": {
+        "source": "github",
+        "repo": "jarrodwatts/claude-hud",
+        "ref": "v0.13.0"
+      }
+    }
   },
   "enabledPlugins": {
     "sdlc@claude-sdlc-kit": true,
@@ -32,7 +61,8 @@
       "Read(./.env.prod-like)",
       "Read(./**/secrets/**)",
       "Bash(git push --force:*)",
-      "Bash(kubectl delete:*)"
+      "Bash(kubectl delete:*)",
+      "Read(./.env.*)"
     ]
   }
 }
