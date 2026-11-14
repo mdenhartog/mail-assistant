@@ -32,6 +32,10 @@ _NEW_ROW = (
     'insert into web_auth.security_event (kind, result, request_id, client_key, "window", count) '
     "values ('code_refused', 'refused', 'r-1', '{client}', 1, {count})"
 )
+_WEB_ROW = (  # the web role gives no count; the server's window rule of 0013 needs the current minute
+    'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
+    "values ('code_refused', 'refused', 'r-1', '{client}', floor(extract(epoch from now()) / 60))"
+)
 _CREATE_ROLES = f"""
 DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{WEB_ROLE}') THEN
@@ -138,7 +142,7 @@ async def test_given_the_grants_when_the_web_role_counts_then_it_may_change_coun
 ) -> None:
     web = await _as(migrated_url, WEB_ROLE, WEB_PASSWORD)
     try:
-        await web.execute(_NEW_ROW.format(client="d" * 64, count=1))
+        await web.execute(_WEB_ROW.format(client="d" * 64))
         await web.execute("update web_auth.security_event set count = count + 1")
         assert await web.fetchval("select count from web_auth.security_event") == 2
         for column in ("client_key = repeat('e', 64)", "kind = 'rate_limited'", "result = 'ok'", "request_id = 'x'"):

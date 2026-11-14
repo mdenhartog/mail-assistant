@@ -4,6 +4,7 @@
 import asyncio
 import hashlib
 import logging
+import sys
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -34,9 +35,16 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     template_name,
     web_database,
 )
-from tests.fakes import FakeClock, FakeCodes, FakeMailer, make_settings
+from tests.fakes import FakeClock, FakeCodes, FakeMailer, make_settings, real_minute
 
 T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _t0_is_the_real_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "T0", real_minute())  # the event window is checked by the database
+
+
 ORIGIN = "https://settings.example.test"
 USERNAME = "test-user"
 UNKNOWN = "somebody-else"
@@ -616,7 +624,9 @@ async def test_given_an_expired_request_when_a_well_formed_code_is_posted_then_i
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     cookie = await api.issue()
-    api.clock.advance(timedelta(seconds=601))
+    # The request expires by its stored age (the ttl counts from created_at), not by moving the clock:
+    # the database takes an event window only within one of its own minute (0013).
+    await owner.execute("UPDATE web_auth.login_request SET created_at = $1", api.clock.now() - timedelta(seconds=601))
 
     await api.verify(FIRST, cookie)
 

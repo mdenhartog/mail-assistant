@@ -61,7 +61,7 @@ async def test_given_the_purge_command_when_it_runs_then_it_purges_with_the_cloc
 
     async def fake(owner_url: str, tls: object, clock: object) -> PurgeCounts:
         seen.append((owner_url, clock))
-        return PurgeCounts(0, 0, 0, 0)
+        return PurgeCounts(0, 0, 0, 0, 0)
 
     monkeypatch.setattr(wiring, "purge_database", fake)
     clock = FakeClock()

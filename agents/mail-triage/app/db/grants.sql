@@ -79,8 +79,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON web_auth.session TO web_settings_runtime
 -- and the times of its life change.
 GRANT SELECT, INSERT, DELETE ON web_auth.login_request TO web_settings_runtime;
 GRANT UPDATE (attempts, sent_at, dead_at) ON web_auth.login_request TO web_settings_runtime;
-GRANT SELECT, INSERT ON web_auth.security_event TO web_settings_runtime;
+-- An event is inserted by the web role through six columns only: the id is GENERATED ALWAYS, and the trigger of 0013
+-- gives the row the server's time, a count of 1 and a window within one of the server's minute (RT3-05, SEC3-04).
+GRANT SELECT ON web_auth.security_event TO web_settings_runtime;
+GRANT INSERT (kind, result, username_hash, request_id, client_key, "window") ON web_auth.security_event
+    TO web_settings_runtime;
 -- A repeat of a counted kind raises the count; nothing else of an event ever changes.
 GRANT UPDATE (count) ON web_auth.security_event TO web_settings_runtime;
 GRANT SELECT ON web_auth.web_lock TO web_settings_runtime;
-GRANT USAGE, SELECT ON SEQUENCE web_auth.security_event_id_seq TO web_settings_runtime;
+-- No grant on web_auth.security_event_id_seq: an identity column needs none, and the web role cannot advance it.

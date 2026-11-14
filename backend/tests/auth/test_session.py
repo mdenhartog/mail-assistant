@@ -3,6 +3,7 @@
 
 import base64
 import hashlib
+import sys
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from http.cookies import SimpleCookie
@@ -28,9 +29,16 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     template_name,
     web_database,
 )
-from tests.fakes import FakeClock, make_app
+from tests.fakes import FakeClock, make_app, real_minute
 
 T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _t0_is_the_real_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys.modules[__name__], "T0", real_minute())  # the event window is checked by the database
+
+
 USER = username_digest(b"k" * 32, "canary-user")
 CLIENT = "203.0.113.7"
 GENERIC_401 = {"type": "about:blank", "title": "Unauthorized", "status": 401}

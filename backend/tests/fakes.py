@@ -8,6 +8,15 @@ from app.mail.sender import MailError
 from app.main import build_app
 
 
+def real_minute() -> datetime:
+    """Return the start of the real current minute.
+
+    The database takes a security event window only within one of its own minute (0013), so tests that record events
+    through the real store start their clock here instead of at a fixed date.
+    """
+    return datetime.now(UTC).replace(second=0, microsecond=0)
+
+
 class FakeClock:
     """Settable clock: returns what was set and moves only when told to."""
 
