@@ -472,3 +472,167 @@ async def test_given_a_malformed_body_when_posted_then_the_generic_400_and_no_se
     _assert_refused(response)
     assert await owner.fetchval("SELECT attempts FROM web_auth.login_request") == 0
     assert await _sessions(owner) == 0
+
+
+# U-web-settings-63 (SEC2-01, RT2-01): the web lock counts only wrong codes against a login request that exists
+async def _counted(owner: asyncpg.Connection, kind: str) -> int:  # noqa: F811
+    return int(
+        await owner.fetchval("SELECT coalesce(sum(count), 0) FROM web_auth.security_event WHERE kind = $1", kind)
+    )
+
+
+# Criterion 1
+async def test_given_no_login_request_when_20_garbage_posts_arrive_then_code_refused_is_0_and_code_invalid_holds_them(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    unknown_cookie = "A" * 32
+    for turn in range(20):
+        answers = [
+            await api.verify(FIRST, None),
+            await api.verify(None, None, content=b"{}"),
+            await api.verify(FIRST, unknown_cookie),
+        ]
+        for answer in answers:
+            _assert_refused(answer)
+        api.clock.advance(timedelta(seconds=turn % 2))
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") >= 1
+    assert await owner.fetchval("SELECT count(*) FROM web_auth.security_event WHERE kind <> 'code_invalid'") == 0
+
+
+async def test_given_garbage_posts_in_one_window_when_recorded_then_code_invalid_is_one_row_with_count_one(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    for _ in range(15):
+        await api.verify(FIRST, None)
+
+    rows = await _events(owner, "code_invalid")
+
+    assert [(row["count"], row["result"]) for row in rows] == [(1, "refused")]
+
+
+@pytest.mark.parametrize("content", [b"", b"not json", b"[]", b'{"code": "111111", "extra": 1}'])
+async def test_given_a_live_request_when_a_malformed_body_is_posted_then_it_is_code_invalid_and_not_counted(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    content: bytes,
+) -> None:
+    cookie = await api.issue()
+
+    await api.verify(None, cookie, content=content)
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1
+
+
+async def test_given_a_live_request_when_a_malformed_code_is_posted_then_it_is_code_invalid_and_not_counted(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue()
+
+    await api.verify("12345", cookie)
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1
+
+
+async def test_given_a_used_replaced_or_dead_request_when_a_code_is_posted_then_it_is_code_invalid(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    used = await api.issue()
+    assert (await api.verify(FIRST, used)).status_code == 204  # now dead
+    replaced = await api.issue(UNKNOWN)
+    api.clock.advance(timedelta(seconds=60))
+    await api.issue(UNKNOWN, cookie=replaced)  # the cookie replaces its own request
+    await owner.execute("DELETE FROM web_auth.security_event")
+
+    await api.verify(SECOND, used)
+    await api.verify(SECOND, replaced)
+
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1
+
+
+async def test_given_a_decoy_swallowed_by_a_full_class_when_a_code_is_posted_then_it_is_code_invalid_no_row_exists(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    # U-web-settings-64: a decoy swallowed by a full class has no row, so the post meets no login request
+    for index in range(100):
+        await owner.execute(
+            "INSERT INTO web_auth.login_request (id, username_key, client_hash, code_hash, expires_at, created_at) "
+            "VALUES ($1, $2, $3, $4, $5, $6)",
+            f"{index:032d}",
+            f"{index:064d}",
+            f"{index:064d}",
+            "0" * 64,
+            T0 + timedelta(minutes=10),
+            T0,
+        )
+    cookie = await api.issue("another-stranger")
+
+    answer = await api.verify(FIRST, cookie)
+
+    _assert_refused(answer)
+    assert await _counted(owner, "code_refused") == 0
+    assert await _counted(owner, "code_invalid") == 1
+
+
+# Criterion 2
+async def test_given_a_live_request_when_5_wrong_codes_are_posted_then_the_sum_of_code_refused_is_5(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue()
+
+    for _ in range(5):
+        await api.verify(SECOND, cookie)
+
+    assert await _counted(owner, "code_refused") == 5
+    assert await _counted(owner, "code_invalid") == 0
+
+
+async def test_given_an_exhausted_request_when_the_sixth_code_is_posted_then_it_is_code_invalid(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue()
+    for _ in range(5):
+        await api.verify(SECOND, cookie)
+
+    await api.verify(SECOND, cookie)
+
+    assert await _counted(owner, "code_refused") == 5
+    assert await _counted(owner, "code_invalid") == 1
+
+
+async def test_given_an_expired_request_when_a_well_formed_code_is_posted_then_it_is_code_refused(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    cookie = await api.issue()
+    api.clock.advance(timedelta(seconds=601))
+
+    await api.verify(FIRST, cookie)
+
+    assert await _counted(owner, "code_refused") == 1
+    assert await _counted(owner, "code_invalid") == 0
+
+
+# Criterion 3
+async def test_given_a_decoy_request_when_wrong_codes_are_posted_then_they_count_as_code_refused_like_a_real_one(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    decoy = await api.issue(UNKNOWN)
+
+    for _ in range(5):
+        await api.verify(SECOND, decoy)
+
+    assert await _counted(owner, "code_refused") == 5
+    assert await _counted(owner, "code_invalid") == 0

@@ -279,3 +279,14 @@ async def test_given_the_lock_notice_and_a_failure_when_captured_then_no_digest_
         assert canary not in seen
     assert "20 wrong" in setup.chat.said[0]
     assert not caplog.records
+
+
+async def test_given_50_code_invalid_events_when_the_agent_runs_then_no_notice_and_no_lock() -> None:
+    setup = Setup()
+    for minute in range(50):  # U-web-settings-63: a kind that is never counted
+        setup.events.add(setup.clock.now() - timedelta(minutes=minute % 9), "code_invalid")
+
+    await setup.run()
+
+    assert setup.lock.sets == 0
+    assert setup.chat.said == []

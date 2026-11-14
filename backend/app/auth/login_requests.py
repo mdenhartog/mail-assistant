@@ -85,7 +85,13 @@ class Wrong:
 
 @dataclass(frozen=True)
 class Dead:
-    """The request is unknown, replaced, used, expired or out of attempts."""
+    """The request is unknown, replaced, used, expired or out of attempts.
+
+    ``existing`` is True when the row was still open and this code killed it or found it expired: a guess against a
+    request that exists, which the web lock counts (U-web-settings-63).
+    """
+
+    existing: bool = False
 
 
 Verdict = Ok | Wrong | Dead
@@ -237,13 +243,10 @@ class LoginRequests:
             return Dead()
         async with self._database.session() as session, session.begin():
             row = (await session.execute(_LOCK_ROW, {"id": request_id})).one_or_none()
-            if (
-                row is None
-                or row.dead_at is not None
-                or code_expired(row.created_at, now, self._ttl)
-                or attempts_exhausted(row.attempts, self._max_attempts)
-            ):
+            if row is None or row.dead_at is not None:
                 return Dead()
+            if code_expired(row.created_at, now, self._ttl) or attempts_exhausted(row.attempts, self._max_attempts):
+                return Dead(existing=True)
             if verify_code(self._key, request_id, code, bytes.fromhex(row.code_hash)):
                 await session.execute(_CONSUME, {"now": now, "id": request_id})
                 return Ok()
@@ -251,7 +254,7 @@ class LoginRequests:
             await session.execute(
                 _COUNT_WRONG, {"attempts": attempts, "dead_at": now if dead else None, "id": request_id}
             )
-            return Dead() if dead else Wrong(self._max_attempts - attempts)
+            return Dead(existing=True) if dead else Wrong(self._max_attempts - attempts)
 
     async def attempts_left(self, request_id: str | None, now: datetime) -> int | None:
         """Return the attempts a live request has left, or None; nothing is counted or changed.

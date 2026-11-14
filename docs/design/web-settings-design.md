@@ -89,7 +89,7 @@ Cookies: `__Host-session` (256-bit random value, `HttpOnly`, `Secure`, `SameSite
 ## Agent side
 
 - **Web notices (R1, ADR-0033).** Each run selects `settings_change` records with `db_role` other than the agent role and a version above the cursor, sends one notice per change (old and new values, change number, channel, time) with "Undo" and "Undo and lock web sign-in", and advances the cursor. Delivery is at least once. Undo restores the values from before the first announced web change, guarded by the version, with its own token record. The lock writes `web_auth.web_lock`; it is lifted by a Telegram command.
-- **Wrong-code alert (R2).** Counts only wrong and expired codes (`code_refused` events), not protocol failures such as a missing cookie; 5 within 10 minutes send one notice (count, time, no code, no username), at most one per 10 minutes. Other failures are logged and counted separately.
+- **Wrong-code alert (R2).** Counts only wrong and expired codes (`code_refused` events), not protocol failures such as a missing cookie; 5 within 10 minutes send one notice (count, time, no code, no username), at most one per 10 minutes. Other failures (no cookie, malformed body, a dead, unknown or replaced request) are recorded as `code_invalid`, which no alert or lock counts (U-web-settings-63).
 
 ## Deployment
 

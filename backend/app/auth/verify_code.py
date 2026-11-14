@@ -2,7 +2,9 @@
 
 Every failure gives the same 400 with the same cookie handling; ``attemptsLeft`` is added only while the cookie names a
 live login request. A right code while the web lock is set gets the answer of a dead request, so the lock is not
-explained (AC-27). The code, the cookie value and the username never reach an event or a log.
+explained (AC-27). Only a well-formed wrong, expired or exhausting code against a login request that exists (real or
+decoy) is recorded as ``code_refused``, the kind the agent counts; every other refusal is ``code_invalid``, which is not
+counted (SEC2-01). The code, the cookie value and the username never reach an event or a log.
 """
 
 from typing import Annotated, Final
@@ -80,13 +82,14 @@ class VerifyCode:
         now = self._clock.now()
         login_id = cookie if login_id_well_formed(cookie) else None
         body = _parse(raw_body)
-        if body is None:  # a format error is not counted, and answers like any other refusal
-            return await self._refuse(await self._logins.attempts_left(login_id, now), client, request_id)
+        if body is None:  # a format error is not a guess: answered like any refusal, recorded but never counted
+            left = await self._logins.attempts_left(login_id, now)
+            return await self._refuse("code_invalid", left, client, request_id)
         verdict = await self._logins.check(login_id, body.code, now)
         if isinstance(verdict, Wrong):
-            return await self._refuse(verdict.attempts_left, client, request_id)
+            return await self._refuse("code_refused", verdict.attempts_left, client, request_id)
         if isinstance(verdict, Dead):
-            return await self._refuse(None, client, request_id)
+            return await self._refuse("code_refused" if verdict.existing else "code_invalid", None, client, request_id)
         try:
             session_value, _ = await self._sessions.create(self._username_hash, now)
         except WebLocked:
@@ -98,8 +101,8 @@ class VerifyCode:
         response.headers.append("set-cookie", clear_login_cookie())
         return response
 
-    async def _refuse(self, attempts_left: int | None, client: str, request_id: str) -> Response:
-        await self._events.record("code_refused", request_id, client)
+    async def _refuse(self, kind: str, attempts_left: int | None, client: str, request_id: str) -> Response:
+        await self._events.record(kind, request_id, client)
         return self._refusal(attempts_left)
 
     @staticmethod
