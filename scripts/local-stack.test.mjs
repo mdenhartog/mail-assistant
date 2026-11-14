@@ -377,3 +377,153 @@ test("an unknown command prints the usage and exits with 2", async () => {
   assert.ok(statSync(root).isDirectory());
   rmSync(root, { recursive: true, force: true });
 });
+
+// -- U-web-settings-75: the runtime password comes from .env or secrets.env --------------------------------------------
+
+const RUNTIME = "MAIL_TRIAGE_RUNTIME_PASSWORD";
+const writeEnv = (root, text) => writeFileSync(join(root, ".env"), text);
+const writeSecrets = (root, text) => {
+  mkdirSync(join(root, "deploy", "local"), { recursive: true });
+  writeFileSync(secretsPath(root), text);
+};
+
+test("U-75 criterion 1: init twice with a .env that lacks the runtime password writes one random value, then changes nothing and prints nothing", async () => {
+  const root = checkout({ certs: true });
+  writeEnv(root, "POSTGRES_PASSWORD=pg-from-env\n");
+  const first = await run(root, ["init"]);
+  assert.equal(first.status, 0, first.err);
+  const text = readFileSync(secretsPath(root), "utf8");
+  const value = parseEnv(text).get(RUNTIME);
+  assert.match(value, /^[0-9a-f]{48,}$/);
+  assert.equal(text.split(/\r?\n/).filter((line) => line.startsWith(`${RUNTIME}=`)).length, 1);
+  const others = [...parseEnv(text)].filter(([key]) => key !== RUNTIME && /KEY|PASSWORD/.test(key)).map(([, v]) => v);
+  assert.ok(!others.includes(value), "distinct from the other secrets");
+  const second = await run(root, ["init"]);
+  assert.equal(second.status, 0, second.err);
+  assert.equal(readFileSync(secretsPath(root), "utf8"), text);
+  for (const answer of [first, second]) assert.ok(!(answer.out + answer.err).includes(value), "the value was printed");
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-75 criterion 1: init adds no runtime password when .env or secrets.env already has one, and never touches .env", async () => {
+  const inEnv = checkout({ certs: true });
+  const envText = "POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=rt-from-env\n";
+  writeEnv(inEnv, envText);
+  assert.equal((await run(inEnv, ["init"])).status, 0);
+  assert.ok(!parseEnv(readFileSync(secretsPath(inEnv), "utf8")).has(RUNTIME));
+  assert.equal(readFileSync(join(inEnv, ".env"), "utf8"), envText);
+
+  const inSecrets = checkout({ certs: true });
+  writeEnv(inSecrets, "POSTGRES_PASSWORD=pg\n");
+  writeSecrets(inSecrets, `${RUNTIME}=keep-me\n`);
+  const answer = await run(inSecrets, ["init"]);
+  assert.equal(parseEnv(readFileSync(secretsPath(inSecrets), "utf8")).get(RUNTIME), "keep-me");
+  assert.ok(!(answer.out + answer.err).includes("keep-me"));
+  rmSync(inEnv, { recursive: true, force: true });
+  rmSync(inSecrets, { recursive: true, force: true });
+});
+
+test("U-75 criterion 1: init without any .env still works and writes the runtime password", async () => {
+  const root = checkout({ certs: true });
+  rmSync(join(root, ".env"));
+  assert.equal((await run(root, ["init"])).status, 0);
+  assert.ok(parseEnv(readFileSync(secretsPath(root), "utf8")).get(RUNTIME));
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-75 criterion 2: up passes with the name in .env only, in secrets.env only, or in both, and overwrites nothing", async () => {
+  const cases = [
+    ["env only", "POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=env-value\n", "APP_CSRF_KEY=x\n"],
+    ["secrets only", "POSTGRES_PASSWORD=pg\n", `APP_CSRF_KEY=x\n${RUNTIME}=secrets-value\n`],
+    ["both", "POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=env-value\n", `APP_CSRF_KEY=x\n${RUNTIME}=secrets-value\n`],
+  ];
+  for (const [label, envText, secretsText] of cases) {
+    const { root } = await ready();
+    writeEnv(root, envText);
+    writeSecrets(root, secretsText);
+    const answer = await run(root, ["up"]);
+    assert.equal(answer.status, 0, `${label}: ${answer.err}`);
+    assert.equal(readFileSync(secretsPath(root), "utf8"), secretsText, `${label}: secrets.env changed`);
+    assert.equal(readFileSync(join(root, ".env"), "utf8"), envText, `${label}: .env changed`);
+    assert.ok(!/env-value|secrets-value/.test(answer.out + answer.err), `${label}: a value was printed`);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("U-75 criterion 3: up with the name in neither file stops before any docker call and names the key, never a value", async () => {
+  const { root } = await ready();
+  writeEnv(root, "POSTGRES_PASSWORD=secret-pg-value\n");
+  writeSecrets(root, "APP_CSRF_KEY=secret-csrf-value\n");
+  const answer = await run(root, ["up"]);
+  assert.notEqual(answer.status, 0);
+  assert.match(answer.err, /MAIL_TRIAGE_RUNTIME_PASSWORD/);
+  assert.match(answer.err, /init/);
+  assert.ok(!/secret-pg-value|secret-csrf-value/.test(answer.out + answer.err));
+  assert.equal(answer.calls.length, 0);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-75 criterion 3: a required name that is only commented out does not count", async () => {
+  const { root } = await ready();
+  writeEnv(root, "POSTGRES_PASSWORD=pg\n# MAIL_TRIAGE_RUNTIME_PASSWORD=commented\n");
+  writeSecrets(root, "APP_CSRF_KEY=x\n");
+  const answer = await run(root, ["up"]);
+  assert.notEqual(answer.status, 0);
+  assert.equal(answer.calls.length, 0);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-75 criterion 4: the script never writes to .env", () => {
+  const code = SCRIPT.replace(/\/\/.*$/gm, "");
+  assert.ok(!/\bappendFileSync\b/.test(code));
+  const writes = [...code.matchAll(/writeFileSync\(\s*([^,]+),/g)].map((match) => match[1].trim());
+  assert.deepEqual(writes, ["path(SECRETS)"]);
+  assert.ok(!/(rmSync|renameSync|copyFileSync|unlinkSync|truncateSync)\(\s*path\(\s*["']\.env/.test(code));
+});
+
+test("U-75 the env files compose receives keep their order: .env, stack.env, secrets.env (later wins)", async () => {
+  const { root } = await ready();
+  const answer = await run(root, ["up"]);
+  const compose = composeCalls(answer.calls).filter((call) => call.args[1] !== "version");
+  assert.ok(compose.length > 0);
+  for (const call of compose) {
+    const files = call.args.filter((_, i) => call.args[i - 1] === "--env-file");
+    assert.deepEqual(files, [".env", "deploy/local/stack.env", "deploy/local/secrets.env"]);
+  }
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-75 warning: up warns, by name only, when .env defines a database URL that bypasses the least-privilege role", async () => {
+  for (const name of ["MAIL_TRIAGE_DATABASE_URL", "MAIL_TRIAGE_DATABASE_OWNER_URL"]) {
+    const { root } = await ready();
+    writeEnv(root, `POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=rt\n${name}=postgresql://app:owner-secret@db/app\n`);
+    const answer = await run(root, ["up"]);
+    assert.equal(answer.status, 0, answer.err);
+    const warnings = (answer.out + answer.err).split(/\r?\n/).filter((line) => /^WARNING/.test(line));
+    assert.equal(warnings.length, 1, name);
+    assert.ok(warnings[0].includes(name));
+    assert.ok(!(answer.out + answer.err).includes("owner-secret"));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("U-75 warning: no warning when .env defines neither URL, or only comments one out", async () => {
+  const { root } = await ready();
+  writeEnv(root, "POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=rt\n# MAIL_TRIAGE_DATABASE_URL=x\n");
+  const answer = await run(root, ["up"]);
+  assert.ok(!/WARNING/.test(answer.out + answer.err));
+  rmSync(root, { recursive: true, force: true });
+});
+
+test("U-75 warning: the warning comes before any docker call", async () => {
+  const { root } = await ready();
+  writeEnv(root, "POSTGRES_PASSWORD=pg\nMAIL_TRIAGE_RUNTIME_PASSWORD=rt\nMAIL_TRIAGE_DATABASE_URL=u\n");
+  const events = [];
+  const sink = { write: (text) => events.push(`out:${text.trim()}`) };
+  const { runner } = fakeRunner(root);
+  await main(["up"], { root, runner: (c, a, o) => (events.push(`call:${c}`), runner(c, a, o)), out: sink, err: sink, now: () => FIXED });
+  const warning = events.findIndex((e) => e.startsWith("out:WARNING"));
+  assert.ok(warning >= 0, "no warning");
+  assert.ok(warning < events.findIndex((e) => e.startsWith("call:")));
+  rmSync(root, { recursive: true, force: true });
+});

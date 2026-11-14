@@ -197,6 +197,25 @@ def test_given_the_script_when_its_node_tests_run_then_every_test_of_the_criteri
     assert all(mine.values()), [name for name, ok in mine.items() if not ok]
 
 
+@pytest.mark.parametrize("criterion", ["U-75 criterion 1:", "U-75 criterion 2:", "U-75 criterion 3:", "U-75 criterion 4:"])
+def test_given_the_runtime_password_unit_when_its_node_tests_run_then_every_criterion_has_a_passing_test(
+    node_results: dict[str, bool], criterion: str
+) -> None:
+    mine = {name: ok for name, ok in node_results.items() if name.startswith(criterion)}
+
+    assert mine, criterion
+    assert all(mine.values()), [name for name, ok in mine.items() if not ok]
+
+
+def test_given_the_warning_tests_when_its_node_tests_run_then_the_database_url_warning_is_covered(
+    node_results: dict[str, bool],
+) -> None:
+    mine = {name: ok for name, ok in node_results.items() if name.startswith("U-75 warning:")}
+
+    assert len(mine) >= 3
+    assert all(mine.values()), [name for name, ok in mine.items() if not ok]
+
+
 def test_given_the_script_when_its_node_tests_run_then_all_of_them_pass(node_results: dict[str, bool]) -> None:
     assert all(node_results.values()), [name for name, ok in node_results.items() if not ok]
 
