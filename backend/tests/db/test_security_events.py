@@ -4,7 +4,7 @@ Lives in tests/db because the shared database fixture is there.
 """
 
 import logging
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import asyncpg
 import pytest
@@ -26,7 +26,8 @@ SELECT = (
 
 @pytest.fixture
 def clock() -> FakeClock:
-    return FakeClock()
+    # 0013: the database takes an event window only near its own minute, so start at the real minute.
+    return FakeClock(datetime.now(UTC).replace(second=0, microsecond=0))
 
 
 @pytest.fixture

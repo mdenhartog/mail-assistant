@@ -287,7 +287,7 @@ class SecurityEvent(Base):
         {"schema": "web_auth"},
     )
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     kind: Mapped[str] = mapped_column(String(24))
     result: Mapped[str] = mapped_column(String(16))

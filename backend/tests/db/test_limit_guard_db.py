@@ -27,7 +27,6 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
 )
 from tests.fakes import FakeClock, FakeCodes, FakeMailer, make_settings
 
-T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
 ORIGIN = "https://settings.example.test"
 CODES = [f"{n:06d}" for n in range(100000, 100200)]
 
@@ -43,7 +42,8 @@ class Api:
 
 @pytest.fixture
 async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
-    clock = FakeClock(T0)
+    # 0013: the database takes an event window only near its own minute, so start at the real minute.
+    clock = FakeClock(datetime.now(UTC).replace(second=0, microsecond=0))
     ids = SecretsIdSource()
     # The per-client limits of the login requests (ADR-0039) are tested elsewhere; here the rate limiter is the subject.
     settings = make_settings(open_login_requests_per_client=1000, login_requests_per_client_per_hour=1000)

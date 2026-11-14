@@ -181,7 +181,7 @@ async def test_given_the_web_role_when_it_works_the_web_auth_tables_then_it_has_
     await web.execute("update web_auth.session set last_seen_at = now()")
     await web.execute(
         'insert into web_auth.security_event (kind, result, request_id, client_key, "window") '
-        "values ('session_start', 'ok', 'q1', 'k1', 1)"
+        "values ('session_start', 'ok', 'q1', 'k1', floor(extract(epoch from now()) / 60))"
     )
 
     assert await web.fetchval("select count(*) from web_auth.security_event") == 1
