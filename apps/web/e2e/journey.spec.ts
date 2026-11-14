@@ -164,8 +164,8 @@ test("a save from a second context on version 1 gets the conflict banner with bo
   await pageB.context().close();
 });
 
-// 5 (AC-12, first half)
-test("an expired session stores nothing on Save and sends the browser to sign in again", async ({ page }) => {
+// 5 (AC-12, both halves)
+test("an expired session stores nothing on Save, keeps the typed value and restores it after sign-in", async ({ page }) => {
   seedSettings();
   await signIn(page);
   ageSessions();
@@ -175,10 +175,13 @@ test("an expired session stores nothing on Save and sends the browser to sign in
 
   await expect(page).toHaveURL(/\/login\?notice=expired$/);
   await expect(page.getByText("Your session ended.")).toBeVisible();
+  await expect(page.getByText(/what you typed is kept/)).toBeVisible();
   expect(storedRow()).toBe(AMSTERDAM_ROW);
 
   await signIn(page);
-  await expect(overviewOf(page)).toHaveValue("18:00");
+  await expect(overviewOf(page)).toHaveValue("17:00");
+  await expect(page.getByText("Welcome back.")).toBeVisible();
+  expect(storedRow()).toBe(AMSTERDAM_ROW); // restored, never saved by itself
 });
 
 test("an expired session found by a background refetch sends the browser to sign in again", async ({ page }) => {
