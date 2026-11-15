@@ -9,7 +9,17 @@ import asyncpg
 import pytest
 
 from tests.db.conftest import API_ROLE
-from tests.db.plan_support import CAT_A, CAT_B, NIL, SeededPlan, scope_all, scope_ids, seed_plan, set_apply_config
+from tests.db.plan_support import (
+    CAT_A,
+    CAT_B,
+    NIL,
+    SeededPlan,
+    scope_all,
+    scope_ids,
+    seed_plan,
+    set_apply_config,
+    sqlstate_of,
+)
 
 APPROVE = "select state, apply_after from categories.approve_plan($1, $2, $3)"
 DECIDE = "select categories.record_decision($1, $2, $3, $4::jsonb, $5)"
@@ -187,7 +197,7 @@ async def test_given_a_plan_that_has_moved_on_when_it_is_approved_again_then_409
     with pytest.raises(asyncpg.PostgresError) as error:
         await _approve(cat_api, plan)
 
-    assert error.value.sqlstate == "MC409"
+    assert sqlstate_of(error.value) == "MC409"
 
 
 @pytest.mark.parametrize("state", ["building", "cancelled", "replaced", "discarded"])
@@ -200,7 +210,7 @@ async def test_given_a_plan_that_is_not_ready_when_it_is_approved_then_409_and_n
     with pytest.raises(asyncpg.PostgresError) as error:
         await _approve(cat_api, plan)
 
-    assert error.value.sqlstate == "MC409"
+    assert sqlstate_of(error.value) == "MC409"
     assert await cat_owner.fetchval("select count(*) from categories.plan_approval") == 0
     assert await cat_owner.fetchval("select count(*) from categories.rejection") == 0
 
@@ -214,7 +224,7 @@ async def test_given_a_wrong_count_or_the_wrong_mailbox_when_a_plan_is_approved_
     for mailbox, count in (("mb1", 4), ("mb1", 6), ("mb2", 5)):
         with pytest.raises(asyncpg.PostgresError) as error:
             await cat_api.fetchrow(APPROVE, mailbox, plan.plan_id, count)
-        assert error.value.sqlstate == "MC409"
+        assert sqlstate_of(error.value) == "MC409"
 
     assert await cat_owner.fetchval("select state from categories.plan where id = $1", plan.plan_id) == "ready"
     assert await cat_owner.fetchval("select count(*) from categories.plan_approval") == 0
@@ -229,5 +239,5 @@ async def test_given_no_apply_config_when_a_plan_is_approved_then_it_is_refused_
     with pytest.raises(asyncpg.PostgresError) as error:
         await _approve(cat_api, plan)
 
-    assert error.value.sqlstate == "MC409"
+    assert sqlstate_of(error.value) == "MC409"
     assert await cat_owner.fetchval("select state from categories.plan where id = $1", plan.plan_id) == "ready"

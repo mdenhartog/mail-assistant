@@ -14,10 +14,12 @@ from tests.db.plan_support import (
     CAT_A,
     NIL,
     SeededPlan,
+    error_text,
     scope_all,
     scope_group,
     scope_ids,
     seed_plan,
+    sqlstate_of,
 )
 
 CALL = "select categories.record_decision($1, $2, $3, $4::jsonb, $5)"
@@ -123,7 +125,7 @@ async def _expect_409(
 ) -> asyncpg.PostgresError:
     with pytest.raises(asyncpg.PostgresError) as error:
         await cat_api.fetchval(CALL, mailbox, plan_id, count, scope, "approved")
-    assert error.value.sqlstate == "MC409", error.value
+    assert sqlstate_of(error.value) == "MC409", error.value
     return error.value
 
 
@@ -219,7 +221,7 @@ async def test_given_a_malformed_scope_when_a_decision_is_made_then_it_is_refuse
     with pytest.raises(asyncpg.PostgresError) as error:
         await cat_api.fetchval(CALL, plan.mailbox, plan.plan_id, 5, scope, "approved")
 
-    assert error.value.sqlstate in {"22023", "MC409"}
+    assert sqlstate_of(error.value) in {"22023", "MC409"}
     assert "drop table" not in str(error.value)
     await _assert_nothing_changed(cat_owner, plan, 5)
 
@@ -232,7 +234,7 @@ async def test_given_an_unknown_decision_when_a_decision_is_made_then_it_is_refu
     with pytest.raises(asyncpg.PostgresError) as error:
         await cat_api.fetchval(CALL, plan.mailbox, plan.plan_id, 5, scope_all(), "maybe")
 
-    assert error.value.sqlstate == "22023"
+    assert sqlstate_of(error.value) == "22023"
     await _assert_nothing_changed(cat_owner, plan, 5)
 
 
@@ -242,6 +244,6 @@ async def test_given_a_refusal_when_its_message_is_read_then_it_carries_no_row_v
     plan = await seed_plan(cat_owner)
     error = await _expect_409(cat_api, plan.mailbox, plan.plan_id, 4, scope_all())
 
-    text = f"{error} {error.detail} {error.hint} {error.context}"
+    text = error_text(error)
     for secret in (str(plan.plan_id), "sender@example.test", "A subject", plan.message_ids[0], str(NIL)):
         assert secret not in text

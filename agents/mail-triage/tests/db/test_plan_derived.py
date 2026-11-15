@@ -9,7 +9,7 @@ import asyncpg
 import pytest
 
 from tests.db.conftest import AGENT_ROLE, API_ROLE
-from tests.db.plan_support import seed_plan
+from tests.db.plan_support import seed_plan, sqlstate_of
 
 
 def _digest(role: str) -> str:
@@ -80,7 +80,7 @@ async def test_given_a_plan_that_is_not_applied_when_the_api_asks_to_move_back_t
             "insert into categories.move_back_request (mailbox_id, plan_id) values ('mb1', $1)", plan.plan_id
         )
 
-    assert error.value.sqlstate == "MC409"
+    assert sqlstate_of(error.value) == "MC409"
 
 
 async def test_given_a_plan_of_another_mailbox_or_none_when_the_api_asks_to_move_back_then_409(
@@ -93,4 +93,4 @@ async def test_given_a_plan_of_another_mailbox_or_none_when_the_api_asks_to_move
             await cat_api.execute(
                 "insert into categories.move_back_request (mailbox_id, plan_id) values ($1, $2)", mailbox, plan_id
             )
-        assert error.value.sqlstate == "MC409"
+        assert sqlstate_of(error.value) == "MC409"

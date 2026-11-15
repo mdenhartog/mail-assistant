@@ -78,6 +78,17 @@ async def set_apply_config(
     )
 
 
+def sqlstate_of(error: BaseException) -> str:
+    """The SQLSTATE of a database error (asyncpg types the attribute on its subclasses only)."""
+    return str(getattr(error, "sqlstate", ""))
+
+
+def error_text(error: BaseException) -> str:
+    """Everything a database error says to its caller: message, detail, hint and context."""
+    parts = (str(error), *(str(getattr(error, name, "")) for name in ("detail", "hint", "context")))
+    return " ".join(parts)
+
+
 def scope_all() -> str:
     """The ``all`` shape of the decision scope, as the JSON text the function takes."""
     return json.dumps({"kind": "all"})
