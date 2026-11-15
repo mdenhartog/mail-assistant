@@ -567,6 +567,8 @@ class Plan(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    apply_run_id: Mapped[str | None] = mapped_column(String(64))  # the run that holds an applying plan (0018)
+    apply_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PlanItem(Base):
@@ -604,6 +606,7 @@ class PlanItem(Base):
     state: Mapped[str] = mapped_column(String(16), server_default="pending")
     reason: Mapped[str | None] = mapped_column(String(64))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")  # failed moves of this item (0018)
 
 
 class PlanDecision(Base):
@@ -653,7 +656,16 @@ class ApplyAudit(Base):
     __tablename__ = "apply_audit"
     __table_args__ = (
         CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_apply_audit_channel"),
+        CheckConstraint("kind IN ('apply', 'restore')", name="ck_apply_audit_kind"),
         Index("ix_apply_audit_plan", "mailbox_id", "plan_id"),
+        Index(
+            "uq_apply_audit_intent",
+            "mailbox_id",
+            "plan_id",
+            "message_id",
+            unique=True,
+            postgresql_where=text("kind = 'apply'"),
+        ),
         {"schema": "categories"},
     )
 
@@ -666,6 +678,7 @@ class ApplyAudit(Base):
     channel: Mapped[str] = mapped_column(String(16))
     actor_digest: Mapped[str] = mapped_column(CHAR(64))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    kind: Mapped[str] = mapped_column(String(8), server_default="apply")  # "restore" for a row of a move back (0018)
 
 
 class MoveBackRequest(Base):
@@ -679,3 +692,5 @@ class MoveBackRequest(Base):
     processed: Mapped[bool] = mapped_column(Boolean, server_default="false")
     actor_digest: Mapped[str] = mapped_column(CHAR(64))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    run_id: Mapped[str | None] = mapped_column(String(64))  # the run that processes the request (0018)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
