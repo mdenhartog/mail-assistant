@@ -60,7 +60,7 @@ async def test_given_0018_when_run_up_down_and_up_then_the_columns_and_functions
 
         await asyncio.to_thread(command.upgrade, config, "0018")
 
-        assert _NEW_COLUMNS <= await _columns(connection)
+        assert await _columns(connection) >= _NEW_COLUMNS
         assert await _functions(connection) == {"replace_plan", "remove_applied_items"}
         assert await connection.fetchval("select kind from categories.apply_audit") == "apply"  # old rows are applies
 
@@ -72,7 +72,7 @@ async def test_given_0018_when_run_up_down_and_up_then_the_columns_and_functions
 
         await asyncio.to_thread(command.upgrade, config, "0018")
 
-        assert _NEW_COLUMNS <= await _columns(connection)
+        assert await _columns(connection) >= _NEW_COLUMNS
     finally:
         await connection.close()
 
@@ -84,5 +84,7 @@ async def test_given_the_new_functions_then_only_the_agent_may_run_them_and_the_
         target = f"categories.{function}"
         assert await cat_owner.fetchval("select has_function_privilege($1, $2, 'EXECUTE')", AGENT_ROLE, target)
         assert not await cat_owner.fetchval("select has_function_privilege($1, $2, 'EXECUTE')", API_ROLE, target)
-        owner = await cat_owner.fetchval("select proowner::regrole::text from pg_proc where oid = $1::regprocedure", target)
+        owner = await cat_owner.fetchval(
+            "select proowner::regrole::text from pg_proc where oid = $1::regprocedure", target
+        )
         assert owner == "categories_definer"

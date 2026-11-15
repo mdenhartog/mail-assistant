@@ -26,7 +26,9 @@ CAP = 50
 
 
 def _draft(message_id: str, new_category: str) -> ItemDraft:
-    return ItemDraft(message_id, "Sender", "sender@example.test", "A subject", uuid.UUID(OTHER_ID), uuid.UUID(new_category))
+    return ItemDraft(
+        message_id, "Sender", "sender@example.test", "A subject", uuid.UUID(OTHER_ID), uuid.UUID(new_category)
+    )
 
 
 async def _building_plan(store: PgBuildStore, owner: asyncpg.Connection) -> tuple[uuid.UUID, str]:
@@ -74,7 +76,13 @@ async def test_given_a_building_plan_when_progress_is_written_then_item_counts_a
         CAP,
     )
     row = await cat_owner.fetchrow("select sender_name, subject, decision, state from categories.plan_item")
-    assert (row["sender_name"], row["subject"], row["decision"], row["state"]) == ("Sender", "A subject", "pending", "pending")
+    assert row is not None
+    assert (row["sender_name"], row["subject"], row["decision"], row["state"]) == (
+        "Sender",
+        "A subject",
+        "pending",
+        "pending",
+    )
 
 
 async def test_given_the_same_mail_listed_twice_when_progress_is_written_then_one_item_stays(
@@ -148,7 +156,9 @@ async def test_given_a_replace_and_a_complete_at_once_then_exactly_one_wins_and_
     plan_id, category = await _building_plan(first, cat_owner)
     await first.record_progress(plan_id, item=_draft("m1", category), cursor="c1", checked=1, unclear=0)
 
-    completed, replaced = await asyncio.gather(first.complete_build(plan_id, not_looked_at=0), second.replace_plan(plan_id))
+    completed, replaced = await asyncio.gather(
+        first.complete_build(plan_id, not_looked_at=0), second.replace_plan(plan_id)
+    )
 
     state = await cat_owner.fetchval("select state from categories.plan")
     items = await cat_owner.fetchval("select count(*) from categories.plan_item")

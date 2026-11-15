@@ -1,4 +1,6 @@
-"""Fixtures for the plan stores on PostgreSQL: every connection acts as the real agent role (``SET SESSION AUTHORIZATION``).
+"""Fixtures for the plan stores on PostgreSQL: every connection acts as the real agent role.
+
+``SET SESSION AUTHORIZATION`` makes the grants part of what is tested.
 
 The grants are part of what the tests exercise. The owner connection (``cat_owner``) seeds lists and plans, and the api
 role writes what the user does (approvals, move-back requests).
@@ -6,7 +8,6 @@ role writes what the user does (approvals, move-back requests).
 
 from __future__ import annotations
 
-import uuid
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -17,6 +18,7 @@ from app.core.judgement import OTHER_ID
 from tests.db.conftest import AGENT_ROLE, write_list
 
 if TYPE_CHECKING:
+    import uuid
     from collections.abc import AsyncIterator
 
     import asyncpg
@@ -29,8 +31,9 @@ async def agent_sessions(cat_owner: asyncpg.Connection, cat_url: str) -> AsyncIt
     """Sessions whose connections act as the agent role."""
     engine: AsyncEngine = create_async_engine(cat_url)
 
-    @event.listens_for(engine.sync_engine, "connect")
-    def _act_as_agent(dbapi_connection: Any, _record: Any) -> None:
+    # On every checkout, not once per connection: the pool resets the session authorization when a connection returns.
+    @event.listens_for(engine.sync_engine, "checkout")
+    def _act_as_agent(dbapi_connection: Any, _record: Any, _proxy: Any) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute(f'SET SESSION AUTHORIZATION "{AGENT_ROLE}"')
         cursor.close()
