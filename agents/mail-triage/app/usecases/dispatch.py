@@ -426,16 +426,22 @@ class CommandRouter:
         if claimed is not None:
             await owner.on_text(claimed, text)
 
-    async def _button(self, command: Command) -> None:
+    async def _notice_button(self, command: Command) -> bool:
+        """Run the button of a web or list notice (own record, never the conversation); ``False`` if not."""
         web = settings_text.split_web_button(command.data)
         if web is not None:
-            if self._web is not None:  # a web notice has its own token record and never touches the conversation
+            if self._web is not None:
                 await self._web.on_button(command, *web)
-            return
+            return True
         listed = list_text.split_button(command.data)
         if listed is not None:
-            if self._list is not None:  # a list notice has its own nonce record and never touches the conversation
+            if self._list is not None:
                 await self._list.on_button(command, *listed)
+            return True
+        return False
+
+    async def _button(self, command: Command) -> None:
+        if await self._notice_button(command):
             return
         started = _START.fullmatch(command.data)
         if started is not None:

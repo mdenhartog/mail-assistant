@@ -1,9 +1,9 @@
 """The list notice in PostgreSQL: button nonces, the list audit, the notice cursor and the restore of a list.
 
 One store per mailbox (ADR-0043); every statement filters on ``mailbox_id``. The agent role may do exactly these writes
-(``app/db/grants.sql``): insert a nonce row and set its ``used_at``, read the audit, move the cursor in ``poll_state`` and
-insert a list version with its categories. The creation time, channel and actor of a restored version, and its audit
-record, are derived by the database from the login (ADR-0030), never supplied here.
+(``app/db/grants.sql``): insert a nonce row and set its ``used_at``, read the audit, move the cursor in
+``poll_state`` and insert a list version with its categories. The creation time, channel and actor of a restored
+version, and its audit record, are derived by the database from the login (ADR-0030), never supplied here.
 """
 
 from __future__ import annotations

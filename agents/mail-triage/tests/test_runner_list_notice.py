@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import httpx
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.adapters.telegram_inbox import Command
 from app.runner import Runner
 from app.settings import load_settings
 from app.usecases.list_notice import ListNotice, ListNoticeActions
+from app.wiring import build_runner
 from tests.test_runner import (
     NOW,
     CatchUpStep,
@@ -26,7 +30,6 @@ from tests.test_runner import (
     WebNoticeStep,
 )
 from tests.test_settings import VALID
-from tests.test_wiring_policy import _runner as _built
 from tests.usecases.test_dispatch import Rig, button
 
 if TYPE_CHECKING:
@@ -127,12 +130,28 @@ async def test_given_no_list_actions_or_a_malformed_button_when_pressed_then_not
     await router.handle(button("catundo:" + "A" * 22 + ":x"))
 
     assert seen == []
-    assert rig.chat.edited == [] and rig.chat.said == []
+    assert rig.chat.edited == []
+    assert rig.chat.said == []
+
+
+def _wired() -> Any:
+    engine = create_async_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")  # never connected in this test
+    return build_runner(
+        load_settings(VALID),
+        sessions=async_sessionmaker(engine, expire_on_commit=False),
+        client=httpx.AsyncClient(timeout=httpx.Timeout(5.0)),
+        mailbox=object(),
+        sender=object(),
+        labels=object(),  # type: ignore[arg-type]
+        own_address="marco@example.com",
+        heartbeat=None,  # type: ignore[arg-type]
+        now=lambda: NOW,
+    )
 
 
 def test_given_the_wiring_when_built_then_the_notice_and_its_buttons_are_set_for_the_allowed_chat() -> None:
     settings = load_settings(VALID)
-    built = _built()
+    built = _wired()
 
     notice = built._list_notice
     actions = vars(built._router).get("_list")

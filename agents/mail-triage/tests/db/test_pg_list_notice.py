@@ -3,7 +3,7 @@
 Every test acts as the real agent role (``SET SESSION AUTHORIZATION``), so the grants are part of what is tested; the
 web role writes the changes that are announced.
 """
-# ruff: noqa: S608  # every statement is a fixed test literal inside a throwaway container, never user input
+# every statement is a fixed test literal inside a throwaway container, never user input
 
 from __future__ import annotations
 
