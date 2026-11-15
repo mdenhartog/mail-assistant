@@ -12,13 +12,15 @@ import logging
 import secrets
 import signal
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from app.adapters.gmail_apply import GmailApply
+from app.adapters.gmail_build import GmailBuild
 from app.adapters.gmail_read import GmailReader
 from app.adapters.gmail_resort import GmailResort
 from app.adapters.gmail_send import GmailSender
@@ -37,11 +39,13 @@ from app.db.migrate import (
     migrate_database,
     purge_database,
 )
+from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
 from app.db.pg_list_sync import PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
+from app.db.pg_resort import PgApplyStore, PgBuildStore
 from app.db.pg_security_events import PgSecurityEvents
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
@@ -50,15 +54,20 @@ from app.db.pg_web_lock import PgWebLock
 from app.db.pg_web_notice import PgWebNotice
 from app.db.purge import SYSTEM_CLOCK
 from app.runner import FailureNotice, Runner
+from app.usecases.approval_notice import ApprovalNotice, PlanNoticeActions
 from app.usecases.catchup import CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
 from app.usecases.list_notice import ListNotice, ListNoticeActions
 from app.usecases.list_sync import ListSync
+from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
 from app.usecases.policy_notice import PolicyNotice
 from app.usecases.reply import ReplyService
+from app.usecases.resort_apply import ResortApply
+from app.usecases.resort_build import ResortBuild
+from app.usecases.resort_notice import TelegramApplyNotifier
 from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.snooze import SnoozeService
 from app.usecases.telegram_actions import TelegramActions
@@ -76,6 +85,8 @@ if TYPE_CHECKING:
     from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
     from app.usecases.list_sync import LabelGmail
+    from app.usecases.resort_apply import ApplyMailbox
+    from app.usecases.resort_build import BuildMailbox
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +150,8 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     mailbox: object,
     sender: object,
     labels: LabelGmail,
+    build_mailbox: BuildMailbox,
+    apply_mailbox: ApplyMailbox,
     own_address: str,
     heartbeat: Path,
     now: Callable[[], datetime],
@@ -188,6 +201,21 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             list_actions, list_store, web_lock, outbox, chat_id=settings.telegram_allowed_chat_id, now=now
         )
     )
+    approvals = PgApprovalStore(sessions, settings.mailbox_id)
+    approval_notice = ApprovalNotice(list_actions, approvals, outbox, chat_id=settings.telegram_allowed_chat_id)
+    router.register_plan_actions(
+        PlanNoticeActions(
+            list_actions,
+            approvals,
+            PgMoveBackRequests(sessions, settings.mailbox_id),
+            web_lock,
+            outbox,
+            chat_id=settings.telegram_allowed_chat_id,
+            now=now,
+        )
+    )
+    notifier = TelegramApplyNotifier(outbox, approval_notice, now=now)
+    apply_store = PgApplyStore(sessions, settings.mailbox_id)
     return Runner(
         pipeline=TriagePipeline(
             mailbox,  # type: ignore[arg-type]
@@ -218,7 +246,29 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         router=router,
         list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id)),
         list_notice=ListNotice(list_store, outbox, list_actions, chat_id=settings.telegram_allowed_chat_id),
+        approval_notice=approval_notice,
+        resort_build=ResortBuild(
+            mailbox=build_mailbox,
+            judge=judge,
+            store=PgBuildStore(sessions, settings.mailbox_id),
+            notifier=notifier,
+            budget=budget,
+            now=now,
+            pinned=settings.pinned_senders,
+            debounce=timedelta(minutes=settings.plan_debounce_minutes),
+            cap=settings.plan_cap,
+        ),
+        resort_apply=ResortApply(
+            mailbox=apply_mailbox,
+            store=apply_store,
+            lock=web_lock,
+            notifier=notifier,
+            now=now,
+            pinned=settings.pinned_senders,
+        ),
+        move_back=MoveBack(mailbox=apply_mailbox, store=apply_store, lock=web_lock, notifier=notifier),
         list_sync_seconds=settings.list_sync_interval_seconds,
+        resort_apply_seconds=settings.apply_poll_seconds,
         heartbeat=heartbeat,
         interval_seconds=settings.poll_interval_seconds,
         now=now,
@@ -331,6 +381,8 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
                 mailbox=ports,
                 sender=ports,
                 labels=GmailResort(service),
+                build_mailbox=GmailBuild(service),
+                apply_mailbox=GmailApply(service),
                 own_address=address,
                 heartbeat=HEARTBEAT,
                 now=_utc_now,

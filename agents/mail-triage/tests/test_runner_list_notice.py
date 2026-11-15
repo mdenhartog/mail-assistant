@@ -150,6 +150,8 @@ def _wired() -> Any:
         mailbox=object(),
         sender=object(),
         labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=None,  # type: ignore[arg-type]
         now=lambda: NOW,

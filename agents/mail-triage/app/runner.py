@@ -58,6 +58,22 @@ class ListNoticePort(Protocol):
         ...
 
 
+class ResortStepPort(Protocol):
+    """The plan build, the apply and the move back (INT-004, ADR-0046): one pass each."""
+
+    async def run_once(self) -> object:
+        """One pass."""
+        ...
+
+
+class ApprovalNoticePort(Protocol):
+    """Announces delayed plans in Telegram (INT-004, ADR-0046)."""
+
+    async def run(self, now: datetime) -> None:
+        """Send one notice for every scheduled plan not announced yet."""
+        ...
+
+
 class DeliveryPort(Protocol):
     """Sends alerts."""
 
@@ -166,7 +182,12 @@ class Runner:
         router: RouterPort,
         list_sync: ListSyncPort,
         list_notice: ListNoticePort,
+        approval_notice: ApprovalNoticePort,
+        resort_build: ResortStepPort,
+        resort_apply: ResortStepPort,
+        move_back: ResortStepPort,
         list_sync_seconds: float,
+        resort_apply_seconds: float,
         heartbeat: Path,
         interval_seconds: float,
         now: Callable[[], datetime],
@@ -184,6 +205,12 @@ class Runner:
         self._router = router
         self._list_sync = list_sync
         self._list_notice = list_notice
+        self._approval_notice = approval_notice
+        self._resort_build = resort_build
+        self._resort_apply = resort_apply
+        self._move_back = move_back
+        self._resort_apply_every = timedelta(seconds=resort_apply_seconds)
+        self._resort_applied_at: datetime | None = None
         self._list_sync_every = timedelta(seconds=list_sync_seconds)
         self._list_synced_at: datetime | None = None
         self._heartbeat = heartbeat
@@ -203,11 +230,14 @@ class Runner:
         await self._guard("list_sync", self._sync_list())
         # A change of the list is announced like a web change: soon, outside quiet hours.
         await self._guard("list_notice", self._list_notice.run(self._now()))
+        await self._guard("approval_notice", self._approval_notice.run(self._now()))
         await self._guard("web_notice", self._web_notice.run(self._now()))
         await self._guard("code_alert", self._code_alert.run(self._now()))
         await self._guard("release_due", self._snooze.release_due())
         await self._guard("pipeline", self._pipeline.run_once())
         await self._guard("catchup", self._catchup.run_once())  # after new mail, so new mail always comes first
+        await self._guard("resort_build", self._resort_build.run_once())  # after the mail: new mail comes first
+        await self._resort_steps()
         await self._guard("deliver", self._delivery.deliver_open_alerts())
         await self._guard("overview", self._overview.send_overview())
         await self._guard("purge", self._purge())
@@ -219,6 +249,15 @@ class Runner:
             return
         self._list_synced_at = now  # also after a failure: the next cadence retries, a broken Gmail is not hammered
         await self._list_sync.run()
+
+    async def _resort_steps(self) -> None:
+        """The apply and the move back, when the apply poll has passed; a failure of one never stops the other."""
+        now = self._now()
+        if self._resort_applied_at is not None and now - self._resort_applied_at < self._resort_apply_every:
+            return
+        self._resort_applied_at = now
+        await self._guard("resort_apply", self._resort_apply.run_once())
+        await self._guard("move_back", self._move_back.run_once())
 
     async def _purge(self) -> None:
         now = self._now()
