@@ -13,7 +13,16 @@ from app.adapters.gmail_resort import GmailResort
 from app.core.judgement import OTHER_ID
 from app.core.resort_plan import ItemState, PlanState
 from app.usecases.move_back import MoveBack, MoveBackJob
-from app.usecases.resort_apply import ApplyItem, AuditMove, DuePlan, MailGone, Offer, ResortApply, SkipReason
+from app.usecases.resort_apply import (
+    ApplyItem,
+    AuditMove,
+    DuePlan,
+    MailFailed,
+    MailGone,
+    Offer,
+    ResortApply,
+    SkipReason,
+)
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.fake_telegram import FakeTelegram
@@ -60,6 +69,7 @@ class FakeApplyStore:
         self.processed: set[uuid.UUID] = set()
         self.request_lease: dict[uuid.UUID, tuple[str, datetime]] = {}
         self.fail_finish_item_once = False
+        self.attempts: dict[tuple[uuid.UUID, str], int] = {}
 
     def add_plan(
         self, items: list[ApplyItem], *, apply_after: timedelta = timedelta(0), state: PlanState = PlanState.SCHEDULED
@@ -119,6 +129,11 @@ class FakeApplyStore:
 
     async def record_intent(self, plan_id: uuid.UUID, move: AuditMove) -> None:
         self.intents.setdefault((plan_id, move.message_id), move)
+
+    async def count_attempt(self, plan_id: uuid.UUID, message_id: str) -> int:
+        key = (plan_id, message_id)
+        self.attempts[key] = self.attempts.get(key, 0) + 1
+        return self.attempts[key]
 
     async def finish_item(
         self, plan_id: uuid.UUID, message_id: str, state: ItemState, reason: SkipReason | None
@@ -194,14 +209,25 @@ class GmailApplyMailbox(GmailBuildMailbox):
         self.resort = GmailResort(gmail, sleep=lambda _seconds: None)
         self.on_add: Callable[[str], None] | None = None
         self.on_remove: Callable[[str], None] | None = None
+        self.failing_adds: dict[str, int] = {}  # message id -> failures left (-1: always), as Gmail refusing the change
+        self.failing_fetches: set[str] = set()
 
     def fetch_labels(self, message_id: str) -> FetchedMail | None:
         return self.fetch(message_id)
+
+    def fetch(self, message_id: str) -> FetchedMail | None:
+        if message_id in self.failing_fetches:
+            raise MailFailed
+        return super().fetch(message_id)
 
     def ensure_label(self, name: str) -> str:
         return self.resort.create_label(name).id
 
     def add_label(self, message_id: str, label_id: str) -> None:
+        left = self.failing_adds.get(message_id, 0)
+        if left:
+            self.failing_adds[message_id] = max(left - 1, -1) if left > 0 else -1
+            raise MailFailed
         self._guard(lambda: self.resort.add_label(message_id, label_id))
         if self.on_add is not None:
             self.on_add(message_id)
@@ -221,7 +247,7 @@ class GmailApplyMailbox(GmailBuildMailbox):
         except HttpError as error:
             if error.resp.status == 404:
                 raise MailGone from error
-            raise
+            raise MailFailed from error
 
 
 class FakeLock:
