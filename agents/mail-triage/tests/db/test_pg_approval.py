@@ -16,7 +16,7 @@ from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
 from app.usecases.approval_notice import CancelOutcome
 from tests.db.conftest import AGENT_ROLE
 from tests.db.resort_support import MAILBOX, agent_sessions
-from tests.db.test_pg_resort_apply import _scheduled
+from tests.db.test_pg_resort_apply import scheduled_plan
 
 if TYPE_CHECKING:
     import asyncpg
@@ -29,7 +29,7 @@ AGENT_DIGEST = hashlib.sha256(AGENT_ROLE.encode()).hexdigest()
 
 async def _delayed(owner: asyncpg.Connection, minutes: int = 15) -> Any:
     """A scheduled plan whose apply starts in ``minutes`` (the approval is now: a delayed plan)."""
-    plan_id = await _scheduled(owner, moves=4)
+    plan_id = await scheduled_plan(owner, moves=4)
     await owner.execute("update categories.plan_approval set at = now()")
     await owner.execute("update categories.plan set apply_after = now() + make_interval(mins => $1)", minutes)
     return plan_id
@@ -87,7 +87,7 @@ async def test_given_an_applied_plan_when_cancelled_then_not_scheduled(
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
 
     assert await store.cancel_before_start(plan_id, datetime.now(UTC)) is CancelOutcome.NOT_SCHEDULED
 
@@ -96,7 +96,7 @@ async def test_given_scheduled_and_applying_plans_when_the_open_plans_are_cancel
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    await _scheduled(cat_owner, state="applying")
+    await scheduled_plan(cat_owner, state="applying")
 
     assert await store.cancel_open_plans() == 1
     assert await store.cancel_open_plans() == 0
@@ -107,7 +107,7 @@ async def test_given_an_applied_plan_when_a_move_back_is_asked_then_once_with_th
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     requests = PgMoveBackRequests(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
 
     assert await requests.request(plan_id)
     assert not await requests.request(plan_id)  # asked already
@@ -121,7 +121,7 @@ async def test_given_a_plan_that_is_not_applied_when_a_move_back_is_asked_then_i
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     requests = PgMoveBackRequests(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner)
+    plan_id = await scheduled_plan(cat_owner)
 
     assert not await requests.request(plan_id)
     assert await cat_owner.fetchval("select count(*) from categories.move_back_request") == 0

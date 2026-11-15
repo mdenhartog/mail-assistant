@@ -31,7 +31,7 @@ AGENT_DIGEST = hashlib.sha256(AGENT_ROLE.encode()).hexdigest()
 API_DIGEST = hashlib.sha256(API_ROLE.encode()).hexdigest()
 
 
-async def _scheduled(
+async def scheduled_plan(
     owner: asyncpg.Connection, *, moves: int = 3, channel: str = "web", state: str = "scheduled"
 ) -> uuid.UUID:
     """A plan in ``state`` with ``moves`` approved items, an approval of ``channel`` and ``apply_after`` in the past."""
@@ -53,8 +53,8 @@ async def test_given_applied_and_cancelled_plans_when_listed_then_they_are_not_f
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    await _scheduled(cat_owner, state="applied")
-    await _scheduled(cat_owner, state="cancelled")
+    await scheduled_plan(cat_owner, state="applied")
+    await scheduled_plan(cat_owner, state="cancelled")
 
     assert await store.plans_to_apply() == []
 
@@ -63,7 +63,7 @@ async def test_given_an_approval_when_the_plan_is_listed_then_state_channel_and_
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, channel="telegram")
+    plan_id = await scheduled_plan(cat_owner, channel="telegram")
 
     [due] = await store.plans_to_apply()
 
@@ -80,7 +80,7 @@ async def test_given_two_agent_processes_when_both_claim_the_same_plan_then_exac
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     first, second = PgApplyStore(agent_sessions, MAILBOX), PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner)
+    plan_id = await scheduled_plan(cat_owner)
 
     results = await asyncio.gather(first.claim(plan_id, "run-a"), second.claim(plan_id, "run-b"))
 
@@ -96,7 +96,7 @@ async def test_given_a_run_that_crashed_when_its_lease_ended_then_another_run_ta
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner)
+    plan_id = await scheduled_plan(cat_owner)
     assert await store.claim(plan_id, "run-a")
     assert not await store.claim(plan_id, "run-b")  # the lease of run-a is alive
 
@@ -112,13 +112,13 @@ async def test_given_a_plan_when_it_is_cancelled_then_scheduled_and_applying_end
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    scheduled = await _scheduled(cat_owner)
+    scheduled = await scheduled_plan(cat_owner)
 
     assert await store.cancel(scheduled)
     assert not await store.claim(scheduled, "run-a")
     assert not await store.cancel(scheduled)  # already cancelled
 
-    applying = await _scheduled(cat_owner)
+    applying = await scheduled_plan(cat_owner)
     assert await store.claim(applying, "run-a")
     assert await store.cancel(applying)
     assert not await store.begin_batch(applying, "run-a")
@@ -129,7 +129,7 @@ async def test_given_an_applied_plan_when_it_is_cancelled_then_nothing_changes(
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
 
     assert not await store.cancel(plan_id)
     assert await cat_owner.fetchval("select state from categories.plan") == "applied"
@@ -139,7 +139,7 @@ async def test_given_approved_items_when_they_are_finished_then_each_once_and_on
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, moves=3)
+    plan_id = await scheduled_plan(cat_owner, moves=3)
     items = await store.next_items(plan_id, 2)
     assert len(items) == 2
     first, second = items[0].message_id, items[1].message_id
@@ -157,7 +157,7 @@ async def test_given_an_intent_when_it_is_recorded_then_the_channel_is_the_appro
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, channel="telegram")
+    plan_id = await scheduled_plan(cat_owner, channel="telegram")
     move = AuditMove("m0", "Label_1", "Label_2")
 
     assert await store.intent_for(plan_id, "m0") is None
@@ -175,7 +175,7 @@ async def test_given_a_plan_without_approval_when_an_intent_is_recorded_then_it_
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner)
+    plan_id = await scheduled_plan(cat_owner)
     await cat_owner.execute("delete from categories.plan_approval")
 
     with pytest.raises(LookupError):
@@ -188,7 +188,7 @@ async def test_given_a_move_back_when_the_audit_is_read_then_only_the_apply_rows
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
     await store.record_intent(plan_id, AuditMove("m0", "Label_1", "Label_2"))
     await store.record_intent(plan_id, AuditMove("m1", "", "Label_2"))
 
@@ -210,7 +210,7 @@ async def test_given_a_failing_item_when_attempts_are_counted_then_the_count_ris
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, moves=1)
+    plan_id = await scheduled_plan(cat_owner, moves=1)
 
     assert [await store.count_attempt(plan_id, "m0") for _ in range(3)] == [1, 2, 3]
     assert await store.finish_item(plan_id, "m0", ItemState.FAILED, None)
@@ -222,7 +222,7 @@ async def test_given_only_the_lease_holder_when_the_plan_is_finished_then_exactl
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     first, second = PgApplyStore(agent_sessions, MAILBOX), PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner)
+    plan_id = await scheduled_plan(cat_owner)
     assert await first.claim(plan_id, "run-a")
 
     results = await asyncio.gather(first.finish_plan(plan_id, "run-a"), second.finish_plan(plan_id, "run-a"))
@@ -236,7 +236,7 @@ async def test_given_an_applied_plan_when_applied_items_are_removed_then_skipped
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, moves=3)
+    plan_id = await scheduled_plan(cat_owner, moves=3)
     await store.finish_item(plan_id, "m0", ItemState.APPLIED, None)
     await store.finish_item(plan_id, "m1", ItemState.SKIPPED, SkipReason.GONE)
     await store.finish_item(plan_id, "m2", ItemState.FAILED, None)
@@ -278,7 +278,7 @@ async def test_given_a_request_of_the_api_when_requests_are_listed_then_the_job_
     cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
     await cat_api.execute(
         "insert into categories.move_back_request (mailbox_id, plan_id) values ($1, $2)", MAILBOX, plan_id
     )
@@ -297,7 +297,7 @@ async def test_given_a_request_of_the_operator_when_requests_are_listed_then_the
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
     await cat_owner.execute(
         "insert into categories.move_back_request (mailbox_id, plan_id) values ($1, $2)", MAILBOX, plan_id
     )
@@ -311,7 +311,7 @@ async def test_given_two_agent_processes_when_both_claim_a_request_then_exactly_
     cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     first, second = PgApplyStore(agent_sessions, MAILBOX), PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
     await cat_api.execute(
         "insert into categories.move_back_request (mailbox_id, plan_id) values ($1, $2)", MAILBOX, plan_id
     )
@@ -333,7 +333,7 @@ async def test_given_a_request_whose_lease_ended_when_it_is_claimed_then_the_new
     cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner, state="applied")
+    plan_id = await scheduled_plan(cat_owner, state="applied")
     await cat_api.execute(
         "insert into categories.move_back_request (mailbox_id, plan_id) values ($1, $2)", MAILBOX, plan_id
     )
@@ -350,7 +350,7 @@ async def test_given_a_plan_that_is_not_due_when_it_is_claimed_then_the_database
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _scheduled(cat_owner)
+    plan_id = await scheduled_plan(cat_owner)
     await cat_owner.execute("update categories.plan set apply_after = now() + interval '15 minutes'")
 
     assert not await store.claim(plan_id, "run-a")

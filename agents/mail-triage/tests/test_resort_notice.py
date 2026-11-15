@@ -1,18 +1,21 @@
-"""U-mail-categories-22, open point (g): the result notice of an apply carries a Move back and a Lock button.
+"""U-mail-categories-22, open point (g): the result notice of an apply goes through U-16's ``ApprovalNotice``.
 
-Each button has its own single-use nonce in ``telegram_action`` (ADR-0046 point 7): only the hash is stored, with the
-chat, the kind and the plan as target. Pressing a button is built elsewhere (U-mail-categories-16); here the notice, the
-stored nonces and what the router can later redeem.
+``ApplyNotifier.result`` hands the text, the plan and the offers to ``ApprovalNotice.send_result`` (Move back and Lock
+buttons, each with its own nonce in ``telegram_action``); a plain note is a plain note. The text is escaped here because
+the notice is shown as HTML and names a label.
 """
 
 from __future__ import annotations
 
 import uuid
 
+from app.core import approval_text
+from app.usecases.approval_notice import ApprovalNotice
 from app.usecases.resort_apply import Offer
-from app.usecases.resort_notice import LOCK_ACTION, MOVE_BACK_ACTION, TelegramApplyNotifier, split_button
-from app.usecases.telegram_actions import Redeemed, Refusal, TelegramActions, digest
-from tests.list_notice_support import AT, CHAT, FakeActionStore, Nonces, RecordingChat
+from app.usecases.resort_notice import TelegramApplyNotifier
+from app.usecases.telegram_actions import Redeemed, Refusal, TelegramActions
+from tests.approval_notice_support import NOW, FakePlanStore
+from tests.list_notice_support import CHAT, FakeActionStore, Nonces, RecordingChat
 
 PLAN = uuid.UUID("11111111-2222-3333-4444-555555555555")
 
@@ -20,7 +23,8 @@ PLAN = uuid.UUID("11111111-2222-3333-4444-555555555555")
 def _rig() -> tuple[TelegramApplyNotifier, TelegramActions, FakeActionStore, RecordingChat]:
     store, chat = FakeActionStore(), RecordingChat()
     actions = TelegramActions(store, Nonces())
-    return TelegramApplyNotifier(chat, actions, chat_id=CHAT, now=lambda: AT), actions, store, chat
+    notice = ApprovalNotice(actions, FakePlanStore(), chat, chat_id=CHAT)
+    return TelegramApplyNotifier(chat, notice, now=lambda: NOW), actions, store, chat
 
 
 async def test_the_result_notice_has_a_move_back_and_a_lock_button_with_one_nonce_each() -> None:
@@ -30,36 +34,23 @@ async def test_the_result_notice_has_a_move_back_and_a_lock_button_with_one_nonc
 
     [message] = chat.sent
     assert message.text == "Plan applied: 3 moved."
-    assert [b.label for b in message.buttons] == ["Move back", "Lock web sign-in"]
-    parsed = [split_button(b.data) for b in message.buttons]
-    assert [p[0] for p in parsed if p] == [MOVE_BACK_ACTION, LOCK_ACTION]
-    assert len({p[1] for p in parsed if p}) == 2
-    assert {r.kind for r in store.rows.values()} == {"move_back", "lock"}
+    assert [b.label for b in message.buttons] == [approval_text.MOVE_BACK_LABEL, approval_text.LOCK_LABEL]
+    assert len({b.data for b in message.buttons}) == 2
     assert {r.target for r in store.rows.values()} == {str(PLAN)}
-    assert {r.chat_id for r in store.rows.values()} == {CHAT}
+    assert {r.kind for r in store.rows.values()} == {"plan_move_back", "plan_lock"}
 
 
-async def test_only_the_hash_of_a_nonce_is_stored_and_each_button_is_redeemable_once_for_its_kind() -> None:
-    notifier, actions, store, chat = _rig()
+async def test_each_button_is_redeemable_once_for_its_own_kind() -> None:
+    notifier, actions, _store, chat = _rig()
     await notifier.result("done", plan_id=PLAN, offers=(Offer.MOVE_BACK, Offer.LOCK))
-    back, lock = (split_button(b.data) for b in chat.sent[0].buttons)
+    back, lock = (approval_text.split_button(b.data) for b in chat.sent[0].buttons)
     assert back is not None
     assert lock is not None
-    assert all(nonce not in store.rows and digest(nonce) in store.rows for _action, nonce in (back, lock))
 
-    assert await actions.redeem(back[1], "move_back", CHAT, AT) == Redeemed(str(PLAN))
-    assert await actions.redeem(back[1], "move_back", CHAT, AT) is Refusal.DONE  # once
-    assert await actions.redeem(lock[1], "move_back", CHAT, AT) is Refusal.DONE  # a lock nonce is no move back
-    assert await actions.redeem(lock[1], "lock", CHAT, AT) == Redeemed(str(PLAN))
-
-
-async def test_an_offer_that_is_not_asked_for_gets_no_button_and_no_nonce() -> None:
-    notifier, _actions, store, chat = _rig()
-
-    await notifier.result("done", plan_id=PLAN, offers=(Offer.LOCK,))
-
-    assert [b.label for b in chat.sent[0].buttons] == ["Lock web sign-in"]
-    assert {r.kind for r in store.rows.values()} == {"lock"}
+    assert await actions.redeem(back[1], "plan_move_back", CHAT, NOW) == Redeemed(str(PLAN))
+    assert await actions.redeem(back[1], "plan_move_back", CHAT, NOW) is Refusal.DONE
+    assert await actions.redeem(lock[1], "plan_move_back", CHAT, NOW) is Refusal.DONE
+    assert await actions.redeem(lock[1], "plan_lock", CHAT, NOW) == Redeemed(str(PLAN))
 
 
 async def test_the_text_is_escaped_for_telegram_html() -> None:
@@ -77,9 +68,3 @@ async def test_a_plain_note_is_sent_as_a_note() -> None:
 
     assert chat.notes == ["Move back done."]
     assert chat.sent == []
-
-
-def test_button_data_that_is_not_ours_is_not_split() -> None:
-    assert split_button("catundo:" + "a" * 22) is None
-    assert split_button("planback:short") is None
-    assert split_button(f"planback:{'a' * 22}") == (MOVE_BACK_ACTION, "a" * 22)
