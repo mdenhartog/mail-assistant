@@ -43,3 +43,23 @@ export function isDirty(rows: readonly Row[], list: CategoryList): boolean {
     })
   );
 }
+
+/** What a save will do, counted against the stored list. */
+export interface Summary {
+  renamed: number;
+  described: number;
+  added: number;
+  removed: number;
+}
+
+export function summaryOf(rows: readonly Row[], list: CategoryList): Summary {
+  const stored = new Map(list.categories.map((category) => [category.id, category]));
+  const kept = new Set(rows.map((row) => row.id));
+  const before = (row: Row) => (row.id === null ? undefined : stored.get(row.id));
+  return {
+    renamed: rows.filter((row) => before(row) !== undefined && before(row)?.name !== row.name).length,
+    described: rows.filter((row) => before(row) !== undefined && before(row)?.description !== row.description).length,
+    added: rows.filter((row) => row.id === null).length,
+    removed: list.categories.filter((category) => !kept.has(category.id)).length,
+  };
+}
