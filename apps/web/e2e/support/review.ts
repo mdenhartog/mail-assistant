@@ -18,7 +18,11 @@ function state(name: string, reach: (page: Page) => Promise<unknown>): UiState {
 }
 
 const GROUP = /^Other to Invoices/;
-const APPROVED = { ...PLAN, counts: { items: 33, pending: 13, approved: 20, rejected: 0 } };
+const APPROVED = {
+  ...PLAN,
+  groups: PLAN.groups.map((group, index) => (index === 0 ? { ...group, approved: 20 } : group)),
+  counts: { items: 33, pending: 13, approved: 20, rejected: 0 },
+};
 const LAST = { id: PLAN.id, state: "applied", appliedAt: "2026-11-15T13:00:00Z" };
 const NO_PLAN = { ...PLAN, id: null, state: null, groups: [], counts: { items: 0, pending: 0, approved: 0, rejected: 0 } };
 
@@ -92,12 +96,22 @@ export function reviewStates(): UiState[] {
     }),
     banner("review: no review", NO_PLAN, "No review is open."),
     state("review: building", async (page) => {
-      await stubApi(page, { signedIn: true, getPlan: reply(200, { ...PLAN, state: "building", groups: [], progress: { checked: 340, cap: 2000, unclear: 0 } }) });
+      await stubApi(page, { signedIn: true, getPlan: reply(200, { ...PLAN, state: "building", groups: [], progress: { checked: 340, cap: 5000, unclear: 0, estimate: 2000, notLookedAt: 0 } }) });
       await page.goto("/review");
-      await expect(page.getByText("340 of up to 2000 checked, nothing moves yet.")).toBeVisible();
+      await expect(page.getByText("340 of about 2000 checked, nothing moves yet.")).toBeVisible();
+    }),
+    state("review: building, no estimate", async (page) => {
+      await stubApi(page, { signedIn: true, getPlan: reply(200, { ...PLAN, state: "building", groups: [], progress: { checked: 340, cap: 5000, unclear: 0, estimate: null, notLookedAt: 0 } }) });
+      await page.goto("/review");
+      await expect(page.getByText("340 checked so far, nothing moves yet.")).toBeVisible();
+    }),
+    state("review: badge on another page", async (page) => {
+      await stubApi(page, { signedIn: true });
+      await page.goto("/settings");
+      await expect(page.getByRole("link", { name: "Review moves 33 open items" })).toBeVisible();
     }),
     state("review: ready", (page) => toReady(page)),
-    state("review: cap reached", (page) => toReady(page, { getPlan: reply(200, { ...PLAN, progress: { checked: 5000, cap: 5000, unclear: 2 } }) })),
+    state("review: cap reached", (page) => toReady(page, { getPlan: reply(200, { ...PLAN, progress: { checked: 5000, cap: 5000, unclear: 2, estimate: 7400, notLookedAt: 2400 } }) })),
     state("review: group open", (page) => toOpen(page)),
     state("review: mails ticked", async (page) => {
       await toOpen(page);

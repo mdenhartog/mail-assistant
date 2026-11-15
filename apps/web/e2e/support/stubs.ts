@@ -160,11 +160,11 @@ const putCategoriesEcho: Handler = async (route, { state }) => {
 export const PLAN = {
   id: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa",
   state: "ready",
-  progress: { checked: 900, cap: 5000, unclear: 2 },
+  progress: { checked: 900, cap: 5000, unclear: 2, estimate: 2000, notLookedAt: 0 },
   groups: [
-    { from: "00000000-0000-0000-0000-000000000000", to: "00000000-0000-4000-8000-000000000001", count: 20 },
-    { from: "00000000-0000-4000-8000-000000000002", to: "00000000-0000-4000-8000-000000000001", count: 12 },
-    { from: "00000000-0000-4000-8000-0000000000ff", to: "00000000-0000-4000-8000-000000000003", count: 1 },
+    { from: "00000000-0000-0000-0000-000000000000", to: "00000000-0000-4000-8000-000000000001", count: 20, approved: 0 },
+    { from: "00000000-0000-4000-8000-000000000002", to: "00000000-0000-4000-8000-000000000001", count: 12, approved: 0 },
+    { from: "00000000-0000-4000-8000-0000000000ff", to: "00000000-0000-4000-8000-000000000003", count: 1, approved: 0 },
   ],
   counts: { items: 33, pending: 33, approved: 0, rejected: 0 },
   applyAfter: null,
