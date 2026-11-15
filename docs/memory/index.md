@@ -46,4 +46,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0045 · Judging against the user's list: closed set, urgency separate, security mail pinned · area:architecture · tags:mail-categories,llm,prompt-injection · decisions/ADR-0045-closed-set-judging.md
 - ADR-0046 · Re-sort plans: lifecycle, Gmail operations, delayed apply, Telegram exception to D1 · area:architecture · tags:mail-categories,gmail,telegram,budget · decisions/ADR-0046-resort-plan-lifecycle.md
 - ADR-0047 · Database functions are the api's only write path for plan decisions; retention through an owner-role purge · area:security · tags:mail-categories,postgresql,audit,retention · decisions/ADR-0047-decision-functions-and-purge.md
+- ADR-0048 · Pinned mail: Google security mail raises an urgent alert, own sign-in code mail stays silent · area:security · tags:mail-categories,mail-triage,telegram,privacy · decisions/ADR-0048-pinned-mail-alerts.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
