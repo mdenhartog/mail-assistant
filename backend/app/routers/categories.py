@@ -15,6 +15,7 @@ from app.limit_guard import limit
 from app.routers.settings import require_json
 
 if TYPE_CHECKING:
+    from app.clock import Clock
     from app.config import Settings
     from app.db import Database
     from app.ids import IdSource
@@ -109,7 +110,8 @@ async def write_categories(body: CategoryListUpdate, request: Request) -> Catego
     """
     repository = _repository(request)
     settings: Settings = request.app.state.settings
-    recent = await repository.recent_saves()
+    clock: Clock = request.app.state.clock
+    recent = await repository.recent_saves(clock.now())
     if recent.saves >= settings.category_saves_per_hour:
         raise RateLimited(recent.retry_after_seconds)
     stored = await repository.read()

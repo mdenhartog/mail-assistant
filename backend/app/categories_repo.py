@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timedelta  # datetime is used as the type of a parameter at run time
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
@@ -22,7 +23,8 @@ if TYPE_CHECKING:
     from app.db import Database
 
 OTHER_ID = uuid.UUID(int=0)  # the nil UUID stands for the built-in "Other" in ``category_count``
-_HOUR = 3600
+_WINDOW = timedelta(hours=1)
+_HOUR = int(_WINDOW.total_seconds())
 
 _VERSION = text("SELECT coalesce(max(version), 0) FROM categories.list_version WHERE mailbox_id = :mailbox")
 _CATEGORIES = text(
@@ -32,10 +34,8 @@ _CATEGORIES = text(
 _COUNTS = text("SELECT category_id, mail_count FROM categories.category_count WHERE mailbox_id = :mailbox")
 _LABELS = text("SELECT name FROM categories.gmail_label WHERE mailbox_id = :mailbox ORDER BY name")
 _RECENT_SAVES = text(
-    "SELECT count(*) AS saves, "
-    "extract(epoch FROM (min(created_at) + interval '1 hour' - now())) AS wait "
-    "FROM categories.list_version "
-    "WHERE mailbox_id = :mailbox AND created_via = 'web' AND created_at > now() - interval '1 hour'"
+    "SELECT count(*) AS saves, min(created_at) AS oldest FROM categories.list_version "
+    "WHERE mailbox_id = :mailbox AND created_via = 'web' AND created_at > :since"
 )
 _INSERT_VERSION = text("INSERT INTO categories.list_version (mailbox_id, version) VALUES (:mailbox, :version)")
 _INSERT_IDENTITY = text("INSERT INTO categories.category_identity (mailbox_id, id) VALUES (:mailbox, :id)")
@@ -101,16 +101,21 @@ class CategoriesRepository:
         categories = tuple(StoredCategory(row.id, row.name, row.description) for row in rows)
         return StoredList(version, categories, counts, labels)
 
-    async def recent_saves(self) -> RecentSaves:
-        """Count the versions the web saved for this mailbox in the last hour (the account's limit, AC-33).
+    async def recent_saves(self, now: datetime) -> RecentSaves:
+        """Count the versions the web saved for this mailbox in the hour before ``now`` (the limit of AC-33).
+
+        Args:
+            now: The time of the request, from the application's clock.
 
         Returns:
             The count and the wait until the oldest of them is an hour old (at least one second).
         """
         async with self._database.session() as session, session.begin():
-            row = (await session.execute(_RECENT_SAVES, {"mailbox": self._mailbox})).one()
-        wait = max(1, min(_HOUR, math.ceil(row.wait))) if row.wait is not None else 1
-        return RecentSaves(row.saves, wait)
+            row = (await session.execute(_RECENT_SAVES, {"mailbox": self._mailbox, "since": now - _WINDOW})).one()
+        if row.oldest is None:
+            return RecentSaves(0, 1)
+        wait = math.ceil((row.oldest + _WINDOW - now).total_seconds())
+        return RecentSaves(row.saves, max(1, min(_HOUR, wait)))
 
     async def add_version(
         self, expected_version: int, categories: Sequence[StoredCategory], new_ids: frozenset[uuid.UUID]
