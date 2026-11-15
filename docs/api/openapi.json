@@ -714,6 +714,11 @@
         "additionalProperties": false,
         "description": "The items that move from one category to another; the nil UUID is the built-in \"Other\".",
         "properties": {
+          "approved": {
+            "minimum": 0.0,
+            "title": "Approved",
+            "type": "integer"
+          },
           "count": {
             "minimum": 1.0,
             "title": "Count",
@@ -733,7 +738,8 @@
         "required": [
           "from",
           "to",
-          "count"
+          "count",
+          "approved"
         ],
         "title": "PlanGroup",
         "type": "object"
@@ -885,7 +891,7 @@
       },
       "PlanProgress": {
         "additionalProperties": false,
-        "description": "How far the build is: mails checked, the cap and the mails with two ``Assistant/`` labels (unclear).",
+        "description": "How far the build is: mails checked, the cap, the unclear mails, the estimate and the mails past the cap.",
         "properties": {
           "cap": {
             "minimum": 0.0,
@@ -897,6 +903,23 @@
             "title": "Checked",
             "type": "integer"
           },
+          "estimate": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate"
+          },
+          "notLookedAt": {
+            "minimum": 0.0,
+            "title": "Notlookedat",
+            "type": "integer"
+          },
           "unclear": {
             "minimum": 0.0,
             "title": "Unclear",
@@ -906,7 +929,9 @@
         "required": [
           "checked",
           "cap",
-          "unclear"
+          "unclear",
+          "estimate",
+          "notLookedAt"
         ],
         "title": "PlanProgress",
         "type": "object"

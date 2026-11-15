@@ -90,8 +90,13 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
             checked=0 if plan is None else plan.checked,
             cap=0 if plan is None else plan.cap,
             unclear=0 if plan is None else plan.unclear,
+            estimate=None if plan is None else plan.estimate,
+            not_looked_at=0 if plan is None else plan.not_looked_at,
         ),
-        groups=[PlanGroup(from_category=g.old_id, to_category=g.new_id, count=g.count) for g in snapshot.groups],
+        groups=[
+            PlanGroup(from_category=g.old_id, to_category=g.new_id, count=g.count, approved=g.approved)
+            for g in snapshot.groups
+        ],
         counts=PlanCounts(
             items=sum(decisions.values()),
             pending=decisions.get("pending", 0),

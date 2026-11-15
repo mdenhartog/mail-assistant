@@ -24,7 +24,8 @@ _CONFLICT = "MC409"  # a plan, count, group, id or state mismatch (the 409 of th
 _MALFORMED = "22023"  # a malformed argument
 
 _OPEN_PLAN = text(
-    "SELECT id, state, apply_after, checked_count, cap, unclear_count FROM categories.plan "
+    "SELECT id, state, apply_after, checked_count, cap, unclear_count, estimate_total, not_looked_at "
+    "FROM categories.plan "
     "WHERE mailbox_id = :mailbox AND state IN ('building', 'ready', 'scheduled', 'applying')"
 )
 _LAST_APPLIED = text(
@@ -32,7 +33,8 @@ _LAST_APPLIED = text(
     "ORDER BY terminal_at DESC NULLS LAST, created_at DESC LIMIT 1"
 )
 _GROUPS = text(
-    "SELECT old_category_id, new_category_id, count(*) AS n FROM categories.plan_item "
+    "SELECT old_category_id, new_category_id, count(*) AS n, count(*) FILTER (WHERE decision = 'approved') AS approved "
+    "FROM categories.plan_item "
     "WHERE mailbox_id = :mailbox AND plan_id = :plan "
     "GROUP BY old_category_id, new_category_id ORDER BY n DESC, old_category_id, new_category_id"
 )
@@ -76,6 +78,8 @@ class OpenPlan:
     checked: int
     cap: int
     unclear: int
+    estimate: int | None
+    not_looked_at: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +97,7 @@ class GroupRow:
     old_id: uuid.UUID
     new_id: uuid.UUID
     count: int
+    approved: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,14 +194,24 @@ class PlanRepository:
             open_plan = (
                 None
                 if row is None
-                else OpenPlan(row.id, row.state, _utc(row.apply_after), row.checked_count, row.cap, row.unclear_count)
+                else OpenPlan(
+                    row.id,
+                    row.state,
+                    _utc(row.apply_after),
+                    row.checked_count,
+                    row.cap,
+                    row.unclear_count,
+                    row.estimate_total,
+                    row.not_looked_at,
+                )
             )
             groups: tuple[GroupRow, ...] = ()
             decisions: dict[str, int] = {}
             if open_plan is not None:
                 scope = {**params, "plan": open_plan.id}
                 groups = tuple(
-                    GroupRow(g.old_category_id, g.new_category_id, g.n) for g in await session.execute(_GROUPS, scope)
+                    GroupRow(g.old_category_id, g.new_category_id, g.n, g.approved)
+                    for g in await session.execute(_GROUPS, scope)
                 )
                 decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
         last = None if applied is None else AppliedPlan(applied.id, _utc(applied.terminal_at))

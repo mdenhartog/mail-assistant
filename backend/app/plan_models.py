@@ -20,13 +20,15 @@ _CONFIG = ConfigDict(frozen=True, extra="forbid", alias_generator=to_camel, popu
 
 
 class PlanProgress(BaseModel):
-    """How far the build is: mails checked, the cap and the mails with two ``Assistant/`` labels (unclear)."""
+    """How far the build is: mails checked, the cap, the unclear mails, the estimate and the mails past the cap."""
 
     model_config = _CONFIG
 
     checked: Annotated[int, Field(ge=0)]
     cap: Annotated[int, Field(ge=0)]
     unclear: Annotated[int, Field(ge=0)]
+    estimate: Annotated[int, Field(ge=0)] | None  # "about M"; None until the agent has an estimate (AC-43)
+    not_looked_at: Annotated[int, Field(ge=0)]  # in scope but past the cap
 
 
 class PlanGroup(BaseModel):
@@ -37,6 +39,7 @@ class PlanGroup(BaseModel):
     from_category: Annotated[uuid.UUID, Field(serialization_alias="from")]
     to_category: Annotated[uuid.UUID, Field(serialization_alias="to")]
     count: Annotated[int, Field(ge=1)]
+    approved: Annotated[int, Field(ge=0)]  # items of the group approved so far (AC-13)
 
 
 class PlanCounts(BaseModel):
