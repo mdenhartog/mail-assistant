@@ -154,7 +154,7 @@ async def test_given_a_nonce_when_it_is_used_for_the_other_kind_or_another_chat_
     assert await rig.actions.redeem(undo_nonce, "undo", CHAT, LATER) == Redeemed("2-2")
 
 
-async def test_given_undo_when_the_latest_version_is_not_the_last_of_the_burst_then_it_is_refused_and_nothing_is_written(
+async def test_given_undo_when_the_burst_is_no_longer_the_latest_then_it_is_refused_and_nothing_is_written(
     rig: Rig, cat_agent: asyncpg.Connection, cat_api: asyncpg.Connection, cat_owner: asyncpg.Connection
 ) -> None:
     await _seeded(cat_agent, rig)
