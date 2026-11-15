@@ -75,6 +75,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Plan
+         * @description Return the open plan with its progress, groups, counts and apply time, and the last applied plan.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The plan view; ``state`` is null while no plan is open.
+         */
+        get: operations["read_plan_api_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Approve
+         * @description Approve the plan: pending items are rejected and the plan is scheduled; a repeat returns the same.
+         *
+         *     Args:
+         *         body: The plan id and item count the user saw.
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The state and the time the apply may start, or a 409 (nothing changed).
+         */
+        post: operations["post_approve_api_plan_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Decision
+         * @description Approve or reject a group, named items or the whole plan, if the plan and its item count are still as seen.
+         *
+         *     Args:
+         *         body: The plan id and item count the user saw, the scope and the decision.
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         How many items changed, or a 409 (nothing changed), or a 422 for too many ids.
+         */
+        post: operations["post_decision_api_plan_decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Plan Items
+         * @description Return one page of at most 100 items of the open plan; the only filters are the two category ids.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access.
+         *         page: The page, from 1.
+         *         from_category: Only items that leave this category.
+         *         to_category: Only items that go to this category.
+         *
+         *     Returns:
+         *         The items with sender name and address and subject as text, and whether another page follows.
+         */
+        get: operations["read_plan_items_api_plan_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan/{plan_id}/move-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Move Back
+         * @description Ask the agent to restore the old labels of an applied plan; a repeat stores nothing new.
+         *
+         *     Args:
+         *         plan_id: The applied plan.
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The request, or a 409 when the plan is not an applied plan of this mailbox.
+         */
+        post: operations["post_move_back_api_plan__plan_id__move_back_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -316,6 +452,43 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AllScope
+         * @description Every item of the plan.
+         */
+        AllScope: {
+            /**
+             * All
+             * @constant
+             */
+            all: true;
+        };
+        /**
+         * ApprovalResult
+         * @description The state of the plan after the approval and when the apply may start.
+         */
+        ApprovalResult: {
+            /** Applyafter */
+            applyAfter: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "building" | "ready" | "scheduled" | "applying" | "applied" | "replaced" | "discarded" | "cancelled";
+        };
+        /**
+         * ApproveRequest
+         * @description The body of ``POST /api/plan/approve``.
+         */
+        ApproveRequest: {
+            /** Itemcount */
+            itemCount: number;
+            /**
+             * Planid
+             * Format: uuid
+             */
+            planId: string;
+        };
+        /**
          * CategoryConflict409
          * @description The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.
          */
@@ -440,6 +613,59 @@ export interface components {
             /** Type */
             type: string;
         };
+        /**
+         * DecisionRequest
+         * @description The body of ``POST /api/plan/decisions``: the plan and item count the user saw, the scope and the decision.
+         */
+        DecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "rejected";
+            /** Itemcount */
+            itemCount: number;
+            /**
+             * Planid
+             * Format: uuid
+             */
+            planId: string;
+            /** Scope */
+            scope: components["schemas"]["GroupScope"] | components["schemas"]["IdsScope"] | components["schemas"]["AllScope"];
+        };
+        /**
+         * DecisionResult
+         * @description How many items the decision changed.
+         */
+        DecisionResult: {
+            /** Changed */
+            changed: number;
+        };
+        /**
+         * GroupRef
+         * @description The two categories of a group.
+         */
+        GroupRef: {
+            /**
+             * From
+             * Format: uuid
+             */
+            from: string;
+            /**
+             * To
+             * Format: uuid
+             */
+            to: string;
+        };
+        /**
+         * GroupScope
+         * @description Every item of one group; ``group_count`` is the size the user saw, so a changed group is a 409.
+         */
+        GroupScope: {
+            group: components["schemas"]["GroupRef"];
+            /** Groupcount */
+            groupCount: number;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -455,6 +681,44 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * IdsScope
+         * @description Named items. More than ``MAX_IDS`` is answered by the route with a reason, so the limit is only documented.
+         */
+        IdsScope: {
+            ids: unknown;
+        };
+        /**
+         * LastPlan
+         * @description The plan applied most recently, the one "Move back" is offered for.
+         */
+        LastPlan: {
+            /** Appliedat */
+            appliedAt: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * State
+             * @constant
+             */
+            state: "applied";
+        };
+        /**
+         * MoveBackResult
+         * @description The move-back request of a plan; ``processed`` is True once the agent has restored the labels.
+         */
+        MoveBackResult: {
+            /**
+             * Planid
+             * Format: uuid
+             */
+            planId: string;
+            /** Processed */
+            processed: boolean;
         };
         /**
          * OlderCategory
@@ -495,6 +759,147 @@ export interface components {
             places: components["schemas"]["Place"][];
             /** Suggestion */
             suggestion?: string | null;
+        };
+        /**
+         * PlanConflict409
+         * @description A plan, count or state mismatch; no row values.
+         */
+        PlanConflict409: {
+            /**
+             * Status
+             * @constant
+             */
+            status: 409;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * PlanCounts
+         * @description Items of the open plan by decision.
+         */
+        PlanCounts: {
+            /** Approved */
+            approved: number;
+            /** Items */
+            items: number;
+            /** Pending */
+            pending: number;
+            /** Rejected */
+            rejected: number;
+        };
+        /**
+         * PlanGroup
+         * @description The items that move from one category to another; the nil UUID is the built-in "Other".
+         */
+        PlanGroup: {
+            /** Count */
+            count: number;
+            /**
+             * From
+             * Format: uuid
+             */
+            from: string;
+            /**
+             * To
+             * Format: uuid
+             */
+            to: string;
+        };
+        /**
+         * PlanItem
+         * @description One mail of the plan. Sender and subject are text (ADR-0044); the Gmail message id is never exposed.
+         */
+        PlanItem: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "pending" | "approved" | "rejected";
+            /**
+             * From
+             * Format: uuid
+             */
+            from: string;
+            /** Id */
+            id: number;
+            /** Reason */
+            reason: string | null;
+            /** Senderaddress */
+            senderAddress: string;
+            /** Sendername */
+            senderName: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "approved" | "rejected" | "applied" | "skipped" | "failed";
+            /** Subject */
+            subject: string;
+            /**
+             * To
+             * Format: uuid
+             */
+            to: string;
+        };
+        /**
+         * PlanItemsPage
+         * @description At most ``PAGE_SIZE`` items of the open plan.
+         */
+        PlanItemsPage: {
+            /** Hasmore */
+            hasMore: boolean;
+            /** Items */
+            items: components["schemas"]["PlanItem"][];
+            /** Page */
+            page: number;
+        };
+        /**
+         * PlanProblem422
+         * @description A refused body: the generic 422, with a ``reason`` when one is known (more ids than a decision may name).
+         */
+        PlanProblem422: {
+            /** Reason */
+            reason?: "too_many_ids" | null;
+            /**
+             * Status
+             * @constant
+             */
+            status: 422;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * PlanProgress
+         * @description How far the build is: mails checked, the cap and the mails with two ``Assistant/`` labels (unclear).
+         */
+        PlanProgress: {
+            /** Cap */
+            cap: number;
+            /** Checked */
+            checked: number;
+            /** Unclear */
+            unclear: number;
+        };
+        /**
+         * PlanView
+         * @description What ``GET /api/plan`` returns; ``state`` is None while there is no open plan.
+         */
+        PlanView: {
+            /** Applyafter */
+            applyAfter: string | null;
+            counts: components["schemas"]["PlanCounts"];
+            /** Groups */
+            groups: components["schemas"]["PlanGroup"][];
+            /** Id */
+            id: string | null;
+            lastPlan: components["schemas"]["LastPlan"] | null;
+            progress: components["schemas"]["PlanProgress"];
+            /** State */
+            state: ("building" | "ready" | "scheduled" | "applying" | "applied" | "replaced" | "discarded" | "cancelled") | null;
         };
         /**
          * Problem422
@@ -781,6 +1186,293 @@ export interface operations {
                 content?: never;
             };
             /** @description Query too long or invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    read_plan_api_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanView"];
+                };
+            };
+            /** @description No live session, or the web lock is set */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_approve_api_plan_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalResult"];
+                };
+            };
+            /** @description No live session, or the web lock is set */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The plan, the item count, the group, an id or the state no longer matches; nothing changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanConflict409"];
+                    "application/problem+json": components["schemas"]["PlanConflict409"];
+                };
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is malformed */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_decision_api_plan_decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DecisionResult"];
+                };
+            };
+            /** @description No live session, or the web lock is set */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The plan, the item count, the group, an id or the state no longer matches; nothing changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanConflict409"];
+                    "application/problem+json": components["schemas"]["PlanConflict409"];
+                };
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is malformed; more than 200 ids carry the reason too_many_ids */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanProblem422"];
+                    "application/problem+json": components["schemas"]["PlanProblem422"];
+                };
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    read_plan_items_api_plan_items_get: {
+        parameters: {
+            query?: {
+                page?: number;
+                from?: string | null;
+                to?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanItemsPage"];
+                };
+            };
+            /** @description No live session, or the web lock is set */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The page or a category id is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    post_move_back_api_plan__plan_id__move_back_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoveBackResult"];
+                };
+            };
+            /** @description No live session, or the web lock is set */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The plan, the item count, the group, an id or the state no longer matches; nothing changed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanConflict409"];
+                    "application/problem+json": components["schemas"]["PlanConflict409"];
+                };
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is malformed */
             422: {
                 headers: {
                     [name: string]: unknown;
