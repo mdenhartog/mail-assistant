@@ -11,6 +11,7 @@ import type { Clock } from "@/pages/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFound } from "@/pages/NotFound";
 import { CategoriesPage } from "@/features/categories/CategoriesPage";
+import { ReviewPage } from "@/features/review/ReviewPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { paths } from "@/router/paths";
 import { LoginGate, ProtectedShell } from "@/session/SessionRoutes";
@@ -62,6 +63,7 @@ export const routes: RouteObject[] = [
         element: <ProtectedShell />,
         children: [{ index: true, element: <CategoriesPage /> }],
       },
+      { path: paths.review, element: <ProtectedShell />, children: [{ index: true, element: <ReviewPage /> }] },
       { path: "*", element: <NotFound /> },
     ],
   },
