@@ -22,6 +22,7 @@ DESIGN_PATHS = {
     "/api/settings",
     "/api/settings/reset",
     "/api/places",
+    "/api/categories",
     "/healthz",
     "/readyz",
 }

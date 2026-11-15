@@ -82,3 +82,36 @@ async def test_given_a_newer_database_when_readyz_then_503(
     response = await ready_client.get("/readyz")
 
     assert response.status_code == 503
+
+
+async def test_given_the_categories_contract_older_than_the_api_when_readyz_then_503(
+    ready_client: AsyncClient, owner: asyncpg.Connection
+) -> None:
+    await owner.execute(
+        "CREATE OR REPLACE FUNCTION categories.contract_version() RETURNS integer "
+        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 0 $$"
+    )
+
+    response = await ready_client.get("/readyz")
+
+    assert response.status_code == 503
+    assert "contract" not in response.text.lower()
+
+
+async def test_given_a_newer_categories_contract_when_readyz_then_200(
+    ready_client: AsyncClient, owner: asyncpg.Connection
+) -> None:
+    await owner.execute(
+        "CREATE OR REPLACE FUNCTION categories.contract_version() RETURNS integer "
+        "LANGUAGE sql IMMUTABLE SET search_path = pg_catalog, pg_temp AS $$ SELECT 7 $$"
+    )
+
+    assert (await ready_client.get("/readyz")).status_code == 200
+
+
+async def test_given_no_categories_schema_when_readyz_then_503(
+    ready_client: AsyncClient, owner: asyncpg.Connection
+) -> None:
+    await owner.execute("DROP SCHEMA categories CASCADE")
+
+    assert (await ready_client.get("/readyz")).status_code == 503
