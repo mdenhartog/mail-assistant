@@ -601,6 +601,9 @@ async def test_given_urgent_old_mail_in_quiet_hours_when_it_runs_then_held_alert
     await use_case.run_once()
 
     assert [store.done[i].alert for i in all_ids] == [AlertState.HELD] * BACKLOG_ALERT_LIMIT + [None, None]
+    assert source.calls == len(all_ids)  # one snapshot per mail, never mixed within a mail
+    assert store.done[all_ids[0]].release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
+    assert store.done[all_ids[-1]].release_at is None  # over the cap: no alert, so nothing to release
 
 
 async def test_given_old_pinned_security_mail_when_it_runs_then_it_stays_and_the_rest_is_filed_with_the_list_version() -> None:
@@ -617,9 +620,6 @@ async def test_given_old_pinned_security_mail_when_it_runs_then_it_stays_and_the
     assert mailbox.filed == ["plain"]
     assert (store.done["sec"].label, store.done["sec"].filing) == (None, None)
     assert store.done["plain"].filing == FilingEntry(FINANCE_ID, 3)
-    assert source.calls == len(all_ids)  # one snapshot per mail, never mixed within a mail
-    assert store.done[all_ids[0]].release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
-    assert store.done[all_ids[-1]].release_at is None  # over the cap: no alert, so nothing to release
 
 
 async def test_given_injected_mails_that_the_model_calls_urgent_when_it_runs_then_still_only_five_alerts_exist() -> (
