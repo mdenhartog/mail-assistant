@@ -61,11 +61,10 @@ async function confirmSave(page: Page): Promise<void> {
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
 }
 
-// 0 (AC-22, C-12): KNOWN DEFECT, the test is expected to fail until the web image serves the page route. `test.fail`
-// keeps the gate green while the defect is open and turns red as soon as it is fixed, which is the cue to remove it.
+// 0 (AC-22, C-12)
 test("a deep link to /categories and a reload serve the app", async ({ request }) => {
-  test.fail(true, "apps/web/nginx.conf answers 404 for /categories and /review; see docs/release/mail-categories-r1.md");
   expect((await request.get("/categories")).status()).toBe(200);
+  expect((await request.get("/review")).status()).toBe(200);
 });
 
 // 1 (AC-22)
