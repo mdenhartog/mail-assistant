@@ -31,11 +31,12 @@ from tests.test_settings import VALID
 from tests.usecases.test_dispatch import Rig, button
 
 if TYPE_CHECKING:
-    from app.adapters.telegram_inbox import Command
     from datetime import datetime
     from pathlib import Path
 
     import pytest
+
+    from app.adapters.telegram_inbox import Command
 
 
 class ListNoticeStep:
