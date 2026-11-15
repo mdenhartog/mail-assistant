@@ -150,7 +150,7 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
 
     await run.mail_cycle()
 
-    assert gmail.filed == [("gm-1", "id:Assistant/Finance")]
+    assert gmail.filed == [("gm-1", "id:Assistant/Other")]  # no list version exists yet, so everything is "Other"
     [alert] = internet.messages
     assert "boss@example.com" in alert["text"]
     assert "Invoice due Friday" in alert["text"]
