@@ -212,6 +212,97 @@ END
 $$
 """
 
+# The api's only way to set a decision (ADR-0047). The plan is locked, so a decision cannot race the agent's
+# compare-and-set; no SQL is built from an argument; refusals carry fixed texts and no row value. MC409 is a 409 for the
+# api (state, count or id mismatch), 22023 a malformed call. The channel and the actor are the session role's.
+_RECORD_DECISION = r"""
+CREATE FUNCTION categories.record_decision(p_mailbox text, p_plan uuid, p_count integer, p_scope jsonb, p_decision text)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    v_state text;
+    v_total integer;
+    v_kind text;
+    v_ids bigint[];
+    v_from uuid;
+    v_to uuid;
+    v_group_count integer;
+    v_changed integer;
+    v_uuid text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+BEGIN
+    IF p_decision IS NULL OR p_decision NOT IN ('approved', 'rejected') THEN
+        RAISE EXCEPTION 'the decision is not valid' USING ERRCODE = '22023';
+    END IF;
+    IF p_scope IS NULL OR jsonb_typeof(p_scope) IS DISTINCT FROM 'object'
+        OR coalesce(p_scope ->> 'kind', '') NOT IN ('group', 'ids', 'all') THEN
+        RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+    END IF;
+    v_kind := p_scope ->> 'kind';
+
+    SELECT p.state INTO v_state FROM categories.plan p WHERE p.mailbox_id = p_mailbox AND p.id = p_plan FOR UPDATE;
+    IF NOT FOUND OR v_state <> 'ready' THEN
+        RAISE EXCEPTION 'the plan is not ready' USING ERRCODE = 'MC409';
+    END IF;
+    SELECT count(*) INTO v_total FROM categories.plan_item i WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan;
+    IF p_count IS DISTINCT FROM v_total THEN
+        RAISE EXCEPTION 'the plan has changed' USING ERRCODE = 'MC409';
+    END IF;
+
+    IF v_kind = 'ids' THEN
+        IF jsonb_typeof(p_scope -> 'ids') IS DISTINCT FROM 'array' THEN
+            RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+        END IF;
+        IF jsonb_array_length(p_scope -> 'ids') > 200 THEN
+            RAISE EXCEPTION 'too many ids' USING ERRCODE = 'MC409';
+        END IF;
+        IF jsonb_array_length(p_scope -> 'ids') = 0 OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(p_scope -> 'ids') e
+             WHERE jsonb_typeof(e) <> 'number' OR (e #>> '{}') !~ '^[0-9]{1,18}$') THEN
+            RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+        END IF;
+        SELECT array_agg(DISTINCT (e #>> '{}')::bigint) INTO v_ids FROM jsonb_array_elements(p_scope -> 'ids') e;
+        IF (SELECT count(*) FROM categories.plan_item i
+             WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.id = ANY (v_ids)) <> cardinality(v_ids) THEN
+            RAISE EXCEPTION 'an id does not belong to the plan' USING ERRCODE = 'MC409';
+        END IF;
+    ELSIF v_kind = 'group' THEN
+        IF NOT coalesce((p_scope ->> 'from') ~ v_uuid, false) OR NOT coalesce((p_scope ->> 'to') ~ v_uuid, false)
+            OR jsonb_typeof(p_scope -> 'groupCount') IS DISTINCT FROM 'number'
+            OR NOT coalesce((p_scope ->> 'groupCount') ~ '^[0-9]{1,9}$', false) THEN
+            RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+        END IF;
+        v_from := (p_scope ->> 'from')::uuid;
+        v_to := (p_scope ->> 'to')::uuid;
+        v_group_count := (p_scope ->> 'groupCount')::integer;
+        IF (SELECT count(*) FROM categories.plan_item i
+             WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan
+               AND i.old_category_id = v_from AND i.new_category_id = v_to) <> v_group_count THEN
+            RAISE EXCEPTION 'the group has changed' USING ERRCODE = 'MC409';
+        END IF;
+    END IF;
+
+    UPDATE categories.plan_item i
+       SET decision = p_decision, state = p_decision, decided_at = now()
+     WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.state IN ('pending', 'approved', 'rejected')
+       AND (v_kind = 'all'
+            OR (v_kind = 'ids' AND i.id = ANY (v_ids))
+            OR (v_kind = 'group' AND i.old_category_id = v_from AND i.new_category_id = v_to));
+    GET DIAGNOSTICS v_changed = ROW_COUNT;
+
+    INSERT INTO categories.plan_decision (mailbox_id, plan_id, scope, item_count, decision, channel, actor_digest, at)
+    VALUES (p_mailbox, p_plan, v_kind, v_changed, p_decision,
+            CASE session_user
+                WHEN 'mail_triage_runtime' THEN 'telegram'
+                WHEN 'web_settings_runtime' THEN 'web'
+                ELSE 'operator'
+            END,
+            encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex'), now());
+    UPDATE categories.plan SET last_activity_at = now() WHERE mailbox_id = p_mailbox AND id = p_plan;
+    RETURN v_changed;
+END
+$$
+"""
+
 _TRIGGERS = (
     "CREATE TRIGGER plan_state_guard BEFORE UPDATE OF state ON categories.plan "
     "FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION categories.plan_state_guard()",
@@ -224,6 +315,7 @@ _FUNCTIONS = (
     "categories.plan_state_guard()",
     "categories.apply_audit_derive()",
     "categories.move_back_request_check()",
+    "categories.record_decision(text, uuid, integer, jsonb, text)",
 )
 
 
@@ -231,7 +323,7 @@ def upgrade() -> None:
     """Create the plan tables, the state guard and its trigger."""
     _create_plan_tables()
     _create_audit_tables()
-    for function_sql in (_PLAN_GUARD, _AUDIT_DERIVE, _MOVE_BACK_CHECK):
+    for function_sql in (_PLAN_GUARD, _AUDIT_DERIVE, _MOVE_BACK_CHECK, _RECORD_DECISION):
         op.execute(function_sql)
     for statement in _TRIGGERS:
         op.execute(statement)

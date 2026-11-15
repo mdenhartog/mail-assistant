@@ -145,3 +145,5 @@ GRANT UPDATE (state, reason) ON categories.plan_item TO mail_triage_runtime;
 GRANT INSERT (mailbox_id, plan_id, message_id, old_label, new_label, channel) ON categories.apply_audit
     TO mail_triage_runtime;
 GRANT UPDATE (processed) ON categories.move_back_request TO mail_triage_runtime;
+-- The decision functions are the api's alone (the agent decides nothing for the user).
+GRANT EXECUTE ON FUNCTION categories.record_decision(text, uuid, integer, jsonb, text) TO web_settings_runtime;
