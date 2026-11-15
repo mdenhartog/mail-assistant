@@ -100,7 +100,7 @@ describe("Categories page: older categories", () => {
     const older = screen.getByRole("region", { name: "Older category" });
     expect(within(older).getByText("Travel")).toBeInTheDocument();
 
-    await userEvent.click(within(older).getByRole("button", { name: "Add Travel to my list" }));
+    await userEvent.click(within(older).getByRole("button", { name: "Add to my list: Travel" }));
 
     expect(screen.getAllByRole("group", { name: /^Category \d+$/ })).toHaveLength(3);
     const added = within(screen.getByRole("group", { name: "Category 3" }));

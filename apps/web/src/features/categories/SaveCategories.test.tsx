@@ -92,7 +92,7 @@ describe("Categories page: saving", () => {
     const seen = wire();
     await loaded();
     await userEvent.click(screen.getByRole("button", { name: "Delete Newsletters" }));
-    await userEvent.click(screen.getByRole("button", { name: "Add Travel to my list" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
     await userEvent.type(card(2).getByLabelText("Description"), "Flights and hotels");
     await userEvent.click(saveButton());
     await userEvent.click(await screen.findByRole("button", { name: "Save" }));
@@ -121,7 +121,7 @@ describe("Categories page: invalid fields (AC-2)", () => {
   it("given an adopted card without a description, when saving, then the error with the mark shows by the field, focus moves to it and nothing is sent", async () => {
     const seen = wire();
     await loaded();
-    await userEvent.click(screen.getByRole("button", { name: "Add Travel to my list" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
     await rename(1, "");
 
     await userEvent.click(saveButton());
