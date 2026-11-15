@@ -1,7 +1,7 @@
 """U-mail-categories-22, open point (c): the real ``ApplyMailbox`` on the Gmail double.
 
-A deleted mail is ``None`` (read) or ``MailGone`` (write); any other Gmail failure on a mail is ``MailFailed``; the label
-guards of the narrow adapter stay in force; ``ensure_label`` lists first and creates only a missing label.
+A deleted mail is ``None`` (read) or ``MailGone`` (write); any other Gmail failure on a mail is ``MailFailed``; the
+label guards of the narrow adapter stay in force; ``ensure_label`` lists first and creates only a missing label.
 """
 
 from __future__ import annotations
