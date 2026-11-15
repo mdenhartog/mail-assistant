@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # Most counters the in-process limiter holds per window; a new key over it is refused (SEC-06).
     rate_max_counters: int = Field(default=10000, gt=0)
     body_limit_bytes: int = 8192
+    # Own body limit per route, keyed "METHOD /path"; a route that is not listed has ``body_limit_bytes`` (MC-12).
+    # The full category list (50 categories, 500-character descriptions) is about 27 KB.
+    route_body_limits: dict[str, int] = Field(default_factory=lambda: {"PUT /api/categories": 32768})
     code_ttl_seconds: int = 600
     resend_cooldown_seconds: int = 60
     codes_per_hour: int = 5
