@@ -6,6 +6,7 @@ one exception is ``draft.body``, the reply Marco has written himself, which is n
 
 from __future__ import annotations
 
+import uuid  # SQLAlchemy reads the annotations at runtime
 from datetime import date, datetime  # noqa: TC003  # SQLAlchemy reads the annotations at runtime
 
 from sqlalchemy import (
@@ -17,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Identity,
     Index,
     Integer,
@@ -25,6 +27,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    Uuid,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -320,3 +323,205 @@ class WebNoticeToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     burst_id: Mapped[str] = mapped_column(String(64), index=True)  # the same for every notice of one burst
     first_version: Mapped[int] = mapped_column(Integer)  # the first change of the burst
+
+
+# --- Mail categories, list half (INT-004, ADR-0042, ADR-0043): schema ``categories``, migration 0014 ------------------
+# Every table has the mailbox id first in its key. The nil UUID (``OTHER_ID``) stands for the built-in "Other".
+OTHER_ID = uuid.UUID(int=0)
+
+
+class CategoryMailbox(Base):
+    """The id of a mailbox and nothing else: the foreign-key target of every categories table."""
+
+    __tablename__ = "mailbox"
+    __table_args__ = ({"schema": "categories"},)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+
+
+class CategoryIdentity(Base):
+    """The stable id of a category, kept across renames."""
+
+    __tablename__ = "category_identity"
+    __table_args__ = ({"schema": "categories"},)
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class ListVersion(Base):
+    """One version of the category list; ``created_*`` are derived by a trigger, never supplied (ADR-0030)."""
+
+    __tablename__ = "list_version"
+    __table_args__ = (
+        CheckConstraint("version >= 1", name="ck_list_version_positive"),
+        CheckConstraint("created_via IN ('telegram', 'web', 'operator')", name="ck_list_version_via"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    created_via: Mapped[str] = mapped_column(String(16))
+    created_by: Mapped[str] = mapped_column(CHAR(64))
+
+
+class Category(Base):
+    """A category of one list version. Insert-only: a change of the list is a new version."""
+
+    __tablename__ = "category"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["mailbox_id", "version"],
+            ["categories.list_version.mailbox_id", "categories.list_version.version"],
+            name="fk_category_list_version",
+        ),
+        ForeignKeyConstraint(
+            ["mailbox_id", "id"],
+            ["categories.category_identity.mailbox_id", "categories.category_identity.id"],
+            name="fk_category_identity",
+        ),
+        UniqueConstraint("mailbox_id", "version", "position", name="uq_category_position"),
+        UniqueConstraint("mailbox_id", "version", "name", name="uq_category_name"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 40", name="ck_category_name_length"),
+        CheckConstraint("char_length(description) <= 500", name="ck_category_description_length"),
+        CheckConstraint("position BETWEEN 0 AND 49", name="ck_category_position"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    position: Mapped[int] = mapped_column(SmallInteger)
+
+
+class ListAudit(Base):
+    """Who changed the list, from which list to which; written by a deferred SECURITY DEFINER trigger."""
+
+    __tablename__ = "list_audit"
+    __table_args__ = ({"schema": "categories"},)
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    old_list: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    new_list: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    channel: Mapped[str] = mapped_column(String(16))
+    actor_digest: Mapped[str] = mapped_column(CHAR(64))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class CategoryCount(Base):
+    """The number of mails per category, replaced each cycle by the agent; ``OTHER_ID`` is "Other"."""
+
+    __tablename__ = "category_count"
+    __table_args__ = (CheckConstraint("mail_count >= 0", name="ck_category_count_positive"), {"schema": "categories"})
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    category_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    mail_count: Mapped[int] = mapped_column(Integer)
+    counted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class GmailLabel(Base):
+    """The name of an ``Assistant/`` label that exists in Gmail (names only), replaced each cycle."""
+
+    __tablename__ = "gmail_label"
+    __table_args__ = ({"schema": "categories"},)
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class CategoryLabel(Base):
+    """The Gmail label of a category, by the stable category id."""
+
+    __tablename__ = "category_label"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["mailbox_id", "category_id"],
+            ["categories.category_identity.mailbox_id", "categories.category_identity.id"],
+            name="fk_category_label_identity",
+        ),
+        UniqueConstraint("mailbox_id", "label_id", name="uq_category_label_label"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    category_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    label_id: Mapped[str] = mapped_column(String(64))
+    label_name: Mapped[str] = mapped_column(Text)
+
+
+class Filing(Base):
+    """Which category a mail was filed under with which list version; no sender and no subject (AC-22)."""
+
+    __tablename__ = "filing"
+    __table_args__ = (Index("ix_filing_filed_at", "mailbox_id", "filed_at"), {"schema": "categories"})
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    list_version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    filed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class ListCursor(Base):
+    """The last list version whose Gmail effects are done; advanced only after them."""
+
+    __tablename__ = "list_cursor"
+    __table_args__ = (CheckConstraint("last_version >= 0", name="ck_list_cursor_positive"), {"schema": "categories"})
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    last_version: Mapped[int] = mapped_column(Integer)
+    advanced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class Rejection(Base):
+    """A mail the user left out of a plan; kept until the list changes again."""
+
+    __tablename__ = "rejection"
+    __table_args__ = ({"schema": "categories"},)
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    list_version: Mapped[int] = mapped_column(Integer)
+    rejected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class TelegramAction(Base):
+    """A button of a Telegram message: only the hash of its nonce, single use by compare-and-set."""
+
+    __tablename__ = "telegram_action"
+    __table_args__ = (
+        CheckConstraint("kind IN ('undo', 'cancel', 'move_back', 'lock')", name="ck_telegram_action_kind"),
+        Index("ix_telegram_action_expires_at", "mailbox_id", "expires_at"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    nonce_hash: Mapped[str] = mapped_column(CHAR(64), primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger)
+    kind: Mapped[str] = mapped_column(String(16))
+    target: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ApplyConfig(Base):
+    """The apply threshold and delay of a mailbox; only the agent writes it, from its deployment configuration."""
+
+    __tablename__ = "apply_config"
+    __table_args__ = (
+        CheckConstraint("threshold >= 1", name="ck_apply_config_threshold"),
+        CheckConstraint("delay_minutes >= 0", name="ck_apply_config_delay"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    threshold: Mapped[int] = mapped_column(Integer)
+    delay_minutes: Mapped[int] = mapped_column(Integer)

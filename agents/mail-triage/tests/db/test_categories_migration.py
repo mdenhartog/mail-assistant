@@ -1,5 +1,5 @@
 """U-mail-categories-03, criterion 1: the categories revision goes up and down and leaves the other schemas alone."""
-# ruff: noqa: S608  # every statement is a fixed test literal inside a throwaway container, never user input
+# every statement is a fixed test literal inside a throwaway container, never user input
 
 from __future__ import annotations
 
@@ -117,9 +117,9 @@ async def test_given_every_categories_table_when_its_primary_key_is_read_then_th
     )
 
     assert {r["t"] for r in rows} == LIST_TABLES
-    assert {r["t"]: r["first_column"] for r in rows if r["t"] != "mailbox"} == {
-        t: "mailbox_id" for t in LIST_TABLES - {"mailbox"}
-    }
+    assert {r["t"]: r["first_column"] for r in rows if r["t"] != "mailbox"} == dict.fromkeys(
+        LIST_TABLES - {"mailbox"}, "mailbox_id"
+    )
 
 
 async def test_given_the_head_when_the_contract_version_is_read_then_it_is_the_categories_one(
