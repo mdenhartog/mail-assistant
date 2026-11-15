@@ -68,6 +68,7 @@ class FetchedMail:
     has_attachment: bool
     headers: dict[str, str]
     labels: frozenset[str] = field(default_factory=frozenset)
+    auth_results: tuple[str, ...] = ()  # every Authentication-Results value in header order, topmost first (MC-19)
 
 
 class _TextOnly(HTMLParser):
@@ -235,6 +236,9 @@ class GmailReader:
             has_attachment=has_attachment,
             headers=headers,
             labels=frozenset(raw.get("labelIds", [])),
+            auth_results=tuple(
+                h["value"] for h in payload.get("headers", []) if h["name"].title() == "Authentication-Results"
+            ),
         )
 
     def ensure_label(self, name: str) -> str:
