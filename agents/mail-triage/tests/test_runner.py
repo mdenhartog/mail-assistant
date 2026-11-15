@@ -184,6 +184,8 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
             resort_apply=ResortIdle(),
             move_back=ResortIdle(),
             list_sync_seconds=60,
+            refile_report=ResortIdle(),
+            refile_report_hour=6,
             resort_apply_seconds=60,
             heartbeat=tmp_path / "heartbeat",
             interval_seconds=0.01,

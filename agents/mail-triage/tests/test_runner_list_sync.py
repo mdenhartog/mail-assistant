@@ -91,6 +91,8 @@ def make_runner(tmp_path: Path, clock: Clock, sync: object, pipeline: object | N
         resort_apply=ResortIdle(),
         move_back=ResortIdle(),
         list_sync_seconds=CADENCE,
+        refile_report=ResortIdle(),
+        refile_report_hour=6,
         resort_apply_seconds=60,
         heartbeat=tmp_path / "heartbeat",
         interval_seconds=0.01,
