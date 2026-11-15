@@ -40,29 +40,33 @@ class Filed:
 
 @dataclass(frozen=True, slots=True)
 class RefileReport:
-    """The numbers of one run. ``gone`` mails count as filed but are neither re-filed nor in "Other"."""
+    """The numbers of one run. ``gone`` mails count as checked but are neither re-filed nor in "Other".
 
-    filed: int
+    The shares are of the checked mails; when the cap is not reached, that is every mail filed in the period.
+    """
+
+    filed: int  # every mail filed in the period
+    checked: int  # the mails looked at in Gmail: at most the cap, the newest first
     refiled: int
     in_other: int
     gone: int
 
     @property
     def refiled_percent(self) -> float:
-        """Share of the filed mails the user re-filed by hand."""
-        return 100.0 * self.refiled / self.filed if self.filed else 0.0
+        """Share of the checked mails the user re-filed by hand."""
+        return 100.0 * self.refiled / self.checked if self.checked else 0.0
 
     @property
     def other_percent(self) -> float:
-        """Share of the filed mails that sits under "Other" now."""
-        return 100.0 * self.in_other / self.filed if self.filed else 0.0
+        """Share of the checked mails that sits under "Other" now."""
+        return 100.0 * self.in_other / self.checked if self.checked else 0.0
 
 
 class RefileStore(Protocol):
     """``filing``, the category labels and the report audit table."""
 
     async def filings_since(self, since: datetime) -> list[Filed]:
-        """The newest filing of each mail filed since ``since``."""
+        """The newest filing of each mail filed since ``since``, the most recently filed first."""
         ...
 
     async def category_labels(self) -> dict[str, str]:
@@ -89,11 +93,14 @@ class RefileMailbox(Protocol):
 class RefileReportService:
     """Builds the report, writes it to the log and the audit table."""
 
-    def __init__(self, store: RefileStore, mailbox: RefileMailbox, *, now: Callable[[], datetime]) -> None:
-        """Wire the store, Gmail and the clock."""
+    def __init__(
+        self, store: RefileStore, mailbox: RefileMailbox, *, now: Callable[[], datetime], max_checked: int
+    ) -> None:
+        """Wire the store, Gmail, the clock and the most mails one run may fetch from Gmail."""
         self._store = store
         self._mailbox = mailbox
         self._now = now
+        self._max_checked = max_checked
 
     async def run_once(self) -> RefileReport:
         """Compare every filing of the period with the mail's current label and record the counts."""
@@ -102,7 +109,8 @@ class RefileReportService:
         names = await asyncio.to_thread(self._mailbox.label_names)
         other_ids = {label_id for label_id, name in names.items() if name == OTHER_LABEL}
         refiled = in_other = gone = 0
-        for entry in filings:
+        checked = filings[: self._max_checked]  # the store hands the newest first
+        for entry in checked:
             mail = await asyncio.to_thread(self._mailbox.fetch, entry.message_id)
             if mail is None:
                 gone += 1
@@ -111,11 +119,12 @@ class RefileReportService:
             in_other += bool(held & other_ids)
             was = recorded.get(entry.category_id)
             refiled += was is not None and held != {was}  # a category without a label cannot be compared
-        report = RefileReport(filed=len(filings), refiled=refiled, in_other=in_other, gone=gone)
+        report = RefileReport(filed=len(filings), checked=len(checked), refiled=refiled, in_other=in_other, gone=gone)
         await self._store.record_report(report)
         logger.info(
-            "refile report filed=%d refiled=%d (%.1f%%) in_other=%d (%.1f%%) gone=%d",
+            "refile report filed=%d checked=%d refiled=%d (%.1f%%) in_other=%d (%.1f%%) gone=%d",
             report.filed,
+            report.checked,
             report.refiled,
             report.refiled_percent,
             report.in_other,
