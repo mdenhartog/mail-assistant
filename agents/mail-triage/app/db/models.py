@@ -143,6 +143,7 @@ class PollState(Base):
     history_id: Mapped[str | None] = mapped_column(String(32))
     telegram_update_id: Mapped[int | None] = mapped_column(BigInteger)
     web_notice_version: Mapped[int | None] = mapped_column(Integer)  # last announced web change (ADR-0033)
+    list_notice_version: Mapped[int | None] = mapped_column(Integer)  # last announced category list version (0017)
 
 
 class CatchupState(Base):
