@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { expectNoAxeViolations } from "@/test/axe";
-import { INVOICES, json } from "@/test/categories";
+import { INVOICES, NEWS, json } from "@/test/categories";
 import { GONE_ID, NO_PLAN, OTHER_ID, PLAN_ID, READY, itemsPage, wirePlan } from "@/test/plan";
 import { renderReview } from "@/test/review";
 
@@ -122,7 +122,14 @@ describe("Review moves: deciding (AC-13)", () => {
 });
 
 describe("Review moves: approving (AC-13, AC-55)", () => {
-  const APPROVED = { ...READY, counts: { items: 82, pending: 2, approved: 80, rejected: 0 } };
+  const APPROVED = {
+    ...READY,
+    groups: [
+      { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 80 },
+      { from: NEWS.id, to: INVOICES.id, count: 2, approved: 0 },
+    ],
+    counts: { items: 82, pending: 2, approved: 80, rejected: 0 },
+  };
 
   async function approvedPlan(): Promise<ReturnType<typeof wirePlan>> {
     let decided = false;
@@ -159,6 +166,25 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
     const buttons = within(dialog).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Not yet", "Move 80 mails, labels only"]);
     expect(buttons[0]).toHaveFocus();
+  });
+
+  it("given groups approved in different sessions, when the page is loaded again, then the summary shows the exact count per group (AC-13)", async () => {
+    const later = {
+      ...READY,
+      groups: [
+        { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 50 },
+        { from: NEWS.id, to: INVOICES.id, count: 2, approved: 1 },
+      ],
+      counts: { items: 82, pending: 31, approved: 51, rejected: 0 },
+    };
+    wirePlan({ plan: () => json(later) });
+    await renderReview();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Move 51 mails, labels only" }));
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Move 51 mails?" });
+    expect(within(dialog).getByText("Other to Invoices: 50 mails")).toBeInTheDocument();
+    expect(within(dialog).getByText("Newsletters to Invoices: 1 mail")).toBeInTheDocument();
   });
 
   it("given the summary is confirmed, then the plan and its count are approved and the scheduled state shows", async () => {
@@ -203,24 +229,51 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
 });
 
 describe("Review moves: building (AC-43)", () => {
-  const BUILDING = { ...READY, state: "building", groups: [], progress: { checked: 340, cap: 2000, unclear: 0 } };
+  const PROGRESS = { checked: 340, cap: 5000, unclear: 0, estimate: 2000, notLookedAt: 0 };
+  const BUILDING = { ...READY, state: "building", groups: [], progress: PROGRESS };
 
-  it("given a plan being built, then it says how far it is and that nothing moves yet", async () => {
+  it("given a plan being built, then it says how far it is of about how many and that nothing moves yet", async () => {
     wirePlan({ plan: () => json(BUILDING) });
     await renderReview();
 
-    expect(await screen.findByText("340 of up to 2000 checked, nothing moves yet.")).toBeInTheDocument();
+    expect(await screen.findByText("340 of about 2000 checked, nothing moves yet.")).toBeInTheDocument();
     const bar = screen.getByRole("progressbar", { name: "Mails checked" });
     expect(bar).toHaveAttribute("aria-valuenow", "340");
+    expect(bar).toHaveAttribute("aria-valuemax", "2000");
     expect(screen.queryByRole("button", { name: /Approve group/ })).not.toBeInTheDocument();
   });
 
-  it("given the build reached its cap, then the ready plan says older mail was not looked at", async () => {
-    wirePlan({ plan: () => json({ ...READY, progress: { checked: 5000, cap: 5000, unclear: 3 } }) });
+  it("given the checked mails pass the estimate, then the text never names fewer mails in total than were checked", async () => {
+    wirePlan({ plan: () => json({ ...BUILDING, progress: { ...PROGRESS, checked: 2100 } }) });
+    await renderReview();
+
+    expect(await screen.findByText("2100 of about 2100 checked, nothing moves yet.")).toBeInTheDocument();
+  });
+
+  it("given no estimate yet, then it says how many are checked so far, with no bar", async () => {
+    wirePlan({ plan: () => json({ ...BUILDING, progress: { ...PROGRESS, estimate: null } }) });
+    await renderReview();
+
+    expect(await screen.findByText("340 checked so far, nothing moves yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  });
+
+  it("given the build reached its cap, then the ready plan says how many older mails were not looked at", async () => {
+    const progress = { checked: 5000, cap: 5000, unclear: 3, estimate: 7400, notLookedAt: 2400 };
+    wirePlan({ plan: () => json({ ...READY, progress }) });
     await renderReview();
 
     expect(await screen.findByText("Older mail was not looked at.")).toBeInTheDocument();
+    expect(screen.getByText(/2400 older mails were not looked at and stay where they are/)).toBeInTheDocument();
     expect(screen.getByText(/3 mails with two Assistant labels are left out/)).toBeInTheDocument();
+  });
+
+  it("given no mail was left out, then there is no not-looked-at banner", async () => {
+    wirePlan();
+    await renderReview();
+
+    await screen.findByRole("button", { name: /^Other to Invoices/ });
+    expect(screen.queryByText("Older mail was not looked at.")).not.toBeInTheDocument();
   });
 });
 

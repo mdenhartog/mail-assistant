@@ -10,10 +10,10 @@ export const GONE_ID = "9a9a9a9a-1b1e-4c52-9d0e-0a6a1b1c00ff";
 export const READY = {
   id: PLAN_ID,
   state: "ready",
-  progress: { checked: 900, cap: 5000, unclear: 0 },
+  progress: { checked: 900, cap: 5000, unclear: 0, estimate: 2000, notLookedAt: 0 },
   groups: [
-    { from: OTHER_ID, to: INVOICES.id, count: 80 },
-    { from: NEWS.id, to: INVOICES.id, count: 2 },
+    { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 0 },
+    { from: NEWS.id, to: INVOICES.id, count: 2, approved: 0 },
   ],
   counts: { items: 82, pending: 82, approved: 0, rejected: 0 },
   applyAfter: null,
