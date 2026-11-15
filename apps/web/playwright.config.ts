@@ -15,6 +15,7 @@ const SMOKE = /smoke\.spec\.ts/;
 const GXP = "**/*.gxp.spec.ts"; // GAMP 5 scenarios run via playwright.gxp.config.ts
 const UI_STATES = /ui-states\.spec\.ts/;
 const JOURNEY = /journey\.spec\.ts/;
+const CATEGORIES = /categories\.spec\.ts/;
 
 // `ui-states` renders every login and settings state against a stubbed API (route.fulfill, no backend, no setup)
 // on a local preview of the built app. The web job runs it with `--project=ui-states`; the prod-like job sets
@@ -31,6 +32,9 @@ export default defineConfig({
   reporter: process.env.CI ? [["html", { open: "never" }], ["github"]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "https://mail-assistant.localhost:8443",
+    // Off unless asked for: a run on a machine whose browser does not trust the private CA (a Windows laptop without the
+    // user's certutil step) sets E2E_IGNORE_HTTPS_ERRORS=1 for the throwaway stack. CI never sets it.
+    ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === "1",
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },
@@ -48,11 +52,11 @@ export default defineConfig({
       dependencies: ["smoke-375"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, storageState: STORAGE_STATE },
     },
-    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
-    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
+    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
+    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
     {
       name: "desktop",
-      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY],
+      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
@@ -64,6 +68,15 @@ export default defineConfig({
             testMatch: JOURNEY,
             fullyParallel: false,
             dependencies: ["setup", "smoke-1280", "mobile", "tablet", "desktop"],
+            use: { ...devices["Desktop Chrome"] },
+          },
+          // `categories` (U-mail-categories-11) also resets the sign-in tables and, by owner SQL, the category list, so it
+          // runs after `journey` and by itself.
+          {
+            name: "categories",
+            testMatch: CATEGORIES,
+            fullyParallel: false,
+            dependencies: ["setup", "journey"],
             use: { ...devices["Desktop Chrome"] },
           },
         ]),

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const REPOSITORY = fileURLToPath(new URL("../../../../", import.meta.url));
 
 /** Runs SQL as the owner and returns the unaligned, tuples-only output (one line per row, `|` between columns). */
-function sql(statements: string): string {
+export function sql(statements: string): string {
   return execFileSync(
     "docker",
     [
