@@ -540,6 +540,9 @@ class Plan(Base):
             name="ck_plan_state",
         ),
         CheckConstraint("checked_count >= 0 AND cap >= 1 AND unclear_count >= 0", name="ck_plan_counts"),
+        CheckConstraint(
+            "(estimate_total IS NULL OR estimate_total >= 0) AND not_looked_at >= 0", name="ck_plan_progress"
+        ),
         Index(
             "uq_plan_one_open",
             "mailbox_id",
@@ -558,6 +561,8 @@ class Plan(Base):
     checked_count: Mapped[int] = mapped_column(Integer, server_default="0")
     cap: Mapped[int] = mapped_column(Integer, server_default="5000")
     unclear_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    estimate_total: Mapped[int | None] = mapped_column(Integer)  # estimated mails in scope: "N of about M" (0016)
+    not_looked_at: Mapped[int] = mapped_column(Integer, server_default="0")  # in scope but past the cap (D15, 0016)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
