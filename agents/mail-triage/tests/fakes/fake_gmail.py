@@ -175,6 +175,20 @@ class FakeGmail:
         if name.lower() in taken:
             raise http_error(409, "Label name exists or conflicts", "labelNameExists")
 
+    def matches_query(self, query: str, mail: _Mail) -> bool:
+        """The one search the agent makes: ``in:inbox OR label:assistant``; spam and trash are never searched."""
+        if {"SPAM", "TRASH"} & mail.labels:
+            return False
+        names = {self.label_table[i] for i in mail.labels}
+        tests = {
+            "in:inbox": "INBOX" in mail.labels,
+            "label:assistant": any(n.startswith(ASSISTANT_PREFIX) for n in names),
+        }
+        terms = [term.strip() for term in query.split(" OR ")]
+        if not all(term in tests for term in terms):
+            raise ValueError(f"the Gmail double does not understand the query {query!r}")
+        return any(tests[term] for term in terms)
+
     def get_mail(self, mid: str) -> _Mail:
         try:
             return self.mail_table[mid]
@@ -265,10 +279,20 @@ class _Messages:
 
         def action() -> dict[str, Any]:
             wanted = set(kw.get("labelIds", []))
+            query = kw.get("q")
             found = [
-                {"id": m.mid, "threadId": f"t-{m.mid}"} for m in reversed(g.mail_table.values()) if wanted <= m.labels
+                {"id": m.mid, "threadId": f"t-{m.mid}"}
+                for m in reversed(g.mail_table.values())
+                if wanted <= m.labels and (query is None or g.matches_query(str(query), m))
             ]
-            return {"messages": found} if found else {}
+            size, start = kw.get("maxResults"), int(kw.get("pageToken", 0))
+            page = found[start : start + size] if size else found
+            answer: dict[str, Any] = {"messages": page} if page else {}
+            if size and start + size < len(found):
+                answer["nextPageToken"] = str(start + size)  # an offset: stable while the mailbox does not change
+            if query is not None:
+                answer["resultSizeEstimate"] = len(found)
+            return answer
 
         return g.request("messages.list", action)
 
