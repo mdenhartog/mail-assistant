@@ -242,3 +242,102 @@ test.describe("reduced motion", () => {
     });
   }
 });
+
+const REVIEW_FOCUS_PAGES = ["review: ready", "review: group open", "review: summary", "review: applied"];
+
+for (const viewport of [VIEWPORTS[0], VIEWPORTS[3]]) {
+  for (const scheme of SCHEMES) {
+    test.describe(`focus rings of the review at ${String(viewport.width)} px, ${scheme}`, () => {
+      for (const name of REVIEW_FOCUS_PAGES) {
+        test(name, async ({ page }) => {
+          await page.setViewportSize(viewport);
+          await page.emulateMedia({ colorScheme: scheme });
+          await STATES.find((state) => state.name === name)?.open(page);
+          await settle(page);
+
+          const report = await focusRingReport(page);
+          expect(report.problems, `tab stops: ${report.stops.join(", ")}`).toEqual([]);
+        });
+      }
+    });
+  }
+}
+
+test.describe("the sticky bar of the review never covers the focused checkbox (AC-23)", () => {
+  for (const viewport of VIEWPORTS) {
+    for (const doubled of [false, true]) {
+      test(`${String(viewport.width)} px${doubled ? " at 200 % text" : ""}`, async ({ page }) => {
+        await page.setViewportSize(viewport);
+        if (doubled) {
+          await useDoubleText(page);
+        }
+        await STATES.find((state) => state.name === "review: group open")?.open(page);
+        await settle(page);
+
+        const boxes = page.getByRole("checkbox");
+        const total = await boxes.count();
+        for (const index of [0, 3, 9, total - 1]) {
+          await boxes.nth(index).focus();
+          await page.keyboard.press("Space");
+          const covered = await page.evaluate(() => {
+            const bar = document.querySelector("[data-action-bar]")?.getBoundingClientRect();
+            const box = document.activeElement?.getBoundingClientRect();
+            return bar && box ? { covered: box.bottom > bar.top && box.top < bar.bottom, bar: [bar.top, bar.bottom], box: [box.top, box.bottom], scrollY: window.scrollY, height: window.innerHeight } : null;
+          });
+          expect(covered?.covered, `checkbox ${String(index)} is under the bar: ${JSON.stringify(covered)}`).toBe(false);
+        }
+      });
+    }
+  }
+});
+
+test.describe("the approve summary", () => {
+  test("Tab stays inside, Escape returns focus to the bar button and nothing is approved", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const state = STATES.find((candidate) => candidate.name === "review: summary");
+    await state?.open(page);
+
+    const dialog = page.getByRole("alertdialog", { name: "Move 20 mails?" });
+    await expect(page.getByRole("button", { name: "Not yet" })).toBeFocused();
+    for (let press = 0; press < 5; press += 1) {
+      await page.keyboard.press("Tab");
+      expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null)).toBe(true);
+    }
+    await page.keyboard.press("Escape");
+
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("button", { name: "Move 20 mails, labels only" })).toBeFocused();
+  });
+
+  test("the confirm button is the normal one and the safe button comes first in the DOM", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await STATES.find((candidate) => candidate.name === "review: summary")?.open(page);
+
+    const names = await page.getByRole("alertdialog").getByRole("button").allTextContents();
+    expect(names).toEqual(["Not yet", "Move 20 mails, labels only"]);
+  });
+});
+
+test("a group opens and closes with the keyboard and the selection is announced once, after a pause", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await STATES.find((state) => state.name === "review: ready")?.open(page);
+
+  const toggle = page.getByRole("button", { name: /^Other to Invoices/ });
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const first = page.getByRole("checkbox").first();
+  await first.focus();
+  await page.keyboard.press("Space");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.getByRole("checkbox").nth(1).focus();
+  await page.keyboard.press("Space");
+
+  const live = page.locator('[aria-live="polite"]');
+  await expect(live).toHaveCount(1);
+  await expect(live).toHaveText("2 mails selected");
+  await toggle.focus();
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});

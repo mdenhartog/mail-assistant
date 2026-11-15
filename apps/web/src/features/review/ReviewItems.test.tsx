@@ -159,6 +159,20 @@ describe("Review moves: keyboard and screen reader (AC-23)", () => {
     });
   });
 
+  it("given nothing is ticked, then the selection buttons are already there and disabled, so ticking a box moves no row", async () => {
+    wirePlan({ items: () => json(itemsPage(1, 5, false)) });
+    await renderReview();
+    await openFirstGroup();
+    const boxes = await screen.findAllByRole("checkbox");
+
+    expect(screen.getByText("0 of 80 selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve selected (0)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Keep selected in place (0)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Clear selection" })).toBeDisabled();
+    await userEvent.click(boxes[0] as HTMLElement);
+    expect(screen.getByRole("button", { name: "Approve selected (1)" })).toBeEnabled();
+  });
+
   it("shows how many of the group are selected next to the select-all button", async () => {
     wirePlan({ items: () => json(itemsPage(1, 5, false)) });
     await renderReview();
