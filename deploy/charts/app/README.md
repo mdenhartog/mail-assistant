@@ -63,12 +63,23 @@ The database host name must be in the server certificate. The CA that signed it 
 ## Environment gates (U-web-settings-57)
 
 - `environment` is `local`, `staging` or `production` and defaults to `production`. Production values are refused by the schema unless `certAlert.enabled` is true and `api.image.digest` and `web.image.digest` are set (`sha256:` plus 64 hex characters).
-- `api.env` and `web.env` refuse `APP_ENVIRONMENT`, `APP_DATABASE_*`, `APP_TRUSTED_PROXY_*` and every limit key of the api (`APP_*_PER_*`, `APP_CATEGORIES_MAILBOX_ID`, `APP_ROUTE_BODY_LIMITS`, `APP_CODES_PER_HOUR`, `APP_MAX_ATTEMPTS`, `APP_RATE_*`, `APP_OPEN_LOGIN_*`, `APP_LIVE_*`, `APP_LOGIN_REQUESTS_*` and the other limits in `backend/app/config.py`), in any letter case: the schema and `workloads.yaml` both fail naming the key. The chart renders `APP_ENVIRONMENT=production` for every `environment` (RT2-08).
-- `ingress.controller` is required and the schema allows `traefik` only (ADR-0040). The chart renders Traefik objects, no annotation text: a `Middleware` with `headers.stsSeconds: 31536000` (the only HSTS source, no `includeSubDomains`, no preload), a `Middleware` with `buffering.maxRequestBodyBytes: 8192`, a `redirectScheme` `Middleware` on a second Ingress at the `web` entry point (`ingress.httpsPort` names the HTTPS port when it is not 443) and a `TLSOption` with `minVersion: VersionTLS12`. The Ingress references them by `<namespace>-<name>@kubernetescrd`. Traefik and its CRDs (`traefik.io/v1alpha1`) must be installed; `kubeconform` needs the CRD catalog (see Checks).
+- `api.env` and `web.env` refuse `APP_ENVIRONMENT`, `APP_DATABASE_*`, `APP_TRUSTED_PROXY_*` and every limit key of the api (`APP_*_PER_*`, `APP_CATEGORIES_MAILBOX_ID`, `APP_ROUTE_BODY_LIMITS`, `APP_BODY_LIMIT_BYTES`, `APP_CODES_PER_HOUR`, `APP_MAX_ATTEMPTS`, `APP_RATE_*`, `APP_OPEN_LOGIN_*`, `APP_LIVE_*`, `APP_LOGIN_REQUESTS_*` and the other limits in `backend/app/config.py`), in any letter case: the schema and `workloads.yaml` both fail naming the key. `APP_BODY_LIMIT_BYTES` (8192) and `APP_ROUTE_BODY_LIMITS` (`PUT /api/categories` at 32768) are refused because the api and the ingress must enforce the same two body limits (see Request body limits): an env value that raises one in the api only would be cut off by the ingress, and one that lowers it would silently break the list save. `APP_CATEGORIES_MAILBOX_ID` is refused because it names the mailbox the categories belong to and is not a per-deployment choice. The chart renders `APP_ENVIRONMENT=production` for every `environment` (RT2-08).
+- `ingress.controller` is required and the schema allows `traefik` only (ADR-0040). The chart renders Traefik objects, no annotation text: a `Middleware` with `headers.stsSeconds: 31536000` (the only HSTS source, no `includeSubDomains`, no preload), a `Middleware` with `buffering.maxRequestBodyBytes: 8192` (every route but the list save), a second one with 32768 on its own `IngressRoute`, a `redirectScheme` `Middleware` on a second Ingress at the `web` entry point (`ingress.httpsPort` names the HTTPS port when it is not 443) and a `TLSOption` with `minVersion: VersionTLS12`. The Ingress references them by `<namespace>-<name>@kubernetescrd`. Traefik and its CRDs (`traefik.io/v1alpha1`) must be installed; `kubeconform` needs the CRD catalog (see Checks).
 - The network policy peer and `api.config.trustedProxyCidrs` name the Traefik pods (namespace `traefik`, label `app.kubernetes.io/name: traefik`).
 - A value that must be supplied is the string `REQUIRED` in `deploy/envs/production/values.yaml`; the render stops and names it.
 - The tests in `agents/mail-triage/tests/infra/test_ingress_gates.py` render the environment values and name what is missing: the HSTS directive, the redirect, the TLS minimum of 1.2 or the body cap.
 - Base images in both Dockerfiles are pinned with `@sha256`; Renovate keeps the pins current (`docker:pinDigests`).
+
+## Request body limits
+
+Two outer limits, both `buffering` Middlewares of Traefik (ADR-0040); a larger body gets 413 before it reaches the api.
+
+| Limit | Value | Applies to | Chart value |
+| --- | --- | --- | --- |
+| default | 8192 bytes (8 KB) | every route (`/api`, `/auth`, `/`), set on the Ingress (ADR-0034, W-9) | `ingress.bodyLimitBytes` |
+| list save | 32768 bytes (32 KB) | `PUT /api/categories` only (MC-12) | `ingress.categoriesBodyLimitBytes` |
+
+Reason: a full category list is about 27 KB and does not fit in 8 KB, but a higher global cap would give every other route a larger body to buffer. The list save therefore has its own `IngressRoute` (`<release>-categories`) that matches the exact method and path (``Host(...) && Method(`PUT`) && Path(`/api/categories`)``, priority 1000). `POST /api/categories`, `/api/categories/` and any other `/api` path do not match it and keep 8192. The route uses the same HSTS Middleware, TLS option and certificate secret as the Ingress; plain HTTP is redirected by the redirect Ingress for every path. The api enforces the same two limits itself (U-04). Both values must be at least 1 (schema).
 
 ## Checks
 

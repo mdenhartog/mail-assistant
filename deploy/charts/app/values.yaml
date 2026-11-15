@@ -55,6 +55,9 @@ ingress:
   hsts: true # only true is accepted; max-age=31536000, no includeSubDomains, no preload
   # The HTTPS port clients are sent to by the redirect, when it is not 443 (kind maps 8443). Empty is the default port.
   httpsPort: ""
+  # Outer request body caps (buffering Middlewares). The api enforces the same two limits itself (U-04).
+  bodyLimitBytes: 8192 # every route except the list save (ADR-0034, W-9)
+  categoriesBodyLimitBytes: 32768 # PUT /api/categories only: a full list is about 27 KB (MC-12)
 
 # One api copy (ADR-0034) and a budget that allows one disruption, so a node drain is not blocked. maxUnavailable XOR
 # minAvailable; minAvailable must stay below the replicas (schema and template), or no pod could ever be evicted.

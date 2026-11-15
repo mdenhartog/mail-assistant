@@ -395,6 +395,16 @@
           "type": "string",
           "pattern": "^([0-9]{1,5})?$",
           "description": "HTTPS port of the redirect target; empty is the default port."
+        },
+        "bodyLimitBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Outer request body cap of every route except the list save (ADR-0034)."
+        },
+        "categoriesBodyLimitBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Outer request body cap of PUT /api/categories only (MC-12)."
         }
       }
     },

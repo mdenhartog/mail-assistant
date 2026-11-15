@@ -99,8 +99,8 @@ def ingress_gate_findings(docs: list[dict[str, Any]]) -> list[str]:
         missing.append(f"a TLS minimum of 1.2 (minVersion {versions!r} allows an older version)")
 
     caps = [m["buffering"].get("maxRequestBodyBytes") for m in middlewares if "buffering" in m]
-    if caps != [8192]:
-        missing.append(f"a body limit of 8192 bytes (buffering.maxRequestBodyBytes, found {caps!r})")
+    if sorted(caps) != [8192, 32768]:
+        missing.append(f"the body limits of 8192 and 32768 bytes (buffering.maxRequestBodyBytes, found {caps!r})")
     return missing
 
 
@@ -152,8 +152,8 @@ HSTS_BY_HAND = {"Strict-Transport-Security": "max-age=1"}
         ("Middleware", ("spec", "headers", "stsSeconds"), 300, "max-age of 31536000"),
         ("Middleware", ("spec", "headers", "customResponseHeaders"), HSTS_BY_HAND, "exactly one HSTS directive"),
         ("Middleware", ("spec", "redirectScheme"), DELETE, "HTTP to HTTPS redirect"),
-        ("Middleware", ("spec", "buffering"), DELETE, "body limit of 8192"),
-        ("Middleware", ("spec", "buffering", "maxRequestBodyBytes"), 9000, "body limit of 8192"),
+        ("Middleware", ("spec", "buffering"), DELETE, "body limits of 8192 and 32768"),
+        ("Middleware", ("spec", "buffering", "maxRequestBodyBytes"), 9000, "body limits of 8192 and 32768"),
         ("TLSOption", ("spec", "minVersion"), "VersionTLS11", "TLS minimum of 1.2"),
         ("TLSOption", ("spec", "minVersion"), DELETE, "a TLS minimum"),
         ("Ingress", ("metadata", "annotations", WEB_ENTRYPOINT), "websecure", "Ingress on the web entry point"),
