@@ -218,6 +218,17 @@ class _Labels:
         g = self._g
         return g.request("labels.list", lambda: {"labels": [{"id": i, "name": n} for i, n in g.label_table.items()]})
 
+    def get(self, *, id: str, **kw: Any) -> _Request:  # noqa: A002
+        g = self._g
+
+        def action() -> dict[str, Any]:
+            if id not in g.label_table:
+                raise http_error(404, "Requested entity was not found.", "notFound")
+            total = sum(1 for m in g.mail_table.values() if id in m.labels)
+            return {"id": id, "name": g.label_table[id], "messagesTotal": total}
+
+        return g.request("labels.get", action)
+
     def create(self, *, body: dict[str, Any], **kw: Any) -> _Request:
         g = self._g
 

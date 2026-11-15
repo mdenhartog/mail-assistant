@@ -116,7 +116,8 @@ def _text_of(parts: list[dict[str, Any]]) -> str:
     return ""
 
 
-def _retryable(error: HttpError) -> bool:
+def retryable(error: HttpError) -> bool:
+    """Whether Gmail asked us to slow down or failed on its side, so the call may be repeated."""
     status = error.resp.status
     if status == HTTP_RATE_LIMITED or status >= HTTP_SERVER_ERROR:
         return True
@@ -155,7 +156,7 @@ class GmailReader:
             try:
                 return request.execute()
             except HttpError as error:
-                if attempt == MAX_ATTEMPTS - 1 or not _retryable(error):
+                if attempt == MAX_ATTEMPTS - 1 or not retryable(error):
                     raise
                 self._sleep(BACKOFF_SECONDS * 2**attempt)
         raise AssertionError("unreachable")  # pragma: no cover

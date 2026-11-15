@@ -1,4 +1,4 @@
-"""U-mail-categories-06, criteria 4 and 5 (AC-28, ADR-0046 item 6): the resort adapter has exactly the allowed operations.
+"""U-mail-categories-06, criteria 4 and 5 (AC-28, ADR-0046 item 6): the resort adapter allows only listed operations.
 
 The allow-list lives in this test on purpose: adding a public operation to the adapter fails here until a person
 changes the list, with the ADR in hand. Gmail's own rules are modelled by ``FakeGmail`` from knowledge of the API, not
@@ -81,7 +81,7 @@ def test_given_a_new_name_that_a_label_already_has_when_renamed_then_it_is_repor
     gmail.add_label("Assistant/Invoices")
 
     with pytest.raises(LabelNameTaken):
-        resort(gmail).rename_label(label, "assistant/invoices")
+        resort(gmail).rename_label(label, "Assistant/INVOICES")
 
     assert gmail.label_table[label] == "Assistant/Bills"
 
@@ -115,7 +115,9 @@ def test_given_a_target_name_outside_the_category_rules_when_renamed_then_it_is_
     assert gmail.label_table[label] == "Assistant/Bills"
 
 
-@pytest.mark.parametrize("name", ["Work", "INBOX", "Assistant/", "assistant/x", "Foo/Archive", "Archived", "../Assistant/x"])
+@pytest.mark.parametrize(
+    "name", ["Work", "INBOX", "Assistant/", "assistant/x", "Foo/Archive", "Archived", "../Assistant/x"]
+)
 def test_given_a_name_the_adapter_may_not_create_when_created_then_it_is_refused(name: str) -> None:
     gmail = FakeGmail()
 
@@ -194,7 +196,7 @@ def test_given_labels_when_listed_then_ids_names_and_mail_per_label_come_back() 
     assert adapter.list_mail(gmail.add_label("Assistant/Empty")) == []
 
 
-def test_given_a_label_that_was_renamed_by_the_user_in_gmail_when_the_labels_are_listed_again_then_the_guard_follows() -> None:
+def test_given_a_label_that_was_renamed_by_the_user_in_gmail_when_listed_again_then_the_guard_follows() -> None:
     gmail = FakeGmail()
     label = gmail.add_label("Assistant/Bills")
     mail = gmail.add_mail()
