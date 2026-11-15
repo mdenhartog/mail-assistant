@@ -149,7 +149,7 @@ def test_given_a_ready_plan_older_than_14_days_when_checked_then_it_is_discarded
 
 
 def test_given_a_ready_plan_of_exactly_14_days_or_less_when_checked_then_it_stays_and_the_check_is_refused() -> None:
-    assert PLAN_MAX_AGE == timedelta(days=14)
+    assert timedelta(days=14) == PLAN_MAX_AGE
     for age in (PLAN_MAX_AGE, timedelta(days=1)):
         with pytest.raises(PlanNotExpiredError):
             discard_stale(_plan(PlanState.READY, last_activity_at=NOW - age), now=NOW)
@@ -245,7 +245,9 @@ def test_given_every_plan_item_event_combination_when_transitioned_then_only_the
         assert item_transition(plan_state, item, event) is expected
 
 
-@pytest.mark.parametrize("plan_state", [PlanState.SCHEDULED, PlanState.APPLYING, PlanState.APPLIED, PlanState.CANCELLED])
+@pytest.mark.parametrize(
+    "plan_state", [PlanState.SCHEDULED, PlanState.APPLYING, PlanState.APPLIED, PlanState.CANCELLED]
+)
 @pytest.mark.parametrize("event", [ItemEvent.APPROVE, ItemEvent.REJECT])
 def test_given_a_plan_from_scheduled_on_when_a_decision_is_made_then_decisions_are_frozen(
     plan_state: PlanState, event: ItemEvent
