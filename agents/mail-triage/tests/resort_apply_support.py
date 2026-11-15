@@ -219,7 +219,7 @@ class GmailApplyMailbox(GmailBuildMailbox):
         try:
             call()
         except HttpError as error:
-            if error.resp.status == 404:  # noqa: PLR2004
+            if error.resp.status == 404:
                 raise MailGone from error
             raise
 

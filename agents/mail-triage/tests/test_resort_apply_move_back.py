@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-import uuid
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 
 from app.core.resort_plan import PlanState
 from tests.resort_apply_support import FINANCE, OTHER_ID, TRAVEL, ApplyRig, item
+
+if TYPE_CHECKING:
+    import uuid
 
 
 async def _applied(rig: ApplyRig) -> tuple[str, str, str, uuid.UUID]:
