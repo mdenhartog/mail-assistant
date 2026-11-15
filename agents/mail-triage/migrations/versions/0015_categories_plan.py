@@ -303,6 +303,78 @@ END
 $$
 """
 
+# The approval commit point (ADR-0046, ADR-0047). One locked transaction: the still-pending items become rejections,
+# the approval is recorded, the approvals of the mailbox over the last 24 hours (this one included) are summed and the
+# plan is scheduled for now, or for now plus the delay when the sum is strictly above the threshold. The threshold and
+# the delay are read from apply_config (agent-written); the function takes no parameter for them. A repeated call on a
+# scheduled plan returns its current state.
+_APPROVE_PLAN = r"""
+CREATE FUNCTION categories.approve_plan(p_mailbox text, p_plan uuid, p_count integer)
+RETURNS TABLE (state text, apply_after timestamptz)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_column
+DECLARE
+    v_state text;
+    v_version integer;
+    v_after timestamptz;
+    v_total integer;
+    v_approved integer;
+    v_sum bigint;
+    v_threshold integer;
+    v_delay integer;
+BEGIN
+    SELECT p.state, p.list_version, p.apply_after INTO v_state, v_version, v_after
+      FROM categories.plan p WHERE p.mailbox_id = p_mailbox AND p.id = p_plan FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'the plan is not ready' USING ERRCODE = 'MC409';
+    END IF;
+    IF v_state = 'scheduled' THEN
+        RETURN QUERY SELECT v_state, v_after;
+        RETURN;
+    END IF;
+    IF v_state <> 'ready' THEN
+        RAISE EXCEPTION 'the plan is not ready' USING ERRCODE = 'MC409';
+    END IF;
+    SELECT count(*) INTO v_total FROM categories.plan_item i WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan;
+    IF p_count IS DISTINCT FROM v_total THEN
+        RAISE EXCEPTION 'the plan has changed' USING ERRCODE = 'MC409';
+    END IF;
+    SELECT c.threshold, c.delay_minutes INTO v_threshold, v_delay
+      FROM categories.apply_config c WHERE c.mailbox_id = p_mailbox;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'the apply settings are not ready' USING ERRCODE = 'MC409';
+    END IF;
+
+    UPDATE categories.plan_item i SET decision = 'rejected', state = 'rejected', decided_at = now()
+     WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.decision = 'pending';
+    INSERT INTO categories.rejection (mailbox_id, message_id, list_version, rejected_at)
+    SELECT i.mailbox_id, i.message_id, v_version, now()
+      FROM categories.plan_item i
+     WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.decision = 'rejected'
+    ON CONFLICT (mailbox_id, message_id)
+    DO UPDATE SET list_version = excluded.list_version, rejected_at = excluded.rejected_at;
+
+    SELECT count(*) INTO v_approved
+      FROM categories.plan_item i WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.decision = 'approved';
+    INSERT INTO categories.plan_approval (mailbox_id, plan_id, approved_count, channel, actor_digest, at)
+    VALUES (p_mailbox, p_plan, v_approved,
+            CASE session_user
+                WHEN 'mail_triage_runtime' THEN 'telegram'
+                WHEN 'web_settings_runtime' THEN 'web'
+                ELSE 'operator'
+            END,
+            encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex'), now());
+    SELECT coalesce(sum(a.approved_count), 0) INTO v_sum FROM categories.plan_approval a
+     WHERE a.mailbox_id = p_mailbox AND a.at > now() - interval '24 hours';
+
+    v_after := CASE WHEN v_sum > v_threshold THEN now() + make_interval(mins => v_delay) ELSE now() END;
+    UPDATE categories.plan p SET state = 'scheduled', apply_after = v_after, last_activity_at = now()
+     WHERE p.mailbox_id = p_mailbox AND p.id = p_plan;
+    RETURN QUERY SELECT 'scheduled'::text, v_after;
+END
+$$
+"""
+
 _TRIGGERS = (
     "CREATE TRIGGER plan_state_guard BEFORE UPDATE OF state ON categories.plan "
     "FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION categories.plan_state_guard()",
@@ -316,6 +388,7 @@ _FUNCTIONS = (
     "categories.apply_audit_derive()",
     "categories.move_back_request_check()",
     "categories.record_decision(text, uuid, integer, jsonb, text)",
+    "categories.approve_plan(text, uuid, integer)",
 )
 
 
@@ -323,7 +396,7 @@ def upgrade() -> None:
     """Create the plan tables, the state guard and its trigger."""
     _create_plan_tables()
     _create_audit_tables()
-    for function_sql in (_PLAN_GUARD, _AUDIT_DERIVE, _MOVE_BACK_CHECK, _RECORD_DECISION):
+    for function_sql in (_PLAN_GUARD, _AUDIT_DERIVE, _MOVE_BACK_CHECK, _RECORD_DECISION, _APPROVE_PLAN):
         op.execute(function_sql)
     for statement in _TRIGGERS:
         op.execute(statement)
