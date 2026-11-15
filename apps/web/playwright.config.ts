@@ -16,6 +16,7 @@ const GXP = "**/*.gxp.spec.ts"; // GAMP 5 scenarios run via playwright.gxp.confi
 const UI_STATES = /ui-states\.spec\.ts/;
 const JOURNEY = /journey\.spec\.ts/;
 const CATEGORIES = /categories\.spec\.ts/;
+const REVIEW = /review\.spec\.ts/;
 
 // `ui-states` renders every login and settings state against a stubbed API (route.fulfill, no backend, no setup)
 // on a local preview of the built app. The web job runs it with `--project=ui-states`; the prod-like job sets
@@ -49,11 +50,11 @@ export default defineConfig({
       dependencies: ["smoke-375"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, storageState: STORAGE_STATE },
     },
-    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
-    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
+    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
+    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
     {
       name: "desktop",
-      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES],
+      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
@@ -74,6 +75,14 @@ export default defineConfig({
             testMatch: CATEGORIES,
             fullyParallel: false,
             dependencies: ["setup", "journey"],
+            use: { ...devices["Desktop Chrome"] },
+          },
+          // `review` (U-mail-categories-19) seeds a plan by owner SQL and resets the same tables, so it runs after `categories`.
+          {
+            name: "review",
+            testMatch: REVIEW,
+            fullyParallel: false,
+            dependencies: ["setup", "categories"],
             use: { ...devices["Desktop Chrome"] },
           },
         ]),
