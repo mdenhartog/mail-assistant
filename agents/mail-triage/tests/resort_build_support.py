@@ -94,7 +94,7 @@ class FakeBuildStore:
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
         return frozenset(m for m, v in self.rejections.items() if v == list_version)
 
-    async def record_progress(  # noqa: PLR0913
+    async def record_progress(
         self, plan_id: uuid.UUID, *, item: ItemDraft | None, cursor: str, checked: int, unclear: int
     ) -> bool:
         plan = next(p for p in self.plans if p.plan_id == plan_id)
@@ -167,7 +167,7 @@ class ScriptedJudge:
     verdict: NeedsAttention | None = None
     calls: int = 0
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:  # noqa: ARG002
+    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
         self.calls += 1
         if self.ledger is not None:
             self.ledger.spend(self.cost)

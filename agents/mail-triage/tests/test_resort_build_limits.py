@@ -59,19 +59,18 @@ async def test_several_saves_start_one_build_after_the_debounce() -> None:
     rig = Rig()
     rig.gmail.add_mail(("INBOX",), subject="a")
     await rig.build.run_once()  # the first plan, at the first start
-    rig.store.plans.clear()
-    rig.store.items.clear()
     for _ in range(3):
         rig.store.save_list()
         rig.clock.advance(timedelta(minutes=2))
         assert (await rig.build.run_once()).status is BuildStatus.IDLE
-    assert rig.store.plans == []
+    assert len(rig.store.plans) == 1  # only the first plan, now replaced
+    assert rig.store.plan().state is PlanState.REPLACED
 
     rig.clock.advance(timedelta(minutes=8))
     assert (await rig.build.run_once()).status is BuildStatus.READY
-    assert len(rig.store.plans) == 1
+    assert len(rig.store.plans) == 2
     assert (await rig.build.run_once()).status is BuildStatus.IDLE
-    assert len(rig.store.plans) == 1
+    assert len(rig.store.plans) == 2
 
 
 async def test_a_newer_list_cancels_the_build_without_half_written_items() -> None:
