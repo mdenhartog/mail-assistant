@@ -84,7 +84,7 @@ def test_given_an_empty_or_overlong_answer_when_decided_then_it_needs_attention_
 
 
 def test_given_the_id_in_another_case_or_with_spaces_when_resolved_then_it_is_not_a_match() -> None:
-    upper = LIST[0].category_id.upper()
+    upper = LIST[9].category_id.upper()  # ends in "a", so upper-casing changes it
     padded = f" {LIST[0].category_id}"
 
     for given in (upper, padded):

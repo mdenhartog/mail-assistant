@@ -1,29 +1,29 @@
-"""The only shape the model may answer in, and the policy that turns it into a category (spec AC-13, AC-18).
+"""The only shape the model may answer in, and the policy that turns it into a category (ADR-0045, AC-5 to AC-8).
 
-Mail text is untrusted. The model has no tools; whatever it returns must match ``Judgement`` exactly or the mail is
-treated as needing attention, never as ignorable. Category names become Gmail labels, so they are held to a strict
-pattern and a maximum number.
+Mail text and category descriptions are untrusted. The model has no tools and may only name a category by its id from
+the current list (a closed set); whatever it returns must match ``Judgement`` exactly or the mail is treated as
+needing attention, never as ignorable. An id that is not in the list files the mail under "Other" and keeps the
+model's urgency, so a list can never lower an alert. The list has no cap here: the safety cap lives in
+``category-policy``.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from difflib import get_close_matches
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 if TYPE_CHECKING:
-    from collections.abc import Collection
+    from collections.abc import Sequence
 
 LABEL_PREFIX = "Assistant/"
 OTHER_LABEL = f"{LABEL_PREFIX}Other"
-MAX_CATEGORIES = 15  # spec C2
+OTHER_ID = "00000000-0000-0000-0000-000000000000"  # the nil UUID stands for the built-in "Other" (ADR-0043)
 LOW_CONFIDENCE = 0.6
+CATEGORY_ID_MAX_CHARS = 1000  # AC-7: a longer answer is invalid
 REASON_MAX_CHARS = 200
 SUMMARY_MAX_CHARS = 400
-_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 &,-]{0,39}$")
 
 
 class JudgementError(ValueError):
@@ -35,7 +35,7 @@ class Judgement(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
-    category: str = Field(max_length=500)
+    category_id: str = Field(min_length=1, max_length=CATEGORY_ID_MAX_CHARS)
     urgent: bool
     reason: str
     summary: str
@@ -53,11 +53,20 @@ class Judgement(BaseModel):
 
 
 @dataclass(frozen=True, slots=True)
+class ListedCategory:
+    """One category of the list version being judged against."""
+
+    category_id: str
+    name: str
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
 class Filing:
-    """File the mail under ``label``; ``create`` says the label does not exist yet."""
+    """File the mail under ``label``; ``category_id`` is the id recorded in ``filing`` (``OTHER_ID`` for "Other")."""
 
     label: str
-    create: bool
+    category_id: str
     judgement: Judgement
 
 
@@ -76,31 +85,19 @@ def parse_judgement(raw: object) -> Judgement:
         raise JudgementError("model output does not match the schema") from None
 
 
-def _name_of(label: str) -> str:
-    return label.removeprefix(LABEL_PREFIX)
-
-
-def resolve(judgement: Judgement, existing: Collection[str]) -> Filing | NeedsAttention:
-    """Turn a valid judgement into a label decision, within the category limit and name pattern."""
+def resolve(judgement: Judgement, categories: Sequence[ListedCategory]) -> Filing | NeedsAttention:
+    """Turn a valid judgement into a label: a category of the list by exact id, otherwise "Other"."""
     if judgement.confidence < LOW_CONFIDENCE:
         return NeedsAttention("low_confidence")
-    name = judgement.category.strip()
-    known = {_name_of(label).casefold(): label for label in existing}
-    if name.casefold() in known:
-        return Filing(known[name.casefold()], create=False, judgement=judgement)
-    if _NAME.fullmatch(name) and len(known) < MAX_CATEGORIES:
-        return Filing(f"{LABEL_PREFIX}{name}", create=True, judgement=judgement)
-    if OTHER_LABEL in existing:
-        return Filing(OTHER_LABEL, create=False, judgement=judgement)
-    if len(known) < MAX_CATEGORIES:
-        return Filing(OTHER_LABEL, create=True, judgement=judgement)
-    closest = get_close_matches(name.casefold(), list(known), n=1, cutoff=0.0)
-    return Filing(known[closest[0]], create=False, judgement=judgement)
+    for category in categories:
+        if category.category_id == judgement.category_id and category.category_id != OTHER_ID:
+            return Filing(f"{LABEL_PREFIX}{category.name.strip()}", category.category_id, judgement)
+    return Filing(OTHER_LABEL, OTHER_ID, judgement)
 
 
-def decide(raw: object, existing: Collection[str]) -> Filing | NeedsAttention:
+def decide(raw: object, categories: Sequence[ListedCategory]) -> Filing | NeedsAttention:
     """Parse and resolve in one step; output outside the schema is needs-attention, never ignorable."""
     try:
-        return resolve(parse_judgement(raw), existing)
+        return resolve(parse_judgement(raw), categories)
     except JudgementError:
         return NeedsAttention("invalid_output")
