@@ -140,7 +140,7 @@ def test_given_a_body_cap_below_one_when_linted_then_the_schema_rejects_it(setti
     result = helm("lint", setting)
 
     assert result.returncode != 0, setting
-    assert setting.split("=")[0].split(".")[1] in result.stdout + result.stderr
+    assert setting.split("=", maxsplit=1)[0].split(".")[1] in result.stdout + result.stderr
 
 
 @needs_helm

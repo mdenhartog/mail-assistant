@@ -157,6 +157,7 @@ def agent(  # noqa: PLR0913, PLR0917 - the fakes of the world are passed in, lik
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=tmp / "heartbeat",
         now=clock.now,

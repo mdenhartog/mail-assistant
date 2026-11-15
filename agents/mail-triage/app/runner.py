@@ -42,6 +42,14 @@ class CatchUpPort(Protocol):
         ...
 
 
+class ListSyncPort(Protocol):
+    """Keeps Gmail in step with the category list (INT-004)."""
+
+    async def run(self) -> object:
+        """One pass."""
+        ...
+
+
 class DeliveryPort(Protocol):
     """Sends alerts."""
 
@@ -148,6 +156,8 @@ class Runner:
         store: PurgePort,
         inbox: InboxPort,
         router: RouterPort,
+        list_sync: ListSyncPort,
+        list_sync_seconds: float,
         heartbeat: Path,
         interval_seconds: float,
         now: Callable[[], datetime],
@@ -163,6 +173,9 @@ class Runner:
         self._store = store
         self._inbox = inbox
         self._router = router
+        self._list_sync = list_sync
+        self._list_sync_every = timedelta(seconds=list_sync_seconds)
+        self._list_synced_at: datetime | None = None
         self._heartbeat = heartbeat
         self._interval = interval_seconds
         self._now = now
@@ -170,11 +183,14 @@ class Runner:
         self._failed: dict[int, int] = {}
 
     async def mail_cycle(self) -> None:
-        """Announce web changes, warn about wrong codes, release due alerts, read mail, catch up, send, purge, beat.
+        """Sync the category list, announce web changes, warn about wrong codes, release due alerts, read mail, ...
 
+        The list sync goes first (when its cadence has passed) so that mail is never judged before version 1 exists.
+        After it: catch up, send, purge, beat.
         The web notice and the wrong-code alert go first and take no part in quiet hours: a change from someone else,
         or someone guessing codes, must reach Marco soon.
         """
+        await self._guard("list_sync", self._sync_list())
         await self._guard("web_notice", self._web_notice.run(self._now()))
         await self._guard("code_alert", self._code_alert.run(self._now()))
         await self._guard("release_due", self._snooze.release_due())
@@ -184,6 +200,13 @@ class Runner:
         await self._guard("overview", self._overview.send_overview())
         await self._guard("purge", self._purge())
         self._heartbeat.touch()
+
+    async def _sync_list(self) -> None:
+        now = self._now()
+        if self._list_synced_at is not None and now - self._list_synced_at < self._list_sync_every:
+            return
+        self._list_synced_at = now  # also after a failure: the next cadence retries, a broken Gmail is not hammered
+        await self._list_sync.run()
 
     async def _purge(self) -> None:
         now = self._now()

@@ -141,6 +141,7 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,
@@ -197,6 +198,7 @@ async def test_given_the_agent_runs_twice_when_the_same_mail_is_listed_then_it_a
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,

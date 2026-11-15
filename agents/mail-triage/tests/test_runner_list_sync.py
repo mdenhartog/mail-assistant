@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_resort import GmailResort
+from app.runner import Runner
 from app.settings import load_settings
 from app.usecases.list_sync import ListSync, SyncResult
+from app.usecases.triage import RunSummary
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.list_store import FakeListStore
 from tests.test_runner import (
@@ -25,8 +27,6 @@ from tests.test_runner import (
     Store,
     WebNoticeStep,
 )
-from app.runner import Runner
-from app.usecases.triage import RunSummary
 from tests.test_settings import VALID
 
 if TYPE_CHECKING:
@@ -94,7 +94,7 @@ def real_sync(gmail: FakeGmail, store: FakeListStore) -> ListSync:
     return ListSync(GmailResort(gmail, sleep=lambda _s: None), store)
 
 
-async def test_given_a_first_start_with_labels_and_no_list_when_the_first_cycle_runs_then_version_one_exists_before_judging(
+async def test_given_a_first_start_without_a_list_when_the_first_cycle_runs_then_version_one_exists_before_judging(
     tmp_path: Path,
 ) -> None:
     gmail = FakeGmail()
@@ -141,7 +141,7 @@ async def test_given_a_cycle_inside_the_cadence_when_it_runs_then_the_sync_is_no
     assert sync.runs == 1
 
 
-async def test_given_a_failing_sync_when_cycles_run_then_triage_continues_the_log_has_no_content_and_the_next_cadence_retries(
+async def test_given_a_failing_sync_when_cycles_run_then_triage_continues_and_the_next_cadence_retries(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.DEBUG)

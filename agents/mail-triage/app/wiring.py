@@ -20,6 +20,7 @@ import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.adapters.gmail_read import GmailReader
+from app.adapters.gmail_resort import GmailResort
 from app.adapters.gmail_send import GmailSender
 from app.adapters.judge_anthropic import AnthropicJudge, DailyBudget
 from app.adapters.telegram_inbox import TelegramInbox
@@ -37,6 +38,7 @@ from app.db.migrate import (
     purge_database,
 )
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_list_sync import PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_security_events import PgSecurityEvents
@@ -51,6 +53,7 @@ from app.usecases.catchup import CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
+from app.usecases.list_sync import ListSync
 from app.usecases.overview import OverviewService
 from app.usecases.policy_notice import PolicyNotice
 from app.usecases.reply import ReplyService
@@ -69,6 +72,7 @@ if TYPE_CHECKING:
     from app.adapters.gmail_send import ConfirmedDraft
     from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
+    from app.usecases.list_sync import LabelGmail
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +135,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     client: httpx.AsyncClient,
     mailbox: object,
     sender: object,
+    labels: LabelGmail,
     own_address: str,
     heartbeat: Path,
     now: Callable[[], datetime],
@@ -201,6 +206,8 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         store=store,
         inbox=inbox,
         router=router,
+        list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id)),
+        list_sync_seconds=settings.list_sync_interval_seconds,
         heartbeat=heartbeat,
         interval_seconds=settings.poll_interval_seconds,
         now=now,
@@ -312,6 +319,7 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
                 client=client,
                 mailbox=ports,
                 sender=ports,
+                labels=GmailResort(service),
                 own_address=address,
                 heartbeat=HEARTBEAT,
                 now=_utc_now,

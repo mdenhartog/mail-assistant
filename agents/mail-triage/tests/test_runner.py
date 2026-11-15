@@ -95,6 +95,13 @@ class CodeAlertStep:
         self.ran_at.append(now)
 
 
+class ListSyncStep:
+    """Does nothing and records nothing: the order of the other steps is what these tests look at."""
+
+    async def run(self) -> None:
+        return None
+
+
 class Store:
     def __init__(self, steps: Steps) -> None:
         self.steps = steps
@@ -153,6 +160,8 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
             store=store,
             inbox=inbox or Inbox([]),
             router=router or Router(),
+            list_sync=ListSyncStep(),
+            list_sync_seconds=60,
             heartbeat=tmp_path / "heartbeat",
             interval_seconds=0.01,
             now=lambda: now,

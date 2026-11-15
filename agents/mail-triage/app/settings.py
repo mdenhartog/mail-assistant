@@ -75,6 +75,8 @@ class Settings(DatabaseTlsSettings):
     google_client_secret: SecretStr = Field(min_length=1)
     token_encryption_key: SecretStr = Field(min_length=1)  # Fernet key for the stored refresh token (AC-25)
     poll_interval_seconds: int = Field(default=60, ge=1)  # spec C1
+    mailbox_id: str = Field(default="primary", min_length=1, max_length=64)  # ADR-0043: the mailbox this agent serves
+    list_sync_interval_seconds: int = Field(default=60, ge=1)  # how often the category list is synced with Gmail
     daily_model_budget: int = Field(default=200, ge=0)  # model calls per day (AC-26)
     alerts_per_hour: int = Field(default=5, ge=1)  # individual alerts per hour before batching (AC-26)
     # Comma separated sender domains, each mail only counted when Gmail shows DMARC pass (AC-39, ADR-0045, ADR-0048).

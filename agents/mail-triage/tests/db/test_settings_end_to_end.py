@@ -101,6 +101,7 @@ async def agent(engine: AsyncEngine) -> Agent:
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet), timeout=httpx.Timeout(5.0)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=Path(mkdtemp()) / "heartbeat",
         now=lambda: holder[0].now,

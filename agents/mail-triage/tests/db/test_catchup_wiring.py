@@ -72,6 +72,7 @@ def _runner(engine: AsyncEngine, gmail: FakeGmail, internet: FakeInternet, tmp_p
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=tmp_path / "heartbeat",
         now=lambda: NOW,
