@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.adapters.gmail_resort import GmailResort
@@ -27,7 +28,14 @@ MAILBOX = "mb1"
 @pytest.fixture
 async def engine(cat_owner: asyncpg.Connection, cat_url: str) -> AsyncIterator[AsyncEngine]:
     """An engine whose connections act as the agent role: the grants are part of what is tested."""
-    created = create_async_engine(cat_url, connect_args={"server_settings": {"session_authorization": AGENT_ROLE}})
+    created = create_async_engine(cat_url)
+
+    @event.listens_for(created.sync_engine, "connect")
+    def _act_as_agent(dbapi_connection: Any, _record: Any) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f'SET SESSION AUTHORIZATION "{AGENT_ROLE}"')
+        cursor.close()
+
     yield created
     await created.dispose()
 
@@ -112,3 +120,8 @@ async def test_given_a_first_start_when_the_sync_runs_on_postgres_then_the_list_
     names = {r["name"] for r in await cat_api.fetch("select name from categories.gmail_label")}
     assert names == {"Assistant/Bills", "Assistant/Other"}
     assert isinstance(next(iter(await store.stored_labels())), uuid.UUID)
+
+
+async def test_given_the_test_engine_when_it_connects_then_it_acts_as_the_agent_role(engine: AsyncEngine) -> None:
+    async with engine.connect() as connection:
+        assert (await connection.exec_driver_sql("select session_user")).scalar_one() == AGENT_ROLE

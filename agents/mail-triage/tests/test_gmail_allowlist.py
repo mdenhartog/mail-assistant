@@ -35,7 +35,7 @@ def resort(gmail: FakeGmail) -> GmailResort:
 
 
 def test_given_the_adapter_when_its_public_operations_are_listed_then_they_equal_the_allow_list() -> None:
-    public = {name for name, member in inspect.getmembers(GmailResort, callable) if not name.startswith("_")}
+    public = {name for name, _ in inspect.getmembers(GmailResort, callable) if not name.startswith("_")}
 
     assert public == set(ALLOWED)
 
