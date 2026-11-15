@@ -1,13 +1,14 @@
-"""Seeding helpers for the plan tests (U-mail-categories-12): the owner writes plans and items the way the agent would."""
-# ruff: noqa: S608  # every statement is a fixed test literal inside a throwaway container, never user input
+"""Seeding helpers for the plan tests (U-mail-categories-12): the owner writes plans and items like the agent."""
 
 from __future__ import annotations
 
 import json
 import uuid
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-import asyncpg
+if TYPE_CHECKING:
+    import asyncpg
 
 NIL = uuid.UUID(int=0)  # the built-in "Other"
 CAT_A = uuid.UUID(int=1)
@@ -27,7 +28,7 @@ class SeededPlan:
     message_ids: list[str]
 
 
-async def seed_plan(
+async def seed_plan(  # noqa: PLR0913
     owner: asyncpg.Connection,
     mailbox: str = "mb1",
     *,

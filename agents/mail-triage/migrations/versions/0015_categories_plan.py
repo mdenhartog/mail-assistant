@@ -1,0 +1,208 @@
+"""Mail categories, plan half (INT-004, ADR-0046, ADR-0047): plans, items, decisions, approvals and the apply audit.
+
+Upgrade: ``plan`` (a partial unique index allows one open plan per mailbox), ``plan_item``, ``plan_decision``,
+``plan_approval``, ``apply_audit`` and ``move_back_request``, with the guard that keeps a plan's state moves equal to
+``app.core.resort_plan``. The decision functions come in the same revision (see below). Rights are in
+``app/db/grants.sql``; nothing is granted here.
+
+Revision ID: 0015
+Revises: 0014
+"""
+
+import sqlalchemy as sa
+from alembic import op
+
+revision = "0015"
+down_revision = "0014"
+branch_labels = None
+depends_on = None
+
+_SCHEMA = "categories"
+_TZ = sa.DateTime(timezone=True)
+_NOW = sa.text("now()")
+_PLAN_STATES = "('building', 'ready', 'scheduled', 'applying', 'applied', 'replaced', 'discarded', 'cancelled')"
+_ITEM_STATES = "('pending', 'approved', 'rejected', 'applied', 'skipped', 'failed')"
+_CHANNELS = "('telegram', 'web', 'operator')"
+
+
+def _mailbox() -> sa.Column[str]:
+    """The mailbox id of ADR-0043: first column of every key."""
+    return sa.Column("mailbox_id", sa.String(64), sa.ForeignKey("categories.mailbox.id"), nullable=False)
+
+
+def _create_plan_tables() -> None:
+    op.create_table(
+        "plan",
+        _mailbox(),
+        sa.Column("id", sa.Uuid, nullable=False, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("list_version", sa.Integer, nullable=False),
+        sa.Column("state", sa.String(16), nullable=False, server_default="building"),
+        sa.Column("apply_after", _TZ),
+        sa.Column("build_cursor", sa.Text),
+        sa.Column("checked_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("cap", sa.Integer, nullable=False, server_default="5000"),
+        sa.Column("unclear_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("created_at", _TZ, nullable=False, server_default=_NOW),
+        sa.Column("last_activity_at", _TZ, nullable=False, server_default=_NOW),
+        sa.Column("terminal_at", _TZ),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_plan"),
+        sa.CheckConstraint(f"state IN {_PLAN_STATES}", name="ck_plan_state"),
+        sa.CheckConstraint("checked_count >= 0 AND cap >= 1 AND unclear_count >= 0", name="ck_plan_counts"),
+        schema=_SCHEMA,
+    )
+    # One open plan per mailbox (ADR-0046): a second build waits until the first is terminal.
+    op.create_index(
+        "uq_plan_one_open",
+        "plan",
+        ["mailbox_id"],
+        unique=True,
+        schema=_SCHEMA,
+        postgresql_where=sa.text("state NOT IN ('applied', 'replaced', 'discarded', 'cancelled')"),
+    )
+    op.create_table(
+        "plan_item",
+        sa.Column("mailbox_id", sa.String(64), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("message_id", sa.String(64), nullable=False),
+        sa.Column("sender_name", sa.Text, nullable=False),
+        sa.Column("sender_address", sa.Text, nullable=False),
+        sa.Column("subject", sa.Text, nullable=False),
+        # The nil UUID stands for the built-in "Other"; the categories are those of the plan's list version.
+        sa.Column("old_category_id", sa.Uuid, nullable=False),
+        sa.Column("new_category_id", sa.Uuid, nullable=False),
+        sa.Column("decision", sa.String(16), nullable=False, server_default="pending"),
+        sa.Column("state", sa.String(16), nullable=False, server_default="pending"),
+        sa.Column("reason", sa.String(64)),
+        sa.Column("decided_at", _TZ),
+        sa.PrimaryKeyConstraint("mailbox_id", "plan_id", "id", name="pk_plan_item"),
+        sa.ForeignKeyConstraint(
+            ["mailbox_id", "plan_id"],
+            ["categories.plan.mailbox_id", "categories.plan.id"],
+            name="fk_plan_item_plan",
+        ),
+        sa.UniqueConstraint("mailbox_id", "plan_id", "message_id", name="uq_plan_item_message"),
+        sa.CheckConstraint("char_length(subject) <= 120", name="ck_plan_item_subject"),
+        sa.CheckConstraint("decision IN ('pending', 'approved', 'rejected')", name="ck_plan_item_decision"),
+        sa.CheckConstraint(f"state IN {_ITEM_STATES}", name="ck_plan_item_state"),
+        # An item that was moved, skipped or failed was approved; the agent cannot invent an approval.
+        sa.CheckConstraint(
+            "state NOT IN ('applied', 'skipped', 'failed') OR decision = 'approved'", name="ck_plan_item_applied"
+        ),
+        sa.CheckConstraint("state NOT IN ('approved', 'rejected') OR state = decision", name="ck_plan_item_decided"),
+        schema=_SCHEMA,
+    )
+    op.create_index(
+        "ix_plan_item_group",
+        "plan_item",
+        ["mailbox_id", "plan_id", "old_category_id", "new_category_id"],
+        schema=_SCHEMA,
+    )
+
+
+def _create_audit_tables() -> None:
+    # No foreign keys to plan below: these rows live a year, the plan 14 days after it ended.
+    op.create_table(
+        "plan_decision",
+        _mailbox(),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("scope", sa.String(8), nullable=False),
+        sa.Column("item_count", sa.Integer, nullable=False),
+        sa.Column("decision", sa.String(16), nullable=False),
+        sa.Column("channel", sa.String(16), nullable=False),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_plan_decision"),
+        sa.CheckConstraint("scope IN ('group', 'ids', 'all')", name="ck_plan_decision_scope"),
+        sa.CheckConstraint(f"channel IN {_CHANNELS}", name="ck_plan_decision_channel"),
+        schema=_SCHEMA,
+    )
+    op.create_table(
+        "plan_approval",
+        _mailbox(),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("approved_count", sa.Integer, nullable=False),
+        sa.Column("channel", sa.String(16), nullable=False),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_plan_approval"),
+        sa.CheckConstraint("approved_count >= 0", name="ck_plan_approval_count"),
+        sa.CheckConstraint(f"channel IN {_CHANNELS}", name="ck_plan_approval_channel"),
+        schema=_SCHEMA,
+    )
+    op.create_index("ix_plan_approval_at", "plan_approval", ["mailbox_id", "at"], schema=_SCHEMA)
+    op.create_table(
+        "apply_audit",
+        _mailbox(),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("message_id", sa.String(64), nullable=False),
+        sa.Column("old_label", sa.Text, nullable=False),
+        sa.Column("new_label", sa.Text, nullable=False),
+        # The channel is the one the move was approved or requested through; the actor is the writing login.
+        sa.Column("channel", sa.String(16), nullable=False),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_apply_audit"),
+        sa.CheckConstraint(f"channel IN {_CHANNELS}", name="ck_apply_audit_channel"),
+        schema=_SCHEMA,
+    )
+    op.create_index("ix_apply_audit_plan", "apply_audit", ["mailbox_id", "plan_id"], schema=_SCHEMA)
+    op.create_table(
+        "move_back_request",
+        _mailbox(),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("processed", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "plan_id", name="pk_move_back_request"),
+        schema=_SCHEMA,
+    )
+
+
+# The legal moves are those of app.core.resort_plan (a test compares both). An illegal move is a 409 (ERRCODE MC409).
+_PLAN_GUARD = """
+CREATE FUNCTION categories.plan_state_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (OLD.state, NEW.state) NOT IN (
+        ('building', 'ready'), ('building', 'replaced'),
+        ('ready', 'replaced'), ('ready', 'scheduled'), ('ready', 'discarded'),
+        ('scheduled', 'cancelled'), ('scheduled', 'applying'),
+        ('applying', 'cancelled'), ('applying', 'applied')) THEN
+        RAISE EXCEPTION 'this plan state move is not allowed' USING ERRCODE = 'MC409';
+    END IF;
+    IF NEW.state IN ('applied', 'replaced', 'discarded', 'cancelled') THEN
+        NEW.terminal_at := now();
+    END IF;
+    RETURN NEW;
+END
+$$
+"""
+
+_TRIGGERS = (
+    "CREATE TRIGGER plan_state_guard BEFORE UPDATE OF state ON categories.plan "
+    "FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION categories.plan_state_guard()",
+)
+_FUNCTIONS = ("categories.plan_state_guard()",)
+
+
+def upgrade() -> None:
+    """Create the plan tables, the state guard and its trigger."""
+    _create_plan_tables()
+    _create_audit_tables()
+    op.execute(_PLAN_GUARD)
+    for statement in _TRIGGERS:
+        op.execute(statement)
+    for function in _FUNCTIONS:
+        op.execute(f"REVOKE ALL ON FUNCTION {function} FROM PUBLIC")
+
+
+def downgrade() -> None:
+    """Remove what upgrade made; the list half of revision 0014 stays."""
+    for function in _FUNCTIONS:
+        op.execute(f"DROP FUNCTION {function} CASCADE")
+    for table in ("move_back_request", "apply_audit", "plan_approval", "plan_decision", "plan_item", "plan"):
+        op.drop_table(table, schema=_SCHEMA)

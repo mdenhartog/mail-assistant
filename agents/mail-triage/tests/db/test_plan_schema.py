@@ -2,7 +2,7 @@
 
 The legal moves of the database are compared with the pure state machine ``app.core.resort_plan`` (ADR-0046).
 """
-# ruff: noqa: S608  # every statement is a fixed test literal inside a throwaway container, never user input
+# every statement is a fixed test literal inside a throwaway container, never user input
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ async def test_given_the_plan_revision_when_it_goes_up_and_down_then_only_the_pl
         return {r["table_name"] for r in rows}
 
     await asyncio.to_thread(command.upgrade, alembic_config(database_url), "head")
-    assert PLAN_TABLES <= await tables()
+    assert await tables() >= PLAN_TABLES
 
     await asyncio.to_thread(command.downgrade, alembic_config(database_url), "0014")
     after_down = await tables()
@@ -51,7 +51,7 @@ async def test_given_the_plan_revision_when_it_goes_up_and_down_then_only_the_pl
     assert "list_version" in after_down  # the list half stays
 
     await asyncio.to_thread(command.upgrade, alembic_config(database_url), "head")
-    assert PLAN_TABLES <= await tables()
+    assert await tables() >= PLAN_TABLES
 
 
 async def test_given_every_plan_table_when_its_primary_key_is_read_then_the_mailbox_id_comes_first(
@@ -73,10 +73,14 @@ async def test_given_an_open_plan_when_a_second_open_plan_is_made_then_the_uniqu
 ) -> None:
     await seed_plan(cat_owner, "mb1", state="building", tag="a")
 
-    assert await _sqlstate(
-        cat_owner, "insert into categories.plan (mailbox_id, id, list_version, state) values ('mb1', $1, 1, 'ready')",
-        uuid.uuid4(),
-    ) == "23505"
+    assert (
+        await _sqlstate(
+            cat_owner,
+            "insert into categories.plan (mailbox_id, id, list_version, state) values ('mb1', $1, 1, 'ready')",
+            uuid.uuid4(),
+        )
+        == "23505"
+    )
     # another mailbox, and a terminal plan, are not blocked
     await seed_plan(cat_owner, "mb2", state="ready", tag="b")
     for state in sorted(TERMINAL):

@@ -525,3 +525,151 @@ class ApplyConfig(Base):
     mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
     threshold: Mapped[int] = mapped_column(Integer)
     delay_minutes: Mapped[int] = mapped_column(Integer)
+
+
+# --- Mail categories, plan half (INT-004, ADR-0046, ADR-0047): migration 0015 -----------------------------------------
+
+
+class Plan(Base):
+    """One re-sort plan; its state moves follow ``app.core.resort_plan`` (a trigger refuses the others)."""
+
+    __tablename__ = "plan"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('building', 'ready', 'scheduled', 'applying', 'applied', 'replaced', 'discarded', 'cancelled')",
+            name="ck_plan_state",
+        ),
+        CheckConstraint("checked_count >= 0 AND cap >= 1 AND unclear_count >= 0", name="ck_plan_counts"),
+        Index(
+            "uq_plan_one_open",
+            "mailbox_id",
+            unique=True,
+            postgresql_where=text("state NOT IN ('applied', 'replaced', 'discarded', 'cancelled')"),
+        ),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text("gen_random_uuid()"))
+    list_version: Mapped[int] = mapped_column(Integer)
+    state: Mapped[str] = mapped_column(String(16), server_default="building")
+    apply_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    build_cursor: Mapped[str | None] = mapped_column(Text)
+    checked_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    cap: Mapped[int] = mapped_column(Integer, server_default="5000")
+    unclear_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlanItem(Base):
+    """One planned move. The decision changes only through ``record_decision`` and ``approve_plan``."""
+
+    __tablename__ = "plan_item"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["mailbox_id", "plan_id"], ["categories.plan.mailbox_id", "categories.plan.id"], name="fk_plan_item_plan"
+        ),
+        UniqueConstraint("mailbox_id", "plan_id", "message_id", name="uq_plan_item_message"),
+        CheckConstraint("char_length(subject) <= 120", name="ck_plan_item_subject"),
+        CheckConstraint("decision IN ('pending', 'approved', 'rejected')", name="ck_plan_item_decision"),
+        CheckConstraint(
+            "state IN ('pending', 'approved', 'rejected', 'applied', 'skipped', 'failed')", name="ck_plan_item_state"
+        ),
+        CheckConstraint(
+            "state NOT IN ('applied', 'skipped', 'failed') OR decision = 'approved'", name="ck_plan_item_applied"
+        ),
+        CheckConstraint("state NOT IN ('approved', 'rejected') OR state = decision", name="ck_plan_item_decided"),
+        Index("ix_plan_item_group", "mailbox_id", "plan_id", "old_category_id", "new_category_id"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(64))
+    sender_name: Mapped[str] = mapped_column(Text)
+    sender_address: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    old_category_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    new_category_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    decision: Mapped[str] = mapped_column(String(16), server_default="pending")
+    state: Mapped[str] = mapped_column(String(16), server_default="pending")
+    reason: Mapped[str | None] = mapped_column(String(64))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PlanDecision(Base):
+    """Append-only record of a decision call; channel and actor are derived from the session role."""
+
+    __tablename__ = "plan_decision"
+    __table_args__ = (
+        CheckConstraint("scope IN ('group', 'ids', 'all')", name="ck_plan_decision_scope"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_plan_decision_channel"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    scope: Mapped[str] = mapped_column(String(8))
+    item_count: Mapped[int] = mapped_column(Integer)
+    decision: Mapped[str] = mapped_column(String(16))
+    channel: Mapped[str] = mapped_column(String(16))
+    actor_digest: Mapped[str] = mapped_column(CHAR(64))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class PlanApproval(Base):
+    """Append-only record of an approval; the rolling 24 hours threshold counts ``approved_count``."""
+
+    __tablename__ = "plan_approval"
+    __table_args__ = (
+        CheckConstraint("approved_count >= 0", name="ck_plan_approval_count"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_plan_approval_channel"),
+        Index("ix_plan_approval_at", "mailbox_id", "at"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    approved_count: Mapped[int] = mapped_column(Integer)
+    channel: Mapped[str] = mapped_column(String(16))
+    actor_digest: Mapped[str] = mapped_column(CHAR(64))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class ApplyAudit(Base):
+    """One label move of an apply or a move back: message id and labels only, no sender and no subject."""
+
+    __tablename__ = "apply_audit"
+    __table_args__ = (
+        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_apply_audit_channel"),
+        Index("ix_apply_audit_plan", "mailbox_id", "plan_id"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    message_id: Mapped[str] = mapped_column(String(64))
+    old_label: Mapped[str] = mapped_column(Text)
+    new_label: Mapped[str] = mapped_column(Text)
+    channel: Mapped[str] = mapped_column(String(16))
+    actor_digest: Mapped[str] = mapped_column(CHAR(64))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class MoveBackRequest(Base):
+    """The user asked to restore the labels of an applied plan; the agent processes it once."""
+
+    __tablename__ = "move_back_request"
+    __table_args__ = ({"schema": "categories"},)
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    processed: Mapped[bool] = mapped_column(Boolean, server_default="false")
+    actor_digest: Mapped[str] = mapped_column(CHAR(64))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
