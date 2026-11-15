@@ -2,6 +2,7 @@
 
 - ``plan.apply_run_id`` and ``plan.apply_lease_until``: the run that holds an ``applying`` plan, and until when. A
   crashed run's lease ends and another run takes over; two runs never work on one plan.
+- ``plan.announced_at``: when the Telegram notice of a delayed plan was sent (once per plan).
 - ``move_back_request.run_id`` and ``lease_until``: the same for a move-back request.
 - ``plan_item.attempts``: how often a move failed; after a limit the item ends ``failed`` and no longer blocks the plan.
 - ``apply_audit.kind``: ``apply`` or ``restore``. A move back writes its restore rows under the plan of the apply; it
@@ -68,6 +69,7 @@ def upgrade() -> None:
     """Add the leases, the attempt counter, the audit kind and the two functions."""
     op.add_column("plan", sa.Column("apply_run_id", sa.String(64)), schema=_SCHEMA)
     op.add_column("plan", sa.Column("apply_lease_until", _TZ), schema=_SCHEMA)
+    op.add_column("plan", sa.Column("announced_at", _TZ), schema=_SCHEMA)
     op.add_column("plan_item", sa.Column("attempts", sa.Integer, nullable=False, server_default="0"), schema=_SCHEMA)
     op.create_check_constraint("ck_plan_item_attempts", "plan_item", "attempts >= 0", schema=_SCHEMA)
     op.add_column("move_back_request", sa.Column("run_id", sa.String(64)), schema=_SCHEMA)
@@ -102,5 +104,6 @@ def downgrade() -> None:
     op.drop_column("move_back_request", "run_id", schema=_SCHEMA)
     op.drop_constraint("ck_plan_item_attempts", "plan_item", schema=_SCHEMA)
     op.drop_column("plan_item", "attempts", schema=_SCHEMA)
+    op.drop_column("plan", "announced_at", schema=_SCHEMA)
     op.drop_column("plan", "apply_lease_until", schema=_SCHEMA)
     op.drop_column("plan", "apply_run_id", schema=_SCHEMA)

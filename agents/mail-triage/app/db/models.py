@@ -569,6 +569,7 @@ class Plan(Base):
     terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     apply_run_id: Mapped[str | None] = mapped_column(String(64))  # the run that holds an applying plan (0018)
     apply_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # notice of a delayed plan (0018)
 
 
 class PlanItem(Base):

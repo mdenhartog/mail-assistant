@@ -145,6 +145,9 @@ GRANT UPDATE (state, reason, attempts) ON categories.plan_item TO mail_triage_ru
 GRANT INSERT (mailbox_id, plan_id, message_id, old_label, new_label, channel, kind) ON categories.apply_audit
     TO mail_triage_runtime;
 GRANT UPDATE (processed, run_id, lease_until) ON categories.move_back_request TO mail_triage_runtime;
+-- The Move back button of Telegram asks as the agent: the trigger refuses a plan that is not applied and writes the
+-- actor (the agent login) and the time itself.
+GRANT INSERT (mailbox_id, plan_id) ON categories.move_back_request TO mail_triage_runtime;
 -- The non-login role that owns the definer functions keeps the rights they run with, for tables added later too.
 GRANT USAGE, CREATE ON SCHEMA categories TO categories_definer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA categories TO categories_definer;
