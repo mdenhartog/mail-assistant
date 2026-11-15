@@ -102,6 +102,16 @@ class ListNoticeIdle:
         return None
 
 
+class ResortIdle:
+    """The plan build, the apply and the move back: nothing to do, nothing recorded."""
+
+    async def run_once(self) -> object:
+        return None
+
+    async def run(self, now: datetime) -> None:
+        return None
+
+
 class ListSyncStep:
     """Does nothing and records nothing: the order of the other steps is what these tests look at."""
 
@@ -169,7 +179,12 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
             router=router or Router(),
             list_sync=ListSyncStep(),
             list_notice=ListNoticeIdle(),
+            approval_notice=ResortIdle(),
+            resort_build=ResortIdle(),
+            resort_apply=ResortIdle(),
+            move_back=ResortIdle(),
             list_sync_seconds=60,
+            resort_apply_seconds=60,
             heartbeat=tmp_path / "heartbeat",
             interval_seconds=0.01,
             now=lambda: now,
