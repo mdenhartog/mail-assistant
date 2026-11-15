@@ -359,7 +359,8 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         subject="Budget",
         text="body that must not be stored",
         has_attachment=True,
-        headers={"Authentication-Results": "mx; spf=fail; dkim=pass; dmarc=pass"},
+        headers={},
+        auth_results=("mx.google.com; spf=fail; dkim=pass; dmarc=pass",),
     )
     verdict = Judgement(category_id=FINANCE_ID, urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
 
@@ -375,6 +376,26 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         auth=AuthResults(spf="fail", dkim="pass", dmarc="pass"),
     )
     assert "body that must not be stored" not in str(store.outcomes["m1"])
+
+
+async def test_given_a_forged_lower_authentication_results_header_then_the_alert_content_ignores_it() -> None:
+    mailbox, store = FakeMailbox(["m1"]), FakeStore()
+    mailbox.mails["m1"] = FetchedMail(
+        message_id="m1",
+        thread_id="t-m1",
+        sender="boss@example.com",
+        reply_to=None,
+        subject="Budget",
+        text="body",
+        has_attachment=False,
+        headers={"Authentication-Results": "forged; spf=pass; dkim=pass; dmarc=pass"},
+        auth_results=("mx.google.com; spf=fail; dkim=fail; dmarc=fail", "forged; spf=pass; dkim=pass; dmarc=pass"),
+    )
+    verdict = Judgement(category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)
+
+    await pipeline(mailbox, FakeJudge(verdict), store).run_once()
+
+    assert store.outcomes["m1"].content.auth == AuthResults(spf="fail", dkim="fail", dmarc="fail")
 
 
 async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_no_model_text() -> None:
