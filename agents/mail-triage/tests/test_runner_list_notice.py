@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.adapters.telegram_inbox import Command
 from app.runner import Runner
 from app.settings import load_settings
 from app.usecases.list_notice import ListNotice, ListNoticeActions
@@ -32,6 +31,7 @@ from tests.test_settings import VALID
 from tests.usecases.test_dispatch import Rig, button
 
 if TYPE_CHECKING:
+    from app.adapters.telegram_inbox import Command
     from datetime import datetime
     from pathlib import Path
 
