@@ -17,14 +17,15 @@ const SESSION = {
   noticeIntervalMinutes: 5,
 };
 
-function stub(plan: (request: Request) => Response): void {
+/** `ended` turns the session into a 401 too, as it is on the server once the session has ended. */
+function stub(plan: (request: Request) => Response, ended: { value: boolean } = { value: false }): void {
   vi.stubGlobal(
     "fetch",
     vi.fn((input: string, init?: RequestInit) => {
       const request = new Request(new URL(input, "http://localhost"), init);
       const path = new URL(request.url).pathname;
       if (path === "/api/session") {
-        return Promise.resolve(json(SESSION));
+        return Promise.resolve(ended.value ? new Response(null, { status: 401 }) : json(SESSION));
       }
       if (path === "/api/categories") {
         return Promise.resolve(json({ version: 1, ready: true, categories: [], other: { mailCount: 0 }, olderCategories: [] }));
@@ -57,7 +58,11 @@ describe("the /review route", () => {
   });
 
   it("given an expired session (401), then the sign-in page shows with the session notice", async () => {
-    stub(() => new Response(null, { status: 401 }));
+    const ended = { value: false };
+    stub(() => {
+      ended.value = true;
+      return new Response(null, { status: 401 });
+    }, ended);
     const router = open("/review");
 
     expect(await screen.findByText("Your session ended.")).toBeInTheDocument();

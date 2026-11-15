@@ -314,6 +314,14 @@ describe("Review moves: loading and failing", () => {
     expect(await screen.findByRole("button", { name: GROUP_BUTTON })).toBeInTheDocument();
   });
 
+  it("given the category list cannot be read, then the groups are not shown with wrong names", async () => {
+    wirePlan({ categories: () => json({}, 500) });
+    await renderReview();
+
+    expect(await screen.findByText("Could not load your review.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Approve group/ })).not.toBeInTheDocument();
+  });
+
   it("given a 429, then it says to wait", async () => {
     wirePlan({ plan: () => json({}, 429, { "Retry-After": "60" }) });
     await renderReview();
