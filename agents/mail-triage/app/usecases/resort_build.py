@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Protocol
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.judgement import OTHER_ID, Filing, ListedCategory, NeedsAttention, resolve
 from app.core.resort_plan import PlanState, build_may_start, on_list_changed
-from app.core.scope import LABEL_PREFIX, Scope, assistant_labels, classify
+from app.core.scope import LABEL_PREFIX, Scope, assistant_labels, classify, clean_display
 from app.usecases.catchup import BUDGET_RESERVE, CALLS_PER_MAIL
 from app.usecases.triage import pinned_mail_kind
 
@@ -59,6 +59,7 @@ PAGE_SIZE = 100
 DEBOUNCE = timedelta(minutes=10)  # how long the list must stay unchanged before a build starts (D14)
 SUBJECT_MAX = 120
 NAME_MAX = 120
+ADDRESS_MAX = 320
 
 
 class BuildStatus(StrEnum):
@@ -138,6 +139,10 @@ class BuildMailbox(Protocol):
         """Label id to label name."""
         ...
 
+    def estimate_in_scope(self) -> int:
+        """A rough count of the mails the listing would return (an estimate, not exact)."""
+        ...
+
     def candidates(self, after: str | None, limit: int) -> list[Candidate]:
         """List up to ``limit`` mails of the inbox or an ``Assistant/`` label (not spam or trash).
 
@@ -177,8 +182,12 @@ class BuildStore(Protocol):
         """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items."""
         ...
 
-    async def complete_build(self, plan_id: uuid.UUID) -> bool:
-        """Compare-and-set ``building`` to ``ready``; true for the one caller that did it."""
+    async def record_estimate(self, plan_id: uuid.UUID, estimate: int) -> None:
+        """Store the estimated number of mails in scope ("N of about M")."""
+        ...
+
+    async def complete_build(self, plan_id: uuid.UUID, *, not_looked_at: int) -> bool:
+        """Compare-and-set ``building`` to ``ready`` and store the not-looked-at count; true for the one caller."""
         ...
 
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
@@ -280,28 +289,16 @@ class ResortBuild:
         return await self._store.create_plan(current.version, self._cap)
 
     async def _build(self, plan: PlanRecord, current: BuildList) -> BuildResult:
-        names = await asyncio.to_thread(self._mail.label_names)
-        rejected = await self._store.rejected_ids(plan.list_version)
-        by_label = {f"{LABEL_PREFIX}{c.name.strip()}": c.category_id for c in current.categories}
-        checked, unclear, items, cursor = plan.checked, plan.unclear, plan.items, plan.cursor
+        if plan.cursor is None:
+            await self._store.record_estimate(plan.plan_id, await asyncio.to_thread(self._mail.estimate_in_scope))
         try:
-            while checked < plan.cap:
-                page = await asyncio.to_thread(self._mail.candidates, cursor, PAGE_SIZE)
-                if not page:
-                    break
-                for candidate in page:
-                    if checked >= plan.cap:
-                        break
-                    await self._still_current(plan)
-                    result = await self._look(plan, candidate, current, names, rejected, by_label)
-                    cursor = candidate.resume_after
-                    checked, unclear, items = checked + result[0], unclear + result[1], items + result[2]
+            checked, unclear, items, cursor = await self._scan(plan, current)
         except _Pause:
             return BuildResult(BuildStatus.PAUSED)
         except _Cancelled:
             return BuildResult(BuildStatus.CANCELLED)
         not_looked_at = await self._count_rest(cursor) if checked >= plan.cap else 0
-        if not await self._store.complete_build(plan.plan_id):
+        if not await self._store.complete_build(plan.plan_id, not_looked_at=not_looked_at):
             return BuildResult(BuildStatus.CANCELLED)
         numbers = PlanNumbers(checked, items, unclear, not_looked_at)
         logger.info(
@@ -309,6 +306,25 @@ class ResortBuild:
         )
         await self._notifier.say(plan_ready_text(numbers))
         return BuildResult(BuildStatus.READY, numbers)
+
+    async def _scan(self, plan: PlanRecord, current: BuildList) -> tuple[int, int, int, str | None]:
+        """Look at the listed mail until the cap or the end; return (checked, unclear, items, cursor)."""
+        names = await asyncio.to_thread(self._mail.label_names)
+        rejected = await self._store.rejected_ids(plan.list_version)
+        by_label = {f"{LABEL_PREFIX}{c.name.strip()}": c.category_id for c in current.categories}
+        checked, unclear, items, cursor = plan.checked, plan.unclear, plan.items, plan.cursor
+        while checked < plan.cap:
+            page = await asyncio.to_thread(self._mail.candidates, cursor, PAGE_SIZE)
+            if not page:
+                break
+            for candidate in page:
+                if checked >= plan.cap:
+                    break
+                await self._still_current(plan)
+                result = await self._look(plan, candidate, current, names, rejected, by_label)
+                cursor = candidate.resume_after
+                checked, unclear, items = checked + result[0], unclear + result[1], items + result[2]
+        return checked, unclear, items, cursor
 
     async def _still_current(self, plan: PlanRecord) -> None:
         """A newer list outdates the plan at once: replace it and stop before another mail is judged (AC-33)."""
@@ -383,11 +399,12 @@ def _draft(mail: FetchedMail, filing: Filing, labels: list[str], by_label: dict[
     if filing.category_id == old_id and not legacy:
         return None
     name, _address = parseaddr(mail.headers.get("From", ""))
+    name = clean_display(name, NAME_MAX)
     return ItemDraft(
         message_id=mail.message_id,
-        sender_name=name[:NAME_MAX],
-        sender_address=mail.sender,
-        subject=mail.subject[:SUBJECT_MAX],
+        sender_name=name,
+        sender_address=clean_display(mail.sender, ADDRESS_MAX),
+        subject=clean_display(mail.subject, SUBJECT_MAX),
         old_category_id=uuid.UUID(old_id),
         new_category_id=uuid.UUID(filing.category_id),
     )

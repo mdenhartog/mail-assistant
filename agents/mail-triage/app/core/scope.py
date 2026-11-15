@@ -7,13 +7,14 @@ mail is counted but never becomes an item, because the agent cannot tell which l
 
 from __future__ import annotations
 
+import unicodedata
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-__all__ = ["ARCHIVE_LABEL", "LABEL_PREFIX", "Scope", "assistant_labels", "classify"]
+__all__ = ["ARCHIVE_LABEL", "LABEL_PREFIX", "Scope", "assistant_labels", "classify", "clean_display"]
 
 LABEL_PREFIX = "Assistant/"
 ARCHIVE_LABEL = "Archive"
@@ -45,3 +46,12 @@ def classify(label_names: Iterable[str]) -> Scope:
     if labels or _INBOX in names:
         return Scope.IN_SCOPE
     return Scope.OUT
+
+
+def clean_display(text: str, cap: int) -> str:
+    """Text for the review page: format characters (bidi controls, zero-width) removed, other controls to a space.
+
+    The cap counts characters after cleaning (MC-20, AC-44).
+    """
+    kept = (" " if unicodedata.category(char) == "Cc" else char for char in text if unicodedata.category(char) != "Cf")
+    return "".join(kept)[:cap]

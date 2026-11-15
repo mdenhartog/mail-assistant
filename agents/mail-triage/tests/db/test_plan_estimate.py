@@ -1,4 +1,4 @@
-"""U-mail-categories-14, decision from U-17: the plan keeps an estimate of the mail in scope and the not-looked-at count.
+"""U-mail-categories-14, decision from U-17: the plan keeps the estimate of mail in scope and not-looked-at.
 
 The review page shows "N of about M checked" and "not looked at" (D15); the api reads both from the plan row.
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 
 import asyncpg
+import pytest
 from alembic import command
 
 from tests.db.conftest import alembic_config, plain_url
@@ -34,12 +35,9 @@ async def test_given_negative_counts_then_the_database_refuses_them(cat_owner: a
     plan = await seed_plan(cat_owner)
 
     for column in ("estimate_total", "not_looked_at"):
-        try:
+        with pytest.raises(asyncpg.PostgresError) as caught:
             await cat_owner.execute(f"update categories.plan set {column} = -1 where id = $1", plan.plan_id)  # noqa: S608
-        except asyncpg.PostgresError as error:
-            assert sqlstate_of(error) == "23514"
-        else:
-            raise AssertionError(f"{column} accepted -1")
+        assert sqlstate_of(caught.value) == "23514"
 
 
 async def test_given_the_roles_then_the_agent_writes_both_counts_and_the_api_reads_them(
@@ -56,12 +54,9 @@ async def test_given_the_roles_then_the_agent_writes_both_counts_and_the_api_rea
     )
     assert row is not None
     assert (row["estimate_total"], row["not_looked_at"]) == (5200, 200)
-    try:
+    with pytest.raises(asyncpg.PostgresError) as caught:
         await cat_api.execute("update categories.plan set not_looked_at = 0 where id = $1", plan.plan_id)
-    except asyncpg.PostgresError as error:
-        assert sqlstate_of(error) == "42501"
-    else:
-        raise AssertionError("the api wrote a plan")
+    assert sqlstate_of(caught.value) == "42501"
 
 
 async def test_given_the_revision_when_it_goes_down_then_the_columns_go_and_the_plan_stays(database_url: str) -> None:
