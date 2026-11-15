@@ -157,3 +157,8 @@ GRANT EXECUTE ON FUNCTION categories.approve_plan(text, uuid, integer) TO web_se
 -- The agent replaces a plan and drops the items it moved through these two functions: it has no DELETE right on plan_item.
 GRANT EXECUTE ON FUNCTION categories.replace_plan(text, uuid) TO mail_triage_runtime;
 GRANT EXECUTE ON FUNCTION categories.remove_applied_items(text, uuid) TO mail_triage_runtime;
+
+-- The daily re-file report (U-mail-categories-25): no runtime role has any right on categories.refile_report. The agent
+-- appends a row through this function alone (it runs as the definer) and never reads one back; retention is the purge.
+GRANT EXECUTE ON FUNCTION categories.record_refile_report(text, integer, integer, integer, integer, integer)
+    TO mail_triage_runtime;

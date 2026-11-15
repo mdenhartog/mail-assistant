@@ -695,3 +695,30 @@ class MoveBackRequest(Base):
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     run_id: Mapped[str | None] = mapped_column(String(64))  # the run that processes the request (0018)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RefileReport(Base):
+    """One daily run of the re-file report: counts only, no sender, subject or message id (AC-30, 0019).
+
+    The agent role has no right on this table; it appends through ``categories.record_refile_report``.
+    """
+
+    __tablename__ = "refile_report"
+    __table_args__ = (
+        CheckConstraint(
+            "filed >= 0 AND checked >= 0 AND refiled >= 0 AND in_other >= 0 AND gone >= 0 "
+            "AND checked <= filed AND refiled <= checked AND in_other <= checked AND gone <= checked",
+            name="ck_refile_report_counts",
+        ),
+        Index("ix_refile_report_at", "mailbox_id", "at"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    filed: Mapped[int] = mapped_column(Integer)
+    checked: Mapped[int] = mapped_column(Integer)
+    refiled: Mapped[int] = mapped_column(Integer)
+    in_other: Mapped[int] = mapped_column(Integer)
+    gone: Mapped[int] = mapped_column(Integer)

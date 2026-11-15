@@ -101,9 +101,8 @@ async def test_given_a_runtime_role_then_it_has_no_right_on_the_report_table(
     cat_owner: asyncpg.Connection, role: str, right: str
 ) -> None:
     assert not await cat_owner.fetchval("select has_table_privilege($1, $2, $3)", role, TABLE, right)
-    assert not await cat_owner.fetchval(
-        "select has_any_column_privilege($1, $2, $3)", role, TABLE, right if right != "truncate" else "select"
-    )
+    if right in {"select", "insert", "update", "references"}:  # column rights exist for these only
+        assert not await cat_owner.fetchval("select has_any_column_privilege($1, $2, $3)", role, TABLE, right)
 
 
 async def test_given_the_agent_when_it_reads_or_writes_the_table_directly_then_postgres_refuses_with_42501(
