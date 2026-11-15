@@ -23,6 +23,11 @@ DESIGN_PATHS = {
     "/api/settings/reset",
     "/api/places",
     "/api/categories",
+    "/api/plan",
+    "/api/plan/items",
+    "/api/plan/decisions",
+    "/api/plan/approve",
+    "/api/plan/{plan_id}/move-back",
     "/healthz",
     "/readyz",
 }
@@ -238,7 +243,15 @@ def test_given_a_204_route_without_a_response_model_when_the_inventory_runs_then
 def test_given_the_mounted_write_routes_when_read_then_each_has_the_session_and_csrf_markers() -> None:
     writes = [(p, r) for p, r in _routes() if (r.methods or set()) & {"POST", "PUT"} and p not in SIGN_IN_PATHS]
 
-    assert sorted(p for p, _ in writes) == ["/api/categories", "/api/settings", "/api/settings/reset", "/auth/logout"]
+    assert sorted(p for p, _ in writes) == [
+        "/api/categories",
+        "/api/plan/approve",
+        "/api/plan/decisions",
+        "/api/plan/{plan_id}/move-back",
+        "/api/settings",
+        "/api/settings/reset",
+        "/auth/logout",
+    ]
     assert inventory_violations(writes) == []
 
 

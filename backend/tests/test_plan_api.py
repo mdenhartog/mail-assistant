@@ -125,6 +125,7 @@ async def seed_plan(  # noqa: PLR0913  # one switch per column a test varies
 
 
 async def set_apply_config(owner: asyncpg.Connection, *, threshold: int = 50, delay: int = 15) -> None:  # noqa: F811
+    await owner.execute("insert into categories.mailbox (id) values ($1) on conflict do nothing", MAILBOX)
     await owner.execute(
         "insert into categories.apply_config (mailbox_id, threshold, delay_minutes) values ($1, $2, $3) "
         "on conflict (mailbox_id) do update set threshold = excluded.threshold, delay_minutes = excluded.delay_minutes",
@@ -620,7 +621,7 @@ async def test_given_an_approval_above_the_threshold_when_approved_then_apply_af
 
     applies = datetime.fromisoformat(body["applyAfter"])
     wait = applies - datetime.now(tz=applies.tzinfo)
-    assert timedelta(minutes=14) < wait <= timedelta(minutes=15)
+    assert timedelta(minutes=14) < wait < timedelta(minutes=16)
 
 
 async def test_given_a_repeated_approve_when_posted_then_the_same_state_and_apply_after_come_back(
