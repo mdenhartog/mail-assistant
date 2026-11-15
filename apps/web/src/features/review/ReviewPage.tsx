@@ -62,10 +62,13 @@ function Content({ plan }: { plan: PlanView }): ReactElement {
   if (plan.state !== "ready") {
     return <Notice plan={plan} state={plan.state} />;
   }
+  if (categories.isError) {
+    return <LoadFailed error={categories.error} onRetry={() => void categories.refetch()} />;
+  }
   if (categories.isPending) {
     return <Loading />;
   }
-  return <ReadyReview categories={categories.data?.categories ?? []} key={plan.id} plan={plan} />;
+  return <ReadyReview categories={categories.data.categories} key={plan.id} plan={plan} />;
 }
 
 /** `/review`: the plan of moves for older mail, from building to applied (the states of the brief). */
