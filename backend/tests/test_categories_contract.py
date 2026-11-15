@@ -50,7 +50,6 @@ class Session:
     http: AsyncClient
     app: FastAPI
     headers: dict[str, str]
-    cookies: dict[str, str]
 
 
 @pytest.fixture
@@ -63,9 +62,13 @@ async def session(web_database: Database) -> AsyncIterator[Session]:  # noqa: F8
     attach_database(app, web_database, clock)
     attach_sessions(app, store, events)
     value, created = await store.create(username_digest(b"k" * 32, "canary-user"), T0)
-    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf_token(b"b" * 32, created.id_hash)}
+    headers = {
+        "Origin": ORIGIN,
+        "X-CSRF-Token": csrf_token(b"b" * 32, created.id_hash),
+        "Cookie": f"{COOKIE_NAME}={value}",  # a header, not the per-request cookies argument that httpx deprecates
+    }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as http:
-        yield Session(http, app, headers, {COOKIE_NAME: value})
+        yield Session(http, app, headers)
 
 
 def _cases(app: FastAPI, method: str) -> list[Case[Any]]:
@@ -109,7 +112,6 @@ async def test_given_the_openapi_document_when_cases_are_sent_with_a_session_the
             "/api/categories",
             json=body,
             headers={**sent.get("headers", {}), **session.headers},
-            cookies=session.cookies,
         )
         assert response.status_code < 500
         # A text that breaks a name rule is valid to the schema and answered with 422 problems by design (the rules

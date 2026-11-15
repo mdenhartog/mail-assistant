@@ -127,9 +127,9 @@ async def request(  # noqa: PLR0913  # one switch per part of the request that a
         headers["X-CSRF-Token"] = csrf_token(CSRF_KEY, created.id_hash)
     if origin is not None:
         headers["Origin"] = origin
-    return await api.http.request(
-        method, "/api/categories", json=body, headers=headers, cookies={COOKIE_NAME: value} if cookie else {}
-    )
+    if cookie:  # a header, not the per-request cookies argument that httpx deprecates
+        headers["Cookie"] = f"{COOKIE_NAME}={value}"
+    return await api.http.request(method, "/api/categories", json=body, headers=headers)
 
 
 async def get(api: Api, **switches: Any) -> Any:
@@ -342,8 +342,12 @@ async def test_given_a_non_json_body_when_put_then_415(api: Api) -> None:
     response = await api.http.put(
         "/api/categories",
         content='{"version": 0, "categories": []}',
-        headers={"Content-Type": "text/plain", "Origin": ORIGIN, "X-CSRF-Token": csrf_token(CSRF_KEY, created.id_hash)},
-        cookies={COOKIE_NAME: value},
+        headers={
+            "Content-Type": "text/plain",
+            "Origin": ORIGIN,
+            "X-CSRF-Token": csrf_token(CSRF_KEY, created.id_hash),
+            "Cookie": f"{COOKIE_NAME}={value}",
+        },
     )
 
     assert response.status_code == 415
@@ -420,7 +424,9 @@ async def test_given_saves_older_than_an_hour_when_put_then_they_do_not_count(
     await seed(owner, [("Invoices", "Bills")])
     for number in range(10):
         assert (await put(api, number + 1, [entry(f"Name {number}")])).status_code == 200
-    api.app.state.clock.advance(timedelta(minutes=61))
+    # The fake clock starts when the module is imported, the versions carry the database's clock of a later moment:
+    # moving it by a whole day keeps the test independent of how long the run took so far.
+    api.app.state.clock.advance(timedelta(days=1))
 
     response = await put(api, 11, [entry("Fresh")])
 
@@ -496,8 +502,11 @@ async def test_given_the_web_lock_when_called_then_401_and_nothing_is_written(
         method,
         "/api/categories",
         json={"version": 1, "categories": []} if method == "PUT" else None,
-        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf_token(CSRF_KEY, created.id_hash)},
-        cookies={COOKIE_NAME: value},
+        headers={
+            "Origin": ORIGIN,
+            "X-CSRF-Token": csrf_token(CSRF_KEY, created.id_hash),
+            "Cookie": f"{COOKIE_NAME}={value}",
+        },
     )
 
     assert response.status_code == 401
