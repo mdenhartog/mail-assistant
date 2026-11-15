@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "BATCH_SIZE",
+    "MAX_ITEM_ATTEMPTS",
     "ApplyItem",
     "ApplyLock",
     "ApplyMailbox",
@@ -53,6 +54,7 @@ __all__ = [
     "ApplyStore",
     "AuditMove",
     "DuePlan",
+    "MailFailed",
     "MailGone",
     "Offer",
     "ResortApply",
@@ -65,10 +67,15 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 50
 NAME_MAX = 60
+MAX_ITEM_ATTEMPTS = 3  # a mail that fails this often ends ``failed`` and no longer holds back the plan
 
 
 class MailGone(Exception):  # noqa: N818 - a fact about the mail, not a failure
     """The mail no longer exists in Gmail."""
+
+
+class MailFailed(Exception):  # noqa: N818 - a fact about one mail, not a failure of the agent
+    """Gmail refused or failed an operation on one mail after the adapter's own retries; the mail is not gone."""
 
 
 class SkipReason(StrEnum):
@@ -118,7 +125,11 @@ class AuditMove:
 
 
 class ApplyMailbox(Protocol):
-    """Gmail through the narrow adapter. Blocking calls; run in a thread."""
+    """Gmail through the narrow adapter. Blocking calls; run in a thread.
+
+    A mail that is gone is ``None`` (fetch) or ``MailGone`` (writes). Any other Gmail failure on one mail is
+    ``MailFailed``.
+    """
 
     def label_names(self) -> dict[str, str]:
         """Label id to label name."""
@@ -200,10 +211,14 @@ class ApplyStore(Protocol):
         """Insert the audit row (channel and actor of the approval) unless one exists for plan and mail."""
         ...
 
+    async def count_attempt(self, plan_id: uuid.UUID, message_id: str) -> int:
+        """Count one failed move of an item still ``approved`` and return how many failed so far."""
+        ...
+
     async def finish_item(
         self, plan_id: uuid.UUID, message_id: str, state: ItemState, reason: SkipReason | None
     ) -> bool:
-        """Compare-and-set ``approved`` to ``applied`` or ``skipped`` with the reason."""
+        """Compare-and-set ``approved`` to ``applied``, ``skipped`` or ``failed`` with the reason."""
         ...
 
     async def finish_plan(self, plan_id: uuid.UUID, run_id: str) -> bool:
@@ -304,6 +319,18 @@ class ResortApply:
             await self._report(plan_id)
 
     async def _apply_item(
+        self, plan_id: uuid.UUID, one: ApplyItem, categories: dict[str, str], names: dict[str, str]
+    ) -> None:
+        """Move one item; a Gmail failure is counted and after ``MAX_ITEM_ATTEMPTS`` the item ends ``failed``."""
+        try:
+            await self._move_item(plan_id, one, categories, names)
+        except MailFailed:
+            attempts = await self._store.count_attempt(plan_id, one.message_id)
+            logger.warning("item failed plan=%s attempts=%d", plan_id, attempts)
+            if attempts >= MAX_ITEM_ATTEMPTS:
+                await self._store.finish_item(plan_id, one.message_id, ItemState.FAILED, None)
+
+    async def _move_item(
         self, plan_id: uuid.UUID, one: ApplyItem, categories: dict[str, str], names: dict[str, str]
     ) -> None:
         mid = one.message_id

@@ -36,7 +36,8 @@ async def test_a_mail_that_fails_once_is_tried_again_and_ends_applied() -> None:
 
     await rig.apply().run_once()
 
-    assert rig.store.item(plan, mid).state is ItemState.APPLIED
+    assert rig.store.state(plan) is PlanState.APPLIED
+    assert "1 moved, 0 skipped" in rig.telegram.texts[-1]  # applied items leave the plan
     assert rig.store.attempts[(plan, mid)] == 1
     assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel"}
 

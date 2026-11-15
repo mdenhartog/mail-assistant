@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.core.resort_plan import PlanState
 from app.core.scope import Scope, classify
-from app.usecases.resort_apply import AuditMove, MailGone, held_label_ids
+from app.usecases.resort_apply import AuditMove, MailFailed, MailGone, held_label_ids
 
 if TYPE_CHECKING:
     from app.usecases.resort_apply import ApplyLock, ApplyMailbox, ApplyNotifier
@@ -136,7 +136,7 @@ class MoveBack:
             if old and old not in held:
                 await asyncio.to_thread(self._mail.add_label, move.message_id, old)
             await asyncio.to_thread(self._mail.remove_label, move.message_id, move.new_label)
-        except MailGone:
-            return False
+        except (MailGone, MailFailed):
+            return False  # gone, or Gmail keeps refusing this one: the request must still finish
         await self._store.record_restore(job.plan_id, AuditMove(move.message_id, move.new_label, old), job.channel)
         return True
