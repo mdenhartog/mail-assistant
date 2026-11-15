@@ -9,6 +9,9 @@ Revision ID: 0015
 Revises: 0014
 """
 
+import importlib.util
+from pathlib import Path
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -392,6 +395,56 @@ _FUNCTIONS = (
 )
 
 
+# The retention of the plan half joins purge_expired() (ADR-0047; still no parameters, still the database clock):
+# the items of an applied plan go at once, those of a plan that ended or that nobody has touched for 14 days go with
+# it, a plan goes 14 days after it ended, and the decision, approval, apply audit and move-back rows go after a year.
+# A rejection is not touched here: it stays until the list changes (the list half deletes it then).
+_PURGE_PLAN_PART = """
+    DELETE FROM categories.plan_decision WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan_decision', n);
+    DELETE FROM categories.plan_approval WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan_approval', n);
+    DELETE FROM categories.apply_audit WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('apply_audit', n);
+    DELETE FROM categories.move_back_request WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('move_back_request', n);
+    DELETE FROM categories.plan_item i USING categories.plan p
+     WHERE p.mailbox_id = i.mailbox_id AND p.id = i.plan_id
+       AND (p.state = 'applied'
+            OR p.terminal_at < pg_catalog.now() - interval '14 days'
+            OR (p.state IN ('building', 'ready')
+                AND p.last_activity_at < pg_catalog.now() - interval '14 days'));
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan_item', n);
+    DELETE FROM categories.plan WHERE terminal_at < pg_catalog.now() - interval '14 days';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan', n);
+"""
+_DOWN_MARK = "    -- A rejection lives until the list changes again.\n"
+
+
+def _list_half_purge() -> str:
+    """The purge of revision 0014, read from that revision so that there is one copy of it."""
+    path = Path(__file__).with_name("0014_categories.py")
+    spec = importlib.util.spec_from_file_location("categories_0014", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("revision 0014 cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return str(module._PURGE).replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1)
+
+
+def _purge_with_plan_half() -> str:
+    body = _list_half_purge()
+    if _DOWN_MARK not in body:
+        raise RuntimeError("the purge of revision 0014 has changed shape")
+    return body.replace(_DOWN_MARK, _PURGE_PLAN_PART.lstrip("\n") + _DOWN_MARK, 1)
+
+
 # The functions of this schema are owned by a role that cannot log in (AC-56): a stolen runtime or owner password does
 # not give the rights a definer function runs with. The role holds table rights only on this schema; grants.sql keeps
 # them current for tables added later. A role is cluster-wide, so it is created when missing and never dropped here.
@@ -426,6 +479,7 @@ def upgrade() -> None:
         op.execute(statement)
     for function in _FUNCTIONS:
         op.execute(f"REVOKE ALL ON FUNCTION {function} FROM PUBLIC")
+    op.execute(_purge_with_plan_half())  # before the hand-over: only the owner of a function may replace it
     for statement in _DEFINER_SETUP:
         op.execute(statement)
     op.execute(_REOWN_UP)
@@ -438,6 +492,7 @@ def downgrade() -> None:
     the functions of the list half go back to the migrating role.
     """
     op.execute(_REOWN_DOWN)
+    op.execute(_list_half_purge())  # the purge of revision 0014 again, without the plan tables
     for statement in _DEFINER_TEARDOWN:
         op.execute(statement)
     for function in _FUNCTIONS:
