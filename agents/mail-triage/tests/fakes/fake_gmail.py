@@ -176,7 +176,13 @@ class FakeGmail:
             raise http_error(409, "Label name exists or conflicts", "labelNameExists")
 
     def matches_query(self, query: str, mail: _Mail) -> bool:
-        """The one search the agent makes: ``in:inbox OR label:assistant``; spam and trash are never searched."""
+        """The plan build's search, ``in:inbox OR label:assistant`` (spam and trash are never searched).
+
+        Any other query is not modelled and matches everything, as the double always did.
+        """
+        terms = [term.strip() for term in query.split(" OR ")]
+        if not set(terms) <= {"in:inbox", "label:assistant"}:
+            return True
         if {"SPAM", "TRASH"} & mail.labels:
             return False
         names = {self.label_table[i] for i in mail.labels}
@@ -184,9 +190,6 @@ class FakeGmail:
             "in:inbox": "INBOX" in mail.labels,
             "label:assistant": any(n.startswith(ASSISTANT_PREFIX) for n in names),
         }
-        terms = [term.strip() for term in query.split(" OR ")]
-        if not all(term in tests for term in terms):
-            raise ValueError(f"the Gmail double does not understand the query {query!r}")
         return any(tests[term] for term in terms)
 
     def get_mail(self, mid: str) -> _Mail:
