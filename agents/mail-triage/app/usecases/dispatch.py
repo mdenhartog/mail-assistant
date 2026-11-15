@@ -15,6 +15,8 @@ the buttons and answers of its own conversation; the older snooze and reply ques
 
 - The buttons of a category list notice (``catundo:<nonce>``, ``catlock:<nonce>``) go to the registered
   ``ListActionsPort``, which has its own nonce record; they too never touch the conversation.
+- The buttons of a plan notice (``plancancel:<nonce>``, ``planlock:<nonce>``, ``planback:<nonce>``) go to the registered
+  ``PlanActionsPort`` in the same way.
 - The buttons of a web notice (``webundo:<token>``, ``weblock:<token>``), ``/web_lock`` and ``/web_unlock`` go to the
   registered ``WebActionsPort``. They have their own token record: they never read, claim, start or clear the
   conversation.
@@ -30,7 +32,7 @@ import re
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
-from app.core import list_text, settings_text
+from app.core import approval_text, list_text, settings_text
 from app.core.alert_state import AlertState
 from app.core.settings_text import UNDO_CHANGED
 
@@ -202,6 +204,14 @@ class ListActionsPort(Protocol):
         ...
 
 
+class PlanActionsPort(Protocol):
+    """The buttons of a plan notice (``PlanNoticeActions``): Cancel, Lock and Move back."""
+
+    async def on_button(self, command: Command, action: str, nonce: str) -> None:
+        """Run ``plancancel``, ``planlock`` or ``planback`` for ``nonce``."""
+        ...
+
+
 class DialogueHandler(Protocol):
     """A dialogue the router can start and feed (the settings dialogue).
 
@@ -356,6 +366,7 @@ class CommandRouter:
         self._cursor = cursor
         self._web: WebActionsPort | None = None
         self._list: ListActionsPort | None = None
+        self._plan: PlanActionsPort | None = None
 
     def register(self, handler: DialogueHandler) -> None:
         """Add a dialogue: its slash commands start it, and its conversation kind routes buttons and text to it."""
@@ -369,6 +380,10 @@ class CommandRouter:
     def register_list_actions(self, actions: ListActionsPort) -> None:
         """Add the buttons of the category list notice."""
         self._list = actions
+
+    def register_plan_actions(self, actions: PlanActionsPort) -> None:
+        """Add the buttons of the delayed-apply and result notices."""
+        self._plan = actions
 
     async def handle(self, command: Command) -> None:
         """Run one update, once: skip a redelivered one; store its id only after it was handled (a failure raises)."""
@@ -437,6 +452,11 @@ class CommandRouter:
         if listed is not None:
             if self._list is not None:
                 await self._list.on_button(command, *listed)
+            return True
+        planned = approval_text.split_button(command.data)
+        if planned is not None:
+            if self._plan is not None:
+                await self._plan.on_button(command, *planned)
             return True
         return False
 
