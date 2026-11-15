@@ -44,7 +44,19 @@ export function labelFor(name: string): string {
   return `${LABEL_PREFIX}${name.trim()}`;
 }
 
-function nameProblems(name: string, existing: readonly string[], labels: readonly string[]): string[] {
+/** Whether the label of the name exists and is not an older category's label (which the name adopts). */
+function labelClashes(name: string, labels: readonly string[], adoptable: readonly string[]): boolean {
+  const key = normaliseName(labelFor(name));
+  const has = (list: readonly string[]): boolean => list.some((label) => normaliseName(label) === key);
+  return has(labels) && !has(adoptable);
+}
+
+function nameProblems(
+  name: string,
+  existing: readonly string[],
+  labels: readonly string[],
+  adoptable: readonly string[],
+): string[] {
   const text = canonical(name);
   if (text === "") {
     return ["name_empty"];
@@ -65,7 +77,7 @@ function nameProblems(name: string, existing: readonly string[], labels: readonl
   }
   if (existing.some((other) => normaliseName(other) === key)) {
     rules.push("name_duplicate");
-  } else if (labels.some((label) => normaliseName(label) === normaliseName(labelFor(text)))) {
+  } else if (labelClashes(text, labels, adoptable)) {
     rules.push("name_label_exists");
   }
   return rules;
@@ -83,7 +95,9 @@ function descriptionProblems(description: string): string[] {
  * Checks one category.
  *
  * @param existing Names of the other categories on the list.
- * @param labels Gmail labels under `Assistant/` that are not on the stored list.
+ * @param labels The Gmail labels that exist, as the caller knows them.
+ * @param adoptable The subset of `labels` that belongs to an older category: a new category of that name adopts
+ * the label and its mail instead of clashing (C-15, AC-40, AC-53).
  * @returns The problems in rule order; empty when the category is valid.
  */
 export function validateCategory(
@@ -91,9 +105,10 @@ export function validateCategory(
   description: string,
   existing: readonly string[],
   labels: readonly string[],
+  adoptable: readonly string[],
 ): Problem[] {
   return [
-    ...nameProblems(name, existing, labels).map((rule): Problem => ({ rule, field: "name", index: null })),
+    ...nameProblems(name, existing, labels, adoptable).map((rule): Problem => ({ rule, field: "name", index: null })),
     ...descriptionProblems(description).map((rule): Problem => ({ rule, field: "description", index: null })),
   ];
 }
@@ -102,15 +117,20 @@ export function validateCategory(
  * Checks a whole list: every category (a later duplicate is the one flagged) and the cap of 50.
  *
  * @example
- * validateList([{ name: "Invoices", description: "Bills" }], []); // []
+ * validateList([{ name: "Invoices", description: "Bills" }], [], []); // []
  */
-export function validateList(categories: readonly CategoryText[], labels: readonly string[]): Problem[] {
+export function validateList(
+  categories: readonly CategoryText[],
+  labels: readonly string[],
+  adoptable: readonly string[],
+): Problem[] {
   const problems = categories.flatMap((category, index) =>
     validateCategory(
       category.name,
       category.description,
       categories.slice(0, index).map((other) => other.name),
       labels,
+      adoptable,
     ).map((problem): Problem => ({ ...problem, index })),
   );
   return categories.length > MAX_CATEGORIES ? [...problems, { rule: "list_too_many", field: "list", index: null }] : problems;

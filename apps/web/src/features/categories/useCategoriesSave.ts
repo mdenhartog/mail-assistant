@@ -5,7 +5,6 @@ import { useSaveCategories } from "@/api/categories/categories.queries";
 import type { CategoryInput, CategoryList, CategoryProblem, SaveOutcome } from "@/api/categories/categories.types";
 import { validateList } from "@/features/categories/policy";
 import { problemText } from "@/features/categories/problemText";
-import { openOlder } from "@/features/categories/rows";
 import type { Row, RowField } from "@/features/categories/rows";
 
 /** Message per card key and field; a field that is not there is fine. */
@@ -143,9 +142,9 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[]): Cat
     if (save.isPending) {
       return;
     }
-    // An older label already added as a card is the user adopting it: the api decides about that name.
-    const labels = openOlder(list, rows).map((older) => older.labelName);
-    const problems = validateList(rows, labels);
+    // Every label this page knows is an older category: a card of that name adopts it (AC-53). The api knows the rest.
+    const labels = list.olderCategories.map((older) => older.labelName);
+    const problems = validateList(rows, labels, labels);
     if (problems.length === 0) {
       setResult(null);
       setAsking(true);

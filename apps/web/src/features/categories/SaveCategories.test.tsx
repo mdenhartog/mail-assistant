@@ -145,6 +145,20 @@ describe("Categories page: invalid fields (AC-2)", () => {
     expect(card(2).getByLabelText("Name")).toHaveFocus();
   });
 
+  it("given a typed name that is an older category, when saving, then the page does not refuse it and the save is asked for", async () => {
+    const seen = wire();
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
+    await userEvent.type(card(3).getByLabelText("Name"), "travel");
+    await userEvent.type(card(3).getByLabelText("Description"), "Flights and hotels");
+
+    await userEvent.click(saveButton());
+
+    expect(await screen.findByRole("alertdialog", { name: "Save these changes?" })).toBeInTheDocument();
+    expect(screen.queryByText("A Gmail label with this name already exists.")).not.toBeInTheDocument();
+    expect(seen.puts).toHaveLength(0);
+  });
+
   it("given the api refuses a field (422), then the error shows next to that field and focus moves there", async () => {
     wire({
       put: () =>
