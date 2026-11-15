@@ -10,7 +10,7 @@ feature: mail-categories
 - Release: R2
 - Contract: Playwright journeys with the fake Gmail: change the list, a plan appears, review, approve, apply, Move back, Cancel and Lock; first plan at the first R2 start; canary scan; user acceptance of AC-45 in the release checklist.
 - Files: apps/web/e2e/review.spec.ts, docs/release/mail-categories-r2.md
-- Depends on: U-mail-categories-16, U-mail-categories-18
+- Depends on: U-mail-categories-16, U-mail-categories-18, U-mail-categories-22
 - Parallel: no
 - Guardrails: guardrail-playwright, guardrail-a11y
 - Criteria:
