@@ -10,6 +10,7 @@ import { ClockContext, systemClock } from "@/pages/clock";
 import type { Clock } from "@/pages/clock";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFound } from "@/pages/NotFound";
+import { CategoriesPage } from "@/features/categories/CategoriesPage";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { paths } from "@/router/paths";
 import { LoginGate, ProtectedShell } from "@/session/SessionRoutes";
@@ -56,6 +57,11 @@ export const routes: RouteObject[] = [
       { path: paths.root, element: <Navigate replace to={paths.settings} /> },
       { path: paths.login, element: <LoginGate />, children: [{ index: true, element: <LoginPage /> }] },
       { path: paths.settings, element: <ProtectedShell />, children: [{ index: true, element: <SettingsPage /> }] },
+      {
+        path: paths.categories,
+        element: <ProtectedShell />,
+        children: [{ index: true, element: <CategoriesPage /> }],
+      },
       { path: "*", element: <NotFound /> },
     ],
   },
