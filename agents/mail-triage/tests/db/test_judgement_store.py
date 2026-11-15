@@ -4,16 +4,19 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
 from app.core.judgement import OTHER_ID
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_store import PgStore
+from app.usecases.overview import SecurityMail
 from app.usecases.triage import FilingEntry, MailContent, Outcome
 from tests.db.conftest import write_list
 
@@ -115,6 +118,29 @@ async def test_given_a_pinned_mail_when_completed_then_no_filing_row_is_written_
 
     assert await cat_owner.fetchval("select count(*) from categories.filing") == 0
     assert await store.filed_without_alert_since(datetime(2000, 1, 1, tzinfo=UTC)) == []
+
+
+async def test_given_pinned_google_security_mail_when_completed_then_an_alert_exists_and_the_overview_lists_it(
+    store: PgStore, cat_owner: asyncpg.Connection
+) -> None:
+    await store.claim("sec", "t1")
+    await store.claim("code", "t2")
+    base = outcome(None, None)
+    security = replace(base, urgent=True, alert=AlertState.OPEN, note="pinned:google_security", confidence=None)
+    sign_in = replace(
+        base,
+        note="pinned:sign_in_code",
+        confidence=None,
+        content=replace(base.content, sender="", subject=""),
+    )
+
+    await store.complete("sec", security)
+    await store.complete("code", sign_in)
+
+    assert await cat_owner.fetchval("select count(*) from alert") == 1
+    since = datetime(2000, 1, 1, tzinfo=UTC)
+    assert await store.filed_without_alert_since(since) == []
+    assert await store.security_mail_since(since) == [SecurityMail("boss@example.com", "Budget")]
 
 
 async def test_given_the_same_mail_completed_twice_when_retried_then_there_is_still_one_filing_row(

@@ -4,28 +4,28 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.pinned import is_pinned
+from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
 
-ALLOW = frozenset({"accounts.google.com", "mail.example.test"})
+ALLOW = PinnedSenders(google_security=frozenset({"accounts.google.com"}), sign_in=frozenset({"mail.example.test"}))
 GOOD = "mx.google.com; spf=pass; dkim=pass header.i=@accounts.google.com; dmarc=pass (p=REJECT) header.from=accounts.google.com"  # noqa: E501
 SENDER = "no-reply@accounts.google.com"
 
 
 def test_given_google_security_mail_with_dmarc_pass_on_the_allow_list_then_it_is_pinned() -> None:
-    assert is_pinned((GOOD,), SENDER, ALLOW) is True
+    assert pinned_kind((GOOD,), SENDER, ALLOW) is PinnedKind.GOOGLE_SECURITY
 
 
 def test_given_the_apps_own_sign_in_mail_with_dmarc_pass_then_it_is_pinned() -> None:
     header = "mx.google.com; dmarc=pass header.from=mail.example.test"
 
-    assert is_pinned((header,), "login@mail.example.test", ALLOW) is True
+    assert pinned_kind((header,), "login@mail.example.test", ALLOW) is PinnedKind.SIGN_IN_CODE
 
 
 def test_given_a_forged_header_lower_in_the_mail_then_only_the_topmost_counts() -> None:
     real = "mx.google.com; dmarc=fail header.from=accounts.google.com"
     forged = GOOD
 
-    assert is_pinned((real, forged), SENDER, ALLOW) is False
+    assert pinned_kind((real, forged), SENDER, ALLOW) is None
 
 
 @pytest.mark.parametrize(
@@ -43,26 +43,40 @@ def test_given_a_forged_header_lower_in_the_mail_then_only_the_topmost_counts() 
     ],
 )
 def test_given_a_header_that_does_not_prove_the_sender_then_it_is_not_pinned(header: str) -> None:
-    assert is_pinned((header,), SENDER, ALLOW) is False
+    assert pinned_kind((header,), SENDER, ALLOW) is None
 
 
 def test_given_no_header_then_it_is_not_pinned() -> None:
-    assert is_pinned((), SENDER, ALLOW) is False
+    assert pinned_kind((), SENDER, ALLOW) is None
 
 
 def test_given_a_sender_domain_off_the_allow_list_then_it_is_not_pinned() -> None:
     header = "mx.google.com; dmarc=pass header.from=news.example"
 
-    assert is_pinned((header,), "a@news.example", ALLOW) is False
+    assert pinned_kind((header,), "a@news.example", ALLOW) is None
 
 
 def test_given_a_subdomain_of_an_allowed_domain_then_it_is_not_pinned() -> None:
     header = "mx.google.com; dmarc=pass header.from=evil.accounts.google.com"
 
-    assert is_pinned((header,), "a@evil.accounts.google.com", ALLOW) is False
+    assert pinned_kind((header,), "a@evil.accounts.google.com", ALLOW) is None
 
 
 def test_given_domain_case_differences_then_the_match_ignores_case() -> None:
     header = "mx.google.com; dmarc=pass header.from=Accounts.Google.com"
 
-    assert is_pinned((header,), "No-Reply@ACCOUNTS.google.com", ALLOW) is True
+    assert pinned_kind((header,), "No-Reply@ACCOUNTS.google.com", ALLOW) is PinnedKind.GOOGLE_SECURITY
+
+
+def test_given_a_domain_on_the_other_kinds_list_only_then_it_gets_that_kind_and_never_the_google_one() -> None:
+    header = "mx.google.com; dmarc=pass header.from=accounts.google.com"
+    only_sign_in = PinnedSenders(google_security=frozenset(), sign_in=frozenset({"accounts.google.com"}))
+
+    assert pinned_kind((header,), SENDER, only_sign_in) is PinnedKind.SIGN_IN_CODE
+
+
+def test_given_no_sign_in_domains_configured_then_the_apps_domain_is_not_pinned() -> None:
+    header = "mx.google.com; dmarc=pass header.from=mail.example.test"
+    google_only = PinnedSenders(google_security=frozenset({"accounts.google.com"}), sign_in=frozenset())
+
+    assert pinned_kind((header,), "login@mail.example.test", google_only) is None

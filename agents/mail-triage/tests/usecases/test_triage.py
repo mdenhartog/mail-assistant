@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from app.core.pinned import PinnedSenders
 from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
@@ -23,7 +24,9 @@ if TYPE_CHECKING:
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
 EMPTY = JudgingList(version=0, categories=())
-PINNED_DOMAINS = frozenset({"accounts.google.com"})
+PINNED = PinnedSenders(
+    google_security=frozenset({"accounts.google.com"}), sign_in=frozenset({"mail.example.test"})
+)
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -164,7 +167,7 @@ def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
         notifier or FakeNotifier(),
         now=lambda: now,
         policy=source or FakePolicySource(),
-        pinned_domains=PINNED_DOMAINS,
+        pinned=PINNED,
     )
 
 

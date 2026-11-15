@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from app.core.alert_text import MAX_MESSAGE_CHARS
 from app.core.time_policy import in_quiet_hours, overview_on
-from app.usecases.overview import SUBJECT_CHARS, FiledMail, OverviewService, build_overview
+from app.usecases.overview import SUBJECT_CHARS, FiledMail, OverviewService, SecurityMail, build_overview
 from schedule_policy.policy import DEFAULT_POLICY, validate
 from schedule_policy.testing import make_policy
 
@@ -36,11 +36,16 @@ class FakeStore:
     sent_days: dict[date, datetime] = field(default_factory=dict)
     asked_since: list[datetime] = field(default_factory=list)
     timed: list[tuple[datetime, FiledMail]] = field(default_factory=list)
+    security: list[SecurityMail] = field(default_factory=list)
     now: datetime = FAR_FUTURE  # a mail filed after this moment does not exist yet
 
     async def filed_without_alert_since(self, since: datetime) -> list[FiledMail]:
         self.asked_since.append(since)
         return [*self.mails, *(mail for filed_at, mail in self.timed if since <= filed_at <= self.now)]
+
+    async def security_mail_since(self, since: datetime) -> list[SecurityMail]:
+        del since
+        return list(self.security)
 
     async def overview_sent(self, day: date) -> bool:
         return day in self.sent_days
@@ -401,3 +406,34 @@ async def test_given_one_run_when_the_overview_is_sent_then_the_policy_is_read_o
     await rig.run(datetime(2026, 11, 9, 17, 1, tzinfo=UTC))
 
     assert rig.policies.reads == 1
+
+
+def test_given_pinned_security_mail_when_the_overview_is_built_then_it_has_its_own_section() -> None:
+    text = build_overview([filed("Assistant/Finance")], [SecurityMail("no-reply@accounts.google.com", "Security alert")]).text
+
+    assert "Google security mail (1)" in text
+    assert "• no-reply@accounts.google.com: Security alert" in text
+    assert "Today I filed 1 mails" in text
+
+
+def test_given_only_security_mail_when_the_overview_is_built_then_it_does_not_claim_any_filing() -> None:
+    text = build_overview([], [SecurityMail("no-reply@accounts.google.com", "Security alert")]).text
+
+    assert "Today I filed" not in text
+    assert "Google security mail (1)" in text
+
+
+def test_given_hostile_security_mail_text_when_the_overview_is_built_then_it_is_escaped_and_capped() -> None:
+    text = build_overview([], [SecurityMail("<b>x</b>", "<i>" + "s" * 500)]).text
+
+    assert "<b>x</b>" not in text
+    assert len(text) <= MAX_MESSAGE_CHARS
+
+
+async def test_given_only_security_mail_when_the_overview_is_due_then_one_message_goes_out() -> None:
+    store, outbox = FakeStore(security=[SecurityMail("no-reply@accounts.google.com", "Security alert")]), FakeOutbox()
+
+    await service(store, outbox, AFTER).send_overview()
+
+    assert len(outbox.messages) == 1
+    assert "Google security mail" in outbox.messages[0].text

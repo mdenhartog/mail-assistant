@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from app.core.pinned import PinnedSenders
 from app.adapters.gmail_read import FetchedMail
 from app.adapters.judge_anthropic import DailyBudget, ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
@@ -22,7 +23,9 @@ if TYPE_CHECKING:
 
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
-PINNED_DOMAINS = frozenset({"accounts.google.com"})
+PINNED = PinnedSenders(
+    google_security=frozenset({"accounts.google.com"}), sign_in=frozenset({"mail.example.test"})
+)
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam: quiet hours
@@ -193,7 +196,7 @@ def catchup(
         budget or Plenty(),
         now=lambda: NOW,
         policy=FakePolicySource(),
-        pinned_domains=PINNED_DOMAINS,
+        pinned=PINNED,
     )
 
 
@@ -595,7 +598,7 @@ async def test_given_urgent_old_mail_in_quiet_hours_when_it_runs_then_held_alert
         Plenty(),
         now=lambda: NIGHT,
         policy=source,
-        pinned_domains=PINNED_DOMAINS,
+        pinned=PINNED,
     )
 
     await use_case.run_once()
@@ -618,8 +621,27 @@ async def test_given_old_pinned_mail_when_it_runs_then_it_stays_and_the_rest_is_
 
     assert [mail.sender for mail in judge.seen] == [mailbox.mails["plain"].sender]  # the model never sees pinned mail
     assert mailbox.filed == ["plain"]
-    assert (store.done["sec"].label, store.done["sec"].filing) == (None, None)
+    assert (store.done["sec"].label, store.done["sec"].urgent) == (None, True)  # an old security mail still alerts
+    assert store.done["sec"].alert is not None
+    assert store.done["sec"].note == "pinned:google_security"
     assert store.done["plain"].filing == FilingEntry(FINANCE_ID, 3)
+
+
+async def test_given_old_pinned_security_mail_beyond_the_backlog_cap_when_it_runs_then_it_stays_without_an_alert() -> None:
+    all_ids = ids(BACKLOG_ALERT_LIMIT + 1)
+    mailbox, store = FakeMailbox(all_ids), FakeStore()
+    for mail_id in all_ids:
+        mailbox.mails[mail_id] = replace(
+            mailbox.mails[mail_id],
+            sender="no-reply@accounts.google.com",
+            auth_results=("mx.google.com; dmarc=pass header.from=accounts.google.com",),
+        )
+
+    await catchup(mailbox, FakeJudge(judgement()), store).run_once()
+
+    alerts = [store.done[i].alert is not None for i in all_ids]
+    assert alerts == [True] * BACKLOG_ALERT_LIMIT + [False]
+    assert mailbox.filed == []
 
 
 async def test_given_injected_mails_that_the_model_calls_urgent_when_it_runs_then_still_only_five_alerts_exist() -> (
