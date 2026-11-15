@@ -23,17 +23,22 @@ function isOlder(value: unknown): boolean {
   );
 }
 
+function allOf(value: unknown, check: (item: unknown) => boolean): boolean {
+  return Array.isArray(value) && (value as unknown[]).every(check);
+}
+
+function isOther(value: unknown): boolean {
+  return isRecord(value) && typeof value["mailCount"] === "number";
+}
+
 function isList(value: unknown): value is CategoryList {
   return (
     isRecord(value) &&
     typeof value["version"] === "number" &&
     typeof value["ready"] === "boolean" &&
-    Array.isArray(value["categories"]) &&
-    value["categories"].every(isCategory) &&
-    Array.isArray(value["olderCategories"]) &&
-    value["olderCategories"].every(isOlder) &&
-    isRecord(value["other"]) &&
-    typeof value["other"]["mailCount"] === "number"
+    allOf(value["categories"], isCategory) &&
+    allOf(value["olderCategories"], isOlder) &&
+    isOther(value["other"])
   );
 }
 
@@ -44,6 +49,10 @@ function isProblem(value: unknown): value is CategoryProblem {
     typeof value["field"] === "string" &&
     (value["index"] === null || typeof value["index"] === "number")
   );
+}
+
+function problemsOf(body: Record<string, unknown>): CategoryProblem[] {
+  return Array.isArray(body["problems"]) ? (body["problems"] as unknown[]).filter(isProblem) : [];
 }
 
 async function readList(response: Response): Promise<CategoryList> {
@@ -67,12 +76,12 @@ export function classifySaveError(error: unknown): SaveOutcome {
   if (!(error instanceof ApiError)) {
     return { kind: "failed" };
   }
-  const body = error.body;
-  if (error.status === 409 && isRecord(body) && isList(body["current"])) {
+  const body = isRecord(error.body) ? error.body : {};
+  if (error.status === 409 && isList(body["current"])) {
     return { kind: "conflict", current: body["current"] };
   }
-  if (error.status === 422 && isRecord(body) && Array.isArray(body["problems"])) {
-    const problems = (body["problems"] as unknown[]).filter(isProblem);
+  if (error.status === 422) {
+    const problems = problemsOf(body);
     return problems.length > 0 ? { kind: "invalid", problems } : { kind: "failed" };
   }
   return error.status === 429 ? { kind: "rate-limited" } : { kind: "failed" };

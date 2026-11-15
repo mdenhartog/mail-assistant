@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import type { BoundFunctions, queries } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +24,7 @@ async function loaded(): Promise<HTMLElement> {
   return container;
 }
 
-function card(position: number): ReturnType<typeof within> {
+function card(position: number): BoundFunctions<typeof queries> {
   return within(screen.getByRole("group", { name: `Category ${String(position)}` }));
 }
 

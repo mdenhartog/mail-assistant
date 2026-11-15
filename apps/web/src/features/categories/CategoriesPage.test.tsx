@@ -21,13 +21,12 @@ describe("Categories page: reading the list", () => {
     wire();
     await loaded();
 
-    const cards = screen.getAllByRole("group", { name: /^Category \d+$/ });
-    expect(cards).toHaveLength(2);
-    const first = within(cards[0]!);
+    expect(screen.getAllByRole("group", { name: /^Category \d+$/ })).toHaveLength(2);
+    const first = within(screen.getByRole("group", { name: "Category 1" }));
     expect(first.getByLabelText("Name")).toHaveValue("Invoices");
     expect(first.getByLabelText("Description")).toHaveValue("Invoices, receipts and payment confirmations.");
     expect(first.getByText("12 mails")).toBeInTheDocument();
-    expect(within(cards[1]!).getByText("1 mail")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Category 2" })).getByText("1 mail")).toBeInTheDocument();
     const other = screen.getByRole("group", { name: "Other" });
     expect(within(other).getByText("Mail that fits no category")).toBeInTheDocument();
     expect(within(other).getByText("7 mails")).toBeInTheDocument();
@@ -103,10 +102,10 @@ describe("Categories page: older categories", () => {
 
     await userEvent.click(within(older).getByRole("button", { name: "Add Travel to my list" }));
 
-    const cards = screen.getAllByRole("group", { name: /^Category \d+$/ });
-    expect(cards).toHaveLength(3);
-    expect(within(cards[2]!).getByLabelText("Name")).toHaveValue("Travel");
-    expect(within(cards[2]!).getByLabelText("Description")).toHaveFocus();
+    expect(screen.getAllByRole("group", { name: /^Category \d+$/ })).toHaveLength(3);
+    const added = within(screen.getByRole("group", { name: "Category 3" }));
+    expect(added.getByLabelText("Name")).toHaveValue("Travel");
+    expect(added.getByLabelText("Description")).toHaveFocus();
     expect(screen.queryByRole("region", { name: "Older category" })).not.toBeInTheDocument();
   });
 });
