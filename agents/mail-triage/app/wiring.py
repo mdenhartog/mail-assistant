@@ -65,8 +65,8 @@ from app.usecases.list_sync import ListSync
 from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
 from app.usecases.policy_notice import PolicyNotice
-from app.usecases.reply import ReplyService
 from app.usecases.refile_report import RefileReportService
+from app.usecases.reply import ReplyService
 from app.usecases.resort_apply import ResortApply
 from app.usecases.resort_build import ResortBuild
 from app.usecases.resort_notice import TelegramApplyNotifier

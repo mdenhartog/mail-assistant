@@ -120,7 +120,7 @@ async def test_given_labels_when_asked_then_the_map_holds_every_category_and_oth
     assert await store.category_labels() == {finance: "L_FIN", OTHER_ID: "L_OTH"}
 
 
-async def test_given_filings_in_the_last_14_days_when_the_report_runs_as_the_agent_then_it_reports_and_records_the_shares(
+async def test_given_filings_in_14_days_when_the_report_runs_as_the_agent_then_it_reports_and_records_the_shares(
     cat_owner: asyncpg.Connection,
     agent_sessions: async_sessionmaker[Any],
     caplog: pytest.LogCaptureFixture,
@@ -129,7 +129,9 @@ async def test_given_filings_in_the_last_14_days_when_the_report_runs_as_the_age
     await _label(cat_owner, finance, "L_FIN", "Assistant/Finance")
     await _label(cat_owner, travel, "L_TRV", "Assistant/Travel")
     await _label(cat_owner, OTHER_ID, "L_OTH", "Assistant/Other")
-    gmail = Gmail({"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel", "L_OTH": "Assistant/Other", "INBOX": "INBOX"})
+    gmail = Gmail(
+        {"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel", "L_OTH": "Assistant/Other", "INBOX": "INBOX"}
+    )
     plan = [("kept", finance, "L_FIN")] * 6 + [("moved", finance, "L_TRV")] * 2 + [("other", OTHER_ID, "L_OTH")] * 2
     for index, (kind, category, now_label) in enumerate(plan):
         message_id = f"{kind}{index}"

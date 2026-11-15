@@ -10,16 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING
 
 import asyncpg
 import pytest
 from alembic import command
 
 from tests.db.conftest import AGENT_ROLE, API_ROLE, alembic_config, plain_url
-
-if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
 
 TABLE = "categories.refile_report"
 FUNCTION = "categories.record_refile_report(text, integer, integer, integer, integer, integer)"
@@ -108,18 +104,17 @@ async def test_given_a_runtime_role_then_it_has_no_right_on_the_report_table(
 async def test_given_the_agent_when_it_reads_or_writes_the_table_directly_then_postgres_refuses_with_42501(
     cat_owner: asyncpg.Connection, cat_agent: asyncpg.Connection
 ) -> None:
-    attempts: list[Callable[[], Awaitable[object]]] = [
-        lambda: cat_agent.fetch(f"select * from {TABLE}"),
-        lambda: cat_agent.execute(
-            f"insert into {TABLE} (mailbox_id, filed, checked, refiled, in_other, gone) values ('mb1', 1, 1, 0, 0, 0)"
-        ),
-        lambda: cat_agent.execute(f"update {TABLE} set filed = 0"),
-        lambda: cat_agent.execute(f"delete from {TABLE}"),
-    ]
-    for attempt in attempts:
+    statements = (
+        "select * from categories.refile_report",
+        "insert into categories.refile_report (mailbox_id, filed, checked, refiled, in_other, gone) "
+        "values ('mb1', 1, 1, 0, 0, 0)",
+        "update categories.refile_report set filed = 0",
+        "delete from categories.refile_report",
+    )
+    for statement in statements:
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
-            await attempt()
-    assert await cat_owner.fetchval(f"select count(*) from {TABLE}") == 0
+            await cat_agent.execute(statement)
+    assert await cat_owner.fetchval("select count(*) from categories.refile_report") == 0
 
 
 async def test_given_the_function_then_only_the_agent_may_run_it_and_the_definer_owns_it(
@@ -130,7 +125,9 @@ async def test_given_the_function_then_only_the_agent_may_run_it_and_the_definer
     assert not await cat_owner.fetchval(
         "select has_function_privilege('public', $1, 'EXECUTE')", FUNCTION
     )  # nobody else, by way of PUBLIC
-    owner = await cat_owner.fetchval("select proowner::regrole::text from pg_proc where oid = $1::regprocedure", FUNCTION)
+    owner = await cat_owner.fetchval(
+        "select proowner::regrole::text from pg_proc where oid = $1::regprocedure", FUNCTION
+    )
     assert owner == "categories_definer"
     with pytest.raises(asyncpg.InsufficientPrivilegeError):
         await _record(cat_api)
@@ -141,7 +138,7 @@ async def test_given_the_agent_when_it_records_a_report_then_the_row_has_the_cou
 ) -> None:
     await _record(cat_agent, "mb1", 12, 10, 3, 4, 1)
 
-    row = await cat_owner.fetchrow(f"select *, at = now() as db_clock from {TABLE}")  # noqa: S608
+    row = await cat_owner.fetchrow("select *, at = now() as db_clock from categories.refile_report")
 
     assert row is not None
     assert (row["mailbox_id"], row["filed"], row["checked"], row["refiled"], row["in_other"], row["gone"]) == (
@@ -165,7 +162,7 @@ async def test_given_impossible_counts_then_the_row_is_refused(
 ) -> None:
     with pytest.raises(asyncpg.CheckViolationError):
         await _record(cat_agent, "mb1", *counts)
-    assert await cat_owner.fetchval(f"select count(*) from {TABLE}") == 0
+    assert await cat_owner.fetchval("select count(*) from categories.refile_report") == 0
 
 
 async def test_given_an_unknown_mailbox_then_the_row_is_refused_by_the_foreign_key(
@@ -181,14 +178,18 @@ async def test_given_old_and_young_reports_when_the_purge_runs_then_rows_past_a_
     for mailbox in ("mb1", "mb2"):
         await _record(cat_agent, mailbox)
         await _record(cat_agent, mailbox)
-    ids = [r["id"] for r in await cat_owner.fetch(f"select id from {TABLE} order by mailbox_id, id")]  # noqa: S608
-    await cat_owner.execute(f"update {TABLE} set at = now() - interval '400 days' where id = any($1::bigint[])", ids[::2])
-    await cat_owner.execute(f"update {TABLE} set at = now() - interval '300 days' where id = any($1::bigint[])", ids[1::2])
+    ids = [r["id"] for r in await cat_owner.fetch("select id from categories.refile_report order by mailbox_id, id")]
+    await cat_owner.execute(
+        "update categories.refile_report set at = now() - interval '400 days' where id = any($1::bigint[])", ids[::2]
+    )
+    await cat_owner.execute(
+        "update categories.refile_report set at = now() - interval '300 days' where id = any($1::bigint[])", ids[1::2]
+    )
 
     counts = await _purge(cat_agent)
 
     assert counts["refile_report"] == 2
-    left = await cat_owner.fetch(f"select mailbox_id from {TABLE} order by mailbox_id")  # noqa: S608
+    left = await cat_owner.fetch("select mailbox_id from categories.refile_report order by mailbox_id")
     assert [r["mailbox_id"] for r in left] == ["mb1", "mb2"]  # the young row of each mailbox survives
 
 
@@ -202,4 +203,4 @@ async def test_given_the_purge_when_the_agent_changes_its_session_then_a_young_r
     counts = await _purge(cat_agent)
 
     assert counts["refile_report"] == 0
-    assert await cat_owner.fetchval(f"select count(*) from {TABLE}") == 1  # noqa: S608
+    assert await cat_owner.fetchval("select count(*) from categories.refile_report") == 1

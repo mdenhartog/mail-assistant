@@ -157,13 +157,15 @@ def test_given_the_settings_when_loaded_then_the_report_hour_and_cap_have_defaul
     assert (custom.refile_report_hour, custom.refile_report_cap) == (23, 40)
 
 
-@pytest.mark.parametrize(("key", "value"), [("REFILE_REPORT_HOUR", "24"), ("REFILE_REPORT_HOUR", "-1"), ("REFILE_REPORT_CAP", "0")])
+@pytest.mark.parametrize(
+    ("key", "value"), [("REFILE_REPORT_HOUR", "24"), ("REFILE_REPORT_HOUR", "-1"), ("REFILE_REPORT_CAP", "0")]
+)
 def test_given_a_report_number_out_of_range_when_settings_load_then_the_key_is_named(key: str, value: str) -> None:
     with pytest.raises(SettingsError, match=key):
         load_settings(VALID | {key: value})
 
 
-def test_given_the_wiring_when_built_then_the_report_hour_and_cap_come_from_the_settings_and_gmail_is_the_apply_adapter() -> None:
+def test_given_the_wiring_when_built_then_the_report_hour_cap_and_gmail_come_from_settings_and_apply_adapter() -> None:
     engine = create_async_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")  # never connected in this test
     apply_mailbox: Any = object()
     built = build_runner(

@@ -44,9 +44,7 @@ class PgRefileStore:
         )
         async with self._sessions() as session:
             rows = await session.execute(
-                select(newest.c.message_id, newest.c.category_id).order_by(
-                    desc(newest.c.filed_at), newest.c.message_id
-                )
+                select(newest.c.message_id, newest.c.category_id).order_by(desc(newest.c.filed_at), newest.c.message_id)
             )
             return [Filed(row.message_id, str(row.category_id)) for row in rows]
 
