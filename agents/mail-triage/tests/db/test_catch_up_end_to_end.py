@@ -118,10 +118,11 @@ class Internet:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.anthropic.com":
             self.model_calls += 1
-            content = json.loads(json.loads(request.content)["messages"][0]["content"])
+            blocks = json.loads(request.content)["messages"][0]["content"]  # the list block, then the one mail
+            content = json.loads(blocks[1]["text"])["mail"]
             urgent = "URGENT" in content["text"]
             verdict = {
-                "category": "Finance",
+                "category_id": "00000000-0000-0000-0000-000000000000",
                 "urgent": urgent,
                 "reason": "asks for an answer" if urgent else "routine",
                 "summary": "a summary",

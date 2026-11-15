@@ -203,7 +203,9 @@ def test_given_a_mail_with_attachments_when_fetched_then_only_headers_and_text_a
     assert "fields" in get_call
 
 
-def test_given_two_authentication_results_headers_when_fetched_then_all_are_kept_topmost_first(gmail: FakeGmail) -> None:
+def test_given_two_authentication_results_headers_when_fetched_then_all_are_kept_topmost_first(
+    gmail: FakeGmail,
+) -> None:
     """U-mail-categories-05, MC-19: the pinned check needs the topmost header, not the one a dict happens to keep."""
     gmail.messages["m3"] = {
         "id": "m3",

@@ -9,6 +9,7 @@ the defaults live in ``schedule_policy.policy``.
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
@@ -18,6 +19,9 @@ from app.db.engine import DatabaseTls
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+
+_DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 
 
 class SettingsError(ValueError):
@@ -66,6 +70,22 @@ class Settings(DatabaseTlsSettings):
     poll_interval_seconds: int = Field(default=60, ge=1)  # spec C1
     daily_model_budget: int = Field(default=200, ge=0)  # model calls per day (AC-26)
     alerts_per_hour: int = Field(default=5, ge=1)  # individual alerts per hour before batching (AC-26)
+    # Comma separated sender domains whose mail stays in the inbox when Gmail shows DMARC pass (AC-39, ADR-0045).
+    # Add the domain the app's own sign-in mail comes from; the default is Google's security mail.
+    pinned_sender_domains: str = Field(default="accounts.google.com", max_length=2000)
+
+    @field_validator("pinned_sender_domains")
+    @classmethod
+    def _domains_only(cls, raw: str) -> str:
+        domains = [d.strip().casefold() for d in raw.split(",") if d.strip()]
+        if not domains or not all(_DOMAIN.fullmatch(d) for d in domains):
+            raise ValueError("a comma separated list of domain names is needed")
+        return ",".join(domains)
+
+    @property
+    def pinned_domains(self) -> frozenset[str]:
+        """The allow-list of security sender domains, lower case."""
+        return frozenset(self.pinned_sender_domains.split(","))
 
     @classmethod
     def settings_customise_sources(

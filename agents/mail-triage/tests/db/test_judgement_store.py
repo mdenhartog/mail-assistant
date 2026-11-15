@@ -1,5 +1,5 @@
 """U-mail-categories-05, criteria 4 and 6 in PostgreSQL (AC-39, AC-37): the list read and the ``filing`` write."""
-# ruff: noqa: S608  # every statement is a fixed test literal inside a throwaway container, never user input
+# every statement is a fixed test literal inside a throwaway container, never user input
 
 from __future__ import annotations
 
@@ -49,9 +49,7 @@ def outcome(label: str | None, filing: FilingEntry | None) -> Outcome:
         summary="s",
         auth=AuthResults(None, None, None),
     )
-    return Outcome(
-        label=label, urgent=False, confidence=0.9, alert=None, note="", content=content, filing=filing
-    )
+    return Outcome(label=label, urgent=False, confidence=0.9, alert=None, note="", content=content, filing=filing)
 
 
 async def test_given_two_list_versions_when_the_current_list_is_read_then_it_is_the_latest_in_order(
@@ -60,7 +58,12 @@ async def test_given_two_list_versions_when_the_current_list_is_read_then_it_is_
     await write_list(cat_api, MAILBOX, 1, ["Bills"])
     await write_list(cat_api, MAILBOX, 2, ["Bills", "Travel"])
     await write_list(cat_api, "mb2", 1, ["Work"])
-    ids = {r["name"]: str(r["id"]) for r in await cat_owner.fetch("select id, name from categories.category where mailbox_id = $1 and version = 2", MAILBOX)}
+    ids = {
+        r["name"]: str(r["id"])
+        for r in await cat_owner.fetch(
+            "select id, name from categories.category where mailbox_id = $1 and version = 2", MAILBOX
+        )
+    }
 
     current = await store.current_list()
 
@@ -94,7 +97,13 @@ async def test_given_a_filed_mail_when_completed_then_the_filing_row_has_ids_and
         (MAILBOX, "m1", 1, bills),
         (MAILBOX, "m2", 1, uuid.UUID(OTHER_ID)),
     ]
-    assert set(rows[0].keys()) == {"mailbox_id", "message_id", "list_version", "category_id", "filed_at"}  # no mail text
+    assert set(rows[0].keys()) == {
+        "mailbox_id",
+        "message_id",
+        "list_version",
+        "category_id",
+        "filed_at",
+    }  # no mail text
 
 
 async def test_given_a_pinned_mail_when_completed_then_no_filing_row_is_written_and_the_overview_skips_it(

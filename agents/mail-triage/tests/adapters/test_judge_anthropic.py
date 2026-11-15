@@ -138,7 +138,9 @@ def long_list(count: int) -> tuple[ListedCategory, ...]:
     return tuple(ListedCategory(f"id-{n:03d}", f"Topic {n:02d}", f"About topic {n}") for n in range(count))
 
 
-async def test_given_a_list_of_40_when_judged_then_all_ids_go_to_the_model_as_data_and_not_in_the_system_prompt() -> None:
+async def test_given_a_list_of_40_when_judged_then_all_ids_go_to_the_model_as_data_and_not_in_the_system_prompt() -> (
+    None
+):
     model = Scripted(reply(verdict()))
 
     await make_judge(model).judge(MAIL, long_list(40))

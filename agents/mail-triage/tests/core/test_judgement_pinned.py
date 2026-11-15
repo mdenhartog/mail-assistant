@@ -1,4 +1,4 @@
-"""U-mail-categories-05, criteria 4 and 5 (AC-39, MC-19): security mail is pinned by Gmail's verdict, not the model's."""
+"""U-mail-categories-05, criteria 4 and 5 (AC-39, MC-19): security mail is pinned by Gmail's verdict."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import pytest
 from app.core.pinned import is_pinned
 
 ALLOW = frozenset({"accounts.google.com", "mail.example.test"})
-GOOD = "mx.google.com; spf=pass; dkim=pass header.i=@accounts.google.com; dmarc=pass (p=REJECT) header.from=accounts.google.com"
+GOOD = "mx.google.com; spf=pass; dkim=pass header.i=@accounts.google.com; dmarc=pass (p=REJECT) header.from=accounts.google.com"  # noqa: E501
 SENDER = "no-reply@accounts.google.com"
 
 

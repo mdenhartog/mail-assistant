@@ -89,11 +89,15 @@ class StubModelJudge:
             return NeedsAttention("invalid_output")
 
 
-def inbox_mail(mailbox: FakeMailbox, message_id: str, *, sender: str = "a@example.com", auth: tuple[str, ...] = ()) -> None:
+def inbox_mail(
+    mailbox: FakeMailbox, message_id: str, *, sender: str = "a@example.com", auth: tuple[str, ...] = ()
+) -> None:
     mailbox.mails[message_id] = replace(fetched(message_id), sender=sender, auth_results=auth)
 
 
-async def test_given_the_hostile_corpus_when_processed_then_every_mail_goes_to_other_with_no_extra_call_or_write() -> None:
+async def test_given_the_hostile_corpus_when_processed_then_every_mail_goes_to_other_with_no_extra_call_or_write() -> (
+    None
+):
     ids = [f"m{n}" for n in range(len(HOSTILE_CORPUS))]
     mailbox, store = RecordingMailbox(ids), RecordingStore()
 
@@ -108,7 +112,7 @@ async def test_given_the_hostile_corpus_when_processed_then_every_mail_goes_to_o
     assert all(o.filing == FilingEntry(OTHER_ID, 3) for o in store.outcomes.values())
 
 
-async def test_given_an_urgent_mail_with_an_unknown_category_id_when_processed_then_it_goes_to_other_and_still_alerts() -> None:
+async def test_given_an_urgent_mail_with_an_unknown_id_when_processed_then_it_goes_to_other_and_still_alerts() -> None:
     store = FakeStore()
     judge = StubModelJudge(StubModel(["cat-9999"]), urgent=True)
 
@@ -123,8 +127,11 @@ async def test_given_a_list_with_other_everything_when_an_urgent_mail_arrives_th
     everything = JudgingList(4, (ListedCategory(FINANCE_ID, "Misc", "Other: everything, never urgent"),))
     store = FakeStore(current=everything)
 
-    await pipeline(FakeMailbox(["m1"]), FakeJudge(Judgement(
-        category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)), store).run_once()
+    await pipeline(
+        FakeMailbox(["m1"]),
+        FakeJudge(Judgement(category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)),
+        store,
+    ).run_once()
 
     assert store.outcomes["m1"].alert is AlertState.OPEN
 
@@ -169,8 +176,11 @@ async def test_given_mail_that_is_not_proven_when_processed_then_it_is_judged_an
 
 
 async def test_given_a_filed_mail_then_the_list_version_is_recorded_without_sender_or_subject() -> None:
-    store, judge, mailbox = FakeStore(), FakeJudge(Judgement(
-        category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)), FakeMailbox(["m1"])
+    store, judge, mailbox = (
+        FakeStore(),
+        FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)),
+        FakeMailbox(["m1"]),
+    )
 
     await pipeline(mailbox, judge, store).run_once()
 
@@ -182,8 +192,11 @@ async def test_given_a_filed_mail_then_the_list_version_is_recorded_without_send
 async def test_given_no_list_version_yet_when_processed_then_the_mail_goes_to_other_without_a_filing_row() -> None:
     store = FakeStore(current=JudgingList(0, ()))
 
-    await pipeline(FakeMailbox(["m1"]), FakeJudge(Judgement(
-        category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)), store).run_once()
+    await pipeline(
+        FakeMailbox(["m1"]),
+        FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)),
+        store,
+    ).run_once()
 
     assert store.outcomes["m1"].label == OTHER_LABEL
     assert store.outcomes["m1"].filing is None

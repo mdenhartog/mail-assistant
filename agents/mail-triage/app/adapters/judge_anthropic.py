@@ -22,9 +22,9 @@ from app.core.judgement import LOW_CONFIDENCE, OTHER_ID, Judgement, JudgementErr
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
 
-    from app.core.judgement import ListedCategory
-
     from pydantic import SecretStr
+
+    from app.core.judgement import ListedCategory
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,9 @@ class AnthropicJudge:
             return first
         return await self._ask(self._large, mail, categories)
 
-    async def _ask(self, model: str, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def _ask(
+        self, model: str, mail: TrimmedMail, categories: Sequence[ListedCategory]
+    ) -> Judgement | NeedsAttention:
         text = await self._post(self._request(model, mail, categories))
         try:
             return parse_judgement(json.loads(text))
@@ -145,7 +147,7 @@ class AnthropicJudge:
 
     @staticmethod
     def _request(model: str, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> dict[str, Any]:
-        """One mail per call. The list and the mail are two JSON data blocks; JSON escaping covers control characters."""
+        """One mail per call. The list and the mail are two JSON data blocks; JSON escapes control characters."""
         listed = [
             {"id": c.category_id, "name": c.name[:NAME_MAX_CHARS], "description": c.description[:DESCRIPTION_MAX_CHARS]}
             for c in categories

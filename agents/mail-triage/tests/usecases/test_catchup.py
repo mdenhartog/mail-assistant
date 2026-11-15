@@ -606,7 +606,7 @@ async def test_given_urgent_old_mail_in_quiet_hours_when_it_runs_then_held_alert
     assert store.done[all_ids[-1]].release_at is None  # over the cap: no alert, so nothing to release
 
 
-async def test_given_old_pinned_security_mail_when_it_runs_then_it_stays_and_the_rest_is_filed_with_the_list_version() -> None:
+async def test_given_old_pinned_mail_when_it_runs_then_it_stays_and_the_rest_is_filed_with_the_list_version() -> None:
     mailbox, store, judge = FakeMailbox(["sec", "plain"]), FakeStore(), FakeJudge(judgement())
     mailbox.mails["sec"] = replace(
         mailbox.mails["sec"],

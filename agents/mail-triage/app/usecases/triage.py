@@ -26,10 +26,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Collection, Sequence
     from datetime import datetime
 
-    from app.core.judgement import ListedCategory
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.alert_text import AuthResults
+    from app.core.judgement import ListedCategory
     from app.usecases.policy_notice import PolicySource
     from schedule_policy.policy import TimePolicy
 
@@ -133,7 +133,7 @@ class TriageStore(Protocol):
         ...
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
-        """Record the outcome for a mail, with its alert state when it needs one and its ``filing`` row when labelled."""
+        """Record the outcome for a mail: its alert state when it needs one, its ``filing`` row when labelled."""
         ...
 
     async def record_failure(self, message_id: str) -> int:

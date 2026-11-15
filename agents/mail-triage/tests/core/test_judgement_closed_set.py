@@ -104,7 +104,7 @@ def test_given_a_description_other_everything_when_an_urgent_mail_arrives_then_u
 
 
 @pytest.mark.parametrize("urgent", [True, False])
-def test_given_an_unknown_id_when_resolved_then_it_goes_to_other_and_keeps_the_urgency(urgent: bool) -> None:  # noqa: FBT001
+def test_given_an_unknown_id_when_resolved_then_it_goes_to_other_and_keeps_the_urgency(urgent: bool) -> None:
     result = resolve(judgement("cat-9999", urgent=urgent), LIST)
 
     assert isinstance(result, Filing)

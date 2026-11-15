@@ -174,8 +174,25 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         )
     )
     return Runner(
-        pipeline=TriagePipeline(mailbox, judge, store, FailureNotice(outbox), now, policy),  # type: ignore[arg-type]
-        catchup=CatchUp(mailbox, judge, store, FailureNotice(outbox), budget, now, policy),  # type: ignore[arg-type]
+        pipeline=TriagePipeline(
+            mailbox,  # type: ignore[arg-type]
+            judge,
+            store,
+            FailureNotice(outbox),
+            now,
+            policy,
+            settings.pinned_domains,
+        ),
+        catchup=CatchUp(
+            mailbox,  # type: ignore[arg-type]
+            judge,
+            store,
+            FailureNotice(outbox),
+            budget,
+            now,
+            policy,
+            settings.pinned_domains,
+        ),
         delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
         overview=OverviewService(store, PgOverviewLog(sessions), outbox, now, policy),

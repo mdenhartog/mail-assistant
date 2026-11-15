@@ -18,8 +18,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
-from app.core.judgement import NeedsAttention
-from app.core.judgement import OTHER_LABEL
+from app.core.judgement import OTHER_LABEL, NeedsAttention
 from app.usecases.triage import MAX_ATTEMPTS, Claim, RunSummary, decide_outcome, is_pinned_mail, pinned_outcome
 
 if TYPE_CHECKING:

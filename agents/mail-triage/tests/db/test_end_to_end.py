@@ -80,7 +80,7 @@ class FakeInternet:
         if request.url.host == "api.anthropic.com":
             self.model_calls += 1
             verdict = {
-                "category": "Finance",
+                "category_id": "00000000-0000-0000-0000-000000000000",
                 "urgent": True,
                 "reason": "Invoice due on Friday",
                 "summary": "The supplier wants payment.",
