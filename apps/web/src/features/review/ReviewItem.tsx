@@ -23,7 +23,7 @@ export const ReviewItem = memo(function ReviewItem({ row, checked, onToggle }: R
       <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-start gap-3">
         <input
           checked={checked}
-          className="mt-3 size-5 flex-none accent-primary"
+          className="size-11 flex-none accent-primary lg:size-6"
           onChange={() => {
             onToggle(row.id);
           }}

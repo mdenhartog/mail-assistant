@@ -40,7 +40,7 @@ describe("ActionBar", () => {
     const { container } = render(<ActionBar approved={1} onMove={() => undefined} undecided={0} />);
 
     expect(container.querySelector("[data-action-bar]")).toHaveAttribute("data-sticky", "true");
-    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe("160px");
+    expect(document.documentElement.style.getPropertyValue("scroll-padding-bottom")).toBe("168px");
   });
 
   it("falls back into the flow of the page when it would take more than a third of the window (large text, small window)", () => {
