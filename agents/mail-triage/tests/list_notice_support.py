@@ -8,9 +8,11 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from app.adapters.telegram_inbox import Command
+from app.core import list_text
 from app.core.list_text import ListCategory
-from app.usecases.list_notice import ListChange, ListChanged
-from app.usecases.telegram_actions import ActionRecord
+from app.usecases.list_notice import ListChange, ListChanged, ListNotice, ListNoticeActions
+from app.usecases.telegram_actions import ActionRecord, TelegramActions
 from tests.fakes.fake_telegram import FakeTelegram
 
 if TYPE_CHECKING:
@@ -54,7 +56,13 @@ class FakeActionStore:
 
     async def consume(self, nonce_hash: str, chat_id: int, kind: str, now: datetime) -> str | None:
         row = self.rows.get(nonce_hash)
-        if row is None or row.used_at is not None or row.chat_id != chat_id or row.kind != kind or row.expires_at <= now:
+        if (
+            row is None
+            or row.used_at is not None
+            or row.chat_id != chat_id
+            or row.kind != kind
+            or row.expires_at <= now
+        ):
             return None
         self.rows[nonce_hash] = ActionRecord(
             row.nonce_hash, row.chat_id, row.kind, row.target, row.expires_at, used_at=now
@@ -76,11 +84,10 @@ class AuditRow:
 
 @dataclass
 class FakeListStore:
-    """The list, its audit and the cursor. Channel and actor are derived here, as the trigger does: no writer names them."""
+    """The list, its audit and the cursor; channel and actor are derived here as the trigger does."""
 
     audit: list[AuditRow] = field(default_factory=list)
     cursor: int = 0
-    fail_advance: bool = False
 
     def save(self, new: tuple[ListCategory, ...], *, channel: str = "web") -> None:
         """A list change by another login than the agent's."""
@@ -105,8 +112,6 @@ class FakeListStore:
         return None if row is None else ListChange(row.version, row.at, row.channel, row.old, row.new)
 
     async def advance(self, version: int) -> None:
-        if self.fail_advance:
-            raise RuntimeError("advance broke")
         self.cursor = max(self.cursor, version)
 
     async def restore(self, categories: Sequence[ListCategory], expected_version: int) -> int:
@@ -151,3 +156,28 @@ class FakeLock:
         newly = not self.locked
         self.locked = True
         return newly
+
+
+class Rig:
+    """A notice and its button handler on shared fakes."""
+
+    def __init__(self) -> None:
+        self.clock = [LATER]
+        self.store, self.chat, self.lock = FakeListStore(), RecordingChat(), FakeLock()
+        actions = TelegramActions(FakeActionStore(), Nonces())
+        self.notice = ListNotice(self.store, self.chat, actions, chat_id=CHAT)
+        self.buttons = ListNoticeActions(
+            actions, self.store, self.lock, self.chat, chat_id=CHAT, now=lambda: self.clock[0]
+        )
+
+    async def press(self, data: str, *, chat_id: int = CHAT, message_id: int = 7) -> None:
+        split = list_text.split_button(data)
+        assert split is not None
+        await self.buttons.on_button(Command("button", data, chat_id, message_id, "cb", 1), *split)
+
+
+def seeded() -> Rig:
+    rig = Rig()
+    rig.store.save(cats("Bills", "Travel"), channel="telegram")  # version 1: the agent's own seed, never announced
+    rig.store.cursor = 1
+    return rig

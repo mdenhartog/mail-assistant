@@ -21,7 +21,13 @@ async def test_given_an_issued_nonce_then_only_its_hash_is_stored_with_chat_kind
     (row,) = store.rows.values()
     assert nonce not in row.nonce_hash
     assert row.nonce_hash == hashlib.sha256(nonce.encode()).hexdigest()
-    assert (row.chat_id, row.kind, row.target, row.expires_at, row.used_at) == (CHAT, "undo", "3-4", AT + ACTION_TTL, None)
+    assert (row.chat_id, row.kind, row.target, row.expires_at, row.used_at) == (
+        CHAT,
+        "undo",
+        "3-4",
+        AT + ACTION_TTL,
+        None,
+    )
 
 
 async def test_given_a_nonce_when_redeemed_twice_then_the_second_press_is_refused_as_done() -> None:

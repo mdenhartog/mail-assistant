@@ -24,7 +24,9 @@ def _notice(old: list[ListCategory], new: list[ListCategory], changes: int = 1) 
 
 
 def test_given_markup_and_control_characters_in_a_category_then_the_notice_is_escaped_plain_text() -> None:
-    hostile = ListCategory("1", '<b>Bills</b> & "more"', f'<a href="http://evil.test">click</a>{NUL}{BELL}\nsecond line')
+    hostile = ListCategory(
+        "1", '<b>Bills</b> & "more"', f'<a href="http://evil.test">click</a>{NUL}{BELL}\nsecond line'
+    )
     bidi = ListCategory("2", f"Work{BIDI_CONTROLS[0]}gnp", f"x{BIDI_CONTROLS[1]}y")
 
     message = _notice([ListCategory("3", "Old", "")], [hostile, bidi])

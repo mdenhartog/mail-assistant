@@ -6,12 +6,11 @@ from datetime import timedelta
 
 from app.adapters.telegram_inbox import Command
 from app.usecases.telegram_actions import ACTION_TTL
-from tests.list_notice_support import AT, CHAT, FakeListStore, cats
-from tests.test_list_notice_flow import Rig, _seeded
+from tests.list_notice_support import AT, CHAT, FakeListStore, Rig, cats, seeded
 
 
 async def _announced() -> tuple[Rig, str]:
-    rig = _seeded()
+    rig = seeded()
     rig.store.save(cats("Bills"))
     await rig.notice.run(AT)
     return rig, rig.chat.sent[0].buttons[0].data
@@ -34,7 +33,7 @@ async def test_given_undo_pressed_twice_then_the_second_press_changes_nothing_an
 
 async def test_given_a_late_press_then_nothing_changes_and_the_answer_says_expired() -> None:
     rig, undo = await _announced()
-    rig.buttons._now = lambda: AT + ACTION_TTL + timedelta(seconds=1)  # noqa: SLF001 - the clock is the only thing set
+    rig.clock[0] = AT + ACTION_TTL + timedelta(seconds=1)
 
     await rig.press(undo)
 
