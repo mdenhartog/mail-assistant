@@ -2,8 +2,8 @@
 
 ``Move back`` and ``Lock web sign-in`` each carry a single-use nonce of their own (``telegram_actions``): only its hash
 is stored in ``telegram_action`` with the chat, the kind (``move_back`` or ``lock``) and the plan as target. The
-callback data is ``planback:<nonce>`` or ``planlock:<nonce>``. Pressing a button is handled elsewhere (U-mail-categories-16),
-which redeems the nonce for the same kind and acts on its target. The notice text holds numbers and the names of labels
+callback data is ``planback:<nonce>`` or ``planlock:<nonce>``. Pressing a button is handled elsewhere
+(U-mail-categories-16), which redeems the nonce for the same kind and acts on its target. The notice text holds numbers and the names of labels
 only (D18); it is escaped here because Telegram shows it as HTML.
 """
 
