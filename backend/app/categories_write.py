@@ -51,6 +51,19 @@ def older_labels(stored: StoredList) -> list[str]:
     ]
 
 
+def _labels_in_use(items: list[CategoryInput], stored: StoredList) -> set[str]:
+    """Return the normalised labels of stored categories that the request keeps under the same name.
+
+    A kept category owns its label; it is no clash with itself.
+    """
+    kept = {item.id: normalise_name(item.name) for item in items if item.id is not None}
+    return {
+        normalise_name(label_for(category.name))
+        for category in stored.categories
+        if kept.get(category.id) == normalise_name(category.name)
+    }
+
+
 def to_response(stored: StoredList) -> CategoryList:
     """Build what ``GET /api/categories`` returns.
 
@@ -82,14 +95,19 @@ def problems_of(items: list[CategoryInput], stored: StoredList) -> list[Category
 
     Args:
         items: The categories as sent.
-        stored: The stored list: the known ids and the labels a name must not collide with.
+        stored: The stored list: the known ids and the Gmail labels. A name whose label is an older category adopts it;
+            a kept category's own label is no clash.
 
     Returns:
         Every problem with the rule, the field and the position; no value. Empty when the list is valid.
     """
+    own = _labels_in_use(items, stored)
+    existing = [label for label in stored.labels if normalise_name(label) not in own]
     found = [
         CategoryProblem(rule=problem.rule, field=problem.field, index=problem.index)  # pyright: ignore[reportArgumentType]
-        for problem in validate_list([Category(item.name, item.description) for item in items], older_labels(stored))
+        for problem in validate_list(
+            [Category(item.name, item.description) for item in items], existing, older_labels(stored)
+        )
     ]
     known = {category.id for category in stored.categories}
     seen: set[uuid.UUID] = set()

@@ -256,7 +256,7 @@ async def test_given_the_same_names_in_another_order_when_put_then_it_is_a_new_v
         ([entry("Bills", "")], "description_empty", "description", 0),
         ([entry("Bills", "d" * 501)], "description_too_long", "description", 0),
         ([entry(f"C{n}") for n in range(51)], "list_too_many", "list", None),
-        ([entry("Old stuff")], "name_label_exists", "name", 0),
+        ([entry("Invoices")], "name_label_exists", "name", 0),
         ([entry("Bills", id_=str(uuid.uuid4()))], "id_unknown", "id", 0),
     ],
 )
@@ -269,7 +269,8 @@ async def test_given_an_invalid_rule_when_put_then_422_with_problems_and_nothing
     index: int | None,
 ) -> None:
     await seed(owner, [("Invoices", "Bills")])
-    await label(owner, "Assistant/Old stuff")
+    await label(owner, "Assistant/Invoices")
+    await label(owner, "Assistant/Travel")
 
     response = await put(api, 1, categories)
 
@@ -280,6 +281,32 @@ async def test_given_an_invalid_rule_when_put_then_422_with_problems_and_nothing
     assert {"rule": rule, "field": field, "index": index} in body["problems"]
     assert all(set(problem) == {"rule", "field", "index"} for problem in body["problems"])
     assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_a_name_that_is_an_older_category_when_put_then_it_is_adopted_not_refused(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    (invoices,) = await seed(owner, [("Invoices", "Bills")])
+    await label(owner, "Assistant/Invoices")
+    await label(owner, "Assistant/Old stuff")
+
+    response = await put(api, 1, [entry("Invoices", id_=invoices), entry("old STUFF")])
+
+    assert response.status_code == 200
+
+
+async def test_given_a_name_whose_label_belongs_to_a_category_still_on_the_list_when_put_then_it_is_refused(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    (invoices,) = await seed(owner, [("Invoices", "Bills")])
+    await label(owner, "Assistant/Invoices")
+
+    response = await put(api, 1, [entry("Bills", id_=invoices), entry("Invoices")])
+
+    assert response.status_code == 422
+    assert {"rule": "name_label_exists", "field": "name", "index": 1} in response.json()["problems"]
 
 
 async def test_given_a_duplicate_id_when_put_then_422_id_duplicate(
