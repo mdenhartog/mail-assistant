@@ -85,6 +85,23 @@ const CATEGORY_LIST = {
   olderCategories: [],
 };
 
+function route(wiring: PlanWiring, url: URL, body: unknown): Answer {
+  const table: Record<string, () => Answer> = {
+    "/api/categories": () => (wiring.categories ? wiring.categories() : json(CATEGORY_LIST)),
+    "/api/plan": () => (wiring.plan ? wiring.plan() : json(READY)),
+    "/api/plan/items": () => (wiring.items ? wiring.items(url.searchParams) : json(itemsPage(1, 3, false))),
+    "/api/plan/decisions": () => (wiring.decisions ? wiring.decisions(body) : json({ changed: 1 })),
+    "/api/plan/approve": () =>
+      wiring.approve ? wiring.approve(body) : json({ state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }),
+  };
+  const moveBack = /^\/api\/plan\/([^/]+)\/move-back$/.exec(url.pathname);
+  if (moveBack) {
+    const id = moveBack[1] ?? "";
+    return wiring.moveBack ? wiring.moveBack(id) : json({ planId: id, processed: false });
+  }
+  return table[url.pathname]?.() ?? json({}, 599);
+}
+
 /** Stubs `fetch` for the plan routes and the category list; every call is recorded. */
 export function wirePlan(wiring: PlanWiring = {}): Seen[] {
   const seen: Seen[] = [];
@@ -101,26 +118,7 @@ export function wirePlan(wiring: PlanWiring = {}): Seen[] {
         body,
         token: request.headers.get("X-CSRF-Token"),
       });
-      if (url.pathname === "/api/categories") {
-        return wiring.categories ? wiring.categories() : json(CATEGORY_LIST);
-      }
-      if (url.pathname === "/api/plan") {
-        return wiring.plan ? wiring.plan() : json(READY);
-      }
-      if (url.pathname === "/api/plan/items") {
-        return wiring.items ? wiring.items(url.searchParams) : json(itemsPage(1, 3, false));
-      }
-      if (url.pathname === "/api/plan/decisions") {
-        return wiring.decisions ? wiring.decisions(body) : json({ changed: 1 });
-      }
-      if (url.pathname === "/api/plan/approve") {
-        return wiring.approve ? wiring.approve(body) : json({ state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" });
-      }
-      const moveBack = /^\/api\/plan\/([^/]+)\/move-back$/.exec(url.pathname);
-      if (moveBack) {
-        return wiring.moveBack ? wiring.moveBack(moveBack[1] ?? "") : json({ planId: moveBack[1], processed: false });
-      }
-      return json({}, 599);
+      return route(wiring, url, body);
     }),
   );
   return seen;

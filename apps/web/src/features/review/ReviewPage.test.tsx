@@ -11,7 +11,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const GROUP_BUTTON = /Other to Invoices/;
+const GROUP_BUTTON = /^Other to Invoices/;
 
 describe("Review moves: groups (AC-12)", () => {
   it("given a plan with groups, then they are collapsed with a count and each has Approve group and Keep all in place", async () => {
@@ -23,7 +23,7 @@ describe("Review moves: groups (AC-12)", () => {
     expect(within(toggle).getByText("80 mails")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve group: Other to Invoices" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Keep all in place: Other to Invoices" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Newsletters to Invoices/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Newsletters to Invoices/ })).toBeInTheDocument();
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
     expect(document.title).toBe("Review moves - Mail Assistant");
   });
@@ -32,7 +32,7 @@ describe("Review moves: groups (AC-12)", () => {
     wirePlan({ plan: () => json({ ...READY, groups: [{ from: GONE_ID, to: INVOICES.id, count: 3 }] }) });
     await renderReview();
 
-    expect(await screen.findByRole("button", { name: /A category that no longer exists to Invoices/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^A category that no longer exists to Invoices/ })).toBeInTheDocument();
   });
 
   it("given a group is opened with Enter, then its mails load and the button reports it is expanded", async () => {
