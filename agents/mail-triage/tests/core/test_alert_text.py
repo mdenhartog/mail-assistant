@@ -13,7 +13,7 @@ from app.core.alert_text import (
 from app.core.judgement import Judgement
 
 JUDGEMENT = Judgement(
-    category="Finance",
+    category_id="00000000-0000-0000-0000-00000000000a",
     urgent=True,
     reason="Invoice is due on Friday",
     summary="The supplier asks for payment of EUR 120.",

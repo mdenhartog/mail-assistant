@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -12,13 +12,17 @@ import pytest
 from app.adapters.gmail_read import FetchedMail
 from app.adapters.judge_anthropic import DailyBudget, ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
-from app.core.judgement import Judgement, NeedsAttention
+from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
 from app.usecases.catchup import BACKLOG_ALERT_LIMIT, BUDGET_RESERVE, RUN_LIMIT, CatchUp, CatchUpState
-from app.usecases.triage import MAX_ATTEMPTS, Claim, Outcome
+from app.usecases.triage import MAX_ATTEMPTS, Claim, FilingEntry, Outcome
 from tests.usecases.fakes_policy import FakePolicySource
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
+
+FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
+CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
+PINNED_DOMAINS = frozenset({"accounts.google.com"})
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam: quiet hours
@@ -41,7 +45,7 @@ def fetched(message_id: str, *, thread: str | None = None, labels: frozenset[str
 
 
 def judgement(*, urgent: bool = False, confidence: float = 0.9) -> Judgement:
-    return Judgement(category="Finance", urgent=urgent, reason="r", summary="s", confidence=confidence)
+    return Judgement(category_id=FINANCE_ID, urgent=urgent, reason="r", summary="s", confidence=confidence)
 
 
 class FakeMailbox:
@@ -93,7 +97,8 @@ class FakeJudge:
         self.seen: list[TrimmedMail] = []
         self.order: list[str] = []
 
-    async def judge(self, mail: TrimmedMail) -> Judgement | NeedsAttention:
+    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+        del categories
         self.seen.append(mail)
         for _ in range(self.cost if self.budget else 0):
             assert self.budget is not None
@@ -114,7 +119,7 @@ class FakeStore:
     claimed: set[str] = field(default_factory=set)
     failures: dict[str, int] = field(default_factory=dict)
     abandoned: set[str] = field(default_factory=set)
-    labels: list[str] = field(default_factory=lambda: ["Assistant/Finance"])
+    current: JudgingList = CURRENT
     claims: list[str] = field(default_factory=list)
 
     async def catchup_state(self) -> CatchUpState | None:
@@ -140,8 +145,8 @@ class FakeStore:
         self.claimed.add(message_id)
         return Claim.NEW
 
-    async def known_labels(self) -> list[str]:
-        return list(self.labels)
+    async def current_list(self) -> JudgingList:
+        return self.current
 
     async def complete_backlog(self, message_id: str, outcome: Outcome) -> None:
         self.events.append(f"complete:{message_id}")
@@ -180,7 +185,16 @@ def catchup(
     budget: DailyBudget | Plenty | None = None,
 ) -> CatchUp:
     notifier = notifier or FakeNotifier()
-    return CatchUp(mailbox, judge, store, notifier, budget or Plenty(), now=lambda: NOW, policy=FakePolicySource())
+    return CatchUp(
+        mailbox,
+        judge,
+        store,
+        notifier,
+        budget or Plenty(),
+        now=lambda: NOW,
+        policy=FakePolicySource(),
+        pinned_domains=PINNED_DOMAINS,
+    )
 
 
 def ids(count: int) -> list[str]:
@@ -574,12 +588,35 @@ async def test_given_urgent_old_mail_in_quiet_hours_when_it_runs_then_held_alert
     mailbox, store = FakeMailbox(all_ids), FakeStore()
     source = FakePolicySource()
     use_case = CatchUp(
-        mailbox, FakeJudge(judgement(urgent=True)), store, FakeNotifier(), Plenty(), now=lambda: NIGHT, policy=source
+        mailbox,
+        FakeJudge(judgement(urgent=True)),
+        store,
+        FakeNotifier(),
+        Plenty(),
+        now=lambda: NIGHT,
+        policy=source,
+        pinned_domains=PINNED_DOMAINS,
     )
 
     await use_case.run_once()
 
     assert [store.done[i].alert for i in all_ids] == [AlertState.HELD] * BACKLOG_ALERT_LIMIT + [None, None]
+
+
+async def test_given_old_pinned_security_mail_when_it_runs_then_it_stays_and_the_rest_is_filed_with_the_list_version() -> None:
+    mailbox, store, judge = FakeMailbox(["sec", "plain"]), FakeStore(), FakeJudge(judgement())
+    mailbox.mails["sec"] = replace(
+        mailbox.mails["sec"],
+        sender="no-reply@accounts.google.com",
+        auth_results=("mx.google.com; dmarc=pass header.from=accounts.google.com",),
+    )
+
+    await catchup(mailbox, judge, store).run_once()
+
+    assert [mail.sender for mail in judge.seen] == [mailbox.mails["plain"].sender]  # the model never sees pinned mail
+    assert mailbox.filed == ["plain"]
+    assert (store.done["sec"].label, store.done["sec"].filing) == (None, None)
+    assert store.done["plain"].filing == FilingEntry(FINANCE_ID, 3)
     assert source.calls == len(all_ids)  # one snapshot per mail, never mixed within a mail
     assert store.done[all_ids[0]].release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
     assert store.done[all_ids[-1]].release_at is None  # over the cap: no alert, so nothing to release
