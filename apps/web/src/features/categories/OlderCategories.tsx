@@ -38,7 +38,7 @@ export function OlderCategories({ older, onAdopt }: OlderCategoriesProps): React
                     </p>
                   </div>
                   <Button
-                    aria-label={`Add ${name} to my list`}
+                    aria-label={`Add to my list: ${name}`}
                     onClick={() => {
                       onAdopt(item.labelName);
                     }}

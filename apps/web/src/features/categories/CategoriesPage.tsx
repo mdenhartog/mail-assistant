@@ -63,7 +63,7 @@ export function CategoriesPage(): ReactElement {
   }
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
-      <h1 className="font-display text-2xl text-text">Categories</h1>
+      <h1 className="font-display text-2xl text-text wrap-anywhere">Categories</h1>
       {content}
     </div>
   );

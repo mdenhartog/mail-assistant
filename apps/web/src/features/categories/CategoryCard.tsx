@@ -51,7 +51,7 @@ export function CategoryCard({ row, position, errors, readOnly, onChange, onRemo
             {(control) => (
               <textarea
                 {...control}
-                className={CONTROL}
+                className={`${CONTROL} field-sizing-content`}
                 data-field="description"
                 onChange={(event) => {
                   onChange(row.key, "description", event.target.value);
