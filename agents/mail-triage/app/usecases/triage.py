@@ -17,18 +17,18 @@ from typing import TYPE_CHECKING, Protocol
 from app.adapters.gmail_read import HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.alert_state import AlertState, initial_state
+from app.core.alert_text import AuthResults
 from app.core.auth_results import parse_auth_results
 from app.core.judgement import OTHER_ID, OTHER_LABEL, Filing, Judgement, JudgingList, NeedsAttention, resolve
-from app.core.pinned import is_pinned
+from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
 from app.core.time_policy import in_quiet_hours, next_quiet_end
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Sequence
+    from collections.abc import Callable, Sequence
     from datetime import datetime
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
-    from app.core.alert_text import AuthResults
     from app.core.judgement import ListedCategory
     from app.usecases.policy_notice import PolicySource
     from schedule_policy.policy import TimePolicy
@@ -177,20 +177,31 @@ def _content(mail: FetchedMail, reason: str, summary: str) -> MailContent:
     )
 
 
-def is_pinned_mail(mail: FetchedMail, pinned_domains: Collection[str]) -> bool:
-    """True for the app's own sign-in mail and Google security mail, by Gmail's verdict only (AC-39)."""
-    return is_pinned(mail.auth_results, mail.sender, pinned_domains)
+def pinned_mail_kind(mail: FetchedMail, senders: PinnedSenders) -> PinnedKind | None:
+    """The pinned kind of the app's own sign-in mail and Google security mail, by Gmail's verdict only (AC-39)."""
+    return pinned_kind(mail.auth_results, mail.sender, senders)
 
 
-def pinned_outcome(mail: FetchedMail) -> Outcome:
-    """Pinned mail stays in the inbox: no label, no filing, no model call, no alert of its own (AC-39)."""
+def pinned_outcome(kind: PinnedKind, mail: FetchedMail, now: datetime, policy: TimePolicy) -> Outcome:
+    """Pinned mail stays in the inbox: no label, no filing, no model call (AC-39, ADR-0048).
+
+    Google security mail raises an urgent alert, held in quiet hours like any other, and keeps its capped content for
+    the alert text. Sign-in code mail raises no alert and keeps no sender or subject: its text never reaches Telegram.
+    """
+    if kind is PinnedKind.SIGN_IN_CODE:
+        content = MailContent(
+            "", "", None, has_attachment=False, reason="", summary="", auth=AuthResults(None, None, None)
+        )
+        return Outcome(None, urgent=False, confidence=None, alert=None, note=f"pinned:{kind.value}", content=content)
+    alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy))
     return Outcome(
-        label=None,
-        urgent=False,
+        None,
+        urgent=True,
         confidence=None,
-        alert=None,
-        note="pinned",
-        content=_content(mail, "", ""),
+        alert=alert,
+        note=f"pinned:{kind.value}",
+        content=_content(mail, "Google security mail", ""),
+        release_at=next_quiet_end(now, policy) if alert is AlertState.HELD else None,
     )
 
 
@@ -249,10 +260,10 @@ class TriagePipeline:
         notifier: FailureNotifier,
         now: Callable[[], datetime],
         policy: PolicySource,
-        pinned_domains: Collection[str],
+        pinned: PinnedSenders,
     ) -> None:
-        """Wire the ports, the clock, the policy source and the allow-list of security sender domains."""
-        self._pinned_domains = frozenset(pinned_domains)
+        """Wire the ports, the clock, the policy source and the pinned sender domains."""
+        self._pinned = pinned
         self._mail = mailbox
         self._judge = judge
         self._store = store
@@ -315,8 +326,12 @@ class TriagePipeline:
         mail = await asyncio.to_thread(self._mail.fetch, message_id)
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return
-        if is_pinned_mail(mail, self._pinned_domains):  # checked again here, right before anything could move it
-            await self._store.complete(mail.message_id, pinned_outcome(mail))
+        kind = pinned_mail_kind(mail, self._pinned)  # checked again here, right before anything could move it
+        if kind is not None:
+            policy = await self._policy.current()  # one snapshot for this mail
+            outcome = pinned_outcome(kind, mail, self._now(), policy)
+            await self._store.complete(mail.message_id, outcome)
+            summary.alerts += outcome.alert is not None
             return
         current = await self._store.current_list()  # one snapshot for this mail: the judgement and the filing agree
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)

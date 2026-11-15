@@ -20,7 +20,7 @@ from app.db import pg_categories, repos
 from app.db.models import Alert, CatchupState, Draft, MailItem, PollState
 from app.usecases.catchup import CatchUpState
 from app.usecases.deliver_alerts import PendingAlert
-from app.usecases.overview import FiledMail
+from app.usecases.overview import FiledMail, SecurityMail
 from app.usecases.reply import AlertInfo, StoredDraft
 from app.usecases.triage import Claim, Outcome
 
@@ -386,6 +386,21 @@ class PgStore:
             FiledMail(i.label or "", i.confidence or 0.0, i.sender or REMOVED, i.subject or REMOVED, urgent=i.urgent)
             for i in items
         ]
+
+    async def security_mail_since(self, since: datetime) -> list[SecurityMail]:
+        """Pinned Google security mail since ``since``, whether or not it raised an alert (ADR-0048)."""
+        statement = (
+            select(MailItem)
+            .where(
+                MailItem.completed.is_(True),
+                MailItem.note == "pinned:google_security",
+                MailItem.created_at >= since,
+            )
+            .order_by(MailItem.id)
+        )
+        async with self._sessions() as session:
+            items = (await session.execute(statement)).scalars().all()
+        return [SecurityMail(i.sender or REMOVED, i.subject or REMOVED) for i in items]
 
     async def purge_content(self, before: datetime) -> int:
         """Clear the mail-derived content of mail claimed before ``before``; ids and decisions stay."""

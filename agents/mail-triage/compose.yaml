@@ -80,7 +80,8 @@ services:
       POLL_INTERVAL_SECONDS: ${MAIL_TRIAGE_POLL_INTERVAL_SECONDS:-60}
       DAILY_MODEL_BUDGET: ${MAIL_TRIAGE_DAILY_MODEL_BUDGET:-200}
       ALERTS_PER_HOUR: ${MAIL_TRIAGE_ALERTS_PER_HOUR:-5}
-      PINNED_SENDER_DOMAINS: ${MAIL_TRIAGE_PINNED_SENDER_DOMAINS:-accounts.google.com}
+      GOOGLE_SECURITY_SENDER_DOMAINS: ${MAIL_TRIAGE_GOOGLE_SECURITY_SENDER_DOMAINS:-accounts.google.com}
+      SIGN_IN_MAIL_DOMAINS: ${MAIL_TRIAGE_SIGN_IN_MAIL_DOMAINS:-}
 
   # The one-time Gmail consent (U-web-settings-76), run by `node scripts/local-stack.mjs consent`: it is not started by
   # `up`. The one-shot server listens on 0.0.0.0 inside the container (CONSENT_BIND_HOST); the port is published on the

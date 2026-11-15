@@ -40,11 +40,23 @@ class FiledMail:
     urgent: bool = False  # judged urgent but no alert was sent (the one-time catch-up caps its alerts, INT-003)
 
 
+@dataclass(frozen=True, slots=True)
+class SecurityMail:
+    """A pinned Google security mail: it stays in the inbox and is listed in the overview (ADR-0048)."""
+
+    sender: str
+    subject: str
+
+
 class FiledMails(Protocol):
     """The mails the overview counts."""
 
     async def filed_without_alert_since(self, since: datetime) -> list[FiledMail]:
         """Mails filed since ``since`` that did not raise an alert."""
+        ...
+
+    async def security_mail_since(self, since: datetime) -> list[SecurityMail]:
+        """Pinned Google security mail seen since ``since``, alerted or not. Never the sign-in code mail."""
         ...
 
 
@@ -85,9 +97,14 @@ def _line(mail: FiledMail, *, with_label: bool) -> str:
     return f"• {who}: {what} ({_safe(_name(mail.label), 40)})" if with_label else f"• {who}: {what}"
 
 
-def _text(mails: list[FiledMail], listed: int) -> str:
-    counts = Counter(_name(mail.label) for mail in mails).most_common()
-    lines = [f"<b>Today I filed {len(mails)} mails</b>", *(f"• {_safe(name, 40)}: {count}" for name, count in counts)]
+def _text(mails: list[FiledMail], security: list[SecurityMail], listed: int) -> str:
+    lines: list[str] = []
+    if mails:
+        counts = Counter(_name(mail.label) for mail in mails).most_common()
+        lines += [
+            f"<b>Today I filed {len(mails)} mails</b>",
+            *(f"• {_safe(name, 40)}: {count}" for name, count in counts),
+        ]
     unsure = [mail for mail in mails if mail.confidence < LOW_CONFIDENCE]
     if unsure:
         lines.append(f"\n<b>I was unsure about {len(unsure)}:</b>")
@@ -100,16 +117,22 @@ def _text(mails: list[FiledMail], listed: int) -> str:
         lines.extend(_line(mail, with_label=False) for mail in urgent[:listed])
         if len(urgent) > listed:
             lines.append(f"…and {len(urgent) - listed} more")
-    return "\n".join(lines)
+    if security:
+        lines.append(f"\n<b>Google security mail ({len(security)}):</b>")
+        lines.extend(f"• {_safe(m.sender, SENDER_CHARS)}: {_safe(m.subject, SUBJECT_CHARS)}" for m in security[:listed])
+        if len(security) > listed:
+            lines.append(f"…and {len(security) - listed} more")
+    return "\n".join(lines).lstrip("\n")
 
 
-def build_overview(mails: list[FiledMail]) -> AlertMessage:
-    """One message without buttons; shortens the unsure list until it fits."""
+def build_overview(mails: list[FiledMail], security: list[SecurityMail] | None = None) -> AlertMessage:
+    """One message without buttons; shortens the lists until it fits."""
+    kept = security or []
     listed = UNSURE_LISTED
-    text = _text(mails, listed)
+    text = _text(mails, kept, listed)
     while len(text) > MAX_MESSAGE_CHARS and listed > 0:
         listed -= 1
-        text = _text(mails, listed)
+        text = _text(mails, kept, listed)
     return AlertMessage(text=text[:MAX_MESSAGE_CHARS], buttons=())
 
 
@@ -139,6 +162,7 @@ class OverviewService:
             return
         since = await self._log.last_settled_at() or day_start(today, policy)
         mails = await self._mails.filed_without_alert_since(since)
-        if mails:
-            await self._outbox.send(build_overview(mails))
+        security = await self._mails.security_mail_since(since)
+        if mails or security:
+            await self._outbox.send(build_overview(mails, security))
         await self._log.mark_overview_sent(today, now)

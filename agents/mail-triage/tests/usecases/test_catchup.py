@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from app.core.pinned import PinnedSenders
 from app.adapters.gmail_read import FetchedMail
 from app.adapters.judge_anthropic import DailyBudget, ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
 from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
+from app.core.pinned import PinnedSenders
 from app.usecases.catchup import BACKLOG_ALERT_LIMIT, BUDGET_RESERVE, RUN_LIMIT, CatchUp, CatchUpState
 from app.usecases.triage import MAX_ATTEMPTS, Claim, FilingEntry, Outcome
 from tests.usecases.fakes_policy import FakePolicySource
@@ -23,9 +23,7 @@ if TYPE_CHECKING:
 
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
-PINNED = PinnedSenders(
-    google_security=frozenset({"accounts.google.com"}), sign_in=frozenset({"mail.example.test"})
-)
+PINNED = PinnedSenders(google_security=frozenset({"accounts.google.com"}), sign_in=frozenset({"mail.example.test"}))
 
 NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam: quiet hours
@@ -627,7 +625,9 @@ async def test_given_old_pinned_mail_when_it_runs_then_it_stays_and_the_rest_is_
     assert store.done["plain"].filing == FilingEntry(FINANCE_ID, 3)
 
 
-async def test_given_old_pinned_security_mail_beyond_the_backlog_cap_when_it_runs_then_it_stays_without_an_alert() -> None:
+async def test_given_old_pinned_security_mail_beyond_the_backlog_cap_when_it_runs_then_it_stays_without_an_alert() -> (
+    None
+):
     all_ids = ids(BACKLOG_ALERT_LIMIT + 1)
     mailbox, store = FakeMailbox(all_ids), FakeStore()
     for mail_id in all_ids:

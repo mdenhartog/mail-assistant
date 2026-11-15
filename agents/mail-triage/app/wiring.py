@@ -181,7 +181,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             FailureNotice(outbox),
             now,
             policy,
-            settings.pinned_domains,
+            settings.pinned_senders,
         ),
         catchup=CatchUp(
             mailbox,  # type: ignore[arg-type]
@@ -191,7 +191,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             budget,
             now,
             policy,
-            settings.pinned_domains,
+            settings.pinned_senders,
         ),
         delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,

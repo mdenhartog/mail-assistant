@@ -23,6 +23,7 @@ from tests.fakes.stub_model import HOSTILE_CORPUS, StubModel
 from tests.usecases.test_triage import (
     CURRENT,
     FINANCE_ID,
+    NIGHT,
     FakeJudge,
     FakeMailbox,
     FakeStore,
@@ -165,9 +166,7 @@ async def test_given_pinned_google_security_mail_in_quiet_hours_when_processed_t
     assert store.outcomes["m1"].release_at is not None
 
 
-async def test_given_pinned_google_security_mail_with_a_forged_lower_header_when_processed_then_the_text_uses_the_top() -> (
-    None
-):
+async def test_given_pinned_security_mail_with_a_forged_lower_header_when_processed_then_the_top_one_counts() -> None:
     mailbox, store = RecordingMailbox(["m1"]), FakeStore()
     lower = "mx.google.com; spf=fail; dkim=fail; dmarc=fail header.from=accounts.google.com"
     inbox_mail(mailbox, "m1", sender="no-reply@accounts.google.com", auth=(GOOD_AUTH, lower))
@@ -180,7 +179,12 @@ async def test_given_pinned_google_security_mail_with_a_forged_lower_header_when
 
 async def test_given_pinned_sign_in_code_mail_when_processed_then_it_stays_with_no_alert_and_no_text_kept() -> None:
     mailbox, store = RecordingMailbox(["m1"]), FakeStore()
-    inbox_mail(mailbox, "m1", sender="login@mail.example.test", auth=("mx.google.com; dmarc=pass header.from=mail.example.test",))
+    inbox_mail(
+        mailbox,
+        "m1",
+        sender="login@mail.example.test",
+        auth=("mx.google.com; dmarc=pass header.from=mail.example.test",),
+    )
     mailbox.mails["m1"] = replace(mailbox.mails["m1"], subject="Your code is 123456", text="123456")
     judge = FakeJudge(Judgement(category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9))
 

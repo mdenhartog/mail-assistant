@@ -19,14 +19,15 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.judgement import OTHER_LABEL, NeedsAttention
-from app.usecases.triage import MAX_ATTEMPTS, Claim, RunSummary, decide_outcome, is_pinned_mail, pinned_outcome
+from app.usecases.triage import MAX_ATTEMPTS, Claim, RunSummary, decide_outcome, pinned_mail_kind, pinned_outcome
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Collection, Sequence
+    from collections.abc import Callable, Sequence
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import Judgement, JudgingList, ListedCategory
+    from app.core.pinned import PinnedSenders
     from app.usecases.policy_notice import PolicySource
     from app.usecases.triage import FailureNotifier, Outcome
 
@@ -142,10 +143,10 @@ class CatchUp:
         budget: BudgetView,
         now: Callable[[], datetime],
         policy: PolicySource,
-        pinned_domains: Collection[str],
+        pinned: PinnedSenders,
     ) -> None:
         """Wire the ports, the budget view, the clock, the policy source and the allow-list of security domains."""
-        self._pinned_domains = frozenset(pinned_domains)
+        self._pinned = pinned
         self._mail = mailbox
         self._judge = judge
         self._store = store
@@ -214,8 +215,10 @@ class CatchUp:
             return _Step.SKIPPED
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return _Step.SKIPPED
-        if is_pinned_mail(mail, self._pinned_domains):  # security mail stays in the inbox, whatever its age (AC-39)
-            await self._store.complete_backlog(mail.message_id, pinned_outcome(mail))
+        kind = pinned_mail_kind(mail, self._pinned)  # pinned mail stays in the inbox, whatever its age (AC-39)
+        if kind is not None:
+            outcome = pinned_outcome(kind, mail, self._now(), await self._policy.current())
+            await self._complete_capped(mail, outcome, summary)
             return _Step.HANDLED
         current = await self._store.current_list()
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)
@@ -223,11 +226,20 @@ class CatchUp:
             return _Step.STOP  # an old mail is never filed as "needs attention" only because the budget ended
         policy = await self._policy.current()  # one snapshot for this mail
         outcome = decide_outcome(verdict, mail, current, self._now(), policy)
-        if outcome.alert is not None and await self._store.backlog_alerts() >= BACKLOG_ALERT_LIMIT:
-            outcome = replace(outcome, alert=None, release_at=None)  # still urgent, so the overview lists it (C-B5)
+        outcome = await self._capped(outcome)
         label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete_backlog(mail.message_id, outcome)
         summary.filed += 1
         summary.alerts += outcome.alert is not None
         return _Step.HANDLED
+
+    async def _capped(self, outcome: Outcome) -> Outcome:
+        if outcome.alert is not None and await self._store.backlog_alerts() >= BACKLOG_ALERT_LIMIT:
+            return replace(outcome, alert=None, release_at=None)  # still urgent, so the overview lists it (C-B5)
+        return outcome
+
+    async def _complete_capped(self, mail: FetchedMail, outcome: Outcome, summary: RunSummary) -> None:
+        outcome = await self._capped(outcome)
+        await self._store.complete_backlog(mail.message_id, outcome)
+        summary.alerts += outcome.alert is not None

@@ -409,10 +409,12 @@ async def test_given_one_run_when_the_overview_is_sent_then_the_policy_is_read_o
 
 
 def test_given_pinned_security_mail_when_the_overview_is_built_then_it_has_its_own_section() -> None:
-    text = build_overview([filed("Assistant/Finance")], [SecurityMail("no-reply@accounts.google.com", "Security alert")]).text
+    text = build_overview(
+        [filed("Assistant/Finance")], [SecurityMail("no-reply@accounts.google.com", "Security alert")]
+    ).text
 
     assert "Google security mail (1)" in text
-    assert "• no-reply@accounts.google.com: Security alert" in text
+    assert "â€¢ no-reply@accounts.google.com: Security alert" in text
     assert "Today I filed 1 mails" in text
 
 

@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from app.core.pinned import PinnedSenders
 from app.db.engine import DatabaseTls
 
 if TYPE_CHECKING:
@@ -22,6 +23,12 @@ if TYPE_CHECKING:
 
 
 _DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
+
+
+def _clean_domains(raw: str) -> list[str]:
+    """The lower case domain names of a comma separated list; empty when nothing usable is in it."""
+    domains = [d.strip().casefold() for d in raw.split(",") if d.strip()]
+    return domains if all(_DOMAIN.fullmatch(d) for d in domains) else []
 
 
 class SettingsError(ValueError):
@@ -70,22 +77,37 @@ class Settings(DatabaseTlsSettings):
     poll_interval_seconds: int = Field(default=60, ge=1)  # spec C1
     daily_model_budget: int = Field(default=200, ge=0)  # model calls per day (AC-26)
     alerts_per_hour: int = Field(default=5, ge=1)  # individual alerts per hour before batching (AC-26)
-    # Comma separated sender domains whose mail stays in the inbox when Gmail shows DMARC pass (AC-39, ADR-0045).
-    # Add the domain the app's own sign-in mail comes from; the default is Google's security mail.
-    pinned_sender_domains: str = Field(default="accounts.google.com", max_length=2000)
+    # Comma separated sender domains, each mail only counted when Gmail shows DMARC pass (AC-39, ADR-0045, ADR-0048).
+    # Google's own security mail: pinned to the inbox and alerted. The default is Google's security sender.
+    google_security_sender_domains: str = Field(default="accounts.google.com", max_length=2000)
+    # The sender domains of the app's own sign-in code mail: pinned and silent. Deployment configuration, no default.
+    sign_in_mail_domains: str = Field(default="", max_length=2000)
 
-    @field_validator("pinned_sender_domains")
+    @field_validator("google_security_sender_domains")
     @classmethod
-    def _domains_only(cls, raw: str) -> str:
-        domains = [d.strip().casefold() for d in raw.split(",") if d.strip()]
-        if not domains or not all(_DOMAIN.fullmatch(d) for d in domains):
+    def _google_domains(cls, raw: str) -> str:
+        domains = _clean_domains(raw)
+        if not domains:
+            raise ValueError("a comma separated list of domain names is needed")
+        return ",".join(domains)
+
+    @field_validator("sign_in_mail_domains")
+    @classmethod
+    def _sign_in_domains(cls, raw: str) -> str:
+        if not raw:
+            return ""
+        domains = _clean_domains(raw)
+        if not domains:
             raise ValueError("a comma separated list of domain names is needed")
         return ",".join(domains)
 
     @property
-    def pinned_domains(self) -> frozenset[str]:
-        """The allow-list of security sender domains, lower case."""
-        return frozenset(self.pinned_sender_domains.split(","))
+    def pinned_senders(self) -> PinnedSenders:
+        """The allow-lists of the two pinned mail kinds, lower case."""
+        return PinnedSenders(
+            google_security=frozenset(self.google_security_sender_domains.split(",")),
+            sign_in=frozenset(filter(None, self.sign_in_mail_domains.split(","))),
+        )
 
     @classmethod
     def settings_customise_sources(
