@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, time
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,10 +12,18 @@ from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
-from app.core.judgement import Judgement, NeedsAttention
+from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
 from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline, decide_outcome
 from schedule_policy.policy import DEFAULT_POLICY
 from tests.usecases.fakes_policy import FakePolicySource
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
+CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
+EMPTY = JudgingList(version=0, categories=())
+PINNED_DOMAINS = frozenset({"accounts.google.com"})
 
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
@@ -33,8 +42,8 @@ def fetched(message_id: str, text: str = "hello") -> FetchedMail:
     )
 
 
-def judgement(category: str = "Finance", *, urgent: bool = False, confidence: float = 0.9) -> Judgement:
-    return Judgement(category=category, urgent=urgent, reason="r", summary="s", confidence=confidence)
+def judgement(category_id: str = FINANCE_ID, *, urgent: bool = False, confidence: float = 0.9) -> Judgement:
+    return Judgement(category_id=category_id, urgent=urgent, reason="r", summary="s", confidence=confidence)
 
 
 class FakeMailbox:
@@ -73,9 +82,11 @@ class FakeJudge:
     def __init__(self, *answers: Judgement | NeedsAttention | Exception) -> None:
         self.answers = list(answers)
         self.seen: list[TrimmedMail] = []
+        self.lists: list[tuple[ListedCategory, ...]] = []
 
-    async def judge(self, mail: TrimmedMail) -> Judgement | NeedsAttention:
+    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
         self.seen.append(mail)
+        self.lists.append(tuple(categories))
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
         if isinstance(answer, Exception):
             raise answer
@@ -93,7 +104,7 @@ class Completed:
 @dataclass
 class FakeStore:
     history: str | None = "100"
-    labels: list[str] = field(default_factory=lambda: ["Assistant/Finance", "Assistant/Other"])
+    current: JudgingList = CURRENT
     claimed: set[str] = field(default_factory=set)
     done: dict[str, Completed] = field(default_factory=dict)
     outcomes: dict[str, Outcome] = field(default_factory=dict)
@@ -115,14 +126,12 @@ class FakeStore:
         self.claimed.add(message_id)
         return Claim.NEW
 
-    async def known_labels(self) -> list[str]:
-        return list(self.labels)
+    async def current_list(self) -> JudgingList:
+        return self.current
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
         self.done[message_id] = Completed(outcome.label, outcome.urgent, outcome.alert, outcome.note)
         self.outcomes[message_id] = outcome
-        if outcome.label not in self.labels:
-            self.labels.append(outcome.label)
 
     async def record_failure(self, message_id: str) -> int:
         self.failures[message_id] = self.failures.get(message_id, 0) + 1
@@ -149,7 +158,13 @@ def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
     source: FakePolicySource | None = None,
 ) -> TriagePipeline:
     return TriagePipeline(
-        mailbox, judge, store, notifier or FakeNotifier(), now=lambda: now, policy=source or FakePolicySource()
+        mailbox,
+        judge,
+        store,
+        notifier or FakeNotifier(),
+        now=lambda: now,
+        policy=source or FakePolicySource(),
+        pinned_domains=PINNED_DOMAINS,
     )
 
 
@@ -304,15 +319,6 @@ async def test_given_low_confidence_when_run_then_the_mail_needs_attention() -> 
     assert store.done["m1"].note == "needs_attention:low_confidence"
 
 
-async def test_given_a_new_category_when_run_then_the_label_is_created_and_remembered() -> None:
-    mailbox, store = FakeMailbox(["m1", "m2"]), FakeStore()
-
-    await pipeline(mailbox, FakeJudge(judgement("Travel")), store).run_once()
-
-    assert [label for _, label in mailbox.filed] == ["id:Assistant/Travel", "id:Assistant/Travel"]
-    assert "Assistant/Travel" in store.labels
-
-
 async def test_given_a_mail_claimed_but_never_completed_when_run_then_it_is_processed_again() -> None:
     mailbox, store = FakeMailbox(["m1"]), FakeStore()
     store.claimed.add("m1")  # a crash happened after the claim
@@ -355,7 +361,7 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         has_attachment=True,
         headers={"Authentication-Results": "mx; spf=fail; dkim=pass; dmarc=pass"},
     )
-    verdict = Judgement(category="Finance", urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
+    verdict = Judgement(category_id=FINANCE_ID, urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
 
     await pipeline(mailbox, FakeJudge(verdict), store).run_once()
 
@@ -385,9 +391,9 @@ async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_
 
 
 def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent_with_an_open_alert() -> None:
-    verdict = judgement("Finance", urgent=True, confidence=0.9)
+    verdict = judgement(FINANCE_ID, urgent=True, confidence=0.9)
 
-    outcome = decide_outcome(verdict, fetched("m1"), ["Assistant/Finance"], DAYTIME, DEFAULT_POLICY)
+    outcome = decide_outcome(verdict, fetched("m1"), CURRENT, DAYTIME, DEFAULT_POLICY)
 
     assert outcome.label == "Assistant/Finance"
     assert outcome.urgent is True
@@ -399,14 +405,14 @@ def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent
 
 
 def test_given_an_urgent_judgement_in_quiet_hours_when_decided_directly_then_the_alert_is_held() -> None:
-    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), EMPTY,NIGHT, DEFAULT_POLICY)
 
     assert outcome.alert is AlertState.HELD
     assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
 
 
 def test_given_a_needs_attention_verdict_when_decided_directly_then_it_is_other_urgent_with_a_note() -> None:
-    outcome = decide_outcome(NeedsAttention("invalid_output"), fetched("m1"), [], DAYTIME, DEFAULT_POLICY)
+    outcome = decide_outcome(NeedsAttention("invalid_output"), fetched("m1"), EMPTY,DAYTIME, DEFAULT_POLICY)
 
     assert outcome.label == "Assistant/Other"
     assert outcome.urgent is True
@@ -424,21 +430,21 @@ NEW_YORK_NIGHT = datetime(2026, 11, 10, 4, 30, tzinfo=UTC)  # 23:30 on 9 Novembe
 
 
 def test_given_new_york_when_an_urgent_mail_arrives_at_2330_there_then_the_alert_is_held_until_0700() -> None:
-    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), [], NEW_YORK_NIGHT, NEW_YORK)
+    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), EMPTY,NEW_YORK_NIGHT, NEW_YORK)
 
     assert outcome.alert is AlertState.HELD
     assert outcome.release_at == datetime(2026, 11, 10, 12, 0, tzinfo=UTC)  # 07:00 in New York
 
 
 def test_given_a_needs_attention_verdict_in_quiet_hours_when_decided_then_it_is_held_with_a_release_moment() -> None:
-    outcome = decide_outcome(NeedsAttention("budget"), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+    outcome = decide_outcome(NeedsAttention("budget"), fetched("m1"), EMPTY,NIGHT, DEFAULT_POLICY)
 
     assert outcome.alert is AlertState.HELD
     assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)
 
 
 def test_given_a_non_urgent_mail_in_quiet_hours_when_decided_then_there_is_no_alert_and_no_release_moment() -> None:
-    outcome = decide_outcome(judgement(urgent=False), fetched("m1"), [], NIGHT, DEFAULT_POLICY)
+    outcome = decide_outcome(judgement(urgent=False), fetched("m1"), EMPTY,NIGHT, DEFAULT_POLICY)
 
     assert (outcome.alert, outcome.release_at) == (None, None)
 
