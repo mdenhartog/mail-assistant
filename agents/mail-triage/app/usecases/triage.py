@@ -173,7 +173,7 @@ def _content(mail: FetchedMail, reason: str, summary: str) -> MailContent:
         has_attachment=mail.has_attachment,
         reason=reason,
         summary=summary,
-        auth=parse_auth_results(mail.headers.get("Authentication-Results")),
+        auth=parse_auth_results(mail.auth_results[0] if mail.auth_results else None),
     )
 
 

@@ -38,7 +38,8 @@ class FakeGmail:
             subject="Invoice due Friday",
             text="Please pay the attached invoice by Friday.",
             has_attachment=False,
-            headers={"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass"},
+            headers={},
+            auth_results=("mx.google.com; spf=pass; dkim=pass; dmarc=pass",),
         )
         self.filed: list[tuple[str, str]] = []
         self.sent: list[tuple[FetchedMail, ConfirmedDraft]] = []
