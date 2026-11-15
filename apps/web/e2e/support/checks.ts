@@ -75,13 +75,13 @@ export async function targetProblems(page: Page, touch: boolean): Promise<string
     const isOption = (element: Element): boolean => element.getAttribute("role") === "option";
     // Content scrolls under the sticky action bar of the review on purpose; the review has its own test that the bar never covers the focused box.
     const underBar = (a: Element, b: Element): boolean => (a.closest("[data-action-bar]") === null) !== (b.closest("[data-action-bar]") === null);
+    const skipPair = (a: Element, b: Element): boolean => a.contains(b) || b.contains(a) || isOption(a) || isOption(b) || underBar(a, b);
     const gap = (a: DOMRect, b: DOMRect): number =>
       Math.hypot(Math.max(0, a.left - b.right, b.left - a.right), Math.max(0, a.top - b.bottom, b.top - a.bottom));
     const tooClose: string[] = [];
     for (const [i, a] of found.entries()) {
       for (const b of found.slice(i + 1)) {
-        const skip = a.element.contains(b.element) || b.element.contains(a.element) || isOption(a.element) || isOption(b.element) || underBar(a.element, b.element);
-        if (!skip && gap(a.box, b.box) < 8) {
+        if (!skipPair(a.element, b.element) && gap(a.box, b.box) < 8) {
           tooClose.push(`${label(a.element)} and ${label(b.element)} are ${gap(a.box, b.box).toFixed(1)} px apart`);
         }
       }

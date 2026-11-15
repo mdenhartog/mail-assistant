@@ -57,25 +57,22 @@ interface ToolsProps {
 
 function Tools({ group, selected, busy, selecting, onSelectAll, onClear, onDecide }: ToolsProps): ReactElement {
   const count = selected.size;
+  const none = count === 0 || busy;
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button loading={selecting} loadingLabel="Selecting..." onClick={onSelectAll}>
         {`Select all ${String(group.count)} in this group`}
       </Button>
-      {count > 0 ? (
-        <>
-          <span className="font-semibold text-text">{`${String(count)} of ${String(group.count)} selected`}</span>
-          <Button disabled={busy} onClick={() => { onDecide("approved"); }} variant="primary">
-            {`Approve selected (${String(count)})`}
-          </Button>
-          <Button disabled={busy} onClick={() => { onDecide("rejected"); }}>
-            {`Keep selected in place (${String(count)})`}
-          </Button>
-          <Button onClick={onClear} variant="ghost">
-            Clear selection
-          </Button>
-        </>
-      ) : null}
+      <span className="font-semibold text-text">{`${String(count)} of ${String(group.count)} selected`}</span>
+      <Button disabled={none} onClick={() => { onDecide("approved"); }} variant="primary">
+        {`Approve selected (${String(count)})`}
+      </Button>
+      <Button disabled={none} onClick={() => { onDecide("rejected"); }}>
+        {`Keep selected in place (${String(count)})`}
+      </Button>
+      <Button disabled={count === 0} onClick={onClear} variant="ghost">
+        Clear selection
+      </Button>
     </div>
   );
 }
