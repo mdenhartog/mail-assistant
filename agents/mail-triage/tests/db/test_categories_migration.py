@@ -30,6 +30,8 @@ LIST_TABLES = {
     "telegram_action",
     "apply_config",
 }
+PLAN_TABLES = {"plan", "plan_item", "plan_decision", "plan_approval", "apply_audit", "move_back_request"}  # 0015
+ALL_TABLES = LIST_TABLES | PLAN_TABLES
 
 
 def _plain(url: str) -> str:
@@ -77,7 +79,7 @@ async def test_given_data_in_other_schemas_when_the_revision_runs_up_and_down_th
 
     await _up(database_url, "head")
 
-    assert await _tables(database_url) == LIST_TABLES
+    assert await _tables(database_url) == ALL_TABLES
     await _down(database_url, PREVIOUS)
     assert await _tables(database_url) == set()
     assert await _fetch(database_url, "select 1 from pg_namespace where nspname = 'categories'") == []
@@ -85,7 +87,7 @@ async def test_given_data_in_other_schemas_when_the_revision_runs_up_and_down_th
     assert len(await _fetch(database_url, "select 1 from settings.schedule")) == 1
     assert len(await _fetch(database_url, "select 1 from settings.settings_change")) == 1
     await _up(database_url, "head")
-    assert await _tables(database_url) == LIST_TABLES
+    assert await _tables(database_url) == ALL_TABLES
 
 
 async def test_given_the_head_when_compared_with_the_models_then_there_is_no_difference(database_url: str) -> None:
@@ -116,9 +118,9 @@ async def test_given_every_categories_table_when_its_primary_key_is_read_then_th
         "where n.nspname = 'categories' and i.indisprimary",
     )
 
-    assert {r["t"] for r in rows} == LIST_TABLES
+    assert {r["t"] for r in rows} == ALL_TABLES
     assert {r["t"]: r["first_column"] for r in rows if r["t"] != "mailbox"} == dict.fromkeys(
-        LIST_TABLES - {"mailbox"}, "mailbox_id"
+        ALL_TABLES - {"mailbox"}, "mailbox_id"
     )
 
 
