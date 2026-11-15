@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 import { normaliseName, validateCategory, validateList } from "@/features/categories/policy";
 
 // The one source of the rules: the file the Python package and the api also run (INT-004, AC-2, AC-8).
-const CASES_URL = new URL("../../../../../packages/category-policy/contract/category_cases.json", import.meta.url);
+// Vitest runs in apps/web.
+const CASES_FILE = resolve(process.cwd(), "../../packages/category-policy/contract/category_cases.json");
 
 interface Cases {
   normalise: { id: string; raw: string; expected: string }[];
@@ -19,7 +21,7 @@ interface Cases {
   }[];
 }
 
-const cases = JSON.parse(readFileSync(CASES_URL, "utf8")) as Cases;
+const cases = JSON.parse(readFileSync(CASES_FILE, "utf8")) as Cases;
 
 /** A description of the form `__N__` stands for N letters. */
 function expand(description: string): string {
