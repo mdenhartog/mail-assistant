@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import unicodedata
-import uuid  # noqa: TC003  # runtime annotations of the protocol and the result
+import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -149,21 +149,11 @@ class ListSync:
         wanted = [(row.id, f"{LABEL_PREFIX}{row.name}") for row in current.categories] + [(OTHER_ID, OTHER_LABEL)]
         for category_id, name in wanted:
             known = stored.get(category_id)
-            label = (by_id.get(known.label_id) if known else None) or by_name.get(name.casefold())
-            if label is None:
-                label = await asyncio.to_thread(self._gmail.create_label, name)
-                created += 1
-            if label.name != name:
-                try:
-                    await asyncio.to_thread(self._gmail.rename_label, label.id, name)
-                except LabelNameTaken:
-                    failed += 1
-                else:
-                    renamed += 1
-                    label = Label(label.id, name)
-            by_id[label.id] = label
-            by_name[label.name.casefold()] = label
-            if category_id != OTHER_ID and (known is None or known != StoredLabel(label.id, label.name)):
+            label, made, renamed_now, clash = await self._ensure(name, known, by_id, by_name)
+            created += made
+            renamed += renamed_now
+            failed += clash
+            if category_id != OTHER_ID and known != StoredLabel(label.id, label.name):
                 await self._store.save_label(category_id, label.id, label.name)
             counts[category_id] = await asyncio.to_thread(self._gmail.count_mail, label.id)
         names = [label.name for label in by_id.values() if label.name.startswith(LABEL_PREFIX)]
@@ -172,6 +162,30 @@ class ListSync:
             await self._store.advance_cursor(current.version)
         logger.info("list sync: version=%d created=%d renamed=%d failed=%d", current.version, created, renamed, failed)
         return SyncResult(current.version, seeded, created, renamed, failed)
+
+    async def _ensure(
+        self, name: str, known: StoredLabel | None, by_id: dict[str, Label], by_name: dict[str, Label]
+    ) -> tuple[Label, int, int, int]:
+        """The label for ``name``: found by its stored id, then by name, else made; renamed by id when it differs.
+
+        Returns the label and the counts of created, renamed and failed (a name another label already has).
+        """
+        label = (by_id.get(known.label_id) if known else None) or by_name.get(name.casefold())
+        created = 1 if label is None else 0
+        if label is None:
+            label = await asyncio.to_thread(self._gmail.create_label, name)
+        renamed = failed = 0
+        if label.name != name:
+            try:
+                await asyncio.to_thread(self._gmail.rename_label, label.id, name)
+            except LabelNameTaken:
+                failed = 1
+            else:
+                renamed = 1
+                label = Label(label.id, name)
+        by_id[label.id] = label
+        by_name[label.name.casefold()] = label
+        return label, created, renamed, failed
 
     async def _ensure_archive(self, by_name: dict[str, Label], by_id: dict[str, Label]) -> None:
         """Make ``Archive`` when no top-level label of that name exists (case does not matter, C-14)."""

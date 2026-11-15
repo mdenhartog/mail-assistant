@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import uuid
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,6 +11,9 @@ from app.db.models import OTHER_ID
 from app.usecases.list_sync import ListSync
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.list_store import FakeListStore
+
+if TYPE_CHECKING:
+    import uuid
 
 
 def make(gmail: FakeGmail, store: FakeListStore) -> ListSync:
@@ -180,9 +183,7 @@ async def test_given_a_crash_after_the_rename_when_the_run_repeats_then_nothing_
     assert store.cursor_version == 2
 
 
-async def test_given_a_crash_between_the_rename_and_the_label_map_when_it_repeats_then_the_label_is_not_renamed_again() -> (
-    None
-):
+async def test_given_a_rename_done_in_gmail_but_not_remembered_when_it_repeats_then_it_is_not_renamed_again() -> None:
     gmail = FakeGmail()
     store = FakeListStore()
     category, label = await _synced(gmail, store, "Bills")
@@ -196,9 +197,7 @@ async def test_given_a_crash_between_the_rename_and_the_label_map_when_it_repeat
     assert store.labels[category].label_name == "Assistant/Invoices"
 
 
-async def test_given_a_rename_to_a_name_a_label_already_has_when_synced_then_the_rest_is_done_and_the_cursor_waits() -> (
-    None
-):
+async def test_given_a_rename_onto_a_taken_name_when_synced_then_the_rest_is_done_and_the_cursor_waits() -> None:
     gmail = FakeGmail()
     store = FakeListStore()
     first, first_label = await _synced(gmail, store, "Bills")
