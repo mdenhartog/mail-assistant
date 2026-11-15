@@ -387,6 +387,9 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
                 heartbeat=HEARTBEAT,
                 now=_utc_now,
             )
+            await PgApprovalStore(sessions, settings.mailbox_id).write_config(
+                threshold=settings.apply_threshold, delay_minutes=settings.apply_delay_minutes
+            )
             logger.info("mail-triage started")
             await runner.run(stop)
         await repos.release_lock(lock_connection)

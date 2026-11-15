@@ -135,6 +135,8 @@ async def test_given_the_deployment_numbers_when_they_are_written_then_the_row_i
     await store.write_config(threshold=50, delay_minutes=15)
     await store.write_config(threshold=9, delay_minutes=0)
 
-    row = await cat_owner.fetchrow("select threshold, delay_minutes from categories.apply_config where mailbox_id = 'fresh'")
+    row = await cat_owner.fetchrow(
+        "select threshold, delay_minutes from categories.apply_config where mailbox_id = 'fresh'"
+    )
     assert row is not None
     assert (row["threshold"], row["delay_minutes"]) == (9, 0)

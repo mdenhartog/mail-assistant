@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError
 
 from app.core.resort_plan import PlanState
-from app.db.models import MoveBackRequest, Plan, PlanApproval, PlanItem
+from app.db.models import ApplyConfig, CategoryMailbox, MoveBackRequest, Plan, PlanApproval, PlanItem
 from app.usecases.approval_notice import CancelOutcome, ScheduledPlan
 
 if TYPE_CHECKING:
@@ -34,6 +34,21 @@ class PgApprovalStore:
         """Keep the session factory and the mailbox."""
         self._sessions = sessions
         self._mailbox = mailbox_id
+
+    async def write_config(self, *, threshold: int, delay_minutes: int) -> None:
+        """Store the approval threshold and delay of the deployment where ``approve_plan`` reads them.
+
+        The mailbox row is made when missing (a list sync may not have run yet); an existing row is replaced.
+        """
+        mailbox = insert(CategoryMailbox).values(id=self._mailbox).on_conflict_do_nothing()
+        config = insert(ApplyConfig).values(mailbox_id=self._mailbox, threshold=threshold, delay_minutes=delay_minutes)
+        config = config.on_conflict_do_update(
+            index_elements=[ApplyConfig.mailbox_id],
+            set_={"threshold": config.excluded.threshold, "delay_minutes": config.excluded.delay_minutes},
+        )
+        async with self._sessions.begin() as session:
+            await session.execute(mailbox)
+            await session.execute(config)
 
     async def unannounced(self) -> list[ScheduledPlan]:
         """``scheduled`` plans with a delay (the apply starts after the approval) and no notice yet."""
@@ -59,7 +74,8 @@ class PgApprovalStore:
             .order_by(Plan.created_at)
         )
         async with self._sessions() as session:
-            return [ScheduledPlan(r[0], r[1], r[2]) for r in await session.execute(statement)]
+            rows = (await session.execute(statement)).all()
+        return [ScheduledPlan(plan_id, count, after) for plan_id, count, after in rows if after is not None]
 
     async def mark_announced(self, plan_id: uuid.UUID) -> None:
         """Remember that the notice of the plan was sent."""
