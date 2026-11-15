@@ -64,7 +64,7 @@ MATRIX: dict[str, dict[str, tuple[frozenset[str] | str, frozenset[str] | str, fr
     },
     "move_back_request": {
         "api": (ALL, frozenset({"mailbox_id", "plan_id"}), NONE),
-        "agent": (ALL, NONE, frozenset({"processed", "run_id", "lease_until"})),
+        "agent": (ALL, frozenset({"mailbox_id", "plan_id"}), frozenset({"processed", "run_id", "lease_until"})),
     },
 }
 

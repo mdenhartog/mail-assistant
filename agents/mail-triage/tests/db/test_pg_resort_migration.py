@@ -19,6 +19,7 @@ from tests.db.conftest import AGENT_ROLE, API_ROLE, alembic_config, plain_url
 _NEW_COLUMNS = {
     ("plan", "apply_run_id"),
     ("plan", "apply_lease_until"),
+    ("plan", "announced_at"),
     ("plan_item", "attempts"),
     ("move_back_request", "run_id"),
     ("move_back_request", "lease_until"),
