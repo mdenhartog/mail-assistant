@@ -38,6 +38,7 @@ from app.db.migrate import (
     purge_database,
 )
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
 from app.db.pg_list_sync import PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
@@ -53,12 +54,14 @@ from app.usecases.catchup import CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
+from app.usecases.list_notice import ListNotice, ListNoticeActions
 from app.usecases.list_sync import ListSync
 from app.usecases.overview import OverviewService
 from app.usecases.policy_notice import PolicyNotice
 from app.usecases.reply import ReplyService
 from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.snooze import SnoozeService
+from app.usecases.telegram_actions import TelegramActions
 from app.usecases.triage import TriagePipeline
 from app.usecases.web_notice import WebNotice
 from app.usecases.web_notice_actions import WebNoticeActions
@@ -178,6 +181,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             now=now,
         )
     )
+    list_store = PgListNoticeStore(sessions, settings.mailbox_id)
+    list_actions = TelegramActions(PgActionStore(sessions, settings.mailbox_id), new_token)
+    router.register_list_actions(
+        ListNoticeActions(
+            list_actions, list_store, web_lock, outbox, chat_id=settings.telegram_allowed_chat_id, now=now
+        )
+    )
     return Runner(
         pipeline=TriagePipeline(
             mailbox,  # type: ignore[arg-type]
@@ -207,6 +217,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         inbox=inbox,
         router=router,
         list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id)),
+        list_notice=ListNotice(list_store, outbox, list_actions, chat_id=settings.telegram_allowed_chat_id),
         list_sync_seconds=settings.list_sync_interval_seconds,
         heartbeat=heartbeat,
         interval_seconds=settings.poll_interval_seconds,

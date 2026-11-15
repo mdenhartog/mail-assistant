@@ -18,6 +18,7 @@ from tests.test_runner import (
     Inbox,
     ListSyncStep,
     Overview,
+    Pipeline,
     Router,
     Snooze,
     Steps,
@@ -46,7 +47,7 @@ class ListNoticeStep:
 
 def _runner(steps: Steps, tmp_path: Path, notice: ListNoticeStep) -> Runner:
     return Runner(
-        pipeline=object(),  # type: ignore[arg-type]
+        pipeline=Pipeline(steps),
         catchup=CatchUpStep(steps),
         delivery=Delivery(steps),
         snooze=Snooze(steps),
@@ -68,7 +69,7 @@ def _runner(steps: Steps, tmp_path: Path, notice: ListNoticeStep) -> Runner:
 async def test_given_a_cycle_when_it_runs_then_the_list_notice_runs_with_the_clock_before_the_web_notice(
     tmp_path: Path,
 ) -> None:
-    steps = Steps(failing={"pipeline"})
+    steps = Steps()
     notice = ListNoticeStep(steps)
     run = _runner(steps, tmp_path, notice)
 

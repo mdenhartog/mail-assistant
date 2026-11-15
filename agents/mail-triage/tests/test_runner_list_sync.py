@@ -20,6 +20,7 @@ from tests.test_runner import (
     CodeAlertStep,
     Delivery,
     Inbox,
+    ListNoticeIdle,
     Overview,
     Router,
     Snooze,
@@ -83,6 +84,7 @@ def make_runner(tmp_path: Path, clock: Clock, sync: object, pipeline: object | N
         inbox=Inbox([]),
         router=Router(),
         list_sync=sync,  # type: ignore[arg-type]
+        list_notice=ListNoticeIdle(),
         list_sync_seconds=CADENCE,
         heartbeat=tmp_path / "heartbeat",
         interval_seconds=0.01,

@@ -50,6 +50,14 @@ class ListSyncPort(Protocol):
         ...
 
 
+class ListNoticePort(Protocol):
+    """Announces changes of the category list in Telegram (INT-004, ADR-0033, ADR-0046)."""
+
+    async def run(self, now: datetime) -> None:
+        """Send one notice for every list change not yet announced."""
+        ...
+
+
 class DeliveryPort(Protocol):
     """Sends alerts."""
 
@@ -157,6 +165,7 @@ class Runner:
         inbox: InboxPort,
         router: RouterPort,
         list_sync: ListSyncPort,
+        list_notice: ListNoticePort,
         list_sync_seconds: float,
         heartbeat: Path,
         interval_seconds: float,
@@ -174,6 +183,7 @@ class Runner:
         self._inbox = inbox
         self._router = router
         self._list_sync = list_sync
+        self._list_notice = list_notice
         self._list_sync_every = timedelta(seconds=list_sync_seconds)
         self._list_synced_at: datetime | None = None
         self._heartbeat = heartbeat
@@ -187,10 +197,11 @@ class Runner:
 
         The list sync goes first (when its cadence has passed) so that mail is never judged before version 1 exists.
         After it: catch up, send, purge, beat.
-        The web notice and the wrong-code alert go first and take no part in quiet hours: a change from someone else,
+        The list notice, the web notice and the wrong-code alert go first and take no part in quiet hours: a change from someone else,
         or someone guessing codes, must reach Marco soon.
         """
         await self._guard("list_sync", self._sync_list())
+        await self._guard("list_notice", self._list_notice.run(self._now()))  # a change of the list, like the web notice
         await self._guard("web_notice", self._web_notice.run(self._now()))
         await self._guard("code_alert", self._code_alert.run(self._now()))
         await self._guard("release_due", self._snooze.release_due())

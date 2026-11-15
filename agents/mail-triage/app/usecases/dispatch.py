@@ -13,6 +13,8 @@ the buttons and answers of its own conversation; the older snooze and reply ques
   button (or of the pending question for text). ``advance`` is atomic and rotates the nonce, so a double tap, or a tap
   and a text at once, reach the handler once; the loser finds the nonce stale and does nothing.
 
+- The buttons of a category list notice (``catundo:<nonce>``, ``catlock:<nonce>``) go to the registered
+  ``ListActionsPort``, which has its own nonce record; they too never touch the conversation.
 - The buttons of a web notice (``webundo:<token>``, ``weblock:<token>``), ``/web_lock`` and ``/web_unlock`` go to the
   registered ``WebActionsPort``. They have their own token record: they never read, claim, start or clear the
   conversation.
@@ -28,7 +30,7 @@ import re
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
-from app.core import settings_text
+from app.core import list_text, settings_text
 from app.core.alert_state import AlertState
 from app.core.settings_text import UNDO_CHANGED
 
@@ -192,6 +194,14 @@ class WebActionsPort(Protocol):
         ...
 
 
+class ListActionsPort(Protocol):
+    """The buttons of a category list notice (``ListNoticeActions``)."""
+
+    async def on_button(self, command: Command, action: str, nonce: str) -> None:
+        """Run ``catundo`` or ``catlock`` for ``nonce``."""
+        ...
+
+
 class DialogueHandler(Protocol):
     """A dialogue the router can start and feed (the settings dialogue).
 
@@ -345,6 +355,7 @@ class CommandRouter:
         self._commands: dict[str, DialogueHandler] = {}
         self._cursor = cursor
         self._web: WebActionsPort | None = None
+        self._list: ListActionsPort | None = None
 
     def register(self, handler: DialogueHandler) -> None:
         """Add a dialogue: its slash commands start it, and its conversation kind routes buttons and text to it."""
@@ -354,6 +365,10 @@ class CommandRouter:
     def register_web_actions(self, actions: WebActionsPort) -> None:
         """Add the buttons of the web notice and the unlock command."""
         self._web = actions
+
+    def register_list_actions(self, actions: ListActionsPort) -> None:
+        """Add the buttons of the category list notice."""
+        self._list = actions
 
     async def handle(self, command: Command) -> None:
         """Run one update, once: skip a redelivered one; store its id only after it was handled (a failure raises)."""
@@ -416,6 +431,11 @@ class CommandRouter:
         if web is not None:
             if self._web is not None:  # a web notice has its own token record and never touches the conversation
                 await self._web.on_button(command, *web)
+            return
+        listed = list_text.split_button(command.data)
+        if listed is not None:
+            if self._list is not None:  # a list notice has its own nonce record and never touches the conversation
+                await self._list.on_button(command, *listed)
             return
         started = _START.fullmatch(command.data)
         if started is not None:
