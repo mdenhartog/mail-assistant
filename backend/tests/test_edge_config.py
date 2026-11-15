@@ -23,7 +23,7 @@ CERTS = ROOT / "deploy" / "prod-like" / "certs.sh"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 PLAYWRIGHT = ROOT / "apps" / "web" / "playwright.config.ts"
 HOST = "mail-assistant.localhost"
-PAGES = ("/", "/login", "/settings")
+PAGES = ("/", "/login", "/settings", "/categories", "/review")
 NOT_FOUND = (
     "/docs",
     "/redoc",
@@ -38,6 +38,8 @@ NOT_FOUND = (
     "/anything",
     "/index.html",
     "/settings/",
+    "/categories/",
+    "/review/extra",
     "/login/extra",
 )
 
@@ -94,7 +96,15 @@ def test_given_the_web_config_when_read_then_it_has_no_proxy_pass() -> None:
 
 
 def test_given_the_web_config_when_read_then_only_the_exact_pages_and_assets_have_a_location() -> None:
-    assert set(locations()) == {(True, "/"), (True, "/login"), (True, "/settings"), (False, "/assets/"), (False, "/")}
+    assert set(locations()) == {
+        (True, "/"),
+        (True, "/login"),
+        (True, "/settings"),
+        (True, "/categories"),
+        (True, "/review"),
+        (False, "/assets/"),
+        (False, "/"),
+    }
 
 
 @pytest.mark.parametrize("path", PAGES)
@@ -111,7 +121,7 @@ def test_given_any_other_path_when_resolved_then_the_answer_is_404(path: str) ->
     assert resolve(path) == "404"
 
 
-@pytest.mark.parametrize("key", [(True, "/"), (True, "/login"), (True, "/settings")])
+@pytest.mark.parametrize("key", [(True, path) for path in PAGES])
 def test_given_a_page_location_when_read_then_it_is_not_cached_and_has_the_security_include(
     key: tuple[bool, str],
 ) -> None:
@@ -121,7 +131,7 @@ def test_given_a_page_location_when_read_then_it_is_not_cached_and_has_the_secur
     assert f"include {SNIPPET_PATH};" in body
 
 
-@pytest.mark.parametrize("key", [(True, "/"), (True, "/login"), (True, "/settings")])
+@pytest.mark.parametrize("key", [(True, path) for path in PAGES])
 def test_given_a_page_location_when_read_then_the_index_is_served_by_a_rewrite_in_place(key: tuple[bool, str]) -> None:
     body = locations()[key]
 
