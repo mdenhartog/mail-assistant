@@ -125,3 +125,23 @@ GRANT UPDATE (used_at) ON categories.telegram_action TO mail_triage_runtime;
 GRANT INSERT, UPDATE ON categories.apply_config TO mail_triage_runtime;
 -- The agent triggers the retention purge; the function decides what goes, whatever the agent supplies.
 GRANT EXECUTE ON FUNCTION categories.purge_expired() TO mail_triage_runtime;
+
+-- Plan half (U-mail-categories-12, ADR-0046, ADR-0047). The api reads plans and the columns of an item the page shows
+-- (not the message id), and asks for a move back; every decision and approval goes through the functions below.
+-- The agent writes plans and items, moves an item through apply with state and reason only (never the decision), and
+-- appends the apply audit. Nobody has DELETE: retention is purge_expired().
+GRANT SELECT ON categories.plan TO web_settings_runtime;
+GRANT SELECT (mailbox_id, plan_id, id, sender_name, sender_address, subject, old_category_id, new_category_id,
+    decision, state, reason) ON categories.plan_item TO web_settings_runtime;
+GRANT SELECT ON categories.move_back_request TO web_settings_runtime;
+GRANT INSERT (mailbox_id, plan_id) ON categories.move_back_request TO web_settings_runtime;
+
+GRANT SELECT, INSERT, UPDATE ON categories.plan TO mail_triage_runtime;
+GRANT SELECT ON categories.plan_item, categories.plan_decision, categories.plan_approval, categories.apply_audit,
+    categories.move_back_request TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, plan_id, message_id, sender_name, sender_address, subject, old_category_id, new_category_id)
+    ON categories.plan_item TO mail_triage_runtime;
+GRANT UPDATE (state, reason) ON categories.plan_item TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, plan_id, message_id, old_label, new_label, channel) ON categories.apply_audit
+    TO mail_triage_runtime;
+GRANT UPDATE (processed) ON categories.move_back_request TO mail_triage_runtime;
