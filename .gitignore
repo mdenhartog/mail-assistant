@@ -42,3 +42,4 @@ playwright/.auth/
 # The local week-test stack: generated secrets and database dumps (scripts/local-stack.mjs, U-web-settings-73)
 deploy/local/secrets.env
 deploy/local/backups/
+.eslintcache
