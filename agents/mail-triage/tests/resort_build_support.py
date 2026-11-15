@@ -43,6 +43,8 @@ class FakeBuildStore:
         self.plans: list[PlanRecord] = []
         self.items: dict[uuid.UUID, list[ItemDraft]] = {}
         self.rejections: dict[str, int] = {}  # message id -> list version
+        self.estimates: dict[uuid.UUID, int] = {}
+        self.not_looked_at: dict[uuid.UUID, int] = {}
 
     def save_list(self, categories: Sequence[ListedCategory] = CATEGORIES) -> None:
         """The user saves a new list version now."""
@@ -84,11 +86,15 @@ class FakeBuildStore:
         self.items[plan_id] = []
         return True
 
-    async def complete_build(self, plan_id: uuid.UUID) -> bool:
+    async def record_estimate(self, plan_id: uuid.UUID, estimate: int) -> None:
+        self.estimates[plan_id] = estimate
+
+    async def complete_build(self, plan_id: uuid.UUID, *, not_looked_at: int) -> bool:
         plan = next(p for p in self.plans if p.plan_id == plan_id)
         if plan.state is not PlanState.BUILDING:
             return False
         self._set(plan_id, state=PlanState.READY)
+        self.not_looked_at[plan_id] = not_looked_at
         return True
 
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
@@ -131,6 +137,9 @@ class GmailBuildMailbox:
             and ("INBOX" in m.labels or any(names[i].startswith("Assistant/") for i in m.labels))
         ]
         return [*self.ghosts, *ids]
+
+    def estimate_in_scope(self) -> int:
+        return len(self._listed())
 
     def candidates(self, after: str | None, limit: int) -> list[Candidate]:
         ids = self._listed()

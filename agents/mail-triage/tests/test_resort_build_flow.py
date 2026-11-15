@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import timedelta
 
 from app.core.judgement import OTHER_ID
@@ -133,3 +134,35 @@ async def test_pinned_mail_is_never_an_item() -> None:
 
     assert rig.store.items_of(rig.store.plan()) == []
     assert rig.judge.calls == 0
+
+
+async def test_the_plan_keeps_the_estimate_of_mail_in_scope_for_the_review_page() -> None:
+    rig = Rig()
+    for n in range(3):
+        rig.gmail.add_mail(("INBOX",), subject=f"s{n}")
+
+    await rig.build.run_once()
+
+    plan = rig.store.plan()
+    assert rig.store.estimates[plan.plan_id] == 3
+    assert rig.store.not_looked_at[plan.plan_id] == 0
+
+
+async def test_sender_and_subject_lose_bidi_and_format_characters_and_are_capped() -> None:
+    rig = Rig()
+    rtl, zwsp = chr(0x202E), chr(0x200B)
+    rig.gmail.add_mail(
+        ("INBOX",),
+        sender=f'"Ann{rtl}{zwsp}Lee" <ann@example.test>',
+        subject=f"inv{rtl}oice{chr(0x2066)}{zwsp}\n" + "x" * 300,
+    )
+    rig.judge.answer = TRAVEL
+
+    await rig.build.run_once()
+
+    (item,) = rig.store.items_of(rig.store.plan())
+    assert item.sender_name == "AnnLee"
+    assert item.subject.startswith("invoice ")
+    assert len(item.subject) == 120
+    for text in (item.sender_name, item.sender_address, item.subject):
+        assert not [c for c in text if unicodedata.category(c) in {"Cf", "Cc"}]

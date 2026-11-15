@@ -27,6 +27,8 @@ async def test_the_newest_5000_are_in_the_plan_and_the_rest_is_not_looked_at() -
     assert ids[0] not in {i.message_id for i in rig.store.items_of(plan)}  # the oldest is the one left out
     assert ids[-1] in {i.message_id for i in rig.store.items_of(plan)}
     assert "1 not looked at" in rig.telegram.texts[0]
+    assert rig.store.not_looked_at[plan.plan_id] == 1
+    assert rig.store.estimates[plan.plan_id] == SCOPE_MAILS
 
 
 async def test_zero_budget_never_uses_the_reserve_and_the_build_continues_the_next_day() -> None:
