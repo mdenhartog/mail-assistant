@@ -86,7 +86,9 @@ def label_for(name: str) -> str:
     return f"{LABEL_PREFIX}{name.strip()}"
 
 
-def _name_problems(name: str, existing: Collection[str], labels: Collection[str]) -> list[Problem]:
+def _name_problems(
+    name: str, existing: Collection[str], labels: Collection[str], adoptable: Collection[str]
+) -> list[Problem]:
     canonical = _canonical(name)
     if not canonical:
         return [Problem("name_empty", "name")]
@@ -102,8 +104,10 @@ def _name_problems(name: str, existing: Collection[str], labels: Collection[str]
         rules.append("name_reserved")
     if key in {normalise_name(other) for other in existing}:
         rules.append("name_duplicate")
-    elif normalise_name(label_for(canonical)) in {normalise_name(label) for label in labels}:
-        rules.append("name_label_exists")
+    else:
+        label_key = normalise_name(label_for(canonical))
+        if label_key in {normalise_name(label) for label in labels} - {normalise_name(label) for label in adoptable}:
+            rules.append("name_label_exists")
     return [Problem(rule, "name") for rule in rules]
 
 
@@ -116,27 +120,37 @@ def _description_problems(description: str) -> list[Problem]:
     return []
 
 
-def validate_category(name: str, description: str, existing: Collection[str], labels: Collection[str]) -> list[Problem]:
+def validate_category(
+    name: str,
+    description: str,
+    existing: Collection[str],
+    labels: Collection[str],
+    adoptable: Collection[str],
+) -> list[Problem]:
     """Check one category against the name and description rules.
 
     Args:
         name: The proposed name.
         description: The proposed description.
         existing: Names of the other categories on the list (compared after normalisation).
-        labels: Gmail labels under ``Assistant/`` that are not on the stored list.
+        labels: The Gmail labels that exist, as the caller knows them.
+        adoptable: The subset of ``labels`` that belongs to an older category (an ``Assistant/`` label that is not
+            on the stored list and whose suffix is not reserved). A new category of that name adopts the label
+            and its mail instead of clashing (C-15, AC-40, AC-53). Compared after the same normalisation as names.
 
     Returns:
         The problems in rule order; empty when the category is valid.
     """
-    return [*_name_problems(name, existing, labels), *_description_problems(description)]
+    return [*_name_problems(name, existing, labels, adoptable), *_description_problems(description)]
 
 
-def validate_list(categories: Sequence[Category], labels: Collection[str]) -> list[Problem]:
+def validate_list(categories: Sequence[Category], labels: Collection[str], adoptable: Collection[str]) -> list[Problem]:
     """Check a whole list: every category (a later duplicate is the one flagged) and the cap.
 
     Args:
         categories: The list in order.
-        labels: Gmail labels under ``Assistant/`` that are not on the stored list.
+        labels: The Gmail labels that exist, as the caller knows them.
+        adoptable: The subset of ``labels`` that belongs to an older category and may be adopted.
 
     Returns:
         The problems with the index of their category; empty when the list is valid.
@@ -146,7 +160,7 @@ def validate_list(categories: Sequence[Category], labels: Collection[str]) -> li
         earlier = [other.name for other in categories[:index]]
         problems.extend(
             Problem(problem.rule, problem.field, index)
-            for problem in validate_category(category.name, category.description, earlier, labels)
+            for problem in validate_category(category.name, category.description, earlier, labels, adoptable)
         )
     if len(categories) > MAX_CATEGORIES:
         problems.append(Problem("list_too_many", "list"))

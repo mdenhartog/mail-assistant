@@ -25,7 +25,9 @@ def test_given_a_normalise_case_when_normalised_then_the_expected_name_comes_out
 
 @pytest.mark.parametrize("case", FILE["category"], ids=[c["id"] for c in FILE["category"]])
 def test_given_a_category_case_when_validated_then_the_rules_match_the_file(case: dict[str, Any]):
-    problems = validate_category(case["name"], _fill(case["description"]), case["existing"], case["labels"])
+    problems = validate_category(
+        case["name"], _fill(case["description"]), case["existing"], case["labels"], case["adoptable"]
+    )
 
     assert [p.rule for p in problems] == case["rules"]
 
@@ -37,7 +39,7 @@ def test_given_a_list_case_when_validated_then_the_problems_match_the_file(case:
     else:
         categories = [Category(name=c["name"], description=c["description"]) for c in case["categories"]]
 
-    problems = validate_list(categories, case["labels"])
+    problems = validate_list(categories, case["labels"], case["adoptable"])
 
     assert [[p.index, p.rule] for p in problems] == case["problems"]
 

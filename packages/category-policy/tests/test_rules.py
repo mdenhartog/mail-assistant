@@ -12,8 +12,14 @@ from category_policy import (
 )
 
 
-def _rules(name: str, description: str = "x", existing: list[str] | None = None, labels: list[str] | None = None):
-    return [p.rule for p in validate_category(name, description, existing or [], labels or [])]
+def _rules(
+    name: str,
+    description: str = "x",
+    existing: list[str] | None = None,
+    labels: list[str] | None = None,
+    adoptable: list[str] | None = None,
+):
+    return [p.rule for p in validate_category(name, description, existing or [], labels or [], adoptable or [])]
 
 
 def test_given_the_limits_when_read_then_they_match_the_spec():
@@ -38,7 +44,7 @@ def test_given_a_lone_surrogate_when_validated_then_it_does_not_raise():
 
 
 def test_given_a_problem_when_built_then_it_is_a_value_with_field_and_index():
-    problems = validate_list([Category("A/B", "x")], [])
+    problems = validate_list([Category("A/B", "x")], [], [])
 
     assert problems == [Problem("name_slash", "name", 0)]
 
@@ -49,3 +55,11 @@ def test_given_a_duplicate_that_also_matches_a_label_when_validated_then_only_th
 
 def test_given_an_ambiguous_case_fold_when_normalised_then_the_key_is_stable():
     assert normalise_name("ẞ") == normalise_name(normalise_name("ẞ")) == "ss"
+
+
+def test_given_a_label_that_is_an_older_category_when_validated_then_the_name_adopts_it():
+    assert _rules("Invoices", labels=["Assistant/Invoices"], adoptable=["Assistant/Invoices"]) == []
+
+
+def test_given_a_label_that_is_not_adoptable_when_validated_then_the_name_is_refused():
+    assert _rules("Invoices", labels=["Assistant/Invoices"], adoptable=["Assistant/Other"]) == ["name_label_exists"]
