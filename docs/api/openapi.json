@@ -1,6 +1,45 @@
 {
   "components": {
     "schemas": {
+      "CategoryConflict409": {
+        "additionalProperties": false,
+        "description": "The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.",
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/CategoryList"
+          },
+          "reason": {
+            "enum": [
+              "version",
+              "not-ready"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "const": 409,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "reason",
+          "current"
+        ],
+        "title": "CategoryConflict409",
+        "type": "object"
+      },
       "CategoryInput": {
         "additionalProperties": false,
         "description": "One category as the user writes it; a missing ``id`` is a new category.\n\nThe text is not bounded here: the rules of ``category_policy`` decide and answer with ``problems``.",
@@ -168,6 +207,70 @@
         "title": "CategoryProblem",
         "type": "object"
       },
+      "CategoryProblem422": {
+        "additionalProperties": false,
+        "description": "The 422 body of the write route.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "problems"
+        ],
+        "title": "CategoryProblem422",
+        "type": "object"
+      },
+      "Conflict409": {
+        "additionalProperties": false,
+        "description": "The 409 body of the write route: the current settings.",
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "status": {
+            "const": 409,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "current"
+        ],
+        "title": "Conflict409",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -292,6 +395,40 @@
           "places"
         ],
         "title": "PlaceResults",
+        "type": "object"
+      },
+      "Problem422": {
+        "additionalProperties": false,
+        "description": "The 422 body of the write route.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemItem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "problems"
+        ],
+        "title": "Problem422",
         "type": "object"
       },
       "ProblemItem": {
@@ -568,143 +705,6 @@
         ],
         "title": "ValidationError",
         "type": "object"
-      },
-      "app__categories_models__Conflict409": {
-        "additionalProperties": false,
-        "description": "The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.",
-        "properties": {
-          "current": {
-            "$ref": "#/components/schemas/CategoryList"
-          },
-          "reason": {
-            "enum": [
-              "version",
-              "not-ready"
-            ],
-            "title": "Reason",
-            "type": "string"
-          },
-          "status": {
-            "const": 409,
-            "title": "Status",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "reason",
-          "current"
-        ],
-        "title": "Conflict409",
-        "type": "object"
-      },
-      "app__categories_models__Problem422": {
-        "additionalProperties": false,
-        "description": "The 422 body of the write route.",
-        "properties": {
-          "problems": {
-            "items": {
-              "$ref": "#/components/schemas/CategoryProblem"
-            },
-            "title": "Problems",
-            "type": "array"
-          },
-          "status": {
-            "const": 422,
-            "title": "Status",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "problems"
-        ],
-        "title": "Problem422",
-        "type": "object"
-      },
-      "app__settings_models__Conflict409": {
-        "additionalProperties": false,
-        "description": "The 409 body of the write route: the current settings.",
-        "properties": {
-          "current": {
-            "$ref": "#/components/schemas/Settings"
-          },
-          "status": {
-            "const": 409,
-            "title": "Status",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "current"
-        ],
-        "title": "Conflict409",
-        "type": "object"
-      },
-      "app__settings_models__Problem422": {
-        "additionalProperties": false,
-        "description": "The 422 body of the write route.",
-        "properties": {
-          "problems": {
-            "items": {
-              "$ref": "#/components/schemas/ProblemItem"
-            },
-            "title": "Problems",
-            "type": "array"
-          },
-          "status": {
-            "const": 422,
-            "title": "Status",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "problems"
-        ],
-        "title": "Problem422",
-        "type": "object"
       }
     }
   },
@@ -775,12 +775,12 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__categories_models__Conflict409"
+                  "$ref": "#/components/schemas/CategoryConflict409"
                 }
               },
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Conflict409"
+                  "$ref": "#/components/schemas/CategoryConflict409"
                 }
               }
             },
@@ -793,12 +793,12 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__categories_models__Problem422"
+                  "$ref": "#/components/schemas/CategoryProblem422"
                 }
               },
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem422"
+                  "$ref": "#/components/schemas/CategoryProblem422"
                 }
               }
             },
@@ -953,7 +953,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__settings_models__Conflict409"
+                  "$ref": "#/components/schemas/Conflict409"
                 }
               },
               "application/problem+json": {
@@ -971,7 +971,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__settings_models__Problem422"
+                  "$ref": "#/components/schemas/Problem422"
                 }
               },
               "application/problem+json": {
@@ -1030,7 +1030,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/app__settings_models__Conflict409"
+                  "$ref": "#/components/schemas/Conflict409"
                 }
               },
               "application/problem+json": {

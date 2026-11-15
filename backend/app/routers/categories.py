@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 
-from app.categories_models import CategoryList, CategoryListUpdate, Conflict409, Problem422
+from app.categories_models import CategoryConflict409, CategoryList, CategoryListUpdate, CategoryProblem422
 from app.categories_repo import CategoriesRepository, StoredList, VersionConflict
 from app.categories_write import build, is_unchanged, problems_of, to_response
 from app.core.security import csrf, session
@@ -33,7 +33,9 @@ def _problem_content(schema: str) -> dict[str, Any]:
 
 
 def _conflict(stored: StoredList, reason: Literal["version", "not-ready"]) -> JSONResponse:
-    body = Conflict409(type="about:blank", title="Conflict", status=409, reason=reason, current=to_response(stored))
+    body = CategoryConflict409(
+        type="about:blank", title="Conflict", status=409, reason=reason, current=to_response(stored)
+    )
     return JSONResponse(body.model_dump(mode="json", by_alias=True), status_code=409, media_type=PROBLEM_MEDIA_TYPE)
 
 
@@ -46,7 +48,7 @@ def _refusal(body: CategoryListUpdate, stored: StoredList) -> JSONResponse | Non
     problems = problems_of(body.categories, stored)
     if not problems:
         return None
-    refusal = Problem422(type="about:blank", title="Unprocessable content", status=422, problems=problems)
+    refusal = CategoryProblem422(type="about:blank", title="Unprocessable content", status=422, problems=problems)
     return JSONResponse(refusal.model_dump(mode="json", by_alias=True), status_code=422, media_type=PROBLEM_MEDIA_TYPE)
 
 
@@ -76,15 +78,15 @@ async def read_categories(request: Request) -> CategoryList:
         401: {"description": "No live session"},
         403: {"description": "Missing or wrong token, wrong Origin or cross-site request"},
         409: {
-            "model": Conflict409,
+            "model": CategoryConflict409,
             "description": "The list changed since the version sent, or the agent has not written version 1 yet",
-            "content": _problem_content("Conflict409"),
+            "content": _problem_content("CategoryConflict409"),
         },
         415: {"description": "The body is not JSON"},
         422: {
-            "model": Problem422,
+            "model": CategoryProblem422,
             "description": "A rule is broken; the rule, the field and the position of each problem",
-            "content": _problem_content("Problem422"),
+            "content": _problem_content("CategoryProblem422"),
         },
         429: {"description": "Too many saves in an hour for the account; see Retry-After"},
         500: {"description": "The change could not be stored"},

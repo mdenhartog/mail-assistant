@@ -81,7 +81,7 @@ class CategoryProblem(BaseModel):
     index: int | None
 
 
-class Problem422(BaseModel):
+class CategoryProblem422(BaseModel):
     """The 422 body of the write route."""
 
     model_config = _CONFIG
@@ -92,7 +92,7 @@ class Problem422(BaseModel):
     problems: list[CategoryProblem]
 
 
-class Conflict409(BaseModel):
+class CategoryConflict409(BaseModel):
     """The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list."""
 
     model_config = _CONFIG
