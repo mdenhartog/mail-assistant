@@ -50,17 +50,21 @@ MATRIX: dict[str, dict[str, tuple[frozenset[str] | str, frozenset[str] | str, fr
     "plan": {"api": (ALL, NONE, NONE), "agent": (ALL, ALL, ALL)},
     "plan_item": {
         "api": (ITEM_API_COLUMNS, NONE, NONE),
-        "agent": (ALL, ITEM_AGENT_INSERT, frozenset({"state", "reason"})),
+        "agent": (ALL, ITEM_AGENT_INSERT, frozenset({"state", "reason", "attempts"})),
     },
     "plan_decision": {"api": (NONE, NONE, NONE), "agent": (ALL, NONE, NONE)},
     "plan_approval": {"api": (NONE, NONE, NONE), "agent": (ALL, NONE, NONE)},
     "apply_audit": {
         "api": (NONE, NONE, NONE),
-        "agent": (ALL, frozenset({"mailbox_id", "plan_id", "message_id", "old_label", "new_label", "channel"}), NONE),
+        "agent": (
+            ALL,
+            frozenset({"mailbox_id", "plan_id", "message_id", "old_label", "new_label", "channel", "kind"}),
+            NONE,
+        ),
     },
     "move_back_request": {
         "api": (ALL, frozenset({"mailbox_id", "plan_id"}), NONE),
-        "agent": (ALL, NONE, frozenset({"processed"})),
+        "agent": (ALL, NONE, frozenset({"processed", "run_id", "lease_until"})),
     },
 }
 
