@@ -18,13 +18,15 @@ from app.adapters.gmail_read import HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.alert_state import AlertState, initial_state
 from app.core.auth_results import parse_auth_results
-from app.core.judgement import OTHER_LABEL, Filing, Judgement, NeedsAttention, resolve
+from app.core.judgement import OTHER_ID, OTHER_LABEL, Filing, Judgement, JudgingList, NeedsAttention, resolve
+from app.core.pinned import is_pinned
 from app.core.time_policy import in_quiet_hours, next_quiet_end
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Collection, Sequence
     from datetime import datetime
 
+    from app.core.judgement import ListedCategory
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.alert_text import AuthResults
@@ -50,16 +52,29 @@ class MailContent:
 
 
 @dataclass(frozen=True, slots=True)
-class Outcome:
-    """What became of one mail: its label, urgency, alert state and content."""
+class FilingEntry:
+    """The ``filing`` row of a labelled mail: its category and the list version used. No sender, no subject (AC-39)."""
 
-    label: str
+    category_id: str
+    list_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class Outcome:
+    """What became of one mail: its label, urgency, alert state and content.
+
+    ``label`` and ``filing`` are ``None`` for pinned mail, which stays in the inbox (AC-39), and ``filing`` is also
+    ``None`` while no list version exists.
+    """
+
+    label: str | None
     urgent: bool
     confidence: float | None
     alert: AlertState | None
     note: str
     content: MailContent
     release_at: datetime | None = None  # a held alert: the next quiet end under the policy valid when it was held
+    filing: FilingEntry | None = None
 
 
 class Claim(StrEnum):
@@ -93,8 +108,8 @@ class Mailbox(Protocol):
 class Judge(Protocol):
     """The model adapter."""
 
-    async def judge(self, mail: TrimmedMail) -> Judgement | NeedsAttention:
-        """A valid judgement, or needs-attention."""
+    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+        """A valid judgement for this one mail against ``categories``, or needs-attention."""
         ...
 
 
@@ -113,12 +128,12 @@ class TriageStore(Protocol):
         """Claim a mail: ``NEW`` for the first caller only."""
         ...
 
-    async def known_labels(self) -> list[str]:
-        """Category labels in use."""
+    async def current_list(self) -> JudgingList:
+        """The latest list version with its categories (version 0 and none before the first version is written)."""
         ...
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
-        """Record the outcome for a mail, with its alert state when it needs one."""
+        """Record the outcome for a mail, with its alert state when it needs one and its ``filing`` row when labelled."""
         ...
 
     async def record_failure(self, message_id: str) -> int:
@@ -150,22 +165,54 @@ class RunSummary:
     listing_failed: bool = False
 
 
+def _content(mail: FetchedMail, reason: str, summary: str) -> MailContent:
+    return MailContent(
+        sender=mail.sender,
+        subject=mail.subject,
+        reply_to=mail.reply_to,
+        has_attachment=mail.has_attachment,
+        reason=reason,
+        summary=summary,
+        auth=parse_auth_results(mail.headers.get("Authentication-Results")),
+    )
+
+
+def is_pinned_mail(mail: FetchedMail, pinned_domains: Collection[str]) -> bool:
+    """True for the app's own sign-in mail and Google security mail, by Gmail's verdict only (AC-39)."""
+    return is_pinned(mail.auth_results, mail.sender, pinned_domains)
+
+
+def pinned_outcome(mail: FetchedMail) -> Outcome:
+    """Pinned mail stays in the inbox: no label, no filing, no model call, no alert of its own (AC-39)."""
+    return Outcome(
+        label=None,
+        urgent=False,
+        confidence=None,
+        alert=None,
+        note="pinned",
+        content=_content(mail, "", ""),
+    )
+
+
 def decide_outcome(
     verdict: Judgement | NeedsAttention,
     mail: FetchedMail,
-    known_labels: list[str],
+    current: JudgingList,
     now: datetime,
     policy: TimePolicy,
 ) -> Outcome:
-    """Label, urgency and content of one judged mail. Anything untrustworthy is urgent, never ignorable.
+    """Label, urgency, filing and content of one judged mail. Anything untrustworthy is urgent, never ignorable.
 
     Shared by the pipeline (new mail) and the catch-up (old mail), so both decide exactly alike. ``policy`` is the
     snapshot of this one decision: inside its quiet hours the alert is held until the next quiet end under it.
+    ``current`` is the list snapshot the mail was judged against; its version goes into the filing.
     """
-    decision = resolve(verdict, known_labels) if isinstance(verdict, Judgement) else verdict
+    decision = resolve(verdict, current.categories) if isinstance(verdict, Judgement) else verdict
+    category_id = OTHER_ID
     if isinstance(decision, Filing):
-        label, urgent, confidence, note = (
+        label, category_id, urgent, confidence, note = (
             decision.label,
+            decision.category_id,
             decision.judgement.urgent,
             decision.judgement.confidence,
             "",
@@ -176,15 +223,7 @@ def decide_outcome(
         reason, summary = verdict.reason, verdict.summary
     else:
         reason, summary = f"Needs attention: {verdict.reason}", ""
-    content = MailContent(
-        sender=mail.sender,
-        subject=mail.subject,
-        reply_to=mail.reply_to,
-        has_attachment=mail.has_attachment,
-        reason=reason,
-        summary=summary,
-        auth=parse_auth_results(mail.headers.get("Authentication-Results")),
-    )
+    content = _content(mail, reason, summary)
     alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy)) if urgent else None
     release_at = next_quiet_end(now, policy) if alert is AlertState.HELD else None
     return Outcome(
@@ -195,6 +234,7 @@ def decide_outcome(
         note=note,
         content=content,
         release_at=release_at,
+        filing=FilingEntry(category_id, current.version) if current.version > 0 else None,
     )
 
 
@@ -209,8 +249,10 @@ class TriagePipeline:
         notifier: FailureNotifier,
         now: Callable[[], datetime],
         policy: PolicySource,
+        pinned_domains: Collection[str],
     ) -> None:
-        """Wire the ports, the clock and the policy source."""
+        """Wire the ports, the clock, the policy source and the allow-list of security sender domains."""
+        self._pinned_domains = frozenset(pinned_domains)
         self._mail = mailbox
         self._judge = judge
         self._store = store
@@ -273,10 +315,14 @@ class TriagePipeline:
         mail = await asyncio.to_thread(self._mail.fetch, message_id)
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return
-        verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text))
+        if is_pinned_mail(mail, self._pinned_domains):  # checked again here, right before anything could move it
+            await self._store.complete(mail.message_id, pinned_outcome(mail))
+            return
+        current = await self._store.current_list()  # one snapshot for this mail: the judgement and the filing agree
+        verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)
         policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
-        outcome = decide_outcome(verdict, mail, await self._store.known_labels(), self._now(), policy)
-        label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label)
+        outcome = decide_outcome(verdict, mail, current, self._now(), policy)
+        label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete(mail.message_id, outcome)
         summary.filed += 1

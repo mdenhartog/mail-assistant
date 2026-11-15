@@ -62,6 +62,14 @@ class ListedCategory:
 
 
 @dataclass(frozen=True, slots=True)
+class JudgingList:
+    """A snapshot of the list one mail is judged against; ``version`` 0 means no list version exists yet."""
+
+    version: int
+    categories: tuple[ListedCategory, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Filing:
     """File the mail under ``label``; ``category_id`` is the id recorded in ``filing`` (``OTHER_ID`` for "Other")."""
 

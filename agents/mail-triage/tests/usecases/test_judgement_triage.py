@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import fields, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import TYPE_CHECKING
 
 import pytest
@@ -50,11 +50,11 @@ class RecordingMailbox(FakeMailbox):
         return super().ensure_label(name)
 
 
+@dataclass
 class RecordingStore(FakeStore):
     """Remembers which store methods the pipeline used, to prove nothing but the filing is written."""
 
-    def __post_init__(self) -> None:
-        self.used: list[str] = []
+    used: list[str] = field(default_factory=list)
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
         self.used.append("complete")
