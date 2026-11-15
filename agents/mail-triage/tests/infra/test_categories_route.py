@@ -1,4 +1,4 @@
-"""U-mail-categories-20: the list save has its own Traefik route and a 32 KB buffering limit (MC-12, ADR-0034, ADR-0040)."""
+"""U-mail-categories-20: the list save has its own Traefik route, 32 KB buffering (MC-12, ADR-0034, ADR-0040)."""
 
 from __future__ import annotations
 
