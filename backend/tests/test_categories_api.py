@@ -539,6 +539,19 @@ async def test_given_any_outcome_when_called_then_the_response_carries_no_store(
     assert {r.headers["cache-control"] for r in responses} == {"no-store"}
 
 
+# Criterion 8 (contract): the schema names of the settings API stay as they were; the list API has its own.
+async def test_given_the_openapi_document_when_read_then_the_settings_schemas_keep_their_names(api: Api) -> None:
+    schemas = api.app.openapi()["components"]["schemas"]
+
+    assert schemas["Conflict409"]["properties"]["current"] == {"$ref": "#/components/schemas/Settings"}
+    assert schemas["Problem422"]["properties"]["problems"]["items"] == {"$ref": "#/components/schemas/ProblemItem"}
+    assert schemas["CategoryConflict409"]["properties"]["current"] == {"$ref": "#/components/schemas/CategoryList"}
+    assert schemas["CategoryProblem422"]["properties"]["problems"]["items"] == {
+        "$ref": "#/components/schemas/CategoryProblem"
+    }
+    assert not [name for name in schemas if "__" in name]
+
+
 # Guardrail-fastapi: both routes count against the api bucket before anything else.
 async def test_given_a_call_when_sent_then_it_counts_against_the_api_bucket(api: Api) -> None:
     buckets: list[str] = []
