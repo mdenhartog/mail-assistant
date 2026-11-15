@@ -1,6 +1,83 @@
 {
   "components": {
     "schemas": {
+      "AllScope": {
+        "additionalProperties": false,
+        "description": "Every item of the plan.",
+        "properties": {
+          "all": {
+            "const": true,
+            "title": "All",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "all"
+        ],
+        "title": "AllScope",
+        "type": "object"
+      },
+      "ApprovalResult": {
+        "additionalProperties": false,
+        "description": "The state of the plan after the approval and when the apply may start.",
+        "properties": {
+          "applyAfter": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applyafter"
+          },
+          "state": {
+            "enum": [
+              "building",
+              "ready",
+              "scheduled",
+              "applying",
+              "applied",
+              "replaced",
+              "discarded",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "applyAfter"
+        ],
+        "title": "ApprovalResult",
+        "type": "object"
+      },
+      "ApproveRequest": {
+        "additionalProperties": false,
+        "description": "The body of ``POST /api/plan/approve``.",
+        "properties": {
+          "itemCount": {
+            "maximum": 2000000000.0,
+            "minimum": 0.0,
+            "title": "Itemcount",
+            "type": "integer"
+          },
+          "planId": {
+            "format": "uuid",
+            "title": "Planid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "planId",
+          "itemCount"
+        ],
+        "title": "ApproveRequest",
+        "type": "object"
+      },
       "CategoryConflict409": {
         "additionalProperties": false,
         "description": "The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.",
@@ -271,6 +348,112 @@
         "title": "Conflict409",
         "type": "object"
       },
+      "DecisionRequest": {
+        "additionalProperties": false,
+        "description": "The body of ``POST /api/plan/decisions``: the plan and item count the user saw, the scope and the decision.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "itemCount": {
+            "maximum": 2000000000.0,
+            "minimum": 0.0,
+            "title": "Itemcount",
+            "type": "integer"
+          },
+          "planId": {
+            "format": "uuid",
+            "title": "Planid",
+            "type": "string"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GroupScope"
+              },
+              {
+                "$ref": "#/components/schemas/IdsScope"
+              },
+              {
+                "$ref": "#/components/schemas/AllScope"
+              }
+            ],
+            "title": "Scope"
+          }
+        },
+        "required": [
+          "planId",
+          "itemCount",
+          "scope",
+          "decision"
+        ],
+        "title": "DecisionRequest",
+        "type": "object"
+      },
+      "DecisionResult": {
+        "additionalProperties": false,
+        "description": "How many items the decision changed.",
+        "properties": {
+          "changed": {
+            "minimum": 0.0,
+            "title": "Changed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "title": "DecisionResult",
+        "type": "object"
+      },
+      "GroupRef": {
+        "additionalProperties": false,
+        "description": "The two categories of a group.",
+        "properties": {
+          "from": {
+            "format": "uuid",
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "format": "uuid",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "title": "GroupRef",
+        "type": "object"
+      },
+      "GroupScope": {
+        "additionalProperties": false,
+        "description": "Every item of one group; ``group_count`` is the size the user saw, so a changed group is a 409.",
+        "properties": {
+          "group": {
+            "$ref": "#/components/schemas/GroupRef"
+          },
+          "groupCount": {
+            "maximum": 2000000000.0,
+            "minimum": 1.0,
+            "title": "Groupcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group",
+          "groupCount"
+        ],
+        "title": "GroupScope",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -297,6 +480,76 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IdsScope": {
+        "additionalProperties": false,
+        "description": "Named items. More than ``MAX_IDS`` is answered by the route with a reason, so the limit is only documented.",
+        "properties": {
+          "ids": {
+            "maxItems": 200
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "IdsScope",
+        "type": "object"
+      },
+      "LastPlan": {
+        "additionalProperties": false,
+        "description": "The plan applied most recently, the one \"Move back\" is offered for.",
+        "properties": {
+          "appliedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appliedat"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "state": {
+            "const": "applied",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "appliedAt"
+        ],
+        "title": "LastPlan",
+        "type": "object"
+      },
+      "MoveBackResult": {
+        "additionalProperties": false,
+        "description": "The move-back request of a plan; ``processed`` is True once the agent has restored the labels.",
+        "properties": {
+          "planId": {
+            "format": "uuid",
+            "title": "Planid",
+            "type": "string"
+          },
+          "processed": {
+            "title": "Processed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "planId",
+          "processed"
+        ],
+        "title": "MoveBackResult",
         "type": "object"
       },
       "OlderCategory": {
@@ -395,6 +648,352 @@
           "places"
         ],
         "title": "PlaceResults",
+        "type": "object"
+      },
+      "PlanConflict409": {
+        "additionalProperties": false,
+        "description": "A plan, count or state mismatch; no row values.",
+        "properties": {
+          "status": {
+            "const": 409,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "title": "PlanConflict409",
+        "type": "object"
+      },
+      "PlanCounts": {
+        "additionalProperties": false,
+        "description": "Items of the open plan by decision.",
+        "properties": {
+          "approved": {
+            "minimum": 0.0,
+            "title": "Approved",
+            "type": "integer"
+          },
+          "items": {
+            "minimum": 0.0,
+            "title": "Items",
+            "type": "integer"
+          },
+          "pending": {
+            "minimum": 0.0,
+            "title": "Pending",
+            "type": "integer"
+          },
+          "rejected": {
+            "minimum": 0.0,
+            "title": "Rejected",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "PlanCounts",
+        "type": "object"
+      },
+      "PlanGroup": {
+        "additionalProperties": false,
+        "description": "The items that move from one category to another; the nil UUID is the built-in \"Other\".",
+        "properties": {
+          "count": {
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "from": {
+            "format": "uuid",
+            "title": "From",
+            "type": "string"
+          },
+          "to": {
+            "format": "uuid",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "count"
+        ],
+        "title": "PlanGroup",
+        "type": "object"
+      },
+      "PlanItem": {
+        "additionalProperties": false,
+        "description": "One mail of the plan. Sender and subject are text (ADR-0044); the Gmail message id is never exposed.",
+        "properties": {
+          "decision": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "from": {
+            "format": "uuid",
+            "title": "From",
+            "type": "string"
+          },
+          "id": {
+            "minimum": 1.0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "senderAddress": {
+            "title": "Senderaddress",
+            "type": "string"
+          },
+          "senderName": {
+            "title": "Sendername",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "applied",
+              "skipped",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "to": {
+            "format": "uuid",
+            "title": "To",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "senderName",
+          "senderAddress",
+          "subject",
+          "from",
+          "to",
+          "decision",
+          "state",
+          "reason"
+        ],
+        "title": "PlanItem",
+        "type": "object"
+      },
+      "PlanItemsPage": {
+        "additionalProperties": false,
+        "description": "At most ``PAGE_SIZE`` items of the open plan.",
+        "properties": {
+          "hasMore": {
+            "title": "Hasmore",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "hasMore"
+        ],
+        "title": "PlanItemsPage",
+        "type": "object"
+      },
+      "PlanProblem422": {
+        "additionalProperties": false,
+        "description": "A refused body: the generic 422, with a ``reason`` when one is known (more ids than a decision may name).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "const": "too_many_ids",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "title": "PlanProblem422",
+        "type": "object"
+      },
+      "PlanProgress": {
+        "additionalProperties": false,
+        "description": "How far the build is: mails checked, the cap and the mails with two ``Assistant/`` labels (unclear).",
+        "properties": {
+          "cap": {
+            "minimum": 0.0,
+            "title": "Cap",
+            "type": "integer"
+          },
+          "checked": {
+            "minimum": 0.0,
+            "title": "Checked",
+            "type": "integer"
+          },
+          "unclear": {
+            "minimum": 0.0,
+            "title": "Unclear",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checked",
+          "cap",
+          "unclear"
+        ],
+        "title": "PlanProgress",
+        "type": "object"
+      },
+      "PlanView": {
+        "additionalProperties": false,
+        "description": "What ``GET /api/plan`` returns; ``state`` is None while there is no open plan.",
+        "properties": {
+          "applyAfter": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applyafter"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/PlanCounts"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/PlanGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "lastPlan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "progress": {
+            "$ref": "#/components/schemas/PlanProgress"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "building",
+                  "ready",
+                  "scheduled",
+                  "applying",
+                  "applied",
+                  "replaced",
+                  "discarded",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "progress",
+          "groups",
+          "counts",
+          "applyAfter",
+          "lastPlan"
+        ],
+        "title": "PlanView",
         "type": "object"
       },
       "Problem422": {
@@ -858,6 +1457,313 @@
         "summary": "Search Places",
         "tags": [
           "places"
+        ]
+      }
+    },
+    "/api/plan": {
+      "get": {
+        "description": "Return the open plan with its progress, groups, counts and apply time, and the last applied plan.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The plan view; ``state`` is null while no plan is open.",
+        "operationId": "read_plan_api_plan_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session, or the web lock is set"
+          },
+          "429": {
+            "description": "Too many requests"
+          }
+        },
+        "summary": "Read Plan",
+        "tags": [
+          "plan"
+        ]
+      }
+    },
+    "/api/plan/approve": {
+      "post": {
+        "description": "Approve the plan: pending items are rejected and the plan is scheduled; a repeat returns the same.\n\nArgs:\n    body: The plan id and item count the user saw.\n    request: The request, whose app holds the database access.\n\nReturns:\n    The state and the time the apply may start, or a 409 (nothing changed).",
+        "operationId": "post_approve_api_plan_approve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session, or the web lock is set"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanConflict409"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanConflict409"
+                }
+              }
+            },
+            "description": "The plan, the item count, the group, an id or the state no longer matches; nothing changed"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "description": "The body is malformed"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Post Approve",
+        "tags": [
+          "plan"
+        ]
+      }
+    },
+    "/api/plan/decisions": {
+      "post": {
+        "description": "Approve or reject a group, named items or the whole plan, if the plan and its item count are still as seen.\n\nArgs:\n    body: The plan id and item count the user saw, the scope and the decision.\n    request: The request, whose app holds the database access.\n\nReturns:\n    How many items changed, or a 409 (nothing changed), or a 422 for too many ids.",
+        "operationId": "post_decision_api_plan_decisions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session, or the web lock is set"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanConflict409"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanConflict409"
+                }
+              }
+            },
+            "description": "The plan, the item count, the group, an id or the state no longer matches; nothing changed"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanProblem422"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanProblem422"
+                }
+              }
+            },
+            "description": "The body is malformed; more than 200 ids carry the reason too_many_ids"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Post Decision",
+        "tags": [
+          "plan"
+        ]
+      }
+    },
+    "/api/plan/items": {
+      "get": {
+        "description": "Return one page of at most 100 items of the open plan; the only filters are the two category ids.\n\nArgs:\n    request: The request, whose app holds the database access.\n    page: The page, from 1.\n    from_category: Only items that leave this category.\n    to_category: Only items that go to this category.\n\nReturns:\n    The items with sender name and address and subject as text, and whether another page follows.",
+        "operationId": "read_plan_items_api_plan_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanItemsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session, or the web lock is set"
+          },
+          "422": {
+            "description": "The page or a category id is invalid"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Plan Items",
+        "tags": [
+          "plan"
+        ]
+      }
+    },
+    "/api/plan/{plan_id}/move-back": {
+      "post": {
+        "description": "Ask the agent to restore the old labels of an applied plan; a repeat stores nothing new.\n\nArgs:\n    plan_id: The applied plan.\n    request: The request, whose app holds the database access.\n\nReturns:\n    The request, or a 409 when the plan is not an applied plan of this mailbox.",
+        "operationId": "post_move_back_api_plan__plan_id__move_back_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MoveBackResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session, or the web lock is set"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanConflict409"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanConflict409"
+                }
+              }
+            },
+            "description": "The plan, the item count, the group, an id or the state no longer matches; nothing changed"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "description": "The body is malformed"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Post Move Back",
+        "tags": [
+          "plan"
         ]
       }
     },
