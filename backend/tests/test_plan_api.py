@@ -89,6 +89,8 @@ async def seed_plan(  # noqa: PLR0913  # one switch per column a test varies
     checked: int = 0,
     cap: int = 5000,
     unclear: int = 0,
+    estimate: int | None = None,
+    not_looked_at: int = 0,
     terminal_at: datetime | None = None,
     tag: str = "m",
 ) -> Seeded:
@@ -97,13 +99,15 @@ async def seed_plan(  # noqa: PLR0913  # one switch per column a test varies
     plan_id = uuid.uuid4()
     await owner.execute(
         "insert into categories.plan (mailbox_id, id, list_version, state, checked_count, cap, unclear_count, "
-        "terminal_at) values ($1, $2, 1, $3, $4, $5, $6, $7)",
+        "estimate_total, not_looked_at, terminal_at) values ($1, $2, 1, $3, $4, $5, $6, $7, $8, $9)",
         mailbox,
         plan_id,
         state,
         checked,
         cap,
         unclear,
+        estimate,
+        not_looked_at,
         terminal_at,
     )
     item_ids: list[int] = []
@@ -219,12 +223,57 @@ async def test_given_a_plan_being_built_when_get_then_the_progress_is_returned_a
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    await seed_plan(owner, state="building", moves=((NIL, CAT_A),), checked=340, cap=5000, unclear=7)
+    await seed_plan(
+        owner, state="building", moves=((NIL, CAT_A),), checked=340, cap=5000, unclear=7, estimate=1200, not_looked_at=0
+    )
 
     body = (await call(api, "GET", "/api/plan")).json()
 
     assert body["state"] == "building"
-    assert body["progress"] == {"checked": 340, "cap": 5000, "unclear": 7}
+    assert body["progress"] == {"checked": 340, "cap": 5000, "unclear": 7, "estimate": 1200, "notLookedAt": 0}
+
+
+# U-mail-categories-24, criterion 1 (AC-43)
+async def test_given_a_plan_past_the_cap_when_get_then_progress_holds_the_estimate_and_the_not_looked_at_number(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed_plan(owner, moves=((NIL, CAT_A),), checked=5000, cap=5000, unclear=3, estimate=7400, not_looked_at=2400)
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["progress"] == {"checked": 5000, "cap": 5000, "unclear": 3, "estimate": 7400, "notLookedAt": 2400}
+
+
+async def test_given_a_plan_without_an_estimate_when_get_then_the_estimate_is_null(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed_plan(owner, state="building", moves=((NIL, CAT_A),), checked=10)
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["progress"]["estimate"] is None
+    assert body["progress"]["notLookedAt"] == 0
+
+
+# U-mail-categories-24, criterion 3 (AC-13)
+async def test_given_groups_approved_in_different_sessions_when_get_then_each_group_holds_its_exact_approved_count(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    plan = await seed_plan(owner)
+    group = {"group": {"from": str(NIL), "to": str(CAT_A)}, "groupCount": 2}
+    assert (await call(api, "POST", "/api/plan/decisions", decide(plan, group))).status_code == 200
+    ids = {"ids": [plan.item_ids[2]]}
+    assert (await call(api, "POST", "/api/plan/decisions", decide(plan, ids))).status_code == 200
+
+    groups = {(g["from"], g["to"]): g for g in (await call(api, "GET", "/api/plan")).json()["groups"]}
+
+    assert groups[(str(NIL), str(CAT_A))]["approved"] == 2
+    assert groups[(str(NIL), str(CAT_B))]["approved"] == 1
+    assert groups[(str(CAT_A), str(CAT_B))]["approved"] == 0
+    assert groups[(str(CAT_B), str(CAT_C))]["approved"] == 0
 
 
 async def test_given_a_scheduled_plan_when_get_then_apply_after_and_the_decision_counts_are_returned(
@@ -259,7 +308,7 @@ async def test_given_no_plan_when_get_then_the_state_is_null_and_there_is_nothin
     assert response.json() == {
         "id": None,
         "state": None,
-        "progress": {"checked": 0, "cap": 0, "unclear": 0},
+        "progress": {"checked": 0, "cap": 0, "unclear": 0, "estimate": None, "notLookedAt": 0},
         "groups": [],
         "counts": {"items": 0, "pending": 0, "approved": 0, "rejected": 0},
         "applyAfter": None,
@@ -913,3 +962,21 @@ async def test_given_every_route_and_outcome_when_called_then_sender_and_subject
     assert SUBJECT_CANARY not in text
     for response in responses:
         assert response.headers["cache-control"] == "no-store"
+
+
+# U-mail-categories-24, criterion 5 (MR-1)
+async def test_given_the_canary_strings_when_the_plan_is_read_then_no_sender_or_subject_is_in_the_view_or_the_logs(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await seed_plan(owner, estimate=900, not_looked_at=4)
+    caplog.set_level(logging.DEBUG)
+
+    response = await call(api, "GET", "/api/plan")
+
+    assert response.status_code == 200
+    logged = " ".join(record.getMessage() for record in caplog.records)
+    for canary in (SENDER_CANARY, SUBJECT_CANARY):
+        assert canary not in response.text
+        assert canary not in logged
