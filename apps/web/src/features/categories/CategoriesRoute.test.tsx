@@ -18,13 +18,18 @@ const SESSION = {
 
 type Handler = (request: Request) => Response;
 
-function stub(categories: Handler): void {
+/** `ended` turns the session into a 401 too, as it is on the server once the session has ended. */
+function stub(categories: Handler, ended: { value: boolean } = { value: false }): void {
   vi.stubGlobal(
     "fetch",
     vi.fn((input: string, init?: RequestInit) => {
       const request = new Request(new URL(input, "http://localhost"), init);
       const path = new URL(request.url).pathname;
-      return Promise.resolve(path === "/api/session" ? json(SESSION) : categories(request));
+      if (path === "/api/session") {
+        return Promise.resolve(ended.value ? new Response(null, { status: 401 }) : json(SESSION));
+      }
+      const answer = categories(request);
+      return Promise.resolve(answer);
     }),
   );
 }
@@ -53,7 +58,11 @@ describe("the /categories route", () => {
   });
 
   it("given an expired session (401), then the sign-in page shows with the session notice and no list stays", async () => {
-    stub(() => new Response(null, { status: 401 }));
+    const ended = { value: false };
+    stub(() => {
+      ended.value = true;
+      return new Response(null, { status: 401 });
+    }, ended);
     const router = open("/categories");
 
     expect(await screen.findByText("Your session ended.")).toBeInTheDocument();
