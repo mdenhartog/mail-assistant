@@ -22,7 +22,7 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 | [U-mail-categories-08](U-mail-categories-08.md) | Web foundations: dialog tone, navigation, card | web | — | yes | 1 |
 | [U-mail-categories-09](U-mail-categories-09.md) | Categories page | web | U-mail-categories-04, U-mail-categories-08 | no | 4 |
 | [U-mail-categories-10](U-mail-categories-10.md) | AC-46 daily report | backend | U-mail-categories-05, U-mail-categories-06 | yes | 5 |
-| [U-mail-categories-11](U-mail-categories-11.md) | R1 end-to-end | web | U-mail-categories-07, U-mail-categories-09, U-mail-categories-10, U-mail-categories-20, U-mail-categories-21, U-mail-categories-23 | no | 6 |
+| [U-mail-categories-11](U-mail-categories-11.md) | R1 end-to-end | web | U-mail-categories-07, U-mail-categories-09, U-mail-categories-10, U-mail-categories-20, U-mail-categories-21, U-mail-categories-23, U-mail-categories-25 | no | 8 |
 | [U-mail-categories-12](U-mail-categories-12.md) | Plan schema and decision functions | backend | U-mail-categories-03 | yes | 3 |
 | [U-mail-categories-13](U-mail-categories-13.md) | Plan state machine | backend | U-mail-categories-02 | yes | 2 |
 | [U-mail-categories-14](U-mail-categories-14.md) | Plan build | backend | U-mail-categories-05, U-mail-categories-12, U-mail-categories-13 | no | 4 |
@@ -36,6 +36,7 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 | [U-mail-categories-22](U-mail-categories-22.md) | Connect plan build and apply to PostgreSQL and Gmail | backend | U-mail-categories-14, U-mail-categories-15, U-mail-categories-21 | no | 6 |
 | [U-mail-categories-23](U-mail-categories-23.md) | Connect the list notice and Telegram actions to PostgreSQL | backend | U-mail-categories-07, U-mail-categories-21 | no | 6 |
 | [U-mail-categories-24](U-mail-categories-24.md) | Plan progress, group approvals and the open-items badge | backend | U-mail-categories-17, U-mail-categories-18 | yes | 6 |
+| [U-mail-categories-25](U-mail-categories-25.md) | Connect the daily re-file report to PostgreSQL and Gmail | backend | U-mail-categories-10, U-mail-categories-23 | no | 7 |
 
 ## Build order
 
@@ -44,8 +45,8 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 3. Wave 3 (units with Parallel yes run together, each in its own worktree): U-mail-categories-04, U-mail-categories-05, U-mail-categories-12
 4. Wave 4 (units with Parallel yes run together, each in its own worktree): U-mail-categories-06, U-mail-categories-09, U-mail-categories-14, U-mail-categories-17, U-mail-categories-20
 5. Wave 5 (units with Parallel yes run together, each in its own worktree): U-mail-categories-07, U-mail-categories-10, U-mail-categories-15, U-mail-categories-18, U-mail-categories-21
-6. Wave 6 (units with Parallel yes run together, each in its own worktree): U-mail-categories-11, U-mail-categories-16, U-mail-categories-22, U-mail-categories-23, U-mail-categories-24
-7. Wave 7 (units with Parallel yes run together, each in its own worktree): U-mail-categories-19
+6. Wave 6 (units with Parallel yes run together, each in its own worktree): U-mail-categories-16, U-mail-categories-22, U-mail-categories-23, U-mail-categories-24
+7. Wave 7 (units with Parallel yes run together, each in its own worktree): U-mail-categories-19, U-mail-categories-25
 
 ## Placement
 
@@ -65,3 +66,4 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 ## Test pyramid
 
 Unit (policy, state machine, classifier, parsers, formatters), integration on real PostgreSQL (migrations, privilege matrix, functions, races, retention), contract (OpenAPI with schemathesis, `category_cases.json`, fake versus real Gmail), component (Vitest, Testing Library, axe), end-to-end (Playwright) and a canary scan. Every criterion has a test named `test_<unit>_<behaviour>`; the AC ids of the spec are in the criteria.
+8. Wave 8 (units with Parallel yes run together, each in its own worktree): U-mail-categories-11

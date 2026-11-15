@@ -10,7 +10,7 @@ feature: mail-categories
 - Release: R1
 - Contract: Playwright journeys against the prod-like stack and a fake Gmail container: edit and save the list, rename, add the older category, Archive, notices; spec viewports with 200 % zoom; canary scan of logs.
 - Files: apps/web/e2e/categories.spec.ts, deploy/ (fake Gmail service for the prod-like profile), docs/release/mail-categories-r1.md
-- Depends on: U-mail-categories-07, U-mail-categories-09, U-mail-categories-10, U-mail-categories-20, U-mail-categories-21, U-mail-categories-23
+- Depends on: U-mail-categories-07, U-mail-categories-09, U-mail-categories-10, U-mail-categories-20, U-mail-categories-21, U-mail-categories-23, U-mail-categories-25
 - Parallel: no
 - Guardrails: guardrail-playwright, guardrail-a11y
 - Criteria:
