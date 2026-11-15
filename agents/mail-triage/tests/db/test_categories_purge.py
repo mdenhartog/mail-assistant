@@ -17,7 +17,7 @@ AUDIT_VERSION = {"o": 901, "y": 902, "n": 903}  # list_audit has a key (mailbox,
 
 
 async def _purge(connection: asyncpg.Connection) -> dict[str, int]:
-    return json.loads(await connection.fetchval("select categories.purge_expired()"))
+    return json.loads(str(await connection.fetchval("select categories.purge_expired()")))
 
 
 async def _seed_rows(owner: asyncpg.Connection, age: str, tag: str, *, expires_age: str) -> None:
@@ -38,7 +38,7 @@ async def _seed_rows(owner: asyncpg.Connection, age: str, tag: str, *, expires_a
 
 async def _counts(owner: asyncpg.Connection) -> dict[str, int]:
     tables = ("list_audit", "filing", "telegram_action", "rejection", "list_version", "category")
-    return {t: await owner.fetchval(f"select count(*) from categories.{t}") for t in tables}
+    return {t: int(str(await owner.fetchval(f"select count(*) from categories.{t}"))) for t in tables}
 
 
 async def test_given_young_rows_when_the_agent_purges_with_a_changed_session_clock_then_they_survive(

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 import pytest
@@ -13,7 +14,6 @@ from app.db.pg_categories import category_counts, current_list, filed_category
 from tests.db.conftest import write_list
 
 if TYPE_CHECKING:
-    import uuid
     from collections.abc import AsyncIterator
 
     import asyncpg
@@ -33,11 +33,11 @@ async def _seed_two_mailboxes(owner: asyncpg.Connection, api: asyncpg.Connection
     await write_list(api, "mb1", 1, ["Bills"])
     await write_list(api, "mb1", 2, ["Bills", "Travel"])
     await write_list(api, "mb2", 1, ["Work"])
-    ids = {
-        r["name"]: r["id"]
+    ids: dict[str, uuid.UUID] = {
+        str(r["name"]): r["id"]
         for r in await owner.fetch("select name, id from categories.category where mailbox_id = 'mb1' and version = 2")
     }
-    work = await owner.fetchval("select id from categories.category where mailbox_id = 'mb2'")
+    work = uuid.UUID(str(await owner.fetchval("select id from categories.category where mailbox_id = 'mb2'")))
     await owner.execute(
         "insert into categories.category_count (mailbox_id, category_id, mail_count) values "
         f"('mb1', '{ids['Bills']}', 7), ('mb1', '{OTHER_ID}', 3), ('mb2', '{work}', 99), ('mb2', '{OTHER_ID}', 55)"
