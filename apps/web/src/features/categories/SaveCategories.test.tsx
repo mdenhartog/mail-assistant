@@ -30,7 +30,9 @@ function card(position: number): ReturnType<typeof within> {
 async function rename(position: number, name: string): Promise<void> {
   const field = card(position).getByLabelText("Name");
   await userEvent.clear(field);
-  await userEvent.type(field, name);
+  if (name !== "") {
+    await userEvent.type(field, name);
+  }
 }
 
 const saveButton = (): HTMLElement => screen.getByRole("button", { name: "Save changes" });
@@ -236,7 +238,7 @@ describe("Categories page: a save that does not store", () => {
 });
 
 describe("Categories page: keyboard only (AC-23)", () => {
-  it("lets a rename be typed, confirmed and saved without a pointer, and focus ends on Save", async () => {
+  it("lets a rename be typed, confirmed and saved without a pointer, and focus ends on the result", async () => {
     const seen = wire({ put: (body) => json({ ...LIST, version: body.version + 1, categories: [{ ...INVOICES, name: "Bills" }, NEWS] }) });
     await loaded();
     const user = userEvent.setup();
@@ -256,7 +258,10 @@ describe("Categories page: keyboard only (AC-23)", () => {
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(seen.puts).toHaveLength(1);
-    expect(saveButton()).toHaveFocus();
+    // Save is disabled again (nothing to save), so focus moves to the result, which is announced.
+    await waitFor(() => {
+      expect(screen.getByText("Saved.").closest('[role="status"]')).toHaveFocus();
+    });
   });
 
   it("closes the summary with Escape and puts focus back on Save", async () => {
