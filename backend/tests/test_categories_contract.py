@@ -1,4 +1,6 @@
-# pyright: reportUnusedImport=false
+# pyright: reportUnusedImport=false, reportUnknownMemberType=false, reportUnknownVariableType=false
+# pyright: reportUnknownArgumentType=false
+# (schemathesis is only partly typed: its strategies and checks have no complete type arguments)
 """U-mail-categories-04, criterion 8: schemathesis cases built from the OpenAPI document, sent with a session and CSRF.
 
 The cases are drawn from the document (the same one ``docs/api/openapi.json`` is exported from) and sent through the
@@ -9,6 +11,7 @@ schema.
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import asyncpg
 import pytest
@@ -16,6 +19,7 @@ import schemathesis
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from hypothesis import HealthCheck, given, settings
+from schemathesis import Case
 from schemathesis.specs.openapi.checks import positive_data_acceptance
 
 from app.auth.cookies import COOKIE_NAME
@@ -65,13 +69,18 @@ async def session(web_database: Database) -> AsyncIterator[Session]:  # noqa: F8
         yield Session(http, app, headers, {COOKIE_NAME: value})
 
 
-def _cases(app: FastAPI, method: str) -> list[schemathesis.Case]:
+def _cases(app: FastAPI, method: str) -> list[Case[Any]]:
     schema = schemathesis.openapi.from_dict(app.openapi())
-    drawn: list[schemathesis.Case] = []
+    drawn: list[Case[Any]] = []
 
-    @settings(max_examples=EXAMPLES, derandomize=True, deadline=None, suppress_health_check=list(HealthCheck))
+    @settings(
+        max_examples=EXAMPLES,
+        derandomize=True,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large, HealthCheck.filter_too_much],
+    )
     @given(case=schema["/api/categories"][method].as_strategy())
-    def draw(case: schemathesis.Case) -> None:
+    def draw(case: Case[Any]) -> None:
         drawn.append(case)
 
     draw()
