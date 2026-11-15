@@ -80,17 +80,17 @@ describe("Categories page: reading the list", () => {
         json({
           ...LIST,
           categories: [{ ...INVOICES, name: markup, description: "<b>bold</b>" }],
-          olderCategories: [{ labelName: `Assistant/${markup}`, mailCount: 3 }],
+          olderCategories: [{ labelName: "Assistant/<i>old</i>", mailCount: 3 }],
         }),
     });
     const container = renderPage();
     expect(await screen.findByDisplayValue(markup)).toBeInTheDocument();
     expect(screen.getByDisplayValue("<b>bold</b>")).toBeInTheDocument();
-    expect(screen.getByText(markup)).toBeInTheDocument();
-    expect(container.querySelector("img, b")).toBeNull();
+    expect(screen.getByText("<i>old</i>")).toBeInTheDocument();
+    expect(container.querySelector("img, b, i")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: `Delete ${markup}` }));
     expect(await screen.findByText(`Removed ${markup}.`)).toBeInTheDocument();
-    expect(container.querySelector("img, b")).toBeNull();
+    expect(container.querySelector("img, b, i")).toBeNull();
   });
 });
 
