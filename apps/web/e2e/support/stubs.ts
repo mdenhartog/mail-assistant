@@ -26,6 +26,8 @@ export interface Handlers {
   resetSettings?: Handler;
   logout?: Handler;
   places?: Handler;
+  getCategories?: Handler;
+  putCategories?: Handler;
 }
 
 export interface Stub {
@@ -133,6 +135,23 @@ const resetToDefaults: Handler = async (route, { state }) => {
   })(route, { n: 0, state });
 };
 
+export const CATEGORIES = {
+  version: 5,
+  ready: true,
+  categories: [
+    { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120 },
+    { id: "00000000-0000-4000-8000-000000000002", name: "Newsletters", description: "Weekly digests and product news I read on Sunday.", mailCount: 1 },
+    { id: "00000000-0000-4000-8000-000000000003", name: "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", description: "https://example.com/a/very/long/address/that/has/no/spaces/at/all/and/keeps/going/and/going", mailCount: 0 },
+  ],
+  other: { mailCount: 42 },
+  olderCategories: [{ labelName: "Assistant/Travel", mailCount: null }],
+} as const;
+
+const putCategoriesEcho: Handler = async (route, { state }) => {
+  const sent = (route.request().postDataJSON() ?? {}) as { version?: number };
+  await reply(200, { ...CATEGORIES, version: (sent.version ?? CATEGORIES.version) + 1 })(route, { n: 0, state });
+};
+
 type Endpoint = keyof Stub["calls"];
 
 function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
@@ -145,6 +164,8 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     resetSettings: resetToDefaults,
     logout: reply(204),
     places: reply(200, PLACES),
+    getCategories: reply(200, CATEGORIES),
+    putCategories: putCategoriesEcho,
     ...given,
   };
   return [
@@ -156,13 +177,15 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     ["resetSettings", "/api/settings/reset", "POST", own.resetSettings],
     ["logout", "/auth/logout", "POST", own.logout],
     ["places", "/api/places", "GET", own.places],
+    ["getCategories", "/api/categories", "GET", own.getCategories],
+    ["putCategories", "/api/categories", "PUT", own.putCategories],
   ];
 }
 
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),
