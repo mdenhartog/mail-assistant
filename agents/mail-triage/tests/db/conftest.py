@@ -63,17 +63,17 @@ def migrated_url(database_url: str) -> str:
     return database_url
 
 
-# --- The categories schema (U-mail-categories-03): both runtime roles, without their passwords ----------------------
+# --- The categories schema (U-mail-categories-03): both runtime roles; no test here logs in with a password ----------
 API_ROLE = "web_settings_runtime"  # the api's login (ADR-0033)
 AGENT_ROLE = "mail_triage_runtime"  # the agent's login
 GRANTS = ROOT / "app" / "db" / "grants.sql"
 _ENSURE_ROLES = f"""
 DO $$ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{API_ROLE}') THEN
-        CREATE ROLE {API_ROLE} LOGIN PASSWORD 'test-unused-api' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+        CREATE ROLE {API_ROLE} LOGIN PASSWORD 'web-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '{AGENT_ROLE}') THEN
-        CREATE ROLE {AGENT_ROLE} LOGIN PASSWORD 'test-unused-agent' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+        CREATE ROLE {AGENT_ROLE} LOGIN PASSWORD 'agent-test-only' NOSUPERUSER NOCREATEDB NOCREATEROLE;
     END IF;
 END $$
 """  # noqa: S608  # fixed role names of this module
@@ -132,7 +132,10 @@ def cat_url(pg_server: PostgresContainer, categories_template: str) -> str:
 
 @pytest.fixture
 async def cat_owner(cat_url: str) -> AsyncIterator[asyncpg.Connection]:
-    """The owner (superuser) with both runtime roles made, grants.sql applied and the mailbox ``mb1`` and ``mb2``."""
+    """The owner (superuser), both runtime roles made, grants.sql applied and the mailboxes ``mb1`` and ``mb2``.
+
+    A role that has to be made gets the passwords the other database tests expect of the shared roles.
+    """
     connection = await connect_as(cat_url, None)
     await connection.execute(_ENSURE_ROLES)
     await connection.execute(GRANTS.read_text(encoding="utf-8"))

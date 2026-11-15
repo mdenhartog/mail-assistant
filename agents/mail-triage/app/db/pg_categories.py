@@ -60,7 +60,7 @@ async def category_counts(session: AsyncSession, mailbox_id: str) -> dict[uuid.U
     rows = await session.execute(
         select(CategoryCount.category_id, CategoryCount.mail_count).where(CategoryCount.mailbox_id == mailbox_id)
     )
-    return dict(rows.tuples().all())
+    return {row.category_id: row.mail_count for row in rows}
 
 
 async def filed_category(session: AsyncSession, mailbox_id: str, message_id: str) -> uuid.UUID | None:
