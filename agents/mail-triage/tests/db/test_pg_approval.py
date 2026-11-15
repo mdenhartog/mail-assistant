@@ -125,3 +125,16 @@ async def test_given_a_plan_that_is_not_applied_when_a_move_back_is_asked_then_i
 
     assert not await requests.request(plan_id)
     assert await cat_owner.fetchval("select count(*) from categories.move_back_request") == 0
+
+
+async def test_given_the_deployment_numbers_when_they_are_written_then_the_row_is_replaced_and_the_mailbox_made(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    store = PgApprovalStore(agent_sessions, "fresh")  # a mailbox that no list sync has made yet
+
+    await store.write_config(threshold=50, delay_minutes=15)
+    await store.write_config(threshold=9, delay_minutes=0)
+
+    row = await cat_owner.fetchrow("select threshold, delay_minutes from categories.apply_config where mailbox_id = 'fresh'")
+    assert row is not None
+    assert (row["threshold"], row["delay_minutes"]) == (9, 0)
