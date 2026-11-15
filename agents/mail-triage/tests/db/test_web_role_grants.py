@@ -222,6 +222,13 @@ async def test_given_the_web_role_when_its_table_privileges_are_listed_then_only
         ("web_auth", "session"),
         ("web_auth", "security_event"),
         ("web_auth", "web_lock"),
+        # mail categories (INT-004): the exact columns are checked by test_categories_grants.py
+        ("categories", "mailbox"),
+        ("categories", "category_identity"),
+        ("categories", "list_version"),
+        ("categories", "category"),
+        ("categories", "category_count"),
+        ("categories", "gmail_label"),
     }
 
 

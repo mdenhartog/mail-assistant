@@ -64,7 +64,7 @@ _OTHER_DATA = (
 )
 
 
-async def test_given_data_in_other_schemas_when_the_revision_runs_up_and_down_then_only_the_categories_schema_comes_and_goes(
+async def test_given_data_in_other_schemas_when_the_revision_runs_up_and_down_then_only_categories_comes_and_goes(
     database_url: str,
 ) -> None:
     await _up(database_url, PREVIOUS)
