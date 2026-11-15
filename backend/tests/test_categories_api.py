@@ -9,7 +9,7 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import timedelta
 from typing import Any
 
 import asyncpg
@@ -33,9 +33,9 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     template_name,
     web_database,
 )
-from tests.fakes import FakeClock, make_app, make_settings
+from tests.fakes import FakeClock, make_app, make_settings, real_minute
 
-T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+T0 = real_minute()  # the list versions carry the database's clock, so the app's fake clock starts at the real time
 CSRF_KEY = b"b" * 32
 ORIGIN = "https://settings.example.test"
 USER = username_digest(b"k" * 32, "canary-user")
@@ -121,7 +121,7 @@ async def request(  # noqa: PLR0913  # one switch per part of the request that a
     extra_headers: dict[str, str] | None = None,
 ) -> Any:
     """Send a request as a new signed-in session; the switches leave out one part of it."""
-    value, created = await api.store.create(USER, T0)
+    value, created = await api.store.create(USER, api.app.state.clock.now())
     headers: dict[str, str] = dict(extra_headers or {})
     if token:
         headers["X-CSRF-Token"] = csrf_token(CSRF_KEY, created.id_hash)
@@ -420,7 +420,7 @@ async def test_given_saves_older_than_an_hour_when_put_then_they_do_not_count(
     await seed(owner, [("Invoices", "Bills")])
     for number in range(10):
         assert (await put(api, number + 1, [entry(f"Name {number}")])).status_code == 200
-    await owner.execute("update categories.list_version set created_at = now() - interval '61 minutes'")
+    api.app.state.clock.advance(timedelta(minutes=61))
 
     response = await put(api, 11, [entry("Fresh")])
 

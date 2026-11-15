@@ -10,7 +10,6 @@ schema.
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
@@ -38,9 +37,9 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, us
     template_name,
     web_database,
 )
-from tests.fakes import FakeClock, make_app, make_settings
+from tests.fakes import FakeClock, make_app, make_settings, real_minute
 
-T0 = datetime(2026, 3, 1, 14, 0, 0, tzinfo=UTC)
+T0 = real_minute()  # the list versions carry the database's clock, so the app's fake clock starts at the real time
 ORIGIN = "https://settings.example.test"
 OPERATIONS = ("GET", "PUT")
 EXAMPLES = 40
