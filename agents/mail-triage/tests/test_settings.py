@@ -45,6 +45,22 @@ def test_given_all_required_values_when_settings_load_then_they_are_typed_with_s
     assert settings.anthropic_api_key.get_secret_value() == VALID["ANTHROPIC_API_KEY"]
 
 
+def test_given_no_pinned_domains_setting_when_settings_load_then_google_security_mail_is_the_default() -> None:
+    assert load_settings(VALID).pinned_domains == frozenset({"accounts.google.com"})
+
+
+def test_given_a_pinned_domains_setting_when_settings_load_then_it_is_a_clean_lowercase_set() -> None:
+    env = {**VALID, "PINNED_SENDER_DOMAINS": " Accounts.Google.com, login.example.test ,,"}
+
+    assert load_settings(env).pinned_domains == frozenset({"accounts.google.com", "login.example.test"})
+
+
+@pytest.mark.parametrize("value", ["", " , ", "not a domain", "user@example.test", "a" * 300])
+def test_given_an_unusable_pinned_domains_setting_when_settings_load_then_startup_fails(value: str) -> None:
+    with pytest.raises(SettingsError):
+        load_settings({**VALID, "PINNED_SENDER_DOMAINS": value})
+
+
 def test_given_settings_when_inspected_then_quiet_hours_are_not_configurable() -> None:
     """Spec C7: quiet hours, overview time and time zone are constants in code, not settings."""
     names = set(Settings.model_fields)

@@ -1,7 +1,7 @@
-"""Reads of the category list side, always for one mailbox (ADR-0043, AC-37).
+"""Reads of the category list side and the filing write, always for one mailbox (ADR-0043, AC-37).
 
 Every query filters on ``mailbox_id``; the id comes from the caller (the agent's configuration), never from mail
-content. The writes of the agent (seed, counts, filings) arrive with the units that need them.
+content. The other writes of the agent (seed, counts) arrive with the units that need them.
 """
 
 from __future__ import annotations
@@ -11,13 +11,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import Category, CategoryCount, Filing, ListVersion
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["CategoryRow", "CurrentList", "category_counts", "current_list", "filed_category"]
+__all__ = ["CategoryRow", "CurrentList", "category_counts", "current_list", "filed_category", "record_filing"]
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,21 @@ async def category_counts(session: AsyncSession, mailbox_id: str) -> dict[uuid.U
         select(CategoryCount.category_id, CategoryCount.mail_count).where(CategoryCount.mailbox_id == mailbox_id)
     )
     return {row.category_id: row.mail_count for row in rows}
+
+
+async def record_filing(
+    session: AsyncSession, mailbox_id: str, message_id: str, list_version: int, category_id: uuid.UUID
+) -> None:
+    """Write the ``filing`` row of one labelled mail: ids and version only, never sender or subject (AC-39).
+
+    A retry of the same mail under the same list version changes nothing; the time of filing is the database's.
+    """
+    statement = (
+        insert(Filing)
+        .values(mailbox_id=mailbox_id, message_id=message_id, list_version=list_version, category_id=category_id)
+        .on_conflict_do_nothing(index_elements=["mailbox_id", "message_id", "list_version"])
+    )
+    await session.execute(statement)
 
 
 async def filed_category(session: AsyncSession, mailbox_id: str, message_id: str) -> uuid.UUID | None:

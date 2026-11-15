@@ -6,6 +6,7 @@ and anything that is not a number is simply an unknown alert. The store never wr
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -14,8 +15,8 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults, MailMeta
-from app.core.judgement import Judgement
-from app.db import repos
+from app.core.judgement import OTHER_ID, Judgement, JudgingList, ListedCategory
+from app.db import pg_categories, repos
 from app.db.models import Alert, CatchupState, Draft, MailItem, PollState
 from app.usecases.catchup import CatchUpState
 from app.usecases.deliver_alerts import PendingAlert
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from app.db.pg_conversation import ConversationStore, Kind
 
 POLL_ROW = 1
+MAILBOX_ID = "primary"  # the one mailbox of the agent: a constant until several mailboxes exist (MC-17, ADR-0043)
 _QUESTIONS: dict[str, tuple[Kind, str]] = {"snooze_hours": ("snooze", "hours"), "reply_text": ("reply", "text")}
 _KINDS = {(kind, step): name for name, (kind, step) in _QUESTIONS.items()}
 REMOVED = "(removed after 30 days)"
@@ -40,7 +42,7 @@ def _id(alert_id: str) -> int | None:
 
 def _pending(alert: Alert, item: MailItem) -> PendingAlert:
     judgement = Judgement(
-        category=(item.label or "").removeprefix("Assistant/"),
+        category_id=OTHER_ID,  # an alert only needs the text of the judgement; the category is not read from it
         urgent=True,
         reason=item.reason or "",
         summary=item.summary or "",
@@ -71,10 +73,16 @@ def _stored(draft: Draft) -> StoredDraft:
 class PgStore:
     """Triage, delivery, snooze, reply and overview storage in PostgreSQL."""
 
-    def __init__(self, sessions: async_sessionmaker[AsyncSession], conversations: ConversationStore) -> None:
-        """Keep the session factory and the one conversation store; the pending question lives in its row."""
+    def __init__(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        conversations: ConversationStore,
+        mailbox_id: str = MAILBOX_ID,
+    ) -> None:
+        """Keep the session factory, the one conversation store and the id of the one mailbox (ADR-0043)."""
         self._sessions = sessions
         self._conversations = conversations
+        self._mailbox_id = mailbox_id
 
     # ---- triage pipeline -------------------------------------------------------------------------------------
 
@@ -99,11 +107,13 @@ class PgStore:
             item = (await session.execute(select(MailItem).where(MailItem.gmail_message_id == message_id))).scalar_one()
             return Claim.DONE if item.completed or item.abandoned else Claim.PENDING
 
-    async def known_labels(self) -> list[str]:
-        """Category labels in use."""
+    async def current_list(self) -> JudgingList:
+        """The latest list version of this mailbox with its categories in order (version 0 before the first one)."""
         async with self._sessions() as session:
-            rows = await session.execute(select(MailItem.label).where(MailItem.label.is_not(None)).distinct())
-        return [label for (label,) in rows if label]
+            current = await pg_categories.current_list(session, self._mailbox_id)
+        return JudgingList(
+            current.version, tuple(ListedCategory(str(c.id), c.name, c.description) for c in current.categories)
+        )
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
         """Record label, urgency, content and the alert (when there is one) in one transaction."""
@@ -147,6 +157,14 @@ class PgStore:
                         created_at=now,
                         updated_at=now,
                     )
+                )
+            if outcome.filing is not None:  # same transaction: a mail is never labelled in the books without its filing
+                await pg_categories.record_filing(
+                    session,
+                    self._mailbox_id,
+                    message_id,
+                    outcome.filing.list_version,
+                    uuid.UUID(outcome.filing.category_id),
                 )
 
     # ---- one-time catch-up of old unread mail (INT-003) -------------------------------------------------------
@@ -354,7 +372,12 @@ class PgStore:
         statement = (
             select(MailItem)
             .outerjoin(Alert, Alert.mail_item_id == MailItem.id)
-            .where(MailItem.completed.is_(True), MailItem.created_at >= since, Alert.id.is_(None))
+            .where(
+                MailItem.completed.is_(True),
+                MailItem.label.is_not(None),  # pinned mail stays in the inbox and is not "filed"
+                MailItem.created_at >= since,
+                Alert.id.is_(None),
+            )
             .order_by(MailItem.id)
         )
         async with self._sessions() as session:
