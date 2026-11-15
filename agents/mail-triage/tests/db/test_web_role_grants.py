@@ -73,7 +73,7 @@ async def _refused(connection: asyncpg.Connection, statement: str) -> str | None
     try:
         await connection.execute(statement)
     except asyncpg.PostgresError as error:
-        return error.sqlstate
+        return str(error.sqlstate)  # pyright: ignore[reportAttributeAccessIssue]  # asyncpg types it on subclasses
     return None
 
 
