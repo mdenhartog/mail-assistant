@@ -88,3 +88,40 @@ GRANT INSERT (kind, result, username_hash, request_id, client_key, "window") ON 
 GRANT UPDATE (count) ON web_auth.security_event TO web_settings_runtime;
 GRANT SELECT ON web_auth.web_lock TO web_settings_runtime;
 -- No grant on web_auth.security_event_id_seq: an identity column needs none, and the web role cannot advance it.
+
+-- Mail categories (INT-004, ADR-0042, ADR-0047): per table and per column, exactly the matrix of the design. "api" is
+-- the web role (web_settings_runtime), "agent" the runtime role. Nothing is granted by default; no DELETE on an audit
+-- table for anyone; list_audit is written only by its SECURITY DEFINER trigger. The creation time, channel and actor of
+-- a list version, and the time of a filing or a rejection, are the database's: no INSERT right on those columns.
+REVOKE ALL ON SCHEMA categories FROM mail_triage_runtime, web_settings_runtime;
+REVOKE ALL ON ALL TABLES IN SCHEMA categories FROM mail_triage_runtime, web_settings_runtime;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA categories FROM mail_triage_runtime, web_settings_runtime;
+GRANT USAGE ON SCHEMA categories TO mail_triage_runtime, web_settings_runtime;
+
+-- The api reads the list, the counts and the label names; it writes only list versions, their categories and the
+-- identities of new categories. The agent may also seed version 1 and write Undo.
+GRANT SELECT ON categories.mailbox, categories.category_identity, categories.list_version, categories.category,
+    categories.category_count, categories.gmail_label TO web_settings_runtime;
+GRANT INSERT (mailbox_id, id) ON categories.category_identity TO web_settings_runtime, mail_triage_runtime;
+GRANT INSERT (mailbox_id, version) ON categories.list_version TO web_settings_runtime, mail_triage_runtime;
+GRANT INSERT ON categories.category TO web_settings_runtime, mail_triage_runtime;
+GRANT EXECUTE ON FUNCTION categories.contract_version() TO web_settings_runtime, mail_triage_runtime;
+
+GRANT SELECT ON categories.mailbox, categories.category_identity, categories.list_version, categories.category,
+    categories.list_audit, categories.filing, categories.rejection, categories.telegram_action,
+    categories.apply_config TO mail_triage_runtime;
+GRANT INSERT ON categories.mailbox TO mail_triage_runtime;
+-- Replaced each cycle, or moved forward by the agent: the derived tables and the cursor.
+GRANT SELECT, INSERT, UPDATE, DELETE ON categories.category_count, categories.gmail_label, categories.category_label,
+    categories.list_cursor TO mail_triage_runtime;
+-- Appended only (retention is the owner's purge_expired()).
+GRANT INSERT (mailbox_id, message_id, list_version, category_id) ON categories.filing TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, message_id, list_version) ON categories.rejection TO mail_triage_runtime;
+-- A button is created and consumed once: only used_at ever changes.
+GRANT INSERT (mailbox_id, nonce_hash, chat_id, kind, target, expires_at) ON categories.telegram_action
+    TO mail_triage_runtime;
+GRANT UPDATE (used_at) ON categories.telegram_action TO mail_triage_runtime;
+-- The apply threshold and delay come from the agent's deployment configuration; the api never touches them.
+GRANT INSERT, UPDATE ON categories.apply_config TO mail_triage_runtime;
+-- The agent triggers the retention purge; the function decides what goes, whatever the agent supplies.
+GRANT EXECUTE ON FUNCTION categories.purge_expired() TO mail_triage_runtime;
