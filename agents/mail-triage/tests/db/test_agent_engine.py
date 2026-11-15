@@ -1,12 +1,12 @@
-"""The shared agent engine really acts as the agent role on every checkout, also after the pool recycled the connection."""
+"""The shared agent engine acts as the agent role on every checkout, also after the pool recycled the connection."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import asyncpg
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from tests.db.agent_engine import create_agent_engine
 from tests.db.conftest import AGENT_ROLE
@@ -14,6 +14,7 @@ from tests.db.conftest import AGENT_ROLE
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    import asyncpg
     from sqlalchemy.ext.asyncio import AsyncEngine
 
 
@@ -45,6 +46,5 @@ async def test_given_the_agent_engine_when_a_connection_is_reused_then_a_stateme
 ) -> None:
     for _ in range(3):
         async with engine.connect() as connection:
-            with pytest.raises(Exception, match="permission denied|must be owner|must be superuser") as refused:
+            with pytest.raises(DBAPIError, match="permission denied"):
                 await connection.execute(text("create role should_not_exist"))
-            assert isinstance(refused.value.__cause__, asyncpg.PostgresError) or refused.value is not None

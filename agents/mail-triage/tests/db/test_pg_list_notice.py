@@ -10,12 +10,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import asyncpg
 import pytest
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.adapters.telegram_inbox import Command
 from app.core import list_text
@@ -23,6 +22,7 @@ from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
 from app.db.pg_web_lock import PgWebLock
 from app.usecases.list_notice import ListNotice, ListNoticeActions
 from app.usecases.telegram_actions import Redeemed, Refusal, TelegramActions
+from tests.db.agent_engine import create_agent_engine
 from tests.db.conftest import AGENT_ROLE, write_list
 from tests.list_notice_support import CHAT, LATER, Nonces, RecordingChat
 
@@ -36,14 +36,7 @@ AGENT_DIGEST = hashlib.sha256(AGENT_ROLE.encode()).hexdigest()
 @pytest.fixture
 async def engine(cat_owner: asyncpg.Connection, cat_url: str) -> AsyncIterator[AsyncEngine]:
     """An engine whose connections act as the agent role."""
-    created = create_async_engine(cat_url)
-
-    @event.listens_for(created.sync_engine, "connect")
-    def _act_as_agent(dbapi_connection: Any, _record: Any) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute(f'SET SESSION AUTHORIZATION "{AGENT_ROLE}"')
-        cursor.close()
-
+    created = create_agent_engine(cat_url)
     yield created
     await created.dispose()
 

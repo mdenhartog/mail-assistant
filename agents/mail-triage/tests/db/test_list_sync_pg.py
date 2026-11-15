@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import pytest
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.adapters.gmail_resort import GmailResort
 from app.db.models import OTHER_ID
 from app.db.pg_list_sync import PgListSyncStore
 from app.usecases.list_sync import ListSync, StoredLabel
+from tests.db.agent_engine import create_agent_engine
 from tests.db.conftest import AGENT_ROLE
 from tests.fakes.fake_gmail import FakeGmail
 
@@ -28,14 +28,7 @@ MAILBOX = "mb1"
 @pytest.fixture
 async def engine(cat_owner: asyncpg.Connection, cat_url: str) -> AsyncIterator[AsyncEngine]:
     """An engine whose connections act as the agent role: the grants are part of what is tested."""
-    created = create_async_engine(cat_url)
-
-    @event.listens_for(created.sync_engine, "connect")
-    def _act_as_agent(dbapi_connection: Any, _record: Any) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute(f'SET SESSION AUTHORIZATION "{AGENT_ROLE}"')
-        cursor.close()
-
+    created = create_agent_engine(cat_url)
     yield created
     await created.dispose()
 

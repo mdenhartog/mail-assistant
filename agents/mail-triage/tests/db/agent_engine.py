@@ -14,8 +14,9 @@ def create_agent_engine(url: str) -> AsyncEngine:
     """An engine whose connections act as the agent role: the grants are part of what is tested."""
     engine = create_async_engine(url, pool_size=1, max_overflow=0)
 
-    @event.listens_for(engine.sync_engine, "connect")
-    def _act_as_agent(dbapi_connection: Any, _record: Any) -> None:
+    # On every checkout, not once per connection: the pool resets the session authorization on checkin.
+    @event.listens_for(engine.sync_engine, "checkout")
+    def _act_as_agent(dbapi_connection: Any, _record: Any, _proxy: Any) -> None:
         cursor = dbapi_connection.cursor()
         cursor.execute(f'SET SESSION AUTHORIZATION "{AGENT_ROLE}"')
         cursor.close()

@@ -11,11 +11,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import pytest
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.judgement import OTHER_ID
-from tests.db.conftest import AGENT_ROLE, write_list
+from tests.db.agent_engine import create_agent_engine
+from tests.db.conftest import write_list
 
 if TYPE_CHECKING:
     import uuid
@@ -29,15 +29,7 @@ MAILBOX = "mb1"
 @pytest.fixture
 async def agent_sessions(cat_owner: asyncpg.Connection, cat_url: str) -> AsyncIterator[async_sessionmaker[Any]]:
     """Sessions whose connections act as the agent role."""
-    engine: AsyncEngine = create_async_engine(cat_url)
-
-    # On every checkout, not once per connection: the pool resets the session authorization when a connection returns.
-    @event.listens_for(engine.sync_engine, "checkout")
-    def _act_as_agent(dbapi_connection: Any, _record: Any, _proxy: Any) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute(f'SET SESSION AUTHORIZATION "{AGENT_ROLE}"')
-        cursor.close()
-
+    engine = create_agent_engine(cat_url)
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 
