@@ -166,7 +166,7 @@ async def test_given_a_name_only_change_when_the_sync_runs_then_the_label_is_ren
 async def test_given_a_crash_after_the_rename_when_the_run_repeats_then_nothing_is_done_twice() -> None:
     gmail = FakeGmail()
     store = FakeListStore()
-    category, label = await _synced(gmail, store, "Bills")
+    category, _ = await _synced(gmail, store, "Bills")
     store.save_list(["Invoices"], keep={"Invoices": category})
     store.crash_before_cursor = True
     sync = make(gmail, store)
