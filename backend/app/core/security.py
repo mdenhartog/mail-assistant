@@ -29,6 +29,7 @@ ROUTE_ALLOW_LIST: frozenset[str] = frozenset(
         "/api/settings",
         "/api/settings/reset",
         "/api/places",
+        "/api/categories",
         "/healthz",
         "/readyz",
     }

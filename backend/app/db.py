@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 # The contract version the migrations publish as `settings.contract_version()` (0008: 1, 0012: 2); raise both together.
 EXPECTED_CONTRACT_VERSION: Final = 2
+# The api needs at least this version of `categories.contract_version()` (ADR-0042 item 6): a later revision of the
+# agent's chain does not break it, a database without the schema or older than this does.
+MINIMUM_CATEGORIES_CONTRACT_VERSION: Final = 1
+_MISSING_CATEGORIES_CONTRACT: Final = ("42883", "3F000")  # undefined function, invalid schema name
 CONNECT_TIMEOUT_SECONDS: Final = 10
 _MODES: Final = ("require", "verify-ca", "verify-full")
 _URL_SSL_KEYS: Final = ("sslmode", "ssl")
@@ -192,3 +196,21 @@ async def read_contract_version(database: Database) -> int:
     """
     async with database.session() as session:
         return (await session.execute(text("SELECT settings.contract_version()"))).scalar_one()
+
+
+async def read_categories_contract_version(database: Database) -> int:
+    """Ask the database for the version of the category contract; 0 when the schema or function does not exist.
+
+    Args:
+        database: The database access.
+
+    Returns:
+        The version number, 0 for a database that has no category contract.
+    """
+    try:
+        async with database.session() as session:
+            return (await session.execute(text("SELECT categories.contract_version()"))).scalar_one()
+    except DBAPIError as error:
+        if _sqlstate(error.orig) in _MISSING_CATEGORIES_CONTRACT:
+            return 0
+        raise

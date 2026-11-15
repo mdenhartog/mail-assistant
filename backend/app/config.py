@@ -56,6 +56,11 @@ class Settings(BaseSettings):
     # Must equal the agent's run interval (POLL_INTERVAL_SECONDS, 60 by default) rounded up to whole minutes.
     notice_interval_minutes: int = Field(default=1, description="Agent run interval in whole minutes, rounded up.")
 
+    # The one mailbox the category list belongs to (ADR-0043: configuration until several mailboxes exist), and the
+    # saves of the list per hour for the account (AC-33).
+    categories_mailbox_id: str = Field(default="primary", min_length=1, max_length=64)
+    category_saves_per_hour: int = Field(default=10, gt=0)
+
     # Limits (C-4); tests lower them.
     rate_limit_per_minute: int = 30
     rate_window_seconds: int = 60

@@ -1,34 +1,171 @@
 {
   "components": {
     "schemas": {
-      "Conflict409": {
+      "CategoryInput": {
         "additionalProperties": false,
-        "description": "The 409 body of the write route: the current settings.",
+        "description": "One category as the user writes it; a missing ``id`` is a new category.\n\nThe text is not bounded here: the rules of ``category_policy`` decide and answer with ``problems``.",
         "properties": {
-          "current": {
-            "$ref": "#/components/schemas/Settings"
-          },
-          "status": {
-            "const": 409,
-            "title": "Status",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
+          "description": {
+            "title": "Description",
             "type": "string"
           },
-          "type": {
-            "title": "Type",
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "title": "Name",
             "type": "string"
           }
         },
         "required": [
-          "type",
-          "title",
-          "status",
-          "current"
+          "name",
+          "description"
         ],
-        "title": "Conflict409",
+        "title": "CategoryInput",
+        "type": "object"
+      },
+      "CategoryItem": {
+        "additionalProperties": false,
+        "description": "One category of the stored list with the number of mails filed under it.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mailCount": {
+            "minimum": 0.0,
+            "title": "Mailcount",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "mailCount"
+        ],
+        "title": "CategoryItem",
+        "type": "object"
+      },
+      "CategoryList": {
+        "additionalProperties": false,
+        "description": "What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1.",
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryItem"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "olderCategories": {
+            "items": {
+              "$ref": "#/components/schemas/OlderCategory"
+            },
+            "title": "Oldercategories",
+            "type": "array"
+          },
+          "other": {
+            "$ref": "#/components/schemas/OtherItem"
+          },
+          "ready": {
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "ready",
+          "categories",
+          "other",
+          "olderCategories"
+        ],
+        "title": "CategoryList",
+        "type": "object"
+      },
+      "CategoryListUpdate": {
+        "additionalProperties": false,
+        "description": "The body of the write route: the whole list and the version it is based on.",
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryInput"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "version": {
+            "minimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "categories"
+        ],
+        "title": "CategoryListUpdate",
+        "type": "object"
+      },
+      "CategoryProblem": {
+        "additionalProperties": false,
+        "description": "One refusal: the rule, the field and the position of the category (None for the whole list). No value.",
+        "properties": {
+          "field": {
+            "enum": [
+              "name",
+              "description",
+              "id",
+              "list"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "field",
+          "index"
+        ],
+        "title": "CategoryProblem",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -57,6 +194,50 @@
           "status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "OlderCategory": {
+        "additionalProperties": false,
+        "description": "An ``Assistant/`` label in Gmail that is not on the list; ``mail_count`` is None while it is not counted.",
+        "properties": {
+          "labelName": {
+            "title": "Labelname",
+            "type": "string"
+          },
+          "mailCount": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mailcount"
+          }
+        },
+        "required": [
+          "labelName",
+          "mailCount"
+        ],
+        "title": "OlderCategory",
+        "type": "object"
+      },
+      "OtherItem": {
+        "additionalProperties": false,
+        "description": "The built-in \"Other\": it has no name to change and cannot be removed.",
+        "properties": {
+          "mailCount": {
+            "minimum": 0.0,
+            "title": "Mailcount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mailCount"
+        ],
+        "title": "OtherItem",
         "type": "object"
       },
       "Place": {
@@ -111,40 +292,6 @@
           "places"
         ],
         "title": "PlaceResults",
-        "type": "object"
-      },
-      "Problem422": {
-        "additionalProperties": false,
-        "description": "The 422 body of the write route.",
-        "properties": {
-          "problems": {
-            "items": {
-              "$ref": "#/components/schemas/ProblemItem"
-            },
-            "title": "Problems",
-            "type": "array"
-          },
-          "status": {
-            "const": 422,
-            "title": "Status",
-            "type": "integer"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "type": {
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type",
-          "title",
-          "status",
-          "problems"
-        ],
-        "title": "Problem422",
         "type": "object"
       },
       "ProblemItem": {
@@ -421,6 +568,143 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "app__categories_models__Conflict409": {
+        "additionalProperties": false,
+        "description": "The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.",
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/CategoryList"
+          },
+          "reason": {
+            "enum": [
+              "version",
+              "not-ready"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "const": 409,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "reason",
+          "current"
+        ],
+        "title": "Conflict409",
+        "type": "object"
+      },
+      "app__categories_models__Problem422": {
+        "additionalProperties": false,
+        "description": "The 422 body of the write route.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "problems"
+        ],
+        "title": "Problem422",
+        "type": "object"
+      },
+      "app__settings_models__Conflict409": {
+        "additionalProperties": false,
+        "description": "The 409 body of the write route: the current settings.",
+        "properties": {
+          "current": {
+            "$ref": "#/components/schemas/Settings"
+          },
+          "status": {
+            "const": 409,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "current"
+        ],
+        "title": "Conflict409",
+        "type": "object"
+      },
+      "app__settings_models__Problem422": {
+        "additionalProperties": false,
+        "description": "The 422 body of the write route.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemItem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "problems"
+        ],
+        "title": "Problem422",
+        "type": "object"
       }
     }
   },
@@ -430,6 +714,109 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/categories": {
+      "get": {
+        "description": "Return the stored list with the mail counts, \"Other\" and the older categories.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The list; version 0 and ``ready`` false until the agent has written version 1.",
+        "operationId": "read_categories_api_categories_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Categories",
+        "tags": [
+          "categories"
+        ]
+      },
+      "put": {
+        "description": "Validate the whole list and store it as the next version if it is still based on the latest one.\n\nA list equal to the stored one stores nothing and returns the stored list.\n\nArgs:\n    body: The new list and the version it is based on.\n    request: The request, whose app holds the database access, the settings and the id source.\n\nReturns:\n    The stored list, or a 409 with the current list, or a 422 with the problems, or a generic 500.\n\nRaises:\n    RateLimited: The account used up its saves of the hour.",
+        "operationId": "write_categories_api_categories_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryListUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__categories_models__Conflict409"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Conflict409"
+                }
+              }
+            },
+            "description": "The list changed since the version sent, or the agent has not written version 1 yet"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__categories_models__Problem422"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem422"
+                }
+              }
+            },
+            "description": "A rule is broken; the rule, the field and the position of each problem"
+          },
+          "429": {
+            "description": "Too many saves in an hour for the account; see Retry-After"
+          },
+          "500": {
+            "description": "The change could not be stored"
+          }
+        },
+        "summary": "Write Categories",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
     "/api/places": {
       "get": {
         "description": "Find time zones for a typed place name, with the same lookup and aliases as Telegram.\n\nThe query is validated before matching and is never logged.\n\nArgs:\n    request: The request; its clock gives the moment the UTC offsets are computed for.\n    q: The typed text, at most 64 characters, no control characters.\n\nReturns:\n    Up to five places, or a suggestion for a near miss, or neither.",
@@ -566,7 +953,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Conflict409"
+                  "$ref": "#/components/schemas/app__settings_models__Conflict409"
                 }
               },
               "application/problem+json": {
@@ -584,7 +971,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem422"
+                  "$ref": "#/components/schemas/app__settings_models__Problem422"
                 }
               },
               "application/problem+json": {
@@ -643,7 +1030,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Conflict409"
+                  "$ref": "#/components/schemas/app__settings_models__Conflict409"
                 }
               },
               "application/problem+json": {

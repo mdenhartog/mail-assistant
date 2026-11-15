@@ -1,3 +1,4 @@
+# pyright: reportUnusedImport=false
 """U-mail-categories-04: GET and PUT /api/categories against a real PostgreSQL, written as the web role.
 
 The list is seeded as the owner of the schema; the audit and the counts are read as the owner too (the web role has no
@@ -510,7 +511,8 @@ async def test_given_markup_in_a_name_and_description_when_saved_then_it_is_stor
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
     await seed(owner, [("Invoices", "Bills")])
-    name, description = "<script>alert(1)</script>", '<img src=x onerror="alert(1)">'
+    # A name may not hold a slash (it is a label name), so the markup of the name has none; the description may.
+    name, description = "<img src=x onerror=alert(1)>", "<script>alert(1)</script>"
 
     saved = await put(api, 1, [entry(name, description)])
     read = await get(api)

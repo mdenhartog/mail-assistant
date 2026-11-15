@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import FastAPI
@@ -54,6 +55,10 @@ class FakeIds:
 
     def request_id(self) -> str:
         return self._next("request")
+
+    def category_id(self) -> uuid.UUID:
+        self._count += 1
+        return uuid.UUID(int=self._count)
 
 
 class FakeCodes:
