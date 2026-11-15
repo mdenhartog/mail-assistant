@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/api/categories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Categories
+         * @description Return the stored list with the mail counts, "Other" and the older categories.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The list; version 0 and ``ready`` false until the agent has written version 1.
+         */
+        get: operations["read_categories_api_categories_get"];
+        /**
+         * Write Categories
+         * @description Validate the whole list and store it as the next version if it is still based on the latest one.
+         *
+         *     A list equal to the stored one stores nothing and returns the stored list.
+         *
+         *     Args:
+         *         body: The new list and the version it is based on.
+         *         request: The request, whose app holds the database access, the settings and the id source.
+         *
+         *     Returns:
+         *         The stored list, or a 409 with the current list, or a 422 with the problems, or a generic 500.
+         *
+         *     Raises:
+         *         RateLimited: The account used up its saves of the hour.
+         */
+        put: operations["write_categories_api_categories_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places": {
         parameters: {
             query?: never;
@@ -274,6 +316,115 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * CategoryConflict409
+         * @description The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.
+         */
+        CategoryConflict409: {
+            current: components["schemas"]["CategoryList"];
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "version" | "not-ready";
+            /**
+             * Status
+             * @constant
+             */
+            status: 409;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /**
+         * CategoryInput
+         * @description One category as the user writes it; a missing ``id`` is a new category.
+         *
+         *     The text is not bounded here: the rules of ``category_policy`` decide and answer with ``problems``.
+         */
+        CategoryInput: {
+            /** Description */
+            description: string;
+            /** Id */
+            id?: string | null;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CategoryItem
+         * @description One category of the stored list with the number of mails filed under it.
+         */
+        CategoryItem: {
+            /** Description */
+            description: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Mailcount */
+            mailCount: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CategoryList
+         * @description What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1.
+         */
+        CategoryList: {
+            /** Categories */
+            categories: components["schemas"]["CategoryItem"][];
+            /** Oldercategories */
+            olderCategories: components["schemas"]["OlderCategory"][];
+            other: components["schemas"]["OtherItem"];
+            /** Ready */
+            ready: boolean;
+            /** Version */
+            version: number;
+        };
+        /**
+         * CategoryListUpdate
+         * @description The body of the write route: the whole list and the version it is based on.
+         */
+        CategoryListUpdate: {
+            /** Categories */
+            categories: components["schemas"]["CategoryInput"][];
+            /** Version */
+            version: number;
+        };
+        /**
+         * CategoryProblem
+         * @description One refusal: the rule, the field and the position of the category (None for the whole list). No value.
+         */
+        CategoryProblem: {
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "name" | "description" | "id" | "list";
+            /** Index */
+            index: number | null;
+            /** Rule */
+            rule: string;
+        };
+        /**
+         * CategoryProblem422
+         * @description The 422 body of the write route.
+         */
+        CategoryProblem422: {
+            /** Problems */
+            problems: components["schemas"]["CategoryProblem"][];
+            /**
+             * Status
+             * @constant
+             */
+            status: 422;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+        };
+        /**
          * Conflict409
          * @description The 409 body of the write route: the current settings.
          */
@@ -304,6 +455,24 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /**
+         * OlderCategory
+         * @description An ``Assistant/`` label in Gmail that is not on the list; ``mail_count`` is None while it is not counted.
+         */
+        OlderCategory: {
+            /** Labelname */
+            labelName: string;
+            /** Mailcount */
+            mailCount: number | null;
+        };
+        /**
+         * OtherItem
+         * @description The built-in "Other": it has no name to change and cannot be removed.
+         */
+        OtherItem: {
+            /** Mailcount */
+            mailCount: number;
         };
         /**
          * Place
@@ -471,6 +640,119 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    read_categories_api_categories_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryList"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    write_categories_api_categories_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CategoryListUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryList"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The list changed since the version sent, or the agent has not written version 1 yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryConflict409"];
+                    "application/problem+json": components["schemas"]["CategoryConflict409"];
+                };
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A rule is broken; the rule, the field and the position of each problem */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryProblem422"];
+                    "application/problem+json": components["schemas"]["CategoryProblem422"];
+                };
+            };
+            /** @description Too many saves in an hour for the account; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The change could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     search_places_api_places_get: {
         parameters: {
             query: {
