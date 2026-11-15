@@ -392,6 +392,30 @@ _FUNCTIONS = (
 )
 
 
+# The functions of this schema are owned by a role that cannot log in (AC-56): a stolen runtime or owner password does
+# not give the rights a definer function runs with. The role holds table rights only on this schema; grants.sql keeps
+# them current for tables added later. A role is cluster-wide, so it is created when missing and never dropped here.
+_DEFINER_SETUP = (
+    "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'categories_definer') THEN "
+    "CREATE ROLE categories_definer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$",
+    "GRANT categories_definer TO CURRENT_USER",  # the migrating role may hand the functions over
+    "GRANT USAGE, CREATE ON SCHEMA categories TO categories_definer",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA categories TO categories_definer",
+)
+_DEFINER_TEARDOWN = (
+    "REVOKE ALL ON ALL TABLES IN SCHEMA categories FROM categories_definer",
+    "REVOKE ALL ON SCHEMA categories FROM categories_definer",
+)
+_REOWN = (
+    "DO $$ DECLARE f regprocedure; BEGIN "
+    "FOR f IN SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+    "WHERE n.nspname = 'categories' LOOP "
+    "EXECUTE format('ALTER FUNCTION %s OWNER TO {owner}', f); END LOOP; END $$"
+)
+_REOWN_UP = _REOWN.format(owner="categories_definer")
+_REOWN_DOWN = _REOWN.format(owner="current_user")
+
+
 def upgrade() -> None:
     """Create the plan tables, the state guard and its trigger."""
     _create_plan_tables()
@@ -402,10 +426,20 @@ def upgrade() -> None:
         op.execute(statement)
     for function in _FUNCTIONS:
         op.execute(f"REVOKE ALL ON FUNCTION {function} FROM PUBLIC")
+    for statement in _DEFINER_SETUP:
+        op.execute(statement)
+    op.execute(_REOWN_UP)
 
 
 def downgrade() -> None:
-    """Remove what upgrade made; the list half of revision 0014 stays."""
+    """Remove what upgrade made; the list half of revision 0014 stays.
+
+    The definer role is cluster-wide (like the runtime roles) and stays; its rights on this schema are taken back and
+    the functions of the list half go back to the migrating role.
+    """
+    op.execute(_REOWN_DOWN)
+    for statement in _DEFINER_TEARDOWN:
+        op.execute(statement)
     for function in _FUNCTIONS:
         op.execute(f"DROP FUNCTION {function} CASCADE")
     for table in ("move_back_request", "apply_audit", "plan_approval", "plan_decision", "plan_item", "plan"):
