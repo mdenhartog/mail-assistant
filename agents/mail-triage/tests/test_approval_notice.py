@@ -1,8 +1,10 @@
-"""U-mail-categories-16: approvals wait in Telegram with Cancel and Lock, and the buttons are single use (AC-42, AC-48, AC-57)."""
+"""U-mail-categories-16: approvals wait in Telegram with Cancel and Lock; buttons are single use (AC-42, AC-48)."""
 
 from __future__ import annotations
 
 from datetime import timedelta
+
+import pytest
 
 from app.core import approval_text
 from app.usecases.resort_apply import Offer
@@ -10,7 +12,7 @@ from tests.approval_notice_support import DELAY, NOW, OTHER_PLAN, PLAN, Rig, sch
 from tests.list_notice_support import CHAT
 
 
-async def test_given_an_approval_above_the_threshold_when_the_notice_runs_then_one_notice_with_cancel_and_lock_is_sent() -> None:
+async def test_given_an_approval_above_the_threshold_then_one_notice_with_cancel_and_lock_is_sent() -> None:
     rig = scheduled()
 
     await rig.notice.run(NOW)
@@ -38,10 +40,8 @@ async def test_given_no_scheduled_plan_when_the_notice_runs_then_nothing_is_sent
 async def test_given_a_failed_send_when_the_notice_runs_again_then_it_is_announced_then() -> None:
     rig = scheduled()
     rig.chat.fail_send = True
-    try:
+    with pytest.raises(RuntimeError):
         await rig.notice.run(NOW)
-    except RuntimeError:
-        pass
     rig.chat.fail_send = False
 
     await rig.notice.run(NOW)
@@ -72,7 +72,9 @@ async def test_given_cancel_after_the_delay_expired_then_it_is_refused_and_the_n
     assert rig.chat.edits == [(7, approval_text.TOO_LATE)]
 
 
-async def test_given_the_plan_is_no_longer_scheduled_when_cancel_is_pressed_then_nothing_changes_and_it_says_so() -> None:
+async def test_given_the_plan_is_no_longer_scheduled_when_cancel_is_pressed_then_nothing_changes_and_it_says_so() -> (
+    None
+):
     rig = scheduled()
     await rig.notice.run(NOW)
     rig.plans.states[PLAN] = "applied"
