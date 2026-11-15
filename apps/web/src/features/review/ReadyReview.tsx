@@ -39,13 +39,13 @@ function FailureBanner({ failure, onReload }: { failure: ReviewFailure; onReload
 }
 
 function Notes({ plan }: { plan: PlanView }): ReactElement {
-  const { checked, cap, unclear } = plan.progress;
+  const { checked, unclear, notLookedAt } = plan.progress;
   return (
     <>
-      {cap > 0 && checked >= cap ? (
+      {notLookedAt > 0 ? (
         <div className="mt-4">
           <Banner kind="info" title="Older mail was not looked at.">
-            {`This review covers the newest ${String(cap)} mails. The rest stays where it is.`}
+            {`This review covers the newest ${String(checked)} mails. ${String(notLookedAt)} older ${notLookedAt === 1 ? "mail was" : "mails were"} not looked at and stay where they are.`}
           </Banner>
         </div>
       ) : null}
@@ -110,7 +110,6 @@ export function ReadyReview({ plan, categories }: ReadyReviewProps): ReactElemen
         }}
         open={asking}
         plan={plan}
-        tally={decisions.tally}
       />
     </section>
   );

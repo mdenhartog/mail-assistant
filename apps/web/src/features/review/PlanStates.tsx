@@ -33,14 +33,21 @@ export function NoPlan(): ReactElement {
 
 /** The agent is still listing mail: how far it is, and that nothing moves while it does. */
 export function Building({ plan }: { plan: PlanView }): ReactElement {
-  const { checked, cap } = plan.progress;
+  const { checked, estimate } = plan.progress;
+  const total = estimate === null ? null : Math.max(estimate, checked);
   return (
     <div aria-busy="true" className="mt-6">
       <Card>
-        <p className="text-text">{`${String(checked)} of up to ${String(cap)} checked, nothing moves yet.`}</p>
-        <div className="mt-3">
-          <Progress label="Mails checked" max={cap} value={checked} />
-        </div>
+        <p className="text-text">
+          {total === null
+            ? `${String(checked)} checked so far, nothing moves yet.`
+            : `${String(checked)} of about ${String(total)} checked, nothing moves yet.`}
+        </p>
+        {total === null ? null : (
+          <div className="mt-3">
+            <Progress label="Mails checked" max={total} value={checked} />
+          </div>
+        )}
         <p className="mt-3 text-text-muted">The review is being prepared. You can leave this page and come back.</p>
       </Card>
     </div>

@@ -32,6 +32,18 @@ export function usePlan(): UseQueryResult<PlanView> {
   });
 }
 
+/** The number of mails waiting for a decision, for the badge of the navigation; nothing while no ready plan is read. */
+export function useOpenItems(enabled: boolean): number {
+  const { data } = useQuery({
+    queryKey: planKey,
+    queryFn: fetchPlan,
+    refetchOnWindowFocus: false,
+    enabled,
+    select: (plan) => (plan.state === "ready" ? plan.counts.pending : 0),
+  });
+  return data ?? 0;
+}
+
 /** Pages of 100 items of one group (or of the whole plan with no group), fetched one by one with "Load more". */
 export function usePlanItems(
   group: GroupRef | null,

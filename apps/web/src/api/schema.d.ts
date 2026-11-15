@@ -794,6 +794,8 @@ export interface components {
          * @description The items that move from one category to another; the nil UUID is the built-in "Other".
          */
         PlanGroup: {
+            /** Approved */
+            approved: number;
             /** Count */
             count: number;
             /**
@@ -874,13 +876,17 @@ export interface components {
         };
         /**
          * PlanProgress
-         * @description How far the build is: mails checked, the cap and the mails with two ``Assistant/`` labels (unclear).
+         * @description How far the build is: mails checked, the cap, the unclear mails, the estimate and the mails past the cap.
          */
         PlanProgress: {
             /** Cap */
             cap: number;
             /** Checked */
             checked: number;
+            /** Estimate */
+            estimate: number | null;
+            /** Notlookedat */
+            notLookedAt: number;
             /** Unclear */
             unclear: number;
         };

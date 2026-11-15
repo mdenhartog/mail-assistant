@@ -19,8 +19,6 @@ export interface ReviewFailure {
 export interface ReviewDecisions {
   selection: Readonly<Record<string, ReadonlySet<number>>>;
   selectedCount: number;
-  /** Approved mails per group as far as this page knows it; the server gives only a total. */
-  tally: Readonly<Record<string, number>>;
   failure: ReviewFailure | null;
   busy: boolean;
   onSelection: (key: string, update: SelectionUpdate) => void;
@@ -39,13 +37,6 @@ function scopesOf(group: PlanGroup, ids: number[] | null): DecisionScope[] {
     parts.push({ ids: ids.slice(start, start + MAX_IDS) });
   }
   return parts;
-}
-
-/** The approved count of a group after a decision: known only for a whole group, otherwise forgotten. */
-function talliedAfter(tally: Record<string, number>, group: PlanGroup, decision: Decision, whole: boolean): Record<string, number> {
-  const key = groupKey(group);
-  const rest = Object.fromEntries(Object.entries(tally).filter(([name]) => name !== key));
-  return whole && decision === "approved" ? { ...rest, [key]: group.count } : rest;
 }
 
 export function selectionOf(selection: Readonly<Record<string, ReadonlySet<number>>>, key: string): ReadonlySet<number> {
@@ -76,7 +67,6 @@ export function useReviewDecisions(plan: PlanView): ReviewDecisions {
   const decide = useDecide();
   const approveMutation = useApprove();
   const { selection, selectedCount, onSelection, clear } = useSelection();
-  const [tally, setTally] = useState<Record<string, number>>({});
   const [failure, setFailure] = useState<ReviewFailure | null>(null);
   const planId = plan.id;
 
@@ -89,7 +79,6 @@ export function useReviewDecisions(plan: PlanView): ReviewDecisions {
       for (const scope of scopesOf(group, ids)) {
         await decide.mutateAsync({ planId, itemCount: plan.counts.items, scope, decision });
       }
-      setTally((current) => talliedAfter(current, group, decision, ids === null));
       clear(groupKey(group));
     } catch (error) {
       setFailure({ step: "decision", kind: classifyPlanError(error).kind });
@@ -113,7 +102,6 @@ export function useReviewDecisions(plan: PlanView): ReviewDecisions {
   return {
     selection,
     selectedCount,
-    tally,
     failure,
     busy: decide.isPending || approveMutation.isPending,
     onSelection,

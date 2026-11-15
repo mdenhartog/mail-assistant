@@ -5,6 +5,7 @@ import { Navigate, Outlet, useNavigate } from "react-router";
 import { Banner } from "@/components/Banner";
 import { Layout } from "@/components/Layout";
 import { useDraft } from "@/features/settings/useDraft";
+import { useOpenItems } from "@/api/plan/plan.queries";
 import { apiFetch, setCsrfToken } from "@/api/client";
 import { paths } from "@/router/paths";
 import { useSession } from "@/session/useSession";
@@ -37,6 +38,7 @@ export function ProtectedShell(): ReactElement {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const draft = useDraft();
+  const openItems = useOpenItems(data !== undefined && data !== null);
   const logout = useMutation({
     mutationFn: () => apiFetch("/auth/logout", { method: "POST" }),
     onSuccess: () => {
@@ -65,6 +67,7 @@ export function ProtectedShell(): ReactElement {
   }
   return (
     <Layout
+      openItems={openItems}
       account={{
         maskedAddress: data.maskedAddress,
         onSignOut: () => {

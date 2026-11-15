@@ -4,33 +4,28 @@ import type { CategoryItem } from "@/api/categories/categories.types";
 import type { PlanView } from "@/api/plan/plan.types";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { countText, moveLabel } from "@/features/review/copy";
-import { groupKey, groupTitle } from "@/features/review/text";
+import { groupTitle } from "@/features/review/text";
 
 export interface ApproveDialogProps {
   open: boolean;
   plan: PlanView;
   categories: readonly CategoryItem[];
-  tally: Readonly<Record<string, number>>;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
-/** What the summary says per group, then the mails approved one by one, which the server counts only as a total. */
-function lines(plan: PlanView, categories: readonly CategoryItem[], tally: Readonly<Record<string, number>>): string[] {
-  const known = plan.groups.flatMap((group) => {
-    const count = tally[groupKey(group)] ?? 0;
-    return count > 0 ? [{ text: `${groupTitle(group, categories)}: ${countText(count)}`, count }] : [];
-  });
-  const rest = plan.counts.approved - known.reduce((sum, entry) => sum + entry.count, 0);
-  const text = known.map((entry) => entry.text);
-  return rest > 0 ? [...text, `Picked one by one: ${countText(rest)}`] : text;
+/** What the summary says per group: the approved count the server holds, so it is exact after a reload (AC-13). */
+function lines(plan: PlanView, categories: readonly CategoryItem[]): string[] {
+  return plan.groups
+    .filter((group) => group.approved > 0)
+    .map((group) => `${groupTitle(group, categories)}: ${countText(group.approved)}`);
 }
 
 /**
  * The summary before anything is approved (AC-55): the counts per group, that only labels change and that the user can
  * move back. A normal confirm button, because nothing is deleted or replaced; the safe button comes first.
  */
-export function ApproveDialog({ open, plan, categories, tally, onConfirm, onCancel }: ApproveDialogProps): ReactElement {
+export function ApproveDialog({ open, plan, categories, onConfirm, onCancel }: ApproveDialogProps): ReactElement {
   const approved = plan.counts.approved;
   return (
     <ConfirmDialog
@@ -43,7 +38,7 @@ export function ApproveDialog({ open, plan, categories, tally, onConfirm, onCanc
       tone="safe"
     >
       <ul className="list-disc pl-5">
-        {lines(plan, categories, tally).map((line) => (
+        {lines(plan, categories).map((line) => (
           <li key={line}>{line}</li>
         ))}
       </ul>
