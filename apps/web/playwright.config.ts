@@ -32,9 +32,6 @@ export default defineConfig({
   reporter: process.env.CI ? [["html", { open: "never" }], ["github"]] : "list",
   use: {
     baseURL: process.env.E2E_BASE_URL ?? "https://mail-assistant.localhost:8443",
-    // Off unless asked for: a run on a machine whose browser does not trust the private CA (a Windows laptop without the
-    // user's certutil step) sets E2E_IGNORE_HTTPS_ERRORS=1 for the throwaway stack. CI never sets it.
-    ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === "1",
     trace: "retain-on-failure",
     video: "retain-on-failure",
   },

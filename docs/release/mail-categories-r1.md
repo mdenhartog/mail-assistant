@@ -49,7 +49,7 @@ The journeys cover behaviour that already existed, so they are regression guards
 
 | # | Finding | Effect | Owner of the fix |
 | --- | --- | --- | --- |
-| B-1 | `apps/web/nginx.conf` serves the app only for `/`, `/login` and `/settings` and answers 404 for everything else (AC-19 of web-settings), so `/categories` and `/review` return 404 when opened by link, reload or bookmark. Navigation inside the app works. | The page can only be reached through the navigation after signing in. Test 0 of `categories.spec.ts` documents it with `test.fail`; it turns red when the route is added, which is the cue to remove `test.fail`. The test of the nginx config that asserts exactly three routes must change with it. | A fix unit for `apps/web` (not part of U-11) |
+| B-1 (fixed in the code, e2e re-run pending) | `apps/web/nginx.conf` serves the app only for `/`, `/login` and `/settings` and answers 404 for everything else (AC-19 of web-settings), so `/categories` and `/review` return 404 when opened by link, reload or bookmark. Navigation inside the app works. | The page can only be reached through the navigation after signing in. Test 0 of `categories.spec.ts` documents it with `test.fail`; it turns red when the route is added, which is the cue to remove `test.fail`. The test of the nginx config that asserts exactly three routes must change with it. | A fix unit for `apps/web` (not part of U-11) |
 | B-2 | `backend/Dockerfile.dockerignore` does not allow `packages/category-policy`, so `docker compose build api` fails with "`/packages/category-policy/pyproject.toml`: not found". The api image cannot be built from the integration branch, so neither can the prod-like stack or the CI job `prod-like`. | The run used a copy of the file with the two missing allow lines (`!packages/category-policy/pyproject.toml`, `!packages/category-policy/category_policy`) kept outside the repository. | A fix for `backend/` (not part of U-11) |
 
 ## Open points
@@ -58,13 +58,13 @@ The journeys cover behaviour that already existed, so they are regression guards
 2. `tests/infra/test_env_example.py` fails on the integration branch for eleven compose variables; the user adds them to `.env.example`.
 3. AC-32 asks that the page "says how to unlock". The built behaviour does not: a locked web answers 401 and the page returns to sign-in, because the lock must leave no trace (RT3-03 of web-settings). The unlock is `/web_unlock` in Telegram. Decide whether the spec or the page changes.
 4. The e2e `categories` project seeds version 1 by owner SQL because the stack has no agent (AC-49 says the agent seeds it).
-5. A local run on a machine whose browser does not trust the private CA needs `E2E_IGNORE_HTTPS_ERRORS=1`, `E2E_BASE_URL`, `MAIL_URL` and `COMPOSE_PROJECT_NAME` set for the stack under test. The helpers `support/db.ts` and `support/categoriesDb.ts` run SQL in the compose project named by `COMPOSE_PROJECT_NAME`; without it they use the default project, which is the user's own stack.
+5. A local run on a machine whose browser does not trust the private CA must trust the private CA first (the Playwright config keeps certificate checks on); it also needs `E2E_BASE_URL`, `MAIL_URL` and `COMPOSE_PROJECT_NAME` set for the stack under test. The helpers `support/db.ts` and `support/categoriesDb.ts` run SQL in the compose project named by `COMPOSE_PROJECT_NAME`; without it they use the default project, which is the user's own stack.
 
 ## Checklist
 
 | # | Item | Owner | Evidence needed | Status |
 | --- | --- | --- | --- | --- |
-| 1 | B-1 fixed: `/categories` and `/review` open by link and survive a reload. | Build | Test 0 of `categories.spec.ts` without `test.fail`, green. | Open |
+| 1 | B-1 fixed: `/categories` and `/review` open by link and survive a reload. | Build | Test 0 of `categories.spec.ts` without `test.fail`, green. | Code fixed; re-run of the e2e pending |
 | 2 | B-2 fixed: the api image builds from a clean checkout. | Build | `docker compose --profile prod-like build api` succeeds. | Open |
 | 3 | The CI job `prod-like` runs the `categories` project green (it needs B-2). | Build | The job log. | Open |
 | 4 | An end-to-end run with the agent, a fake Gmail and a fake Telegram (open point 1) for AC-31 and AC-40. | Build | The journeys listed under "Not run". | Open (not built) |
