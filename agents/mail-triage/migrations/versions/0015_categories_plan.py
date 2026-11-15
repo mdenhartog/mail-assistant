@@ -182,18 +182,57 @@ END
 $$
 """
 
+# The actor and the time of an apply audit row are the database's (ADR-0030); the writer names only the channel.
+_AUDIT_DERIVE = """
+CREATE FUNCTION categories.apply_audit_derive() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    NEW.at := now();
+    NEW.actor_digest := encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex');
+    RETURN NEW;
+END
+$$
+"""
+
+# A move-back request is for an applied plan of the same mailbox, and its actor and time are the database's. The plan
+# itself is purged 14 days after it ended, so the request has no foreign key (it lives a year).
+_MOVE_BACK_CHECK = """
+CREATE FUNCTION categories.move_back_request_check() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM categories.plan p
+                    WHERE p.mailbox_id = NEW.mailbox_id AND p.id = NEW.plan_id AND p.state = 'applied') THEN
+        RAISE EXCEPTION 'only an applied plan can be moved back' USING ERRCODE = 'MC409';
+    END IF;
+    NEW.at := now();
+    NEW.processed := false;
+    NEW.actor_digest := encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex');
+    RETURN NEW;
+END
+$$
+"""
+
 _TRIGGERS = (
     "CREATE TRIGGER plan_state_guard BEFORE UPDATE OF state ON categories.plan "
     "FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION categories.plan_state_guard()",
+    "CREATE TRIGGER apply_audit_derive BEFORE INSERT ON categories.apply_audit "
+    "FOR EACH ROW EXECUTE FUNCTION categories.apply_audit_derive()",
+    "CREATE TRIGGER move_back_request_check BEFORE INSERT ON categories.move_back_request "
+    "FOR EACH ROW EXECUTE FUNCTION categories.move_back_request_check()",
 )
-_FUNCTIONS = ("categories.plan_state_guard()",)
+_FUNCTIONS = (
+    "categories.plan_state_guard()",
+    "categories.apply_audit_derive()",
+    "categories.move_back_request_check()",
+)
 
 
 def upgrade() -> None:
     """Create the plan tables, the state guard and its trigger."""
     _create_plan_tables()
     _create_audit_tables()
-    op.execute(_PLAN_GUARD)
+    for function_sql in (_PLAN_GUARD, _AUDIT_DERIVE, _MOVE_BACK_CHECK):
+        op.execute(function_sql)
     for statement in _TRIGGERS:
         op.execute(statement)
     for function in _FUNCTIONS:
