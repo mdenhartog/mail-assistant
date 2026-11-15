@@ -45,6 +45,7 @@ from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
 from app.db.pg_list_sync import PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
+from app.db.pg_refile import PgRefileStore
 from app.db.pg_resort import PgApplyStore, PgBuildStore
 from app.db.pg_security_events import PgSecurityEvents
 from app.db.pg_settings_store import PgSettingsStore
@@ -65,6 +66,7 @@ from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
 from app.usecases.policy_notice import PolicyNotice
 from app.usecases.reply import ReplyService
+from app.usecases.refile_report import RefileReportService
 from app.usecases.resort_apply import ResortApply
 from app.usecases.resort_build import ResortBuild
 from app.usecases.resort_notice import TelegramApplyNotifier
@@ -267,6 +269,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             pinned=settings.pinned_senders,
         ),
         move_back=MoveBack(mailbox=apply_mailbox, store=apply_store, lock=web_lock, notifier=notifier),
+        refile_report=RefileReportService(
+            PgRefileStore(sessions, settings.mailbox_id),
+            apply_mailbox,  # label names and fetch (None for a deleted mail) are what the report needs
+            now=now,
+            max_checked=settings.refile_report_cap,
+        ),
+        refile_report_hour=settings.refile_report_hour,
         list_sync_seconds=settings.list_sync_interval_seconds,
         resort_apply_seconds=settings.apply_poll_seconds,
         heartbeat=heartbeat,

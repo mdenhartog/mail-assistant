@@ -66,6 +66,14 @@ class ResortStepPort(Protocol):
         ...
 
 
+class RefileReportPort(Protocol):
+    """The daily report on re-filed mail and mail in "Other" (INT-004, AC-46)."""
+
+    async def run_once(self) -> object:
+        """One report."""
+        ...
+
+
 class ApprovalNoticePort(Protocol):
     """Announces delayed plans in Telegram (INT-004, ADR-0046)."""
 
@@ -186,6 +194,8 @@ class Runner:
         resort_build: ResortStepPort,
         resort_apply: ResortStepPort,
         move_back: ResortStepPort,
+        refile_report: RefileReportPort,
+        refile_report_hour: int,
         list_sync_seconds: float,
         resort_apply_seconds: float,
         heartbeat: Path,
@@ -209,6 +219,9 @@ class Runner:
         self._resort_build = resort_build
         self._resort_apply = resort_apply
         self._move_back = move_back
+        self._refile_report = refile_report
+        self._refile_hour = refile_report_hour
+        self._refile_reported_on: date | None = None
         self._resort_apply_every = timedelta(seconds=resort_apply_seconds)
         self._resort_applied_at: datetime | None = None
         self._list_sync_every = timedelta(seconds=list_sync_seconds)
@@ -240,6 +253,7 @@ class Runner:
         await self._resort_steps()
         await self._guard("deliver", self._delivery.deliver_open_alerts())
         await self._guard("overview", self._overview.send_overview())
+        await self._guard("refile_report", self._report_refiles())
         await self._guard("purge", self._purge())
         self._heartbeat.touch()
 
@@ -258,6 +272,14 @@ class Runner:
         self._resort_applied_at = now
         await self._guard("resort_apply", self._resort_apply.run_once())
         await self._guard("move_back", self._move_back.run_once())
+
+    async def _report_refiles(self) -> None:
+        """Once per day, in the first cycle at or after the hour of the clock (UTC in production)."""
+        now = self._now()
+        if now.hour < self._refile_hour or self._refile_reported_on == now.date():
+            return
+        self._refile_reported_on = now.date()  # also after a failure: a broken Gmail is not hammered, tomorrow retries
+        await self._refile_report.run_once()
 
     async def _purge(self) -> None:
         now = self._now()
