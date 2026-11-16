@@ -2,14 +2,14 @@
 
 See ADR-0046 and ADR-0033.
 
-An approval above the threshold makes a ``scheduled`` plan that the agent applies after ``apply_after``. Each run sends
-one notice per such plan (then marks it announced; a failed send is repeated with new nonces). Cancel and Lock carry
-single-use nonces whose target is the plan id. Cancel is one compare-and-set in the store: it wins only while the plan
-is still ``scheduled`` and the database clock is before ``apply_after``, so a Cancel after the delay is refused and
-says so. Lock sets the web lock first and then cancels every ``scheduled`` or ``applying`` plan (the apply also stops before its next batch on the
-lock). Move back asks for the restore of an applied plan, once per plan. The result notice (counts) is sent by the
-notifier through ``send_result``. Buttons from another chat, used, late or of another kind change nothing. Nothing here
-reads the clock or makes a random value, and nothing logs.
+An approval above the threshold makes a ``scheduled`` plan that the agent applies after ``apply_after``. Each run
+sends one notice per such plan (then marks it announced; a failed send is repeated with new nonces). Cancel and Lock
+carry single-use nonces whose target is the plan id. Cancel is one compare-and-set in the store: it wins only while
+the plan is still ``scheduled`` and the database clock is before ``apply_after``, so a Cancel after the delay is
+refused and says so. Lock sets the web lock first and then cancels every ``scheduled`` or ``applying`` plan (the apply
+also stops before its next batch on the lock). Move back asks for the restore of an applied plan, once per plan. The
+result notice (counts) is sent by the notifier through ``send_result``. Buttons from another chat, used, late or of
+another kind change nothing. Nothing here reads the clock or makes a random value, and nothing logs.
 """
 
 from __future__ import annotations
