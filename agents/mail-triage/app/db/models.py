@@ -498,7 +498,9 @@ class TelegramAction(Base):
 
     __tablename__ = "telegram_action"
     __table_args__ = (
-        CheckConstraint("kind IN ('undo', 'cancel', 'move_back', 'lock')", name="ck_telegram_action_kind"),
+        CheckConstraint(
+            "kind IN ('undo', 'lock', 'plan_cancel', 'plan_lock', 'plan_move_back')", name="ck_telegram_action_kind"
+        ),
         Index("ix_telegram_action_expires_at", "mailbox_id", "expires_at"),
         {"schema": "categories"},
     )
