@@ -74,7 +74,16 @@ spec:
     - to:
         - namespaceSelector: {}
       ports: [{ port: 53, protocol: UDP }, { port: 53, protocol: TCP }]
-    - ports: [{ port: 443 }]
+    # HTTPS to the internet (ADR-0049): every address except the cloud metadata range, the pod network and the service
+    # network. A NetworkPolicy cannot name hosts, so any public host on 443 stays reachable (accepted residual risk).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.0.0/16
+              - {{ .Values.networkPolicy.https.podCidr | quote }}
+              - {{ .Values.networkPolicy.https.serviceCidr | quote }}
+      ports: [{ port: 443 }]
     {{- if .Values.networkPolicy.databasePorts }}
     - to:
         - podSelector: {}

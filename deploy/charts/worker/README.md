@@ -48,6 +48,24 @@ The Job pod has its own ServiceAccount (no token mounted) and its own NetworkPol
 the same hardened pod settings as the worker. Both are hooks of the same kind as the Job with a lower weight and sync-wave
 (`-5` against `0`), so they exist before the Job pod starts.
 
+## HTTPS egress (SEC-01, ADR-0049)
+
+A NetworkPolicy cannot name hosts, so the worker's port 443 rule is an `ipBlock` for `0.0.0.0/0` with these exceptions:
+`169.254.0.0/16` (cloud metadata, fixed), `networkPolicy.https.podCidr` and `networkPolicy.https.serviceCidr` (the cluster's
+own networks). There is no egress rule without `to`. The migration Job has no 443 rule at all.
+
+| Value | Default | Production |
+|---|---|---|
+| `networkPolicy.https.podCidr` | `10.244.0.0/16` (kind) | `REQUIRED` |
+| `networkPolicy.https.serviceCidr` | `10.96.0.0/16` (kind) | `REQUIRED` |
+
+`values.schema.json` refuses an empty value, a value that is not an IPv4 CIDR and `/0`. For k3d or k3s use `10.42.0.0/16`
+and `10.43.0.0/16`.
+
+Residual risk, accepted in ADR-0049: a compromised agent can reach any public host on 443. Limiting HTTPS to Gmail,
+Anthropic and Telegram needs an egress proxy or a CNI with FQDN policies; that is a later decision. The rendered policy is
+tested, its enforcement needs a CNI that implements NetworkPolicy and is not covered by the chart tests.
+
 ## Database TLS (SEC-10, W-8, W-9)
 
 The worker and the migration Job reach the database with `sslmode`-style verify-full: the server certificate and its host

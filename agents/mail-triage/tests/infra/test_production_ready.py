@@ -53,6 +53,8 @@ WORKER_SUPPLY: dict[str, Any] = {
     "envFromSecret": "fixture-agent-secrets",
     "database.tls.caConfigMap": "fixture-db-ca",
     "migration.secretName": "fixture-migration",
+    "networkPolicy.https.podCidr": "10.42.0.0/16",
+    "networkPolicy.https.serviceCidr": "10.43.0.0/16",
 }
 
 
