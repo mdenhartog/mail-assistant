@@ -411,6 +411,31 @@
         "title": "DecisionResult",
         "type": "object"
       },
+      "GroupExample": {
+        "additionalProperties": false,
+        "description": "One mail of a group, shown as text (ADR-0044): the lowest-numbered item, cleaned when the plan was built.",
+        "properties": {
+          "senderAddress": {
+            "title": "Senderaddress",
+            "type": "string"
+          },
+          "senderName": {
+            "title": "Sendername",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "senderName",
+          "senderAddress",
+          "subject"
+        ],
+        "title": "GroupExample",
+        "type": "object"
+      },
       "GroupRef": {
         "additionalProperties": false,
         "description": "The two categories of a group.",
@@ -517,6 +542,11 @@
             "title": "Id",
             "type": "string"
           },
+          "movedCount": {
+            "minimum": 0.0,
+            "title": "Movedcount",
+            "type": "integer"
+          },
           "state": {
             "const": "applied",
             "title": "State",
@@ -526,7 +556,8 @@
         "required": [
           "id",
           "state",
-          "appliedAt"
+          "appliedAt",
+          "movedCount"
         ],
         "title": "LastPlan",
         "type": "object"
@@ -724,10 +755,18 @@
             "title": "Count",
             "type": "integer"
           },
+          "example": {
+            "$ref": "#/components/schemas/GroupExample"
+          },
           "from": {
             "format": "uuid",
             "title": "From",
             "type": "string"
+          },
+          "rejected": {
+            "minimum": 0.0,
+            "title": "Rejected",
+            "type": "integer"
           },
           "to": {
             "format": "uuid",
@@ -739,7 +778,9 @@
           "from",
           "to",
           "count",
-          "approved"
+          "approved",
+          "rejected",
+          "example"
         ],
         "title": "PlanGroup",
         "type": "object"
@@ -952,6 +993,30 @@
             ],
             "title": "Applyafter"
           },
+          "applyDelayMinutes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applydelayminutes"
+          },
+          "applyThreshold": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applythreshold"
+          },
           "counts": {
             "$ref": "#/components/schemas/PlanCounts"
           },
@@ -1016,6 +1081,8 @@
           "groups",
           "counts",
           "applyAfter",
+          "applyThreshold",
+          "applyDelayMinutes",
           "lastPlan"
         ],
         "title": "PlanView",
