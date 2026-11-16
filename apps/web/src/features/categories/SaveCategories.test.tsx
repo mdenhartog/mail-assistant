@@ -45,6 +45,19 @@ describe("Categories page: saving", () => {
     expect(saveButton()).toBeDisabled();
   });
 
+  it("given edits, then the save bar counts them and sticks to the bottom below sm only", async () => {
+    wire();
+    await loaded();
+    const bar = saveButton().closest("[data-save-bar]");
+    expect(bar).toHaveClass("sticky", "bottom-0", "sm:static");
+    expect(within(bar as HTMLElement).queryByText(/not saved/)).not.toBeInTheDocument();
+
+    await rename(1, "Bills");
+    expect(within(bar as HTMLElement).getByText("1 change not saved")).toBeInTheDocument();
+    await userEvent.type(card(2).getByLabelText("Description"), " More");
+    expect(within(bar as HTMLElement).getByText("2 changes not saved")).toBeInTheDocument();
+  });
+
   it("given a rename, when Save is pressed, then a summary asks first and Keep editing returns focus to Save", async () => {
     const seen = wire();
     await loaded();

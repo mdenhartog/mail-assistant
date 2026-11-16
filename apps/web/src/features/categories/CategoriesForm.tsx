@@ -8,7 +8,7 @@ import { CategoryCard } from "@/features/categories/CategoryCard";
 import { Intro, OtherCard } from "@/features/categories/Intro";
 import { LeaveGuard } from "@/features/categories/LeaveGuard";
 import { OlderCategories } from "@/features/categories/OlderCategories";
-import { summaryOf } from "@/features/categories/rows";
+import { changeCount, summaryOf } from "@/features/categories/rows";
 import { SaveResultBanner } from "@/features/categories/SaveResultBanner";
 import { SaveSummary } from "@/features/categories/SaveSummary";
 import { useCategoriesFlow } from "@/features/categories/useCategoriesFlow";
@@ -74,6 +74,8 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
   const form = useRef<HTMLFormElement>(null);
   useFocusTarget(form, flow.focusTarget);
   useFocusFirstInvalid(form, save.errorStamp);
+  const summary = summaryOf(flow.rows, list);
+  const changes = changeCount(summary);
   return (
     <form
       className="mt-6 flex flex-col gap-6"
@@ -97,16 +99,20 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
       </div>
       <OtherCard mailCount={list.other.mailCount} />
       <OlderCategories older={flow.older} onAdopt={flow.adopt} />
-      <div>
+      <div
+        className="sticky bottom-0 z-10 -mx-6 flex flex-wrap items-center gap-3 border-t border-divider bg-surface-raised px-6 py-3 sm:static sm:mx-0 sm:border-t-0 sm:bg-transparent sm:p-0"
+        data-save-bar=""
+      >
         <Button disabled={!flow.dirty} loading={save.saving} type="submit" variant="primary">
           Save changes
         </Button>
+        {changes > 0 ? <p className="text-sm text-text-muted">{`${String(changes)} ${changes === 1 ? "change" : "changes"} not saved`}</p> : null}
       </div>
       <SaveSummary
         onCancel={save.cancel}
         onConfirm={save.confirm}
         open={save.asking}
-        summary={summaryOf(flow.rows, list)}
+        summary={summary}
       />
       <LeaveGuard dirty={flow.dirty} />
       <p className="sr-only" role="status">

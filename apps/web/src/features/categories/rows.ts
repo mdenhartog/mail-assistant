@@ -52,6 +52,11 @@ export interface Summary {
   removed: number;
 }
 
+/** How many changes a save would make: one per renamed, re-described, added or removed category. */
+export function changeCount({ renamed, described, added, removed }: Summary): number {
+  return renamed + described + added + removed;
+}
+
 export function summaryOf(rows: readonly Row[], list: CategoryList): Summary {
   const stored = new Map(list.categories.map((category) => [category.id, category]));
   const kept = new Set(rows.map((row) => row.id));
