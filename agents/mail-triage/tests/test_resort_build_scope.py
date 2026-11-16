@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.scope import Scope, assistant_labels, classify
+from app.core.scope import Scope, assistant_labels, classify, is_archive_label
 
 MATRIX = [
     pytest.param({"INBOX"}, Scope.IN_SCOPE, id="inbox"),
@@ -13,6 +13,9 @@ MATRIX = [
     pytest.param({"Assistant/Old shop"}, Scope.IN_SCOPE, id="legacy-label"),
     pytest.param({"Archive"}, Scope.OUT, id="archive"),
     pytest.param({"Archive", "Assistant/Finance"}, Scope.OUT, id="archive-with-label"),
+    pytest.param({"archive", "Assistant/Bills"}, Scope.OUT, id="archive-lowercase-with-label"),
+    pytest.param({"ARCHIVE", "INBOX"}, Scope.OUT, id="archive-uppercase-with-inbox"),
+    pytest.param({"Folder/Archive", "INBOX"}, Scope.IN_SCOPE, id="nested-archive-is-not-the-archive"),
     pytest.param({"SPAM", "Assistant/Finance"}, Scope.OUT, id="spam"),
     pytest.param({"TRASH"}, Scope.OUT, id="trash"),
     pytest.param({"DRAFT", "INBOX"}, Scope.OUT, id="draft"),
@@ -34,3 +37,11 @@ def test_the_label_name_is_matched_exactly_not_by_prefix_look_alike() -> None:
     assert classify({"assistant/Finance"}) is Scope.OUT
     assert classify({"Assistant"}) is Scope.OUT
     assert assistant_labels({"INBOX", "Assistant/Finance", "Assistantx/Y"}) == ["Assistant/Finance"]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("Archive", True), ("archive", True), ("ARCHIVE", True), ("Archive/x", False), ("Old/Archive", False)],
+)
+def test_is_archive_label_is_case_insensitive_and_top_level_only(name: str, expected: bool) -> None:
+    assert is_archive_label(name) is expected

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.gmail_resort import ARCHIVE, LABEL_PREFIX, OTHER_LABEL, Label, LabelNameTaken, is_category_label
+from app.core.scope import is_archive_label
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -189,7 +190,7 @@ class ListSync:
 
     async def _ensure_archive(self, by_name: dict[str, Label], by_id: dict[str, Label]) -> None:
         """Make ``Archive`` when no top-level label of that name exists (case does not matter, C-14)."""
-        if ARCHIVE.casefold() in by_name:
+        if any(is_archive_label(name) for name in by_name):
             return
         label = await asyncio.to_thread(self._gmail.create_label, ARCHIVE)
         by_name[label.name.casefold()] = label

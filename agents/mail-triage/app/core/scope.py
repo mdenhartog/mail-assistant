@@ -14,12 +14,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-__all__ = ["ARCHIVE_LABEL", "LABEL_PREFIX", "Scope", "assistant_labels", "classify", "clean_display"]
+__all__ = [
+    "ARCHIVE_LABEL",
+    "LABEL_PREFIX",
+    "Scope",
+    "assistant_labels",
+    "classify",
+    "clean_display",
+    "is_archive_label",
+]
 
 LABEL_PREFIX = "Assistant/"
 ARCHIVE_LABEL = "Archive"
 _INBOX = "INBOX"
-_EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT", ARCHIVE_LABEL})
+_EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT"})
 
 
 class Scope(StrEnum):
@@ -30,6 +38,11 @@ class Scope(StrEnum):
     OUT = "out"
 
 
+def is_archive_label(name: str) -> bool:
+    """Whether ``name`` is the top-level ``Archive`` label; case does not matter (C-14), nested names never match."""
+    return name.casefold() == ARCHIVE_LABEL.casefold()
+
+
 def assistant_labels(label_names: Iterable[str]) -> list[str]:
     """The ``Assistant/`` labels among ``label_names`` (exact, case-sensitive prefix), sorted."""
     return sorted(name for name in label_names if name.startswith(LABEL_PREFIX))
@@ -38,7 +51,7 @@ def assistant_labels(label_names: Iterable[str]) -> list[str]:
 def classify(label_names: Iterable[str]) -> Scope:
     """Classify a mail by its label names; excluded labels win over everything else."""
     names = set(label_names)
-    if names & _EXCLUDED:
+    if names & _EXCLUDED or any(is_archive_label(name) for name in names):
         return Scope.OUT
     labels = assistant_labels(names)
     if len(labels) > 1:
