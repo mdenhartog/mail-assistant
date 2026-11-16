@@ -352,7 +352,7 @@ describe("Review moves: loading and failing", () => {
     wirePlan({ plan: () => new Promise<Response>(() => undefined) });
     await renderReview();
 
-    expect(screen.getByText("Loading your review")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your review");
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(document.querySelectorAll("[data-skeleton]").length).toBeGreaterThan(0);
   });

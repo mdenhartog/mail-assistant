@@ -14,7 +14,9 @@ import { usePageTitle } from "@/pages/usePageTitle";
 function Loading(): ReactElement {
   return (
     <div aria-busy="true" className="mt-6">
-      <p className="text-text-muted">Loading your review</p>
+      <p className="text-text-muted" role="status">
+        Loading your review
+      </p>
       <div aria-hidden="true" className="mt-4 grid gap-4">
         {[0, 1, 2].map((row) => (
           <div className="h-24 rounded-card bg-divider motion-safe:animate-pulse" data-skeleton="" key={row} />
