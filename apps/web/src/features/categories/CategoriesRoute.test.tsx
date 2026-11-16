@@ -70,6 +70,20 @@ describe("the /categories route", () => {
     expect(screen.queryByDisplayValue(INVOICES.name)).not.toBeInTheDocument();
   });
 
+  it("given unsaved edits and a save answered 401, then the sign-in page shows and no leave question blocks it", async () => {
+    stub((request) => (request.method === "GET" ? json(LIST) : new Response(null, { status: 401 })));
+    const router = open("/categories");
+    const name = await screen.findByDisplayValue(INVOICES.name);
+    await userEvent.type(name, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe("/login");
+    });
+    expect(screen.queryByText(/Leave without saving/)).not.toBeInTheDocument();
+  });
+
   it("given the lock (403) on a save, then the refusal page replaces the app and no category stays in the DOM", async () => {
     stub((request) => (request.method === "GET" ? json(LIST) : new Response(null, { status: 403 })));
     open("/categories");
