@@ -136,7 +136,13 @@ GRANT SELECT (mailbox_id, plan_id, id, sender_name, sender_address, subject, old
 GRANT SELECT ON categories.move_back_request TO web_settings_runtime;
 GRANT INSERT (mailbox_id, plan_id) ON categories.move_back_request TO web_settings_runtime;
 
-GRANT SELECT, INSERT, UPDATE ON categories.plan TO mail_triage_runtime;
+-- The agent writes the columns of a plan it builds, applies and announces, nothing else: a plan is born ``building`` and
+-- only approve_plan (the definer) schedules it and sets apply_after (RED-006; the triggers are the second line).
+REVOKE INSERT, UPDATE ON categories.plan FROM mail_triage_runtime;
+GRANT SELECT ON categories.plan TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, list_version, cap) ON categories.plan TO mail_triage_runtime;
+GRANT UPDATE (state, build_cursor, checked_count, unclear_count, estimate_total, not_looked_at, last_activity_at,
+    apply_run_id, apply_lease_until, announced_at) ON categories.plan TO mail_triage_runtime;
 GRANT SELECT ON categories.plan_item, categories.plan_decision, categories.plan_approval, categories.apply_audit,
     categories.move_back_request TO mail_triage_runtime;
 GRANT INSERT (mailbox_id, plan_id, message_id, sender_name, sender_address, subject, old_category_id, new_category_id)

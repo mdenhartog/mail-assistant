@@ -1,8 +1,8 @@
 """RED-006: only ``approve_plan`` schedules a plan or sets ``apply_after``; the agent role cannot (ADR-0046, ADR-0047).
 
-The agent writes plans (state, progress, lease, ``announced_at``) but must not move ``ready`` to ``scheduled`` or lower
-``apply_after``: that would skip the approval, the threshold and the delay. The rights refuse it (42501) and, as a second
-line, a trigger refuses it for any role that is not the definer (or the owner).
+The agent writes plans (state, progress, lease, ``announced_at``) but must not move ``ready`` to ``scheduled`` or
+lower ``apply_after``: that would skip the approval, the threshold and the delay. The rights refuse it (42501) and, as
+a second line, a trigger refuses it for any role that is not the definer (or the owner).
 """
 # every statement is a fixed test literal inside a throwaway container, never user input
 
