@@ -45,9 +45,24 @@ ITEM_AGENT_INSERT = frozenset(
     }
 )
 NONE: frozenset[str] = frozenset()
+PLAN_AGENT_INSERT = frozenset({"mailbox_id", "list_version", "cap"})  # a new plan is always ``building`` (RED-006)
+PLAN_AGENT_UPDATE = frozenset(  # never ``apply_after`` or ``list_version``: only ``approve_plan`` schedules a plan
+    {
+        "state",
+        "build_cursor",
+        "checked_count",
+        "unclear_count",
+        "estimate_total",
+        "not_looked_at",
+        "last_activity_at",
+        "apply_run_id",
+        "apply_lease_until",
+        "announced_at",
+    }
+)
 # table -> role -> (select, insert, update) columns; ALL means every column
 MATRIX: dict[str, dict[str, tuple[frozenset[str] | str, frozenset[str] | str, frozenset[str] | str]]] = {
-    "plan": {"api": (ALL, NONE, NONE), "agent": (ALL, ALL, ALL)},
+    "plan": {"api": (ALL, NONE, NONE), "agent": (ALL, PLAN_AGENT_INSERT, PLAN_AGENT_UPDATE)},
     "plan_item": {
         "api": (ITEM_API_COLUMNS, NONE, NONE),
         "agent": (ALL, ITEM_AGENT_INSERT, frozenset({"state", "reason", "attempts"})),
