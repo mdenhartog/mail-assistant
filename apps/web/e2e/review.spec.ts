@@ -32,7 +32,7 @@ const GROUP = /^Other to Invoices/;
 const CANARY = `canary-${String(Date.now())}-${Math.random().toString(36).slice(2, 10)}`;
 const BELOW_THRESHOLD: PlanSeed = { items: 20, threshold: 100, delayMinutes: 20, canary: CANARY };
 const ABOVE_THRESHOLD: PlanSeed = { items: 20, threshold: 10, delayMinutes: 20, canary: CANARY };
-const SCHEDULED_TEXT = "Only labels change. You can cancel in Telegram until then.";
+const SCHEDULED_TEXT = "Only labels change. To stop this, use Cancel in the Telegram message.";
 
 test.beforeEach(() => {
   resetState();
@@ -53,13 +53,13 @@ async function openReady(page: Page, seed: PlanSeed): Promise<void> {
 
 async function openSummary(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Approve group: Other to Invoices" }).click();
-  await page.getByRole("button", { name: "Move 20 mails, labels only" }).first().click();
+  await page.getByRole("button", { name: "Move 20 mails to their new categories" }).first().click();
   await expect(page.getByRole("alertdialog", { name: "Move 20 mails?" })).toBeVisible();
 }
 
 async function approveGroup(page: Page): Promise<void> {
   await openSummary(page);
-  await page.getByRole("alertdialog").getByRole("button", { name: "Move 20 mails, labels only" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Move 20 mails to their new categories" }).click();
   await expect(page.getByText(SCHEDULED_TEXT)).toBeVisible();
 }
 
@@ -193,8 +193,8 @@ test("canary strings in the sender and subject of the planned mails are in no lo
   await page.getByRole("button", { name: GROUP }).click();
   await expect(page.getByText(`${CANARY} subject 1`).first()).toBeVisible();
   await page.getByRole("button", { name: "Approve group: Other to Invoices" }).click();
-  await page.getByRole("button", { name: "Move 20 mails, labels only" }).first().click();
-  await page.getByRole("alertdialog").getByRole("button", { name: "Move 20 mails, labels only" }).click();
+  await page.getByRole("button", { name: "Move 20 mails to their new categories" }).first().click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Move 20 mails to their new categories" }).click();
   await expect(page.getByText(SCHEDULED_TEXT)).toBeVisible();
 
   const logs = stackLogs();
