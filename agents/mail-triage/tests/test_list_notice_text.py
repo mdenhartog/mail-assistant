@@ -38,30 +38,60 @@ def test_given_markup_and_control_characters_in_a_category_then_the_notice_is_es
     assert not [c for c in message.text if unicodedata.category(c) in forbidden and c != "\n"]
 
 
-def test_given_the_biggest_possible_lists_then_the_notice_stays_within_the_message_limit() -> None:
+def test_given_the_biggest_possible_lists_then_the_notice_stays_within_the_limit_and_says_it_does_not_fit() -> None:
     big = [ListCategory(str(n), "&" * 40, "<" * 500) for n in range(50)]
+    changed = [ListCategory(c.id, c.name, ">" * 500) for c in big]
 
-    message = _notice(big, list(reversed(big)))
+    message = _notice(big, changed)
 
     assert len(message.text) <= MAX_MESSAGE_CHARS
     assert not ENTITY.search(message.text)
     assert not TAG.search(message.text)
-    assert "more" in message.text  # what did not fit is counted, not silently cut
+    assert "do not fit in one message" in message.text  # said out loud, not hidden
+    assert "and 3 more" not in message.text
     assert [button.label for button in message.buttons] == ["Undo", "Undo and lock web sign-in"]
 
 
-def test_given_a_short_list_change_then_both_lists_are_shown_in_full_with_the_buttons() -> None:
-    old = [ListCategory("1", "Bills", "Invoices"), ListCategory("2", "Travel", "")]
-    new = [ListCategory("1", "Bills", "Invoices and receipts")]
+def test_given_only_category_45_of_50_changed_then_it_is_shown_first_with_old_and_new_description() -> None:
+    old = [ListCategory(str(n), f"Category {n}", f"About number {n}") for n in range(50)]
+    new = [ListCategory(c.id, c.name, "Now about receipts" if c.id == "45" else c.description) for c in old]
 
-    message = _notice(old, new, changes=2)
+    text = _notice(old, new).text
 
-    for fact in ("2 changes", "Before", "Now", "Bills: Invoices", "Travel", "Bills: Invoices and receipts"):
-        assert fact in message.text
-    assert [button.data for button in message.buttons] == [UNDO, LOCK]
+    assert "Category 45" in text
+    assert "Before: About number 45" in text
+    assert "Now: Now about receipts" in text
+    assert text.index("Category 45") < text.index("Unchanged")
+    assert "Unchanged (49)" in text
+    assert "Category 3:" not in text  # unchanged ones are summarised, not listed with descriptions
+
+
+def test_given_only_text_after_character_60_changed_then_the_difference_is_visible() -> None:
+    start = "x" * 70
+    old = [ListCategory("1", "Bills", start + " invoices")]
+    new = [ListCategory("1", "Bills", start + " receipts")]
+
+    text = _notice(old, new).text
+
+    assert "Before: " + start + " invoices" in text
+    assert "Now: " + start + " receipts" in text
+
+
+def test_given_added_removed_and_renamed_categories_then_each_is_shown_with_its_text() -> None:
+    old = [ListCategory("1", "Bills", "Invoices"), ListCategory("2", "Trips", "Flights"), ListCategory("3", "Keep", "")]
+    new = [ListCategory("1", "Invoices", "Invoices"), ListCategory("4", "Receipts", "Shop receipts"), old[2]]
+
+    text = _notice(old, new, changes=3).text
+
+    assert "Renamed: Bills -> Invoices" in text
+    assert "Added: Receipts: Shop receipts" in text
+    assert "Removed: Trips: Flights" in text
+    assert "Unchanged (1): Keep" in text
+    assert "Undo restores the list. Mail already filed stays where it is." in text
 
 
 def test_given_an_empty_list_then_the_notice_says_so() -> None:
     message = _notice([ListCategory("1", "Bills", "")], [])
 
+    assert "Removed: Bills" in message.text
     assert "no categories" in message.text

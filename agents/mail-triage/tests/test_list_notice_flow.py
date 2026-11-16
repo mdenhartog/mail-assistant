@@ -20,7 +20,7 @@ async def test_given_a_web_change_in_quiet_hours_when_the_agent_runs_then_one_no
     await rig.notice.run(NIGHT)
 
     (message,) = rig.chat.sent
-    for fact in ("Before:", "Now:", "Travel", "Work"):
+    for fact in ("Added: Work", "Removed: Travel"):
         assert fact in message.text
     assert [b.label for b in message.buttons] == ["Undo", "Undo and lock web sign-in"]
     assert rig.store.cursor == 2
