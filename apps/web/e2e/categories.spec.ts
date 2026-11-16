@@ -121,7 +121,8 @@ test("edit and save: the summary says what happens, the list is stored whole as 
 
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("1 with a new description, 1 added.")).toBeVisible();
+  await expect(dialog.getByText(`Change the description of "${TRAVEL}"`)).toBeVisible();
+  await expect(dialog.getByText('Add "Bills"')).toBeVisible();
   expect(versions(), "nothing is stored before the user confirms").toEqual(["1|operator"]);
 
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -235,7 +236,7 @@ test("a rename keeps the category id, makes no review and the summary says only 
   await page.getByLabel("Name").nth(1).fill("Trips");
   await pressSave(page);
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
-  await expect(dialog.getByText("1 renamed.")).toBeVisible();
+  await expect(dialog.getByText(`Rename "${TRAVEL}" to "Trips"`)).toBeVisible();
   await expect(dialog.getByText("Renaming only changes the label name.")).toBeVisible();
   await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
