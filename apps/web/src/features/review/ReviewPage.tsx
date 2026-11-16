@@ -6,7 +6,6 @@ import type { PlanView } from "@/api/plan/plan.types";
 import { ApiError } from "@/api/client";
 import { Banner } from "@/components/Banner";
 import { AppliedPanel } from "@/features/review/AppliedPanel";
-import { clockText } from "@/features/review/copy";
 import { Building, NoPlan, Notice } from "@/features/review/PlanStates";
 import { ReadyReview } from "@/features/review/ReadyReview";
 import { usePageTitle } from "@/pages/usePageTitle";
@@ -42,18 +41,18 @@ function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void })
 }
 
 /** The plan Move back is for: the open plan once applied, or the last applied one when none is open. */
-function appliedPlan(plan: PlanView): { id: string; at: string | null } | null {
+function appliedPlan(plan: PlanView): { id: string; appliedAt: string | null } | null {
   if (plan.state === "applied" && plan.id !== null) {
-    return { id: plan.id, at: clockText(plan.lastPlan?.appliedAt ?? null) };
+    return { id: plan.id, appliedAt: plan.lastPlan?.appliedAt ?? null };
   }
-  return plan.state === null && plan.lastPlan ? { id: plan.lastPlan.id, at: clockText(plan.lastPlan.appliedAt) } : null;
+  return plan.state === null && plan.lastPlan ? { id: plan.lastPlan.id, appliedAt: plan.lastPlan.appliedAt } : null;
 }
 
 function Content({ plan }: { plan: PlanView }): ReactElement {
   const categories = useCategories();
   const applied = appliedPlan(plan);
   if (applied) {
-    return <AppliedPanel at={applied.at} planId={applied.id} />;
+    return <AppliedPanel appliedAt={applied.appliedAt} planId={applied.id} />;
   }
   if (plan.state === null) {
     return <NoPlan />;

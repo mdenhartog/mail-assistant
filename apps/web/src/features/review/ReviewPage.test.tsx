@@ -329,8 +329,22 @@ describe("Review moves: the other states (AC-23)", () => {
 
     expect(await screen.findByText("1 skipped, 1 failed.")).toBeInTheDocument();
     expect(screen.getByText("You moved this mail yourself")).toBeInTheDocument();
+    expect(screen.getByText("Gmail did not accept the change. It stays where it was.")).toBeInTheDocument();
+    expect(screen.getByText(/Mails you changed yourself stay as you left them/)).toBeInTheDocument();
+    expect(screen.getByText(/Your mails were moved on 15 Nov at \d\d:\d\d\./)).toBeInTheDocument();
+    expect(screen.getByText("Only labels changed; nothing was deleted.")).toBeInTheDocument();
     expect(screen.getByText("Subject 3")).toBeInTheDocument();
     expect(screen.queryByText("Subject 1")).not.toBeInTheDocument();
+  });
+
+  it("given a skipped mail without a reason, then it says the user moved it themselves", async () => {
+    wirePlan({
+      plan: () => json({ ...READY, state: "applied", groups: [], lastPlan: LAST }),
+      items: () => json({ items: [{ ...itemsFor(2), state: "skipped", decision: "approved", reason: null }], page: 1, hasMore: false }),
+    });
+    await renderReview();
+
+    expect(await screen.findByText("You moved this mail yourself, so I left it alone.")).toBeInTheDocument();
   });
 
   it("given Move back, then a red dialog asks first and confirming posts to the plan", async () => {

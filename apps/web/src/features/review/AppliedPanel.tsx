@@ -8,9 +8,8 @@ import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { FAILED_FALLBACK, SKIPPED_FALLBACK, clockText, dayText } from "@/features/review/copy";
 import { cleanText } from "@/features/review/text";
-
-const REASON_MISSING = "No reason was recorded.";
 
 function NotMoved({ rows }: { rows: PlanItem[] }): ReactElement | null {
   const skipped = rows.filter((row) => row.state === "skipped");
@@ -22,6 +21,9 @@ function NotMoved({ rows }: { rows: PlanItem[] }): ReactElement | null {
     <div className="mt-6">
       <h2 className="font-display text-xl text-text">Not moved</h2>
       <p className="mt-2 text-text">{`${String(skipped.length)} skipped, ${String(failed.length)} failed.`}</p>
+      <p className="mt-1 text-text-muted">
+        Mails you changed yourself stay as you left them. Mails Gmail did not accept stay where they were.
+      </p>
       <ul className="mt-3 flex flex-col gap-3">
         {[...skipped, ...failed].map((row) => (
           <li key={row.id}>
@@ -31,7 +33,7 @@ function NotMoved({ rows }: { rows: PlanItem[] }): ReactElement | null {
               <p className="text-text wrap-anywhere">{cleanText(row.subject)}</p>
               <p className="mt-1 text-sm font-semibold text-text-muted">
                 {row.state === "failed" ? "Failed: " : "Skipped: "}
-                <span className="font-normal">{cleanText(row.reason ?? REASON_MISSING)}</span>
+                <span className="font-normal">{cleanText(row.reason ?? (row.state === "failed" ? FAILED_FALLBACK : SKIPPED_FALLBACK))}</span>
               </p>
             </Card>
           </li>
@@ -124,24 +126,30 @@ function MoveBackControl({ planId }: { planId: string }): ReactElement {
   );
 }
 
+function movedTitle(appliedAt: string | null): string {
+  const day = dayText(appliedAt);
+  const clock = clockText(appliedAt);
+  return day === null || clock === null ? "Your mails were moved." : `Your mails were moved on ${day} at ${clock}.`;
+}
+
 export interface AppliedPanelProps {
   /** The plan Move back applies to. */
   planId: string;
-  /** The time the mails were moved, shown as "14:20", or null when unknown. */
-  at: string | null;
+  /** When the mails were moved (ISO time), shown as "15 Nov at 14:20", or null when unknown. */
+  appliedAt: string | null;
 }
 
 /**
  * The result of an applied plan: what was moved, the mails that were skipped or failed with a plain reason, and
  * "Move back" behind a red confirmation (the label changes are undone, never mail deleted).
  */
-export function AppliedPanel({ planId, at }: AppliedPanelProps): ReactElement {
+export function AppliedPanel({ planId, appliedAt }: AppliedPanelProps): ReactElement {
   const items = usePlanItems(null, true);
   const rows = items.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <section className="mt-6">
-      <Banner kind="success" title="Your mails were moved.">
-        {at === null ? "Only labels changed; nothing was deleted." : `At ${at}. Only labels changed; nothing was deleted.`}
+      <Banner kind="success" title={movedTitle(appliedAt)}>
+        Only labels changed; nothing was deleted.
       </Banner>
       <NotMoved rows={rows} />
       <MoveBackControl planId={planId} />
