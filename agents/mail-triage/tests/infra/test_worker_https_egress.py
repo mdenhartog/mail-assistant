@@ -1,4 +1,4 @@
-"""U-mail-categories-31 (SEC-01): the worker's HTTPS egress is an ipBlock with CIDR exceptions, never a bare port (ADR-0049)."""
+"""U-mail-categories-31 (SEC-01): worker HTTPS egress is an ipBlock with CIDR exceptions, not a bare port (ADR-0049)."""
 
 from __future__ import annotations
 
@@ -57,15 +57,13 @@ def https_rules(spec: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 @needs_helm
-def test_given_the_rendered_worker_when_read_then_443_is_one_ip_block_with_the_metadata_pod_and_service_exceptions() -> None:
+def test_given_the_rendered_worker_when_read_then_443_is_one_ip_block_with_the_three_exceptions() -> None:
     spec = policies(render())["mail-triage"]
     rules = https_rules(spec)
 
     assert len(rules) == 1
     assert rules[0]["ports"] == [{"port": 443}]
-    assert rules[0]["to"] == [
-        {"ipBlock": {"cidr": "0.0.0.0/0", "except": [METADATA, "10.244.0.0/16", "10.96.0.0/16"]}}
-    ]
+    assert rules[0]["to"] == [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [METADATA, "10.244.0.0/16", "10.96.0.0/16"]}}]
 
 
 @needs_helm
@@ -96,7 +94,9 @@ def test_given_the_migration_job_when_rendered_then_it_has_no_443_rule_and_no_op
 @pytest.mark.parametrize("environment", ["production", "development", "test"])
 @pytest.mark.parametrize("key", ["podCidr", "serviceCidr"])
 @pytest.mark.parametrize("bad", ["", "REQUIRED", "10.0.0.0", "0.0.0.0/0", "10.0.0.0/33", "not-a-cidr"])
-def test_given_a_missing_or_wide_cidr_when_linted_then_the_schema_rejects_it(environment: str, key: str, bad: str) -> None:
+def test_given_a_missing_or_wide_cidr_when_linted_then_the_schema_rejects_it(
+    environment: str, key: str, bad: str
+) -> None:
     result = helm("lint", f"environment={environment}", f"networkPolicy.https.{key}={bad}")
 
     assert result.returncode != 0, (environment, key, bad)
@@ -109,7 +109,8 @@ def test_given_the_production_values_when_read_then_both_cidrs_are_required_and_
     lines = PROD_VALUES.read_text(encoding="utf-8").splitlines()
 
     assert values["networkPolicy"]["https"] == {"podCidr": "REQUIRED", "serviceCidr": "REQUIRED"}
-    assert sum(1 for line in lines if "REQUIRED # REQUIRED" in line and ("podCidr" in line or "serviceCidr" in line)) == 2
+    required = [line for line in lines if "REQUIRED # REQUIRED" in line]
+    assert sum(1 for line in required if "podCidr" in line or "serviceCidr" in line) == 2
     result = helm("template", values=PROD_VALUES)
     assert result.returncode != 0
     assert "podCidr" in result.stderr
