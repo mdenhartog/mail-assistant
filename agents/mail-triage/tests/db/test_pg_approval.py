@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
+from app.db.pg_resort import PgApplyStore
 from app.usecases.approval_notice import CancelOutcome
 from tests.db.conftest import AGENT_ROLE
 from tests.db.resort_support import MAILBOX, agent_sessions
@@ -140,3 +141,29 @@ async def test_given_the_deployment_numbers_when_they_are_written_then_the_row_i
     )
     assert row is not None
     assert (row["threshold"], row["delay_minutes"]) == (9, 0)
+
+
+async def test_given_a_delayed_plan_that_was_never_announced_when_it_is_due_then_the_claim_fails_closed(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    approvals = PgApprovalStore(agent_sessions, MAILBOX)
+    applies = PgApplyStore(agent_sessions, MAILBOX)
+    plan_id = await _delayed(cat_owner)
+    # the delay of 15 minutes has run out, but no notice was ever sent: nobody could have cancelled
+    await cat_owner.execute("update categories.plan_approval set at = now() - interval '30 minutes'")
+    await cat_owner.execute("update categories.plan set apply_after = now() - interval '1 second'")
+
+    assert not await applies.claim(plan_id, "run-a")
+    assert await cat_owner.fetchval("select state from categories.plan") == "scheduled"
+
+    await approvals.mark_announced(plan_id)
+
+    assert await applies.claim(plan_id, "run-a")
+
+
+async def test_given_a_plan_without_delay_when_it_is_claimed_then_no_notice_is_needed(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    plan_id = await scheduled_plan(cat_owner)  # apply_after is not after the approval: nothing to announce
+
+    assert await PgApplyStore(agent_sessions, MAILBOX).claim(plan_id, "run-a")
