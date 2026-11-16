@@ -137,7 +137,10 @@ class Database:
         """
         parsed = make_url(url).difference_update_query(_URL_SSL_KEYS)
         engine = create_async_engine(
-            parsed, connect_args=_driver_arguments(ssl_context, statement_timeout_ms), pool_pre_ping=True
+            parsed,
+            connect_args=_driver_arguments(ssl_context, statement_timeout_ms),
+            pool_pre_ping=True,
+            hide_parameters=True,  # a database error never carries the bound values (mail text, names)
         )
         return cls(engine)
 
