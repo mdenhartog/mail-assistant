@@ -21,6 +21,15 @@ function lines(plan: PlanView, categories: readonly CategoryItem[]): string[] {
     .map((group) => `${groupTitle(group, categories)}: ${countText(group.approved)}`);
 }
 
+/** The wait rule in words: the real numbers when the server sends them, else a neutral sentence. */
+function waitText(plan: PlanView): string {
+  const { applyThreshold, applyDelayMinutes } = plan;
+  if (applyThreshold === null || applyDelayMinutes === null) {
+    return "When many mails move within a day, the move waits a while first. You can cancel it in Telegram until it starts.";
+  }
+  return `More than ${String(applyThreshold)} mails in 24 hours: the move starts after ${String(applyDelayMinutes)} minutes so you can still cancel in Telegram.`;
+}
+
 /**
  * The summary before anything is approved (AC-55): the counts per group, that only labels change and that the user can
  * move back. A normal confirm button, because nothing is deleted or replaced; the safe button comes first.
@@ -44,9 +53,7 @@ export function ApproveDialog({ open, plan, categories, onConfirm, onCancel }: A
       </ul>
       <p className="mt-3">Each mail gets its new category label in Gmail. Nothing is deleted and nothing is sent. You can move them back afterwards.</p>
       <p className="mt-3">Mails you did not approve stay where they are.</p>
-      <p className="mt-3">
-        When many mails move within a day, the move waits a while first. You can cancel it in Telegram until it starts.
-      </p>
+      <p className="mt-3">{waitText(plan)}</p>
     </ConfirmDialog>
   );
 }

@@ -257,6 +257,29 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
     expect(buttons[0]).toHaveFocus();
   });
 
+  it("given an apply threshold and delay, then the summary names them", async () => {
+    await approvedPlan();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails to their new categories" }));
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Move 80 mails?" });
+    expect(
+      within(dialog).getByText("More than 50 mails in 24 hours: the move starts after 30 minutes so you can still cancel in Telegram."),
+    ).toBeInTheDocument();
+  });
+
+  it("given no apply settings, then the summary keeps the neutral sentence", async () => {
+    wirePlan({
+      plan: () => json({ ...READY, groups: [groupRow({ approved: 80 })], counts: { items: 82, pending: 2, approved: 80, rejected: 0 }, applyThreshold: null, applyDelayMinutes: null }),
+    });
+    await renderReview();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails to their new categories" }));
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Move 80 mails?" });
+    expect(within(dialog).getByText(/When many mails move within a day, the move waits a while first/)).toBeInTheDocument();
+  });
+
   it("given groups approved in different sessions, when the page is loaded again, then the summary shows the exact count per group (AC-13)", async () => {
     const later = {
       ...READY,
