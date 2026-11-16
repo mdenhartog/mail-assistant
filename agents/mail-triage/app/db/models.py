@@ -546,6 +546,7 @@ class Plan(Base):
         CheckConstraint(
             "(estimate_total IS NULL OR estimate_total >= 0) AND not_looked_at >= 0", name="ck_plan_progress"
         ),
+        CheckConstraint("moved_count >= 0", name="ck_plan_moved_count"),
         Index(
             "uq_plan_one_open",
             "mailbox_id",
@@ -572,6 +573,7 @@ class Plan(Base):
     apply_run_id: Mapped[str | None] = mapped_column(String(64))  # the run that holds an applying plan (0018)
     apply_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # notice of a delayed plan (0018)
+    moved_count: Mapped[int] = mapped_column(Integer, server_default="0")  # items moved; the items go (0022)
 
 
 class PlanItem(Base):

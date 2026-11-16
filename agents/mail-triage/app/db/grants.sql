@@ -131,6 +131,8 @@ GRANT EXECUTE ON FUNCTION categories.purge_expired() TO mail_triage_runtime;
 -- The agent writes plans and items, moves an item through apply with state and reason only (never the decision), and
 -- appends the apply audit. Nobody has DELETE: retention is purge_expired().
 GRANT SELECT ON categories.plan TO web_settings_runtime;
+-- The review page shows the threshold and the delay the approval uses; it only reads them (the agent writes them).
+GRANT SELECT ON categories.apply_config TO web_settings_runtime;
 GRANT SELECT (mailbox_id, plan_id, id, sender_name, sender_address, subject, old_category_id, new_category_id,
     decision, state, reason) ON categories.plan_item TO web_settings_runtime;
 GRANT SELECT ON categories.move_back_request TO web_settings_runtime;

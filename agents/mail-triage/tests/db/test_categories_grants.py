@@ -80,7 +80,7 @@ MATRIX: dict[str, Row] = {
             update=frozenset({"used_at"}),
         )
     ),
-    "apply_config": Row(agent=Rights(select=ALL, insert=ALL, update=ALL)),
+    "apply_config": Row(api=Rights(select=ALL), agent=Rights(select=ALL, insert=ALL, update=ALL)),
 }
 ROLES = {"api": API_ROLE, "agent": AGENT_ROLE}
 
