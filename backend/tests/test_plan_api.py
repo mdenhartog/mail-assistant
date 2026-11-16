@@ -964,8 +964,9 @@ async def test_given_every_route_and_outcome_when_called_then_sender_and_subject
         assert response.headers["cache-control"] == "no-store"
 
 
-# U-mail-categories-24, criterion 5 (MR-1)
-async def test_given_the_canary_strings_when_the_plan_is_read_then_no_sender_or_subject_is_in_the_view_or_the_logs(
+# U-mail-categories-24, criterion 5 (MR-1), rebuilt by U-mail-categories-32: the view shows one example mail per group
+# (C-18), so the sender and subject of that mail are in the response; no other item is, and nothing reaches a log.
+async def test_given_canary_strings_when_the_plan_is_read_then_only_the_examples_are_in_the_view_and_no_log(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
     caplog: pytest.LogCaptureFixture,
@@ -976,7 +977,126 @@ async def test_given_the_canary_strings_when_the_plan_is_read_then_no_sender_or_
     response = await call(api, "GET", "/api/plan")
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert SENDER_CANARY in response.text  # the example of the first group
+    assert "sender1@example.test" not in response.text  # not an example: the second item of a group of two
+    assert "Subject 2" in response.text  # the example of the group that holds item 2
     logged = " ".join(record.getMessage() for record in caplog.records)
     for canary in (SENDER_CANARY, SUBJECT_CANARY):
-        assert canary not in response.text
         assert canary not in logged
+
+
+# U-mail-categories-32, criterion 1 (C-18, AC-23): one example per group, the rejected count next to the approved one
+async def test_given_groups_when_get_then_each_has_the_example_of_its_lowest_item_and_the_rejected_count(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    plan = await seed_plan(owner, moves=((NIL, CAT_A), (NIL, CAT_A), (NIL, CAT_A), (CAT_A, CAT_B)))
+    await owner.execute(
+        "update categories.plan_item set decision = 'approved', state = 'approved' where id = $1", plan.item_ids[1]
+    )
+    await owner.execute(
+        "update categories.plan_item set decision = 'rejected', state = 'rejected' where id = any($1::bigint[])",
+        [plan.item_ids[0], plan.item_ids[2]],
+    )
+
+    response = await call(api, "GET", "/api/plan")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    groups = {(g["from"], g["to"]): g for g in response.json()["groups"]}
+    first = groups[(str(NIL), str(CAT_A))]
+    assert first["count"] == 3
+    assert (first["approved"], first["rejected"]) == (1, 2)
+    assert first["example"] == {"senderName": "Sender 0", "senderAddress": SENDER_CANARY, "subject": SUBJECT_CANARY}
+    second = groups[(str(CAT_A), str(CAT_B))]
+    assert (second["approved"], second["rejected"]) == (0, 0)
+    assert second["example"] == {
+        "senderName": "Sender 3",
+        "senderAddress": "sender3@example.test",
+        "subject": "Subject 3",
+    }
+
+
+async def test_given_another_mailbox_when_get_then_its_items_are_never_an_example(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed_plan(owner, moves=((NIL, CAT_A),))
+    await seed_plan(owner, mailbox=OTHER_MAILBOX, moves=((NIL, CAT_A),), tag="o")
+    await owner.execute(
+        "update categories.plan_item set subject = 'other mailbox subject' where mailbox_id = $1", OTHER_MAILBOX
+    )
+
+    response = await call(api, "GET", "/api/plan")
+
+    assert "other mailbox subject" not in response.text
+
+
+# U-mail-categories-32, criterion 2 (AC-30): the apply settings the approval uses, read only
+async def test_given_the_apply_config_when_get_then_the_threshold_and_the_delay_are_in_the_view(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed_plan(owner)
+    await set_apply_config(owner, threshold=40, delay=30)
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["applyThreshold"] == 40
+    assert body["applyDelayMinutes"] == 30
+
+
+async def test_given_no_apply_config_when_get_then_the_settings_are_null(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed_plan(owner)
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["applyThreshold"] is None
+    assert body["applyDelayMinutes"] is None
+
+
+async def test_given_no_plan_when_get_then_the_apply_settings_are_still_in_the_view(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await set_apply_config(owner, threshold=50, delay=15)
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["state"] is None
+    assert (body["applyThreshold"], body["applyDelayMinutes"]) == (50, 15)
+
+
+# U-mail-categories-32, criterion 3 (C-18): "310 moved" survives the removal of the moved items
+async def test_given_an_applied_plan_whose_items_are_gone_when_get_then_the_moved_count_is_the_stored_one(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    applied = await seed_plan(owner, state="applied", moves=(), terminal_at=NOV1)
+    await owner.execute("update categories.plan set moved_count = 310 where id = $1", applied.plan_id)
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["lastPlan"]["movedCount"] == 310
+
+
+async def test_given_an_applied_plan_whose_items_are_not_yet_removed_when_get_then_they_are_counted_too(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    applied = await seed_plan(
+        owner, state="applied", moves=((NIL, CAT_A), (NIL, CAT_A), (NIL, CAT_B)), terminal_at=NOV1
+    )
+    await owner.execute("update categories.plan set moved_count = 10 where id = $1", applied.plan_id)
+    await owner.execute(
+        "update categories.plan_item set decision = 'approved', state = 'applied' where id = any($1::bigint[])",
+        applied.item_ids[:2],
+    )
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["lastPlan"]["movedCount"] == 12  # 10 stored, 2 applied items not yet removed; the skipped one is not
