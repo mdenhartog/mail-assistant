@@ -167,3 +167,14 @@ async def test_given_a_plan_without_delay_when_it_is_claimed_then_no_notice_is_n
     plan_id = await scheduled_plan(cat_owner)  # apply_after is not after the approval: nothing to announce
 
     assert await PgApplyStore(agent_sessions, MAILBOX).claim(plan_id, "run-a")
+
+
+async def test_given_an_agent_clock_two_minutes_ahead_when_cancelled_then_the_database_clock_decides(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    store = PgApprovalStore(agent_sessions, MAILBOX)
+    plan_id = await _delayed(cat_owner, minutes=1)  # the start is one minute away by the database clock
+
+    outcome = await store.cancel_before_start(plan_id, datetime.now(UTC) + timedelta(minutes=2))
+
+    assert outcome is CancelOutcome.CANCELLED
