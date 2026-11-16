@@ -75,7 +75,7 @@ def _clean(node: Any, redactor: Redactor) -> Any:  # noqa: ANN401
     if isinstance(node, dict):
         mapping = cast("dict[str, Any]", node)
         return {
-            key: REDACTED if isinstance(key, str) and key.casefold() in SENSITIVE_FIELDS else _clean(value, redactor)
+            key: REDACTED if key.casefold() in SENSITIVE_FIELDS else _clean(value, redactor)
             for key, value in mapping.items()
             if key != "vars"  # local variables of a stack frame are dropped entirely
         }
