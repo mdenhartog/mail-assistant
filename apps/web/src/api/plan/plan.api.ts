@@ -23,8 +23,33 @@ function allOf(value: unknown, check: (item: unknown) => boolean): boolean {
   return Array.isArray(value) && (value as unknown[]).every(check);
 }
 
+function isExample(value: unknown): boolean {
+  return isRecord(value) && ["senderName", "senderAddress", "subject"].every((key) => typeof value[key] === "string");
+}
+
 function isGroup(value: unknown): boolean {
-  return isRecord(value) && typeof value["from"] === "string" && typeof value["to"] === "string" && isNumberAt(value, "count");
+  return (
+    isRecord(value) &&
+    typeof value["from"] === "string" &&
+    typeof value["to"] === "string" &&
+    isNumberAt(value, "count", "approved", "rejected") &&
+    isExample(value["example"])
+  );
+}
+
+function isNumberOrNull(value: unknown): boolean {
+  return value === null || typeof value === "number";
+}
+
+function isLastPlan(value: unknown): boolean {
+  return (
+    value === null ||
+    (isRecord(value) &&
+      typeof value["id"] === "string" &&
+      value["state"] === "applied" &&
+      (value["appliedAt"] === null || typeof value["appliedAt"] === "string") &&
+      isNumberAt(value, "movedCount"))
+  );
 }
 
 function isProgress(value: unknown): boolean {
@@ -35,12 +60,17 @@ function isCounts(value: unknown): boolean {
   return isRecord(value) && isNumberAt(value, "items", "pending", "approved", "rejected");
 }
 
+function hasApplySettings(value: Record<string, unknown>): boolean {
+  return isNumberOrNull(value["applyThreshold"]) && isNumberOrNull(value["applyDelayMinutes"]) && isLastPlan(value["lastPlan"]);
+}
+
 function isPlan(value: unknown): value is PlanView {
   return (
     isRecord(value) &&
     (value["state"] === null || typeof value["state"] === "string") &&
     isProgress(value["progress"]) &&
     isCounts(value["counts"]) &&
+    hasApplySettings(value) &&
     allOf(value["groups"], isGroup)
   );
 }

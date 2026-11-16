@@ -7,16 +7,38 @@ export const OTHER_ID = "00000000-0000-0000-0000-000000000000";
 export const PLAN_ID = "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa";
 export const GONE_ID = "9a9a9a9a-1b1e-4c52-9d0e-0a6a1b1c00ff";
 
+export const EXAMPLE = {
+  senderName: "Acme Billing",
+  senderAddress: "billing@acme.example",
+  subject: "Subject of the example",
+};
+
+export interface GroupRow {
+  from: string;
+  to: string;
+  count: number;
+  approved: number;
+  rejected: number;
+  example: typeof EXAMPLE;
+}
+
+/** One plan group as the API sends it; `patch` changes what a test cares about. */
+export function group(patch: Partial<GroupRow> = {}): GroupRow {
+  return { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 0, rejected: 0, example: EXAMPLE, ...patch };
+}
+
 export const READY = {
   id: PLAN_ID,
   state: "ready",
   progress: { checked: 900, cap: 5000, unclear: 0, estimate: 2000, notLookedAt: 0 },
   groups: [
-    { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 0 },
-    { from: NEWS.id, to: INVOICES.id, count: 2, approved: 0 },
+    group(),
+    group({ from: NEWS.id, count: 2 }),
   ],
   counts: { items: 82, pending: 82, approved: 0, rejected: 0 },
   applyAfter: null,
+  applyThreshold: 50,
+  applyDelayMinutes: 30,
   lastPlan: null,
 };
 

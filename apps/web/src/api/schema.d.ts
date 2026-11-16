@@ -642,6 +642,18 @@ export interface components {
             changed: number;
         };
         /**
+         * GroupExample
+         * @description One mail of a group, shown as text (ADR-0044): the lowest-numbered item, cleaned when the plan was built.
+         */
+        GroupExample: {
+            /** Senderaddress */
+            senderAddress: string;
+            /** Sendername */
+            senderName: string;
+            /** Subject */
+            subject: string;
+        };
+        /**
          * GroupRef
          * @description The two categories of a group.
          */
@@ -701,6 +713,8 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Movedcount */
+            movedCount: number;
             /**
              * State
              * @constant
@@ -798,11 +812,14 @@ export interface components {
             approved: number;
             /** Count */
             count: number;
+            example: components["schemas"]["GroupExample"];
             /**
              * From
              * Format: uuid
              */
             from: string;
+            /** Rejected */
+            rejected: number;
             /**
              * To
              * Format: uuid
@@ -897,6 +914,10 @@ export interface components {
         PlanView: {
             /** Applyafter */
             applyAfter: string | null;
+            /** Applydelayminutes */
+            applyDelayMinutes: number | null;
+            /** Applythreshold */
+            applyThreshold: number | null;
             counts: components["schemas"]["PlanCounts"];
             /** Groups */
             groups: components["schemas"]["PlanGroup"][];

@@ -3,15 +3,15 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { expectNoAxeViolations } from "@/test/axe";
-import { INVOICES, json } from "@/test/categories";
-import { OTHER_ID, READY, item, itemsPage, wirePlan } from "@/test/plan";
+import { json } from "@/test/categories";
+import { READY, group, item, itemsPage, wirePlan } from "@/test/plan";
 import { renderReview } from "@/test/review";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const BIG = { ...READY, groups: [{ from: OTHER_ID, to: INVOICES.id, count: 1000 }], counts: { items: 1000, pending: 1000, approved: 0, rejected: 0 } };
+const BIG = { ...READY, groups: [group({ count: 1000 })], counts: { items: 1000, pending: 1000, approved: 0, rejected: 0 } };
 
 function pagesOf1000(search: URLSearchParams): Response {
   const page = Number(search.get("page") ?? "1");

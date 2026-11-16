@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { expectNoAxeViolations } from "@/test/axe";
 import { INVOICES, NEWS, json } from "@/test/categories";
-import { GONE_ID, NO_PLAN, OTHER_ID, PLAN_ID, READY, itemsPage, wirePlan } from "@/test/plan";
+import { GONE_ID, NO_PLAN, OTHER_ID, PLAN_ID, READY, group as groupRow, itemsPage, wirePlan } from "@/test/plan";
 import { renderReview } from "@/test/review";
 
 afterEach(() => {
@@ -29,7 +29,7 @@ describe("Review moves: groups (AC-12)", () => {
   });
 
   it("given a category id that no longer resolves, then the group says so and nothing breaks", async () => {
-    wirePlan({ plan: () => json({ ...READY, groups: [{ from: GONE_ID, to: INVOICES.id, count: 3 }] }) });
+    wirePlan({ plan: () => json({ ...READY, groups: [groupRow({ from: GONE_ID, count: 3 })] }) });
     await renderReview();
 
     expect(await screen.findByRole("button", { name: /^A category that no longer exists to Invoices/ })).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("Review moves: group header (UX)", () => {
     [50, "50 of 80 will move"],
   ])("given %i of 80 approved, then the chip reads '%s'", async (approved, text) => {
     wirePlan({
-      plan: () => json({ ...READY, groups: [{ from: OTHER_ID, to: INVOICES.id, count: 80, approved }] }),
+      plan: () => json({ ...READY, groups: [groupRow({ approved })] }),
     });
     await renderReview();
 
@@ -180,8 +180,8 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
   const APPROVED = {
     ...READY,
     groups: [
-      { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 80 },
-      { from: NEWS.id, to: INVOICES.id, count: 2, approved: 0 },
+      groupRow({ count: 80, approved: 80 }),
+      groupRow({ from: NEWS.id, count: 2, approved: 0 }),
     ],
     counts: { items: 82, pending: 2, approved: 80, rejected: 0 },
   };
@@ -227,8 +227,8 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
     const later = {
       ...READY,
       groups: [
-        { from: OTHER_ID, to: INVOICES.id, count: 80, approved: 50 },
-        { from: NEWS.id, to: INVOICES.id, count: 2, approved: 1 },
+        groupRow({ count: 80, approved: 50 }),
+        groupRow({ from: NEWS.id, count: 2, approved: 1 }),
       ],
       counts: { items: 82, pending: 31, approved: 51, rejected: 0 },
     };
@@ -333,7 +333,7 @@ describe("Review moves: building (AC-43)", () => {
 });
 
 describe("Review moves: the other states (AC-23)", () => {
-  const LAST = { id: PLAN_ID, state: "applied", appliedAt: "2026-11-15T13:00:00Z" };
+  const LAST = { id: PLAN_ID, state: "applied", appliedAt: "2026-11-15T13:00:00Z", movedCount: 3 };
   const cases: [string, object, string][] = [
     ["no plan", NO_PLAN, "No review is open."],
     ["scheduled", { ...READY, state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }, "Your mails move at "],

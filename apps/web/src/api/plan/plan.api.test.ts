@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, setCsrfToken } from "@/api/client";
 import { approvePlan, classifyPlanError, fetchPlan, fetchPlanItems, moveBack, postDecision } from "@/api/plan/plan.api";
 import { INVOICES, json } from "@/test/categories";
-import { OTHER_ID, PLAN_ID, itemsPage, wirePlan } from "@/test/plan";
+import { EXAMPLE, OTHER_ID, PLAN_ID, READY, group, itemsPage, wirePlan } from "@/test/plan";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -20,6 +20,29 @@ describe("plan api: reading", () => {
 
   it("given an answer that breaks the contract, then reading throws instead of passing it on", async () => {
     wirePlan({ plan: () => json({ state: "ready", groups: "nope" }) });
+    await expect(fetchPlan()).rejects.toThrow("Unexpected plan answer");
+  });
+
+  it("given the new fields, then the plan carries the example, rejected, the apply settings and the moved count", async () => {
+    wirePlan({
+      plan: () =>
+        json({ ...READY, applyThreshold: 50, applyDelayMinutes: 30, lastPlan: { id: PLAN_ID, state: "applied", appliedAt: null, movedCount: 3 } }),
+    });
+    const plan = await fetchPlan();
+    expect(plan.groups[0]?.example.subject).toBe("Subject of the example");
+    expect(plan.groups[0]?.rejected).toBe(0);
+    expect([plan.applyThreshold, plan.applyDelayMinutes, plan.lastPlan?.movedCount]).toEqual([50, 30, 3]);
+  });
+
+  it.each([
+    ["a group without rejected", { groups: [{ from: OTHER_ID, to: INVOICES.id, count: 1, approved: 0, example: EXAMPLE }] }],
+    ["a group without example", { groups: [{ from: OTHER_ID, to: INVOICES.id, count: 1, approved: 0, rejected: 0 }] }],
+    ["an example with a number as subject", { groups: [{ ...group(), example: { ...EXAMPLE, subject: 4 } }] }],
+    ["a threshold that is a string", { applyThreshold: "50" }],
+    ["no delay field", { applyDelayMinutes: undefined }],
+    ["a last plan without a moved count", { lastPlan: { id: PLAN_ID, state: "applied", appliedAt: null } }],
+  ])("given %s, then reading throws", async (_name, patch) => {
+    wirePlan({ plan: () => json({ ...READY, ...patch }) });
     await expect(fetchPlan()).rejects.toThrow("Unexpected plan answer");
   });
 
