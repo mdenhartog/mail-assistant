@@ -1,11 +1,13 @@
-# Mutation testing for U-mail-categories-02: name and list rules, score >= 85 %.
+# Mutation testing for U-mail-categories-02 and -34: name and list rules (policy.py), score >= 85 %.
 # Run: uv run cosmic-ray init cosmic-ray.toml <session>.sqlite && uv run cosmic-ray exec cosmic-ray.toml <session>.sqlite
 # then: uv run cr-rate <session>.sqlite --fail-over 15   (percent of surviving mutants)
 [cosmic-ray]
 module-path = "category_policy"
 timeout = 60.0
 excluded-modules = ["category_policy/__init__.py"]
-test-command = "uv run --no-sync python -m pytest -x -q --no-cov -p no:cacheprovider tests"
+# On Windows the tool cannot stop a hung test run, so the test command ends itself after 30 s with faulthandler;
+# a mutant that hangs counts as killed.
+test-command = 'uv run --no-sync python -c "import faulthandler, sys, pytest; faulthandler.dump_traceback_later(30, exit=True); sys.exit(pytest.main([\"-x\", \"-q\", \"--no-cov\", \"-p\", \"no:cacheprovider\", \"tests\"]))"'
 
 [cosmic-ray.distributor]
 name = "local"

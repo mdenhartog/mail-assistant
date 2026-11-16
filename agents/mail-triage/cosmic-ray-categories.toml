@@ -1,0 +1,44 @@
+# Mutation testing for INT-004 (U-mail-categories-34): the pure modules app/core/pinned.py, scope.py, list_text.py,
+# approval_text.py and resort_plan.py, score >= 85 %. The other app/core modules are gated by cosmic-ray.toml or not pure.
+# Keep the session file outside the repo. From agents/mail-triage:
+#   uv run cosmic-ray init cosmic-ray-categories.toml $TMP/categories.sqlite
+#   uv run cosmic-ray exec cosmic-ray-categories.toml $TMP/categories.sqlite
+#   uv run cr-rate $TMP/categories.sqlite --fail-over 15      (percent of surviving mutants)
+# On Windows the tool cannot stop a hung test run (its timeout leaves the grandchild process spinning), so the test
+# command ends itself after 30 s with faulthandler; a mutant that hangs counts as killed.
+[cosmic-ray]
+module-path = "app/core"
+timeout = 90.0
+excluded-modules = [
+    "app/core/__init__.py",
+    "app/core/alert_state.py",
+    "app/core/alert_text.py",
+    "app/core/auth_results.py",
+    "app/core/judgement.py",
+    "app/core/settings_text.py",
+    "app/core/time_policy.py",
+]
+test-command = 'uv run --no-sync python -c "import faulthandler, sys, pytest; faulthandler.dump_traceback_later(30, exit=True); sys.exit(pytest.main([\"-x\", \"-q\", \"--no-cov\", \"-p\", \"no:cacheprovider\", \"tests/core\", \"tests/test_list_notice_text.py\", \"tests/test_approval_notice.py\"]))"'
+
+# The operators filter drops the `|` mutants (run `uv run cr-filter-operators <session> cosmic-ray-categories.toml` after
+# init). Every `|` in these modules is either the union in an annotation such as `str | None`, which is never
+# evaluated because of `from __future__ import annotations`, or `re.IGNORECASE | re.DOTALL`, where `+` and `^` of
+# the two disjoint flag bits give the same value. Both kinds of mutant are equivalent.
+#
+# Equivalent mutants that survive on purpose (checked one by one, not hidden):
+#  - `if TYPE_CHECKING:` -> `if not TYPE_CHECKING:` in every module: it only imports names used in annotations.
+#  - pinned.py: `==` -> `is` on one-character strings (CPython interns them, so the result is the same);
+#    `depth == 0` -> `depth <= 0` (depth is never negative inside a comment); `char == "("` -> `char >= "("`
+#    (the character there is `(` or `"`, and `"` sorts below `(`); `!= 1` -> `> 1` on the count of dmarc results
+#    (zero results end in the same refusal); `while index < len(header)` -> `!=` (index never passes the end);
+#    `domains[0]` -> `domains[-1]` (the list has exactly one entry there).
+#  - resort_plan.py: `is` -> `==`/`!=`/`<`/`>` on PlanState members: `_require_state` only chooses which error to
+#    raise first, and `transition` refuses the same states with the same message.
+#  - approval_text.py: `minutes <= 1` (minutes is at least 1 after max) and `plans <= 0` or `plans > 1` (the number of
+#    stopped plans is never negative).
+#  - list_text.py: `is` on the description and name comparisons (equal one-character strings are the same object).
+[cosmic-ray.filters.operators-filter]
+exclude-operators = ["core/ReplaceBinaryOperator_BitOr_.*"]
+
+[cosmic-ray.distributor]
+name = "local"
