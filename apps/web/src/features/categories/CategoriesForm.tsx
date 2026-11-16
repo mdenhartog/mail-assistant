@@ -8,9 +8,9 @@ import { CategoryCard } from "@/features/categories/CategoryCard";
 import { Intro, OtherCard } from "@/features/categories/Intro";
 import { LeaveGuard } from "@/features/categories/LeaveGuard";
 import { OlderCategories } from "@/features/categories/OlderCategories";
-import { changeCount, summaryOf } from "@/features/categories/rows";
+import { changesOf } from "@/features/categories/rows";
 import { SaveResultBanner } from "@/features/categories/SaveResultBanner";
-import { SaveSummary } from "@/features/categories/SaveSummary";
+import { changesText, SaveSummary } from "@/features/categories/SaveSummary";
 import { useCategoriesFlow } from "@/features/categories/useCategoriesFlow";
 import type { CategoriesFlow, FocusTarget, Removed } from "@/features/categories/useCategoriesFlow";
 import { useCategoriesSave } from "@/features/categories/useCategoriesSave";
@@ -74,8 +74,7 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
   const form = useRef<HTMLFormElement>(null);
   useFocusTarget(form, flow.focusTarget);
   useFocusFirstInvalid(form, save.errorStamp);
-  const summary = summaryOf(flow.rows, list);
-  const changes = changeCount(summary);
+  const changes = changesOf(flow.rows, list);
   return (
     <form
       className="mt-6 flex flex-col gap-6"
@@ -106,13 +105,13 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
         <Button disabled={!flow.dirty} loading={save.saving} type="submit" variant="primary">
           Save changes
         </Button>
-        {changes > 0 ? <p className="text-sm text-text-muted">{`${String(changes)} ${changes === 1 ? "change" : "changes"} not saved`}</p> : null}
+        {changes.length > 0 ? <p className="text-sm text-text-muted">{`${changesText(changes.length)} not saved`}</p> : null}
       </div>
       <SaveSummary
         onCancel={save.cancel}
         onConfirm={save.confirm}
         open={save.asking}
-        summary={summary}
+        changes={changes}
       />
       <LeaveGuard dirty={flow.dirty} />
       <p className="sr-only" role="status">

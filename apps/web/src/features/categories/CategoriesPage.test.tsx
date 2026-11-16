@@ -30,15 +30,14 @@ describe("Categories page: reading the list", () => {
     const other = screen.getByRole("group", { name: "Other" });
     expect(within(other).getByText("Mail that fits no category")).toBeInTheDocument();
     expect(within(other).getByText("7 mails")).toBeInTheDocument();
-    expect(screen.getByText(/Old mail stays where it is for now\./)).toBeInTheDocument();
-    expect(screen.getByText(/Changes apply to new mail from now on\./)).toBeInTheDocument();
+    expect(screen.getAllByText(/new mail is filed using this list\. Mail already filed stays where it is\./)).toHaveLength(1);
     expect(
       screen.getAllByText(
         "The model reads the description. Say what belongs here, for example: Invoices, receipts and payment confirmations.",
       ),
     ).not.toHaveLength(0);
     expect(screen.getByText("Mail you put in the Gmail label Archive is never re-sorted.")).toBeInTheDocument();
-    expect(screen.getByText("Renaming only changes the label name.")).toBeInTheDocument();
+    expect(screen.queryByText("Renaming only changes the label name.")).not.toBeInTheDocument();
     expect(document.title).toBe("Categories - Mail Assistant");
   });
 

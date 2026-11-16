@@ -28,12 +28,12 @@ async function toSummary(page: Page, handlers: Handlers = {}): Promise<void> {
   await toLoaded(page, handlers);
   await page.getByLabel("Name").first().fill("Bills");
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("alertdialog", { name: "Save these changes?" })).toBeVisible();
+  await expect(page.getByRole("alertdialog", { name: /^Save \d+ changes?\?$/ })).toBeVisible();
 }
 
 async function toSaved(page: Page, handlers: Handlers = {}): Promise<void> {
   await toSummary(page, handlers);
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Save changes" }).click();
 }
 
 const CONFLICT = {

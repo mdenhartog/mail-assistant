@@ -65,14 +65,47 @@ describe("Categories page: saving", () => {
 
     await userEvent.click(saveButton());
 
-    const dialog = await screen.findByRole("alertdialog", { name: "Save these changes?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Save 1 change?" });
     expect(within(dialog).getByText(/Renaming only changes the label name\./)).toBeInTheDocument();
-    expect(within(dialog).getByText(/1 renamed/)).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Keep editing" })).toHaveFocus();
     await userEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(saveButton()).toHaveFocus();
     expect(seen.puts).toHaveLength(0);
+  });
+
+  it("given several changes, then the summary lists each one by name and says the filing rule once, only with a rename", async () => {
+    wire();
+    await loaded();
+    await rename(1, "Bills");
+    await userEvent.type(card(2).getByLabelText("Description"), " More");
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
+    await userEvent.type(card(3).getByLabelText("Name"), "Travel");
+    await userEvent.type(card(3).getByLabelText("Description"), "Flights");
+    await userEvent.click(saveButton());
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Save 3 changes?" });
+    const items = within(dialog).getAllByRole("listitem").map((item) => item.textContent);
+    expect(items).toEqual([
+      'Rename "Invoices" to "Bills"',
+      'Change the description of "Newsletters"',
+      'Add "Travel"',
+    ]);
+    expect(within(dialog).getByText("Renaming only changes the label name.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+    expect(screen.getAllByText(/new mail is filed using this list\. Mail already filed stays where it is\./)).toHaveLength(1);
+    expect(within(dialog).queryByText(/new mail is filed/)).not.toBeInTheDocument();
+  });
+
+  it("given a removal and no rename, then the summary names it and has no renaming sentence", async () => {
+    wire();
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Delete Newsletters" }));
+    await userEvent.click(saveButton());
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Save 1 change?" });
+    expect(within(dialog).getByText('Remove "Newsletters"')).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Renaming only/)).not.toBeInTheDocument();
   });
 
   it("given a confirmed save, then the whole list goes on the stored version with the token and the page says Saved", async () => {
@@ -82,7 +115,7 @@ describe("Categories page: saving", () => {
     await loaded();
     await rename(1, "Bills");
     await userEvent.click(saveButton());
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(seen.puts).toEqual([
@@ -108,7 +141,7 @@ describe("Categories page: saving", () => {
     await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
     await userEvent.type(card(2).getByLabelText("Description"), "Flights and hotels");
     await userEvent.click(saveButton());
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
       expect(seen.puts).toHaveLength(1);
@@ -241,7 +274,7 @@ describe("Categories page: invalid fields (AC-2)", () => {
 
     await userEvent.click(saveButton());
 
-    expect(await screen.findByRole("alertdialog", { name: "Save these changes?" })).toBeInTheDocument();
+    expect(await screen.findByRole("alertdialog", { name: "Save 1 change?" })).toBeInTheDocument();
     expect(screen.queryByText("A Gmail label with this name already exists.")).not.toBeInTheDocument();
     expect(seen.puts).toHaveLength(0);
   });
@@ -262,7 +295,7 @@ describe("Categories page: invalid fields (AC-2)", () => {
     await loaded();
     await rename(2, "Trips");
     await userEvent.click(saveButton());
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByText("A Gmail label with this name already exists.")).toBeInTheDocument();
     await waitFor(() => {
@@ -285,7 +318,7 @@ describe("Categories page: a save that does not store", () => {
   async function save(): Promise<void> {
     await rename(1, "Bills");
     await userEvent.click(saveButton());
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
   }
 
   it("given a conflict (409), then the banner has the focus and the newest list is shown (AC-3)", async () => {
@@ -355,7 +388,7 @@ describe("Categories page: keyboard only (AC-23)", () => {
     await user.keyboard("{Enter}");
     const dialog = await screen.findByRole("alertdialog");
     await user.tab();
-    expect(within(dialog).getByRole("button", { name: "Save" })).toHaveFocus();
+    expect(within(dialog).getByRole("button", { name: "Save changes" })).toHaveFocus();
     await user.keyboard("{Enter}");
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();

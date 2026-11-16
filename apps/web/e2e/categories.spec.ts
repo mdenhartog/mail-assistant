@@ -30,7 +30,7 @@ test.describe.configure({ mode: "serial", timeout: 120_000 });
 
 const INVOICES = "Invoices";
 const TRAVEL = "Travel";
-const SUMMARY_TITLE = "Save these changes?";
+const SUMMARY_TITLE = /^Save \d+ changes?\?$/;
 
 test.beforeEach(() => {
   resetState();
@@ -58,7 +58,7 @@ async function pressSave(page: Page): Promise<void> {
 async function confirmSave(page: Page): Promise<void> {
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
 }
 
 // 0 (AC-22, C-12)
@@ -102,7 +102,7 @@ test("the page shows the list with name, description and number of mails, and Ot
   await expect(page.getByText("1 mail", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Other" })).toBeVisible();
   await expect(page.getByText("3 mails")).toBeVisible();
-  await expect(page.getByText("Old mail stays where it is for now.").first()).toBeVisible();
+  await expect(page.getByText(/Mail already filed stays where it is\./).first()).toBeVisible();
   await expect(page.getByText("Archive is left alone.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to my list: Newsletters" })).toBeVisible();
 });
@@ -122,10 +122,9 @@ test("edit and save: the summary says what happens, the list is stored whole as 
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("1 with a new description, 1 added.")).toBeVisible();
-  await expect(dialog.getByText("Changes apply to new mail from now on. Old mail stays where it is for now.")).toBeVisible();
   expect(versions(), "nothing is stored before the user confirms").toEqual(["1|operator"]);
 
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
   await expect(page.getByText("Your list applies to new mail from now on.")).toBeVisible();
 
@@ -187,7 +186,7 @@ for (const row of REFUSED) {
     await pressSave(page);
     const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
     if (await dialog.isVisible()) {
-      await dialog.getByRole("button", { name: "Save", exact: true }).click();
+      await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
     }
 
     await expect(page.getByText(row.text)).toBeVisible();
@@ -206,7 +205,7 @@ test("a new name that equals an existing Gmail label is refused and nothing is s
   await pressSave(page);
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
   if (await dialog.isVisible()) {
-    await dialog.getByRole("button", { name: "Save", exact: true }).click();
+    await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   }
 
   await expect(page.getByText("A Gmail label with this name already exists.")).toBeVisible();
@@ -238,7 +237,7 @@ test("a rename keeps the category id, makes no review and the summary says only 
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
   await expect(dialog.getByText("1 renamed.")).toBeVisible();
   await expect(dialog.getByText("Renaming only changes the label name.")).toBeVisible();
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   await expect(page.getByText("Saved.")).toBeVisible();
 
   const [invoices, trips] = storedList(2);
@@ -272,7 +271,7 @@ test("a removed category can be put back before saving, and is gone from the nex
 
   await page.getByRole("button", { name: `Delete ${TRAVEL}` }).click();
   await pressSave(page);
-  await expect(page.getByRole("alertdialog", { name: SUMMARY_TITLE }).getByText("1 removed.")).toBeVisible();
+  await expect(page.getByRole("alertdialog", { name: SUMMARY_TITLE }).getByText(/^Remove "/)).toBeVisible();
   await confirmSave(page);
   await expect(page.getByText("Saved.")).toBeVisible();
 
@@ -294,7 +293,7 @@ test("the whole save flow works with the keyboard alone", async ({ page }) => {
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Keep editing" })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(dialog.getByRole("button", { name: "Save", exact: true })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "Save changes", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
 
   await expect(page.getByText("Saved.")).toBeVisible();

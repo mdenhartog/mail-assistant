@@ -44,27 +44,25 @@ export function isDirty(rows: readonly Row[], list: CategoryList): boolean {
   );
 }
 
-/** What a save will do, counted against the stored list. */
-export interface Summary {
-  renamed: number;
-  described: number;
-  added: number;
-  removed: number;
-}
+/** One thing a save does, with the names it concerns. Renames carry the stored name and the new one. */
+export type Change =
+  | { kind: "rename"; from: string; to: string }
+  | { kind: "describe"; name: string }
+  | { kind: "remove"; name: string }
+  | { kind: "add"; name: string };
 
-/** How many changes a save would make: one per renamed, re-described, added or removed category. */
-export function changeCount({ renamed, described, added, removed }: Summary): number {
-  return renamed + described + added + removed;
-}
-
-export function summaryOf(rows: readonly Row[], list: CategoryList): Summary {
+/** What a save will do against the stored list: renames, description changes, removals, then additions. */
+export function changesOf(rows: readonly Row[], list: CategoryList): Change[] {
   const stored = new Map(list.categories.map((category) => [category.id, category]));
   const kept = new Set(rows.map((row) => row.id));
-  const before = (row: Row) => (row.id === null ? undefined : stored.get(row.id));
-  return {
-    renamed: rows.filter((row) => before(row) !== undefined && before(row)?.name !== row.name).length,
-    described: rows.filter((row) => before(row) !== undefined && before(row)?.description !== row.description).length,
-    added: rows.filter((row) => row.id === null).length,
-    removed: list.categories.filter((category) => !kept.has(category.id)).length,
-  };
+  const pairs = rows.flatMap((row) => {
+    const before = row.id === null ? undefined : stored.get(row.id);
+    return before === undefined ? [] : [{ row, before }];
+  });
+  return [
+    ...pairs.filter(({ row, before }) => before.name !== row.name).map(({ row, before }): Change => ({ kind: "rename", from: before.name, to: row.name })),
+    ...pairs.filter(({ row, before }) => before.description !== row.description).map(({ row }): Change => ({ kind: "describe", name: row.name })),
+    ...list.categories.filter((category) => !kept.has(category.id)).map((category): Change => ({ kind: "remove", name: category.name })),
+    ...rows.filter((row) => row.id === null).map((row): Change => ({ kind: "add", name: row.name })),
+  ];
 }

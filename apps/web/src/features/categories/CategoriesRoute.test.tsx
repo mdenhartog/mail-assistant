@@ -76,7 +76,7 @@ describe("the /categories route", () => {
     const name = await screen.findByDisplayValue(INVOICES.name);
     await userEvent.type(name, "x");
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("heading", { name: "Access refused" })).toBeInTheDocument();
     await waitFor(() => {

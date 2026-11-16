@@ -4,14 +4,11 @@ import { Banner } from "@/components/Banner";
 import { Card } from "@/components/Card";
 import { countText } from "@/features/categories/copy";
 
-/** What a change does (R1: new mail only) and that Archive is left alone. */
+/** What a save does to mail (new mail only) and that Archive is left alone. */
 export function Intro(): ReactElement {
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <p className="text-text">Changes apply to new mail from now on. Old mail stays where it is for now.</p>
-        <p className="text-sm text-text-muted">Renaming only changes the label name.</p>
-      </div>
+      <p className="text-text">When you save, new mail is filed using this list. Mail already filed stays where it is.</p>
       <Banner kind="info" title="Archive is left alone.">
         Mail you put in the Gmail label Archive is never re-sorted.
       </Banner>
