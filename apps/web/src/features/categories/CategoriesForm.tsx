@@ -6,6 +6,7 @@ import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { CategoryCard } from "@/features/categories/CategoryCard";
 import { Intro, OtherCard } from "@/features/categories/Intro";
+import { LeaveGuard } from "@/features/categories/LeaveGuard";
 import { OlderCategories } from "@/features/categories/OlderCategories";
 import { summaryOf } from "@/features/categories/rows";
 import { SaveResultBanner } from "@/features/categories/SaveResultBanner";
@@ -107,6 +108,7 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
         open={save.asking}
         summary={summaryOf(flow.rows, list)}
       />
+      <LeaveGuard dirty={flow.dirty} />
       <p className="sr-only" role="status">
         {save.saving ? "Saving your categories." : ""}
       </p>

@@ -1,11 +1,11 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import type { BoundFunctions, queries } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setCsrfToken } from "@/api/client";
 import { expectNoAxeViolations } from "@/test/axe";
-import { INVOICES, LIST, NEWS, json, renderPage, wire } from "@/test/categories";
+import { INVOICES, LIST, NEWS, json, renderPage, renderPageInRouter, wire } from "@/test/categories";
 
 const TOKEN = "csrf-secret-4711";
 
@@ -127,6 +127,67 @@ describe("Categories page: saving", () => {
     await userEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(card(1).getByLabelText("Name")).toHaveValue("Invoices");
     expect(saveButton()).toBeDisabled();
+  });
+});
+
+describe("Categories page: leaving with unsaved changes", () => {
+  function setUp(): ReturnType<typeof renderPageInRouter> {
+    return renderPageInRouter();
+  }
+
+  it("given unsaved edits, when the user navigates away, then a dialog asks and Keep editing stays on the page", async () => {
+    wire();
+    const { router } = setUp();
+    await screen.findByDisplayValue(INVOICES.name);
+    await rename(1, "Bills");
+
+    await act(async () => {
+      await router.navigate("/elsewhere");
+    });
+
+    const dialog = await screen.findByRole("alertdialog", { name: "You have changes that are not saved. Leave without saving?" });
+    expect(within(dialog).getByRole("button", { name: "Keep editing" })).toHaveFocus();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(card(1).getByLabelText("Name")).toHaveValue("Bills");
+    expect(router.state.location.pathname).toBe("/categories");
+  });
+
+  it("given the dialog, when Leave is pressed, then the navigation goes through", async () => {
+    wire();
+    const { router } = setUp();
+    await screen.findByDisplayValue(INVOICES.name);
+    await rename(1, "Bills");
+    await act(async () => {
+      await router.navigate("/elsewhere");
+    });
+    await userEvent.click(await screen.findByRole("button", { name: "Leave" }));
+    expect(await screen.findByText("Elsewhere page")).toBeInTheDocument();
+  });
+
+  it("given no edits, then navigating away is not asked about", async () => {
+    wire();
+    const { router } = setUp();
+    await screen.findByDisplayValue(INVOICES.name);
+    await act(async () => {
+      await router.navigate("/elsewhere");
+    });
+    expect(await screen.findByText("Elsewhere page")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("given unsaved edits, then closing the tab asks the browser to confirm; without edits it does not", async () => {
+    wire();
+    setUp();
+    await screen.findByDisplayValue(INVOICES.name);
+    const clean = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(clean);
+    expect(clean.defaultPrevented).toBe(false);
+
+    await rename(1, "Bills");
+    const dirty = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirty);
+    expect(dirty.defaultPrevented).toBe(true);
   });
 });
 

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { vi } from "vitest";
 
 import { CategoriesPage } from "@/features/categories/CategoriesPage";
@@ -59,11 +60,24 @@ export function wire(options: { get?: () => Answer; put?: (body: Put["body"]) =>
   return { puts: seen.puts, gets: () => seen.gets };
 }
 
-export function renderPage(): HTMLElement {
+/** The page inside a data router (the unsaved-changes guard needs one), with a second route to leave to. */
+export function renderPageInRouter(): { container: HTMLElement; router: ReturnType<typeof createMemoryRouter> } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(
+  const router = createMemoryRouter(
+    [
+      { path: "/categories", element: <CategoriesPage /> },
+      { path: "/elsewhere", element: <p>Elsewhere page</p> },
+    ],
+    { initialEntries: ["/categories"] },
+  );
+  const { container } = render(
     <QueryClientProvider client={client}>
-      <CategoriesPage />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
-  ).container;
+  );
+  return { container, router };
+}
+
+export function renderPage(): HTMLElement {
+  return renderPageInRouter().container;
 }
