@@ -23,7 +23,7 @@ from app.usecases.approval_notice import ApprovalNotice, PlanNoticeActions
 from app.usecases.resort_apply import Offer
 from app.usecases.telegram_actions import TelegramActions
 from tests.db.resort_support import MAILBOX, agent_sessions
-from tests.db.test_pg_approval import _delayed
+from tests.db.test_pg_approval import delayed
 from tests.db.test_pg_resort_apply import scheduled_plan
 from tests.list_notice_support import CHAT, Nonces, RecordingChat
 
@@ -49,9 +49,9 @@ async def test_given_the_notice_code_when_compared_with_the_constraint_then_ever
     )
     model = next(c for c in TelegramAction.__table_args__ if getattr(c, "name", "") == "ck_telegram_action_kind")
 
-    allowed = _kinds(definition)
+    allowed = _kinds(str(definition))
 
-    assert set(approval_notice._KINDS.values()) | LIST_KINDS == allowed  # the contract under test
+    assert set(approval_notice._KINDS.values()) | LIST_KINDS == allowed  # pyright: ignore[reportPrivateUsage]  # the contract
     assert _kinds(str(model.sqltext)) == allowed  # type: ignore[attr-defined]  # the model says what the database says
 
 
@@ -61,7 +61,7 @@ async def test_given_a_delayed_plan_when_noticed_then_cancel_and_lock_are_stored
     chat = RecordingChat()
     actions = TelegramActions(PgActionStore(agent_sessions, MAILBOX), Nonces())
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner)
+    plan_id = await delayed(cat_owner)
     await ApprovalNotice(actions, store, chat, chat_id=CHAT).run(NOW)
     handler = PlanNoticeActions(
         actions,

@@ -28,7 +28,7 @@ __all__ = ["agent_sessions"]
 AGENT_DIGEST = hashlib.sha256(AGENT_ROLE.encode()).hexdigest()
 
 
-async def _delayed(owner: asyncpg.Connection, minutes: int = 15) -> Any:
+async def delayed(owner: asyncpg.Connection, minutes: int = 15) -> Any:
     """A scheduled plan whose apply starts in ``minutes`` (the approval is now: a delayed plan)."""
     plan_id = await scheduled_plan(owner, moves=4)
     await owner.execute("update categories.plan_approval set at = now()")
@@ -40,7 +40,7 @@ async def test_given_a_delayed_plan_when_listed_then_it_is_unannounced_with_its_
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner)
+    plan_id = await delayed(cat_owner)
 
     [plan] = await store.unannounced()
     assert (plan.plan_id, plan.mail_count) == (plan_id, 4)
@@ -55,7 +55,7 @@ async def test_given_a_plan_without_delay_when_listed_then_it_is_not_announced(
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    await _delayed(cat_owner)
+    await delayed(cat_owner)
     await cat_owner.execute("update categories.plan set apply_after = (select at from categories.plan_approval)")
 
     assert await store.unannounced() == []
@@ -65,7 +65,7 @@ async def test_given_a_delayed_plan_when_cancelled_before_the_start_then_it_ends
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner)
+    plan_id = await delayed(cat_owner)
 
     outcomes = await asyncio.gather(store.cancel_before_start(plan_id), store.cancel_before_start(plan_id))
 
@@ -77,7 +77,7 @@ async def test_given_the_start_has_passed_when_cancelled_then_too_late_and_the_p
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner, minutes=-1)  # the start was a minute ago by the database clock
+    plan_id = await delayed(cat_owner, minutes=-1)  # the start was a minute ago by the database clock
 
     assert await store.cancel_before_start(plan_id) is CancelOutcome.TOO_LATE
     assert await cat_owner.fetchval("select state from categories.plan") == "scheduled"
@@ -147,7 +147,7 @@ async def test_given_a_delayed_plan_that_was_never_announced_when_it_is_due_then
 ) -> None:
     approvals = PgApprovalStore(agent_sessions, MAILBOX)
     applies = PgApplyStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner)
+    plan_id = await delayed(cat_owner)
     # the delay of 15 minutes has run out, but no notice was ever sent: nobody could have cancelled
     await cat_owner.execute("update categories.plan_approval set at = now() - interval '30 minutes'")
     await cat_owner.execute("update categories.plan set apply_after = now() - interval '1 second'")
@@ -172,7 +172,7 @@ async def test_given_a_start_one_minute_away_when_cancelled_then_the_database_cl
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner, minutes=1)  # the start is one minute away by the database clock
+    plan_id = await delayed(cat_owner, minutes=1)  # the start is one minute away by the database clock
 
     outcome = await store.cancel_before_start(plan_id)
 
