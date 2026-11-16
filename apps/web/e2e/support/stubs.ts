@@ -162,12 +162,14 @@ export const PLAN = {
   state: "ready",
   progress: { checked: 900, cap: 5000, unclear: 2, estimate: 2000, notLookedAt: 0 },
   groups: [
-    { from: "00000000-0000-0000-0000-000000000000", to: "00000000-0000-4000-8000-000000000001", count: 20, approved: 0 },
-    { from: "00000000-0000-4000-8000-000000000002", to: "00000000-0000-4000-8000-000000000001", count: 12, approved: 0 },
-    { from: "00000000-0000-4000-8000-0000000000ff", to: "00000000-0000-4000-8000-000000000003", count: 1, approved: 0 },
+    { from: "00000000-0000-0000-0000-000000000000", to: "00000000-0000-4000-8000-000000000001", count: 20, approved: 0, rejected: 0, example: { senderName: "Acme Billing", senderAddress: "billing@acme.example", subject: "Your invoice" } },
+    { from: "00000000-0000-4000-8000-000000000002", to: "00000000-0000-4000-8000-000000000001", count: 12, approved: 0, rejected: 0, example: { senderName: "Acme Billing", senderAddress: "billing@acme.example", subject: "Your invoice" } },
+    { from: "00000000-0000-4000-8000-0000000000ff", to: "00000000-0000-4000-8000-000000000003", count: 1, approved: 0, rejected: 0, example: { senderName: "Acme Billing", senderAddress: "billing@acme.example", subject: "Your invoice" } },
   ],
   counts: { items: 33, pending: 33, approved: 0, rejected: 0 },
   applyAfter: null,
+  applyThreshold: 50,
+  applyDelayMinutes: 30,
   lastPlan: null,
 } as const;
 

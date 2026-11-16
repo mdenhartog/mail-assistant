@@ -81,7 +81,7 @@ test("once the plan is applied the page says so and Move back asks the agent exa
   await approveGroup(page);
   markApplied();
   await page.reload();
-  await expect(page.getByText("Your mails were moved.")).toBeVisible();
+  await expect(page.getByText(/mails? (were|was) moved on /)).toBeVisible();
 
   await page.getByRole("button", { name: "Move back" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Move these mails back?" });
@@ -155,7 +155,7 @@ async function reach(page: Page, state: (typeof STATES)[number]): Promise<void> 
     markApplied();
   }
   await page.reload();
-  await expect(page.getByText(state === "cancelled" ? "This review was cancelled." : "Your mails were moved.")).toBeVisible();
+  await expect(page.getByText(state === "cancelled" ? "This review was cancelled." : /mails? (were|was) moved on /)).toBeVisible();
 }
 
 for (const viewport of VIEWPORTS) {
