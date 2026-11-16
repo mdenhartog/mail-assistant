@@ -19,15 +19,16 @@ describe("ActionBar", () => {
   it("says what the button does and how many mails stay where they are", () => {
     render(<ActionBar approved={12} onMove={() => undefined} undecided={30} />);
 
-    expect(screen.getByRole("button", { name: "Move 12 mails, labels only" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Move 12 mails to their new categories" })).toBeEnabled();
     expect(screen.getByText("30 not decided yet stay where they are.")).toBeInTheDocument();
+    expect(screen.getByText("Only labels change, nothing is deleted")).toBeInTheDocument();
   });
 
   it("with nothing approved the button is disabled and the text says what to do first", async () => {
     const onMove = vi.fn();
     render(<ActionBar approved={0} onMove={onMove} undecided={30} />);
 
-    const button = screen.getByRole("button", { name: "Move 0 mails, labels only" });
+    const button = screen.getByRole("button", { name: "Move 0 mails to their new categories" });
     await userEvent.click(button);
 
     expect(button).toBeDisabled();

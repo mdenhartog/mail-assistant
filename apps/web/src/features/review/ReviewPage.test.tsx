@@ -149,22 +149,22 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
     wirePlan();
     await renderReview();
 
-    const button = await screen.findByRole("button", { name: "Move 0 mails, labels only" });
+    const button = await screen.findByRole("button", { name: "Move 0 mails to their new categories" });
     expect(button).toHaveAttribute("aria-disabled", "true");
     await userEvent.click(button);
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
-  it("given approved mails, then the button reads 'Move N mails, labels only' and the summary names the counts per group", async () => {
+  it("given approved mails, then the button reads 'Move N mails to their new categories' and the summary names the counts per group", async () => {
     await approvedPlan();
 
-    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails, labels only" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails to their new categories" }));
 
     const dialog = await screen.findByRole("alertdialog", { name: "Move 80 mails?" });
     expect(within(dialog).getByText("Other to Invoices: 80 mails")).toBeInTheDocument();
     expect(within(dialog).getByText(/Only labels change\. Nothing is deleted/)).toBeInTheDocument();
     const buttons = within(dialog).getAllByRole("button");
-    expect(buttons.map((button) => button.textContent)).toEqual(["Not yet", "Move 80 mails, labels only"]);
+    expect(buttons.map((button) => button.textContent)).toEqual(["Not yet", "Move 80 mails to their new categories"]);
     expect(buttons[0]).toHaveFocus();
   });
 
@@ -180,7 +180,7 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
     wirePlan({ plan: () => json(later) });
     await renderReview();
 
-    await userEvent.click(await screen.findByRole("button", { name: "Move 51 mails, labels only" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Move 51 mails to their new categories" }));
 
     const dialog = await screen.findByRole("alertdialog", { name: "Move 51 mails?" });
     expect(within(dialog).getByText("Other to Invoices: 50 mails")).toBeInTheDocument();
@@ -189,8 +189,8 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
 
   it("given the summary is confirmed, then the plan and its count are approved and the scheduled state shows", async () => {
     const seen = await approvedPlan();
-    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails, labels only" }));
-    await userEvent.click(await within(await screen.findByRole("alertdialog")).findByRole("button", { name: "Move 80 mails, labels only" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails to their new categories" }));
+    await userEvent.click(await within(await screen.findByRole("alertdialog")).findByRole("button", { name: "Move 80 mails to their new categories" }));
 
     await waitFor(() => {
       expect(seen.find((call) => call.path === "/api/plan/approve")?.body).toEqual({ planId: PLAN_ID, itemCount: 82 });
@@ -200,7 +200,7 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
 
   it("given Escape in the summary, then nothing is approved", async () => {
     const seen = await approvedPlan();
-    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails, labels only" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails to their new categories" }));
     await screen.findByRole("alertdialog");
 
     await userEvent.keyboard("{Escape}");
@@ -221,8 +221,8 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
     });
     await renderReview();
     await userEvent.click(await screen.findByRole("button", { name: "Approve group: Other to Invoices" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails, labels only" }));
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Move 80 mails, labels only" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Move 80 mails to their new categories" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Move 80 mails to their new categories" }));
 
     expect(await screen.findByText("Could not move your mails. Nothing was changed.")).toBeInTheDocument();
   });

@@ -13,10 +13,12 @@ export function clockText(iso: string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : CLOCK.format(date);
 }
 
-/** The button of the sticky bar says what it does and that only labels change. */
+/** The button of the sticky bar says what it does; the line beside it says that only labels change. */
 export function moveLabel(count: number): string {
-  return `Move ${countText(count)}, labels only`;
+  return `Move ${countText(count)} to their new categories`;
 }
+
+export const LABELS_ONLY_HELPER = "Only labels change, nothing is deleted";
 
 export const DECISION_TEXT = {
   approved: "Will move",

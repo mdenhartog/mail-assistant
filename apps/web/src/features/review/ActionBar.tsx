@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ReactElement, RefObject } from "react";
 
 import { Button } from "@/components/Button";
-import { moveLabel } from "@/features/review/copy";
+import { LABELS_ONLY_HELPER, moveLabel } from "@/features/review/copy";
 
 /** Room left above the bar for the focus ring of the box that is scrolled into view. */
 const BREATHING_PX = 8;
@@ -58,6 +58,7 @@ export interface ActionBarProps {
  */
 export function ActionBar({ approved, undecided, onMove }: ActionBarProps): ReactElement {
   const ref = useRef<HTMLDivElement>(null);
+  const helperId = useId();
   const sticky = useSticksToBottom(ref);
   return (
     <div
@@ -71,9 +72,14 @@ export function ActionBar({ approved, undecided, onMove }: ActionBarProps): Reac
           ? "Approve a group or tick mails first. Nothing moves until you confirm."
           : `${String(undecided)} not decided yet stay where they are.`}
       </p>
-      <Button disabled={approved === 0} onClick={onMove} variant="primary">
-        {moveLabel(approved)}
-      </Button>
+      <div className="flex flex-col items-start gap-1 sm:items-end">
+        <Button aria-describedby={helperId} disabled={approved === 0} onClick={onMove} variant="primary">
+          {moveLabel(approved)}
+        </Button>
+        <p className="text-sm text-text-muted" id={helperId}>
+          {LABELS_ONLY_HELPER}
+        </p>
+      </div>
     </div>
   );
 }
