@@ -11,6 +11,11 @@ export const LABEL_PREFIX = "Assistant/";
 const RESERVED_NAMES: readonly string[] = ["other", "archive"];
 const FORBIDDEN = /[\p{Cc}\p{Cf}]/u;
 
+// Control and format characters and "..": the agent refuses a label with ".." too.
+function hasForbidden(text: string): boolean {
+  return text.includes("..") || FORBIDDEN.test(text);
+}
+
 export interface Problem {
   rule: string;
   field: "name" | "description" | "list";
@@ -68,7 +73,7 @@ function nameProblems(
   if (text.includes("/")) {
     rules.push("name_slash");
   }
-  if (text.includes("..") || FORBIDDEN.test(text)) {
+  if (hasForbidden(text)) {
     rules.push("name_forbidden_char");
   }
   const key = normaliseName(name);
