@@ -63,7 +63,7 @@ function noticeFor(state: PlanState, plan: PlanView): Notice {
       return {
         kind: "info",
         title: at === null ? "Your mails are about to move." : `Your mails move at ${at}.`,
-        body: "Only labels change. You can cancel in Telegram until then.",
+        body: "Only labels change. To stop this, use Cancel in the Telegram message.",
       };
     }
     case "applying":

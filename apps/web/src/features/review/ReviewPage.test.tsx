@@ -162,7 +162,7 @@ describe("Review moves: approving (AC-13, AC-55)", () => {
 
     const dialog = await screen.findByRole("alertdialog", { name: "Move 80 mails?" });
     expect(within(dialog).getByText("Other to Invoices: 80 mails")).toBeInTheDocument();
-    expect(within(dialog).getByText(/Only labels change\. Nothing is deleted/)).toBeInTheDocument();
+    expect(within(dialog).getByText("Each mail gets its new category label in Gmail. Nothing is deleted and nothing is sent. You can move them back afterwards.")).toBeInTheDocument();
     const buttons = within(dialog).getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Not yet", "Move 80 mails to their new categories"]);
     expect(buttons[0]).toHaveFocus();
@@ -308,7 +308,7 @@ describe("Review moves: the other states (AC-23)", () => {
     wirePlan({ plan: () => json({ ...READY, state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }) });
     await renderReview();
 
-    expect(await screen.findByText(/You can cancel in Telegram until then\./)).toBeInTheDocument();
+    expect(await screen.findByText(/Only labels change\. To stop this, use Cancel in the Telegram message\./)).toBeInTheDocument();
   });
 
   it("given an applied plan with skipped and failed mails, then each is listed with its reason", async () => {

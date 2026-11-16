@@ -42,7 +42,7 @@ export function ApproveDialog({ open, plan, categories, onConfirm, onCancel }: A
           <li key={line}>{line}</li>
         ))}
       </ul>
-      <p className="mt-3">Only labels change. Nothing is deleted, and you can move back afterwards.</p>
+      <p className="mt-3">Each mail gets its new category label in Gmail. Nothing is deleted and nothing is sent. You can move them back afterwards.</p>
       <p className="mt-3">Mails you did not approve stay where they are.</p>
       <p className="mt-3">
         When many mails move within a day, the move waits a while first. You can cancel it in Telegram until it starts.
