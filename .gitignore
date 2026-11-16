@@ -43,3 +43,6 @@ playwright/.auth/
 deploy/local/secrets.env
 deploy/local/backups/
 .eslintcache
+
+# Saved Playwright session of the e2e setup project (a live session cookie)
+apps/web/playwright/.auth/
