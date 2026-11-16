@@ -252,10 +252,17 @@ class PgApplyStore:
         return found
 
     async def claim(self, plan_id: uuid.UUID, run_id: str) -> bool:
-        """``scheduled`` (and due) to ``applying``, or take over an ``applying`` plan whose lease ended."""
+        """``scheduled`` (due, and announced when delayed) to ``applying``, or take over an ``applying`` plan whose lease ended."""
         free = or_(Plan.apply_lease_until.is_(None), Plan.apply_lease_until <= func.now())
+        approved_at = (
+            select(func.max(PlanApproval.at))
+            .where(PlanApproval.mailbox_id == Plan.mailbox_id, PlanApproval.plan_id == Plan.id)
+            .scalar_subquery()
+        )
+        # a delayed plan (the apply starts after the approval) waits for its notice: nobody could cancel before it
+        announced = or_(Plan.announced_at.is_not(None), Plan.apply_after <= approved_at)
         takeable = or_(
-            and_(Plan.state == PlanState.SCHEDULED.value, Plan.apply_after <= func.now()),
+            and_(Plan.state == PlanState.SCHEDULED.value, Plan.apply_after <= func.now(), announced),
             and_(Plan.state == PlanState.APPLYING.value, free),
         )
         statement = (
