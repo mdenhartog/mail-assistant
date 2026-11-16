@@ -18,7 +18,6 @@ from app.usecases.approval_notice import CancelOutcome, ScheduledPlan
 
 if TYPE_CHECKING:
     import uuid
-    from datetime import datetime
 
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -85,12 +84,12 @@ class PgApprovalStore:
         async with self._sessions.begin() as session:
             await session.execute(statement)
 
-    async def cancel_before_start(self, plan_id: uuid.UUID, now: datetime) -> CancelOutcome:
-        """``scheduled`` to ``cancelled`` when ``now < apply_after``, in one statement; else say why not."""
+    async def cancel_before_start(self, plan_id: uuid.UUID) -> CancelOutcome:
+        """``scheduled`` to ``cancelled`` while the database clock is before ``apply_after``; else say why not."""
         mine = and_(Plan.mailbox_id == self._mailbox, Plan.id == plan_id)
         cancel = (
             update(Plan)
-            .where(mine, Plan.state == PlanState.SCHEDULED.value, Plan.apply_after > now)
+            .where(mine, Plan.state == PlanState.SCHEDULED.value, Plan.apply_after > func.now())
             .values(state=PlanState.CANCELLED.value, apply_lease_until=None)
             .returning(Plan.id)
         )

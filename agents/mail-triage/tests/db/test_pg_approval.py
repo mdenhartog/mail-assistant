@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
@@ -66,9 +66,8 @@ async def test_given_a_delayed_plan_when_cancelled_before_the_start_then_it_ends
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
     plan_id = await _delayed(cat_owner)
-    now = datetime.now(UTC)
 
-    outcomes = await asyncio.gather(store.cancel_before_start(plan_id, now), store.cancel_before_start(plan_id, now))
+    outcomes = await asyncio.gather(store.cancel_before_start(plan_id), store.cancel_before_start(plan_id))
 
     assert sorted(o.value for o in outcomes) == ["cancelled", "not_scheduled"]
     assert await cat_owner.fetchval("select state from categories.plan") == "cancelled"
@@ -78,9 +77,9 @@ async def test_given_the_start_has_passed_when_cancelled_then_too_late_and_the_p
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
-    plan_id = await _delayed(cat_owner)
+    plan_id = await _delayed(cat_owner, minutes=-1)  # the start was a minute ago by the database clock
 
-    assert await store.cancel_before_start(plan_id, datetime.now(UTC) + timedelta(minutes=16)) is CancelOutcome.TOO_LATE
+    assert await store.cancel_before_start(plan_id) is CancelOutcome.TOO_LATE
     assert await cat_owner.fetchval("select state from categories.plan") == "scheduled"
 
 
@@ -90,7 +89,7 @@ async def test_given_an_applied_plan_when_cancelled_then_not_scheduled(
     store = PgApprovalStore(agent_sessions, MAILBOX)
     plan_id = await scheduled_plan(cat_owner, state="applied")
 
-    assert await store.cancel_before_start(plan_id, datetime.now(UTC)) is CancelOutcome.NOT_SCHEDULED
+    assert await store.cancel_before_start(plan_id) is CancelOutcome.NOT_SCHEDULED
 
 
 async def test_given_scheduled_and_applying_plans_when_the_open_plans_are_cancelled_then_all_end_cancelled(
@@ -169,12 +168,12 @@ async def test_given_a_plan_without_delay_when_it_is_claimed_then_no_notice_is_n
     assert await PgApplyStore(agent_sessions, MAILBOX).claim(plan_id, "run-a")
 
 
-async def test_given_an_agent_clock_two_minutes_ahead_when_cancelled_then_the_database_clock_decides(
+async def test_given_a_start_one_minute_away_when_cancelled_then_the_database_clock_decides(
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApprovalStore(agent_sessions, MAILBOX)
     plan_id = await _delayed(cat_owner, minutes=1)  # the start is one minute away by the database clock
 
-    outcome = await store.cancel_before_start(plan_id, datetime.now(UTC) + timedelta(minutes=2))
+    outcome = await store.cancel_before_start(plan_id)
 
     assert outcome is CancelOutcome.CANCELLED

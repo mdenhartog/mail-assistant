@@ -252,7 +252,7 @@ class PgApplyStore:
         return found
 
     async def claim(self, plan_id: uuid.UUID, run_id: str) -> bool:
-        """``scheduled`` (due, and announced when delayed) to ``applying``, or take over an ``applying`` plan whose lease ended."""
+        """``scheduled`` (due; announced when delayed) to ``applying``, or take over an ``applying`` plan with an old lease."""
         free = or_(Plan.apply_lease_until.is_(None), Plan.apply_lease_until <= func.now())
         approved_at = (
             select(func.max(PlanApproval.at))

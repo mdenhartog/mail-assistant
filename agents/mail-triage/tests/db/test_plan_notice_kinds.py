@@ -51,7 +51,7 @@ async def test_given_the_notice_code_when_compared_with_the_constraint_then_ever
 
     allowed = _kinds(definition)
 
-    assert set(approval_notice._KINDS.values()) | LIST_KINDS == allowed  # noqa: SLF001  # the contract under test
+    assert set(approval_notice._KINDS.values()) | LIST_KINDS == allowed  # the contract under test
     assert _kinds(str(model.sqltext)) == allowed  # type: ignore[attr-defined]  # the model says what the database says
 
 

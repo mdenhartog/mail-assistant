@@ -31,6 +31,7 @@ class FakePlanStore:
     after: dict[uuid.UUID, datetime] = field(default_factory=dict)
     counts: dict[uuid.UUID, int] = field(default_factory=dict)
     announced: set[uuid.UUID] = field(default_factory=set)
+    clock: list[datetime] = field(default_factory=lambda: [NOW])  # the database clock
 
     def schedule(self, plan: uuid.UUID = PLAN, count: int = 60, at: datetime = NOW + DELAY) -> None:
         self.states[plan], self.after[plan], self.counts[plan] = "scheduled", at, count
@@ -45,10 +46,10 @@ class FakePlanStore:
     async def mark_announced(self, plan_id: uuid.UUID) -> None:
         self.announced.add(plan_id)
 
-    async def cancel_before_start(self, plan_id: uuid.UUID, now: datetime) -> CancelOutcome:
+    async def cancel_before_start(self, plan_id: uuid.UUID) -> CancelOutcome:
         if self.states.get(plan_id) != "scheduled":
             return CancelOutcome.NOT_SCHEDULED
-        if now >= self.after[plan_id]:
+        if self.clock[0] >= self.after[plan_id]:
             return CancelOutcome.TOO_LATE
         self.states[plan_id] = "cancelled"
         return CancelOutcome.CANCELLED
@@ -79,7 +80,8 @@ class Rig:
 
     def __init__(self) -> None:
         self.clock = [NOW]
-        self.plans, self.chat, self.lock, self.back = FakePlanStore(), RecordingChat(), FakeLock(), FakeMoveBack()
+        self.plans, self.chat, self.lock = FakePlanStore(clock=self.clock), RecordingChat(), FakeLock()
+        self.back = FakeMoveBack()
         actions = TelegramActions(FakeActionStore(), Nonces())
         self.notice = ApprovalNotice(actions, self.plans, self.chat, chat_id=CHAT)
         self.buttons = PlanNoticeActions(

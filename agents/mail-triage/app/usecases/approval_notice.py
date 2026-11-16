@@ -5,8 +5,8 @@ See ADR-0046 and ADR-0033.
 An approval above the threshold makes a ``scheduled`` plan that the agent applies after ``apply_after``. Each run sends
 one notice per such plan (then marks it announced; a failed send is repeated with new nonces). Cancel and Lock carry
 single-use nonces whose target is the plan id. Cancel is one compare-and-set in the store: it wins only while the plan
-is still ``scheduled`` and ``now < apply_after``, so a Cancel after the delay is refused and says so. Lock sets the web
-lock first and then cancels every ``scheduled`` or ``applying`` plan (the apply also stops before its next batch on the
+is still ``scheduled`` and the database clock is before ``apply_after``, so a Cancel after the delay is refused and
+says so. Lock sets the web lock first and then cancels every ``scheduled`` or ``applying`` plan (the apply also stops before its next batch on the
 lock). Move back asks for the restore of an applied plan, once per plan. The result notice (counts) is sent by the
 notifier through ``send_result``. Buttons from another chat, used, late or of another kind change nothing. Nothing here
 reads the clock or makes a random value, and nothing logs.
@@ -86,8 +86,8 @@ class ApprovalStore(Protocol):
         """Remember that the notice of the plan was sent."""
         ...
 
-    async def cancel_before_start(self, plan_id: uuid.UUID, now: datetime) -> CancelOutcome:
-        """``scheduled`` to ``cancelled`` when ``now < apply_after``, in one statement."""
+    async def cancel_before_start(self, plan_id: uuid.UUID) -> CancelOutcome:
+        """``scheduled`` to ``cancelled`` while the database clock is before ``apply_after``, in one statement."""
         ...
 
     async def cancel_open_plans(self) -> int:
@@ -178,7 +178,7 @@ class PlanNoticeActions:
             return
         plan_id = uuid.UUID(outcome.target)
         if action == approval_text.CANCEL:
-            answer = await self._cancel(plan_id, now)
+            answer = await self._cancel(plan_id)
         elif action == approval_text.LOCK:
             answer = await self._lock_all(now)
         else:
@@ -186,8 +186,8 @@ class PlanNoticeActions:
             answer = approval_text.MOVE_BACK_ASKED if asked else approval_text.MOVE_BACK_UNAVAILABLE
         await self._chat.edit_message(command.message_id, answer)
 
-    async def _cancel(self, plan_id: uuid.UUID, now: datetime) -> str:
-        result = await self._store.cancel_before_start(plan_id, now)
+    async def _cancel(self, plan_id: uuid.UUID) -> str:
+        result = await self._store.cancel_before_start(plan_id)
         return {
             CancelOutcome.CANCELLED: approval_text.CANCELLED,
             CancelOutcome.TOO_LATE: approval_text.TOO_LATE,
