@@ -300,6 +300,7 @@ class ResortApply:
 
     async def _apply_plan(self, due: DuePlan, run_id: str) -> None:
         plan_id = due.plan_id
+        waiting: set[str] = set()  # failed in this run: tried again in a later run, never at once (REV-005)
         while True:
             if await self._lock.is_locked():
                 await self._store.cancel(plan_id)
@@ -308,20 +309,29 @@ class ResortApply:
             if not await self._store.begin_batch(plan_id, run_id):
                 logger.info("apply stopped: the plan is no longer ours plan=%s", plan_id)
                 return
-            items = await self._store.next_items(plan_id, self._batch)
+            found = await self._store.next_items(plan_id, self._batch + len(waiting))
+            items = [one for one in found if one.message_id not in waiting][: self._batch]
             if not items:
                 break
             categories = await self._store.current_categories()
             names = await asyncio.to_thread(self._mail.label_names)
             for one in items:
-                await self._apply_item(plan_id, one, categories, names)
+                if not await self._apply_item(plan_id, one, categories, names):
+                    waiting.add(one.message_id)
+        if waiting:
+            # The plan stays ``applying`` and its lease ends by itself: the next run is the next try for these items.
+            logger.info("apply paused: %d item(s) wait for the next run plan=%s", len(waiting), plan_id)
+            return
         if await self._store.finish_plan(plan_id, run_id):
             await self._report(plan_id)
 
     async def _apply_item(
         self, plan_id: uuid.UUID, one: ApplyItem, categories: dict[str, str], names: dict[str, str]
-    ) -> None:
-        """Move one item; a Gmail failure is counted and after ``MAX_ITEM_ATTEMPTS`` the item ends ``failed``."""
+    ) -> bool:
+        """Move one item; false when Gmail failed and the item stays ``approved`` for a later run.
+
+        A failure is counted and after ``MAX_ITEM_ATTEMPTS`` the item ends ``failed`` (true: it is settled).
+        """
         try:
             await self._move_item(plan_id, one, categories, names)
         except MailFailed:
@@ -329,6 +339,9 @@ class ResortApply:
             logger.warning("item failed plan=%s attempts=%d", plan_id, attempts)
             if attempts >= MAX_ITEM_ATTEMPTS:
                 await self._store.finish_item(plan_id, one.message_id, ItemState.FAILED, None)
+                return True
+            return False
+        return True
 
     async def _move_item(
         self, plan_id: uuid.UUID, one: ApplyItem, categories: dict[str, str], names: dict[str, str]
