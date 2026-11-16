@@ -1,4 +1,5 @@
 """The RFC 8601 tokeniser and the verdict of pinned mail, case by case (AC-39, MC-19; mutation gate)."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 

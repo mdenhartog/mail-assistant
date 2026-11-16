@@ -1,4 +1,5 @@
 """List notice words: exact budget, tier and wording boundaries (mutation gate, U-mail-categories-34)."""
+# pyright: reportPrivateUsage=false
 
 from __future__ import annotations
 
