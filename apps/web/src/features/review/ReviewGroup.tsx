@@ -7,7 +7,7 @@ import { Card } from "@/components/Card";
 import { countText } from "@/features/review/copy";
 import { GroupPanel } from "@/features/review/GroupPanel";
 import type { SelectionUpdate } from "@/features/review/GroupPanel";
-import { groupKey } from "@/features/review/text";
+import { cleanText, groupKey } from "@/features/review/text";
 
 export interface ReviewGroupProps {
   group: PlanGroup;
@@ -19,15 +19,23 @@ export interface ReviewGroupProps {
   onDecideSelected: (group: PlanGroup, decision: Decision, ids: number[]) => void;
 }
 
-/** What the user decided for the group, in words. The server counts the approved mails; "kept" is this visit only. */
-function statusText(group: PlanGroup, kept: boolean): string {
-  if (group.approved >= group.count) {
-    return `All ${String(group.count)} will move`;
+/** What the user decided for the group, in words. The server counts approved and rejected mails, so it survives a reload. */
+function statusText(group: PlanGroup): string {
+  const { approved, rejected, count } = group;
+  const stay = rejected >= count ? "Stays in place" : `${String(rejected)} of ${String(count)} stay in place`;
+  if (approved >= count) {
+    return `All ${String(count)} will move`;
   }
-  if (group.approved > 0) {
-    return `${String(group.approved)} of ${String(group.count)} will move`;
+  if (approved === 0) {
+    return rejected === 0 ? "Not decided yet" : stay;
   }
-  return kept ? "Stays in place" : "Not decided yet";
+  const move = `${String(approved)} of ${String(count)} will move`;
+  return rejected === 0 ? move : `${move}, ${String(rejected)} stay in place`;
+}
+
+/** The first mail of the group as one line of plain text (React escapes it); no address, it is long and not needed. */
+function exampleText(group: PlanGroup): string {
+  return `For example: ${cleanText(group.example.senderName)}, "${cleanText(group.example.subject)}"`;
 }
 
 interface GroupActionsProps {
@@ -66,7 +74,6 @@ function GroupActions({ title, busy, open, onApprove, onKeep, onLook }: GroupAct
 export function ReviewGroup(props: ReviewGroupProps): ReactElement {
   const { group, title, busy, onDecideGroup } = props;
   const [open, setOpen] = useState(false);
-  const [kept, setKept] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   return (
@@ -87,19 +94,18 @@ export function ReviewGroup(props: ReviewGroupProps): ReactElement {
             <span className="text-md font-semibold text-text-muted">{countText(group.count)}</span>
           </button>
         </h3>
+        <p className="mt-1 text-sm text-text-muted wrap-anywhere">{exampleText(group)}</p>
         <p className="mt-1">
           <span className="inline-flex rounded-pill border border-border px-3 text-sm font-semibold text-text">
-            {statusText(group, kept)}
+            {statusText(group)}
           </span>
         </p>
         <GroupActions
           busy={busy}
           onApprove={() => {
-            setKept(false);
             onDecideGroup(group, "approved");
           }}
           onKeep={() => {
-            setKept(true);
             onDecideGroup(group, "rejected");
           }}
           onLook={() => {

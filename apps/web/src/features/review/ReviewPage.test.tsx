@@ -81,13 +81,47 @@ describe("Review moves: group header (UX)", () => {
     expect(await screen.findByText(text)).toBeInTheDocument();
   });
 
-  it("given Keep all in place, then the chip reads 'Stays in place'", async () => {
-    wirePlan();
+  it.each([
+    [{ approved: 0, rejected: 80 }, "Stays in place"],
+    [{ approved: 0, rejected: 30 }, "30 of 80 stay in place"],
+    [{ approved: 50, rejected: 30 }, "50 of 80 will move, 30 stay in place"],
+    [{ approved: 0, rejected: 0 }, "Not decided yet"],
+  ])("given %o, then the chip reads '%s' (also after a reload)", async (counts, text) => {
+    wirePlan({ plan: () => json({ ...READY, groups: [groupRow(counts)] }) });
+    await renderReview();
+
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
+  it("given Keep all in place, then the plan is read again and the chip reads 'Stays in place'", async () => {
+    let kept = false;
+    wirePlan({
+      plan: () => json({ ...READY, groups: [groupRow(kept ? { rejected: 80 } : {})] }),
+      decisions: () => {
+        kept = true;
+        return json({ changed: 80 });
+      },
+    });
     await renderReview();
 
     await userEvent.click(await screen.findByRole("button", { name: "Keep all in place: Other to Invoices" }));
 
     expect(await within(group(GROUP_BUTTON)).findByText("Stays in place")).toBeInTheDocument();
+  });
+
+  it("given an example mail, then it shows under the title as plain text, outside the toggle button", async () => {
+    wirePlan({
+      plan: () =>
+        json({
+          ...READY,
+          groups: [groupRow({ example: { senderName: "Acme <b>Billing</b>", senderAddress: "a@b.example", subject: "Your invoice" } })],
+        }),
+    });
+    await renderReview();
+
+    const line = await screen.findByText('For example: Acme <b>Billing</b>, "Your invoice"');
+    expect(line.closest("button")).toBeNull();
+    expect(line.querySelector("b")).toBeNull();
   });
 
   it("given 'Look at these mails first', then the group opens and the control goes away", async () => {
