@@ -11,7 +11,7 @@ import { summaryOf } from "@/features/categories/rows";
 import { SaveResultBanner } from "@/features/categories/SaveResultBanner";
 import { SaveSummary } from "@/features/categories/SaveSummary";
 import { useCategoriesFlow } from "@/features/categories/useCategoriesFlow";
-import type { CategoriesFlow, FocusTarget } from "@/features/categories/useCategoriesFlow";
+import type { CategoriesFlow, FocusTarget, Removed } from "@/features/categories/useCategoriesFlow";
 import { useCategoriesSave } from "@/features/categories/useCategoriesSave";
 import type { CategoriesSave } from "@/features/categories/useCategoriesSave";
 
@@ -33,25 +33,37 @@ function useFocusFirstInvalid(form: RefObject<HTMLFormElement | null>, stamp: nu
   }, [form, stamp]);
 }
 
-function CardGrid({ flow, save }: { flow: CategoriesFlow; save: CategoriesSave }): ReactElement {
+/** Takes the place of the card that was removed, and says what saving does with it. */
+function RemovedNotice({ removed, onUndo }: { removed: Removed; onUndo: () => void }): ReactElement {
   return (
-    <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      {flow.rows.map((row, index) => (
-        <CategoryCard
-          errors={save.errors[row.key] ?? {}}
-          key={row.key}
-          onChange={(key, field, value) => {
-            flow.setField(key, field, value);
-            save.clear(key);
-          }}
-          onRemove={flow.remove}
-          position={index + 1}
-          readOnly={save.saving}
-          row={row}
-        />
-      ))}
-    </ul>
+    <li data-removed="">
+      <Banner action={{ label: "Undo", onClick: onUndo }} kind="info" title={`Removed ${removed.row.name}.`}>
+        It is removed when you save. Mail already filed under it stays where it is.
+      </Banner>
+    </li>
   );
+}
+
+function CardGrid({ flow, save }: { flow: CategoriesFlow; save: CategoriesSave }): ReactElement {
+  const { removed } = flow;
+  const items = flow.rows.map((row, index) => (
+    <CategoryCard
+      errors={save.errors[row.key] ?? {}}
+      key={row.key}
+      onChange={(key, field, value) => {
+        flow.setField(key, field, value);
+        save.clear(key);
+      }}
+      onRemove={flow.remove}
+      position={index + 1}
+      readOnly={save.saving}
+      row={row}
+    />
+  ));
+  if (removed !== null) {
+    items.splice(removed.index, 0, <RemovedNotice key="removed" onUndo={flow.undoRemove} removed={removed} />);
+  }
+  return <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">{items}</ul>;
 }
 
 /** The loaded list as a form of cards. */
@@ -73,11 +85,6 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
     >
       <Intro />
       <SaveResultBanner onRetry={save.retry} result={save.result} />
-      {flow.removed ? (
-        <Banner action={{ label: "Undo", onClick: flow.undoRemove }} kind="info" title={`Removed ${flow.removed.row.name}.`}>
-          It is gone when you save.
-        </Banner>
-      ) : null}
       <CardGrid flow={flow} save={save} />
       <div>
         <Button disabled={!flow.canAdd} onClick={flow.add}>

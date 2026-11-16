@@ -106,6 +106,19 @@ describe("Categories page: saving", () => {
     ]);
   });
 
+  it("given a deleted card, then the removed notice stands where the card was and says what saving does", async () => {
+    wire();
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Delete Invoices" }));
+
+    const items = screen.getAllByRole("listitem");
+    const notice = within(items[0] as HTMLElement);
+    expect(notice.getByRole("status")).toHaveTextContent("Removed Invoices.");
+    expect(notice.getByText(/It is removed when you save\. Mail already filed under it stays where it is\./)).toBeInTheDocument();
+    expect(notice.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    expect(within(items[1] as HTMLElement).getByLabelText("Name")).toHaveValue("Newsletters");
+  });
+
   it("given a deleted card, when Undo is pressed, then it is back where it was", async () => {
     wire();
     await loaded();
