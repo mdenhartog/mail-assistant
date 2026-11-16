@@ -42,28 +42,29 @@ function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void })
 
 interface AppliedPlan {
   id: string;
-  appliedAt: string | null;
+  endedAt: string | null;
   movedCount: number | null;
 }
 
 /** The plan Move back is for: the open plan once applied, or the last applied one when none is open. */
 function appliedPlan(plan: PlanView): AppliedPlan | null {
   const last = plan.lastPlan;
-  const known = last ? { appliedAt: last.appliedAt, movedCount: last.movedCount } : { appliedAt: null, movedCount: null };
+  const known = last ? { endedAt: last.endedAt, movedCount: last.movedCount } : { endedAt: null, movedCount: null };
   if (plan.state === "applied" && plan.id !== null) {
     return { id: plan.id, ...known };
   }
-  return plan.state === null && last ? { id: last.id, ...known } : null;
+  return plan.state === null && last?.state === "applied" ? { id: last.id, ...known } : null;
 }
 
 function Content({ plan }: { plan: PlanView }): ReactElement {
   const categories = useCategories();
   const applied = appliedPlan(plan);
   if (applied) {
-    return <AppliedPanel appliedAt={applied.appliedAt} movedCount={applied.movedCount} planId={applied.id} />;
+    return <AppliedPanel endedAt={applied.endedAt} movedCount={applied.movedCount} planId={applied.id} />;
   }
   if (plan.state === null) {
-    return <NoPlan />;
+    const last = plan.lastPlan;
+    return last === null ? <NoPlan /> : <Notice endedAt={last.endedAt} plan={plan} state={last.state} />;
   }
   if (plan.state === "building") {
     return <Building plan={plan} />;

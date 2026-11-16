@@ -23,6 +23,13 @@ export function dayText(iso: string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : DAY.format(date);
 }
 
+/** " on 15 Nov at 14:20" for the end of a plan, or "" when the time is unknown, so a sentence stays true. */
+export function onDayAtText(iso: string | null): string {
+  const day = dayText(iso);
+  const clock = clockText(iso);
+  return day === null || clock === null ? "" : ` on ${day} at ${clock}`;
+}
+
 export const SKIPPED_FALLBACK = "You moved this mail yourself, so I left it alone.";
 export const FAILED_FALLBACK = "Gmail did not accept the change. It stays where it was.";
 

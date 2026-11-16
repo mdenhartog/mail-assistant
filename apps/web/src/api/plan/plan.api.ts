@@ -37,8 +37,18 @@ function isGroup(value: unknown): boolean {
   );
 }
 
+function isStringOrNull(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
 function isNumberOrNull(value: unknown): boolean {
   return value === null || typeof value === "number";
+}
+
+const LAST_STATES = ["applied", "cancelled", "replaced"];
+
+function isMovedCount(value: unknown): boolean {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isLastPlan(value: unknown): boolean {
@@ -46,9 +56,9 @@ function isLastPlan(value: unknown): boolean {
     value === null ||
     (isRecord(value) &&
       typeof value["id"] === "string" &&
-      value["state"] === "applied" &&
-      (value["appliedAt"] === null || typeof value["appliedAt"] === "string") &&
-      isNumberAt(value, "movedCount"))
+      LAST_STATES.includes(String(value["state"])) &&
+      isStringOrNull(value["endedAt"]) &&
+      isMovedCount(value["movedCount"]))
   );
 }
 

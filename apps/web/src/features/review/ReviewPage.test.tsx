@@ -491,7 +491,7 @@ describe("Review moves: the other states (AC-23)", () => {
     wirePlan({ plan: () => json({ ...NO_PLAN, lastPlan: { ...LAST, state, movedCount: 0 } }) });
     await renderReview();
 
-    expect(await screen.findByText(new RegExp(`^This review was ${state} on 15 Nov at \d\d:\d\d\.$`))).toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`^This review was ${state} on 15 Nov at [0-9]{2}:[0-9]{2}[.]$`))).toBeInTheDocument();
     expect(screen.getByText(new RegExp(body))).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Move back" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Edit your categories" })).toHaveAttribute("href", "/categories");

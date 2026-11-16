@@ -8,7 +8,7 @@ import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { FAILED_FALLBACK, SKIPPED_FALLBACK, clockText, dayText } from "@/features/review/copy";
+import { FAILED_FALLBACK, SKIPPED_FALLBACK, onDayAtText } from "@/features/review/copy";
 import { cleanText } from "@/features/review/text";
 
 function NotMoved({ rows }: { rows: PlanItem[] }): ReactElement | null {
@@ -127,19 +127,17 @@ function MoveBackControl({ planId }: { planId: string }): ReactElement {
 }
 
 /** "3 mails were moved on 15 Nov at 14:20."; a missing count or time gives the shorter sentence that is still true. */
-function movedTitle(appliedAt: string | null, movedCount: number | null): string {
-  const day = dayText(appliedAt);
-  const clock = clockText(appliedAt);
+function movedTitle(endedAt: string | null, movedCount: number | null): string {
   const subject =
     movedCount === null ? "Your mails were moved" : `${String(movedCount)} ${movedCount === 1 ? "mail was" : "mails were"} moved`;
-  return day === null || clock === null ? `${subject}.` : `${subject} on ${day} at ${clock}.`;
+  return `${subject}${onDayAtText(endedAt)}.`;
 }
 
 export interface AppliedPanelProps {
   /** The plan Move back applies to. */
   planId: string;
   /** When the mails were moved (ISO time), shown as "15 Nov at 14:20", or null when unknown. */
-  appliedAt: string | null;
+  endedAt: string | null;
   /** How many mails the plan moved, or null when the server did not say. */
   movedCount: number | null;
 }
@@ -148,12 +146,12 @@ export interface AppliedPanelProps {
  * The result of an applied plan: what was moved, the mails that were skipped or failed with a plain reason, and
  * "Move back" behind a red confirmation (the label changes are undone, never mail deleted).
  */
-export function AppliedPanel({ planId, appliedAt, movedCount }: AppliedPanelProps): ReactElement {
+export function AppliedPanel({ planId, endedAt, movedCount }: AppliedPanelProps): ReactElement {
   const items = usePlanItems(null, true);
   const rows = items.data?.pages.flatMap((page) => page.items) ?? [];
   return (
     <section className="mt-6">
-      <Banner kind="success" title={movedTitle(appliedAt, movedCount)}>
+      <Banner kind="success" title={movedTitle(endedAt, movedCount)}>
         Only labels changed; nothing was deleted.
       </Banner>
       <NotMoved rows={rows} />

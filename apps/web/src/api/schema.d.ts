@@ -84,7 +84,7 @@ export interface paths {
         };
         /**
          * Read Plan
-         * @description Return the open plan with its progress, groups, counts and apply time, and the last applied plan.
+         * @description Return the open plan with its progress, groups, counts and apply time, and the plan that ended last.
          *
          *     Args:
          *         request: The request, whose app holds the database access.
@@ -703,11 +703,11 @@ export interface components {
         };
         /**
          * LastPlan
-         * @description The plan applied most recently, the one "Move back" is offered for.
+         * @description The plan that ended most recently; "Move back" is offered for it only when it was applied.
          */
         LastPlan: {
-            /** Appliedat */
-            appliedAt: string | null;
+            /** Endedat */
+            endedAt: string | null;
             /**
              * Id
              * Format: uuid
@@ -717,9 +717,9 @@ export interface components {
             movedCount: number;
             /**
              * State
-             * @constant
+             * @enum {string}
              */
-            state: "applied";
+            state: "applied" | "cancelled" | "replaced";
         };
         /**
          * MoveBackResult
