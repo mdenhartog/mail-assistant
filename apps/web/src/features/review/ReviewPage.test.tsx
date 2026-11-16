@@ -48,6 +48,61 @@ describe("Review moves: groups (AC-12)", () => {
   });
 });
 
+describe("Review moves: group header (UX)", () => {
+  const group = (name: RegExp): HTMLElement => {
+    const item = screen.getByRole("button", { name }).closest("li");
+    if (item === null) {
+      throw new Error("group not found");
+    }
+    return item;
+  };
+
+  it("given nothing is decided, then the chip says so and Approve group is the secondary button", async () => {
+    wirePlan();
+    await renderReview();
+    await screen.findByRole("button", { name: GROUP_BUTTON });
+
+    const first = group(GROUP_BUTTON);
+    expect(within(first).getByText("Not decided yet")).toBeInTheDocument();
+    const approve = within(first).getByRole("button", { name: "Approve group: Other to Invoices" });
+    expect(approve.className).toContain("bg-surface-raised");
+    expect(approve.className).not.toContain("bg-primary");
+  });
+
+  it.each([
+    [80, "All 80 will move"],
+    [50, "50 of 80 will move"],
+  ])("given %i of 80 approved, then the chip reads '%s'", async (approved, text) => {
+    wirePlan({
+      plan: () => json({ ...READY, groups: [{ from: OTHER_ID, to: INVOICES.id, count: 80, approved }] }),
+    });
+    await renderReview();
+
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
+  it("given Keep all in place, then the chip reads 'Stays in place'", async () => {
+    wirePlan();
+    await renderReview();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Keep all in place: Other to Invoices" }));
+
+    expect(await within(group(GROUP_BUTTON)).findByText("Stays in place")).toBeInTheDocument();
+  });
+
+  it("given 'Look at these mails first', then the group opens and the control goes away", async () => {
+    wirePlan({ items: () => json(itemsPage(1, 3, false)) });
+    await renderReview();
+    await screen.findByRole("button", { name: GROUP_BUTTON });
+
+    await userEvent.click(within(group(GROUP_BUTTON)).getByRole("button", { name: "Look at these mails first: Other to Invoices" }));
+
+    expect(screen.getByRole("button", { name: GROUP_BUTTON })).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findAllByRole("checkbox")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: GROUP_BUTTON })).toHaveFocus();
+  });
+});
+
 describe("Review moves: deciding (AC-13)", () => {
   it("given 'Select all 80 in this group', then it only selects and sends no decision", async () => {
     const seen = wirePlan({ items: () => json(itemsPage(1, 80, false)) });
