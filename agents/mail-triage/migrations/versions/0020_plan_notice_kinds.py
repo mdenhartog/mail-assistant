@@ -31,6 +31,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Restore the old constraint; the plan buttons it would refuse are removed first (they live a day at most)."""
-    op.execute("DELETE FROM categories.telegram_action WHERE kind LIKE 'plan\_%'")
+    op.execute("DELETE FROM categories.telegram_action WHERE kind NOT IN ('undo', 'lock')")
     op.drop_constraint(_NAME, _TABLE, schema=_SCHEMA)
     op.create_check_constraint(_NAME, _TABLE, _OLD, schema=_SCHEMA)
