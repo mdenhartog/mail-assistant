@@ -398,8 +398,8 @@ describe("Review moves: the other states (AC-23)", () => {
     ["replaced", { ...READY, state: "replaced", groups: [] }, "This review was replaced."],
     ["cancelled", { ...READY, state: "cancelled", groups: [] }, "This review was cancelled."],
     ["discarded", { ...READY, state: "discarded", groups: [] }, "This review was too old."],
-    ["applied", { ...READY, state: "applied", groups: [], lastPlan: LAST }, "Your mails were moved."],
-    ["applied and already retired", { ...NO_PLAN, lastPlan: LAST }, "Your mails were moved."],
+    ["applied", { ...READY, state: "applied", groups: [], lastPlan: LAST }, "3 mails were moved on 15 Nov at "],
+    ["applied and already retired", { ...NO_PLAN, lastPlan: LAST }, "3 mails were moved on 15 Nov at "],
   ];
 
   it.each(cases)("given %s, then its banner shows", async (_name, plan, title) => {
@@ -423,6 +423,29 @@ describe("Review moves: the other states (AC-23)", () => {
     expect(await screen.findByText(/Only labels change\. To stop this, use Cancel in the Telegram message\./)).toBeInTheDocument();
   });
 
+  it.each([
+    [1, "1 mail was moved on 15 Nov at "],
+    [0, "0 mails were moved on 15 Nov at "],
+  ])("given %i moved, then the banner counts them in the singular or plural", async (movedCount, title) => {
+    wirePlan({
+      plan: () => json({ ...NO_PLAN, lastPlan: { ...LAST, movedCount } }),
+      items: () => json({ items: [], page: 1, hasMore: false }),
+    });
+    await renderReview();
+
+    expect(await screen.findByText(new RegExp(`^${title}[0-9]{2}:[0-9]{2}[.]$`))).toBeInTheDocument();
+  });
+
+  it("given the moved time is unknown, then the banner still says how many moved", async () => {
+    wirePlan({
+      plan: () => json({ ...NO_PLAN, lastPlan: { ...LAST, appliedAt: null } }),
+      items: () => json({ items: [], page: 1, hasMore: false }),
+    });
+    await renderReview();
+
+    expect(await screen.findByText("3 mails were moved.")).toBeInTheDocument();
+  });
+
   it("given an applied plan with skipped and failed mails, then each is listed with its reason", async () => {
     wirePlan({
       plan: () => json({ ...READY, state: "applied", groups: [], lastPlan: LAST }),
@@ -443,7 +466,7 @@ describe("Review moves: the other states (AC-23)", () => {
     expect(screen.getByText("You moved this mail yourself")).toBeInTheDocument();
     expect(screen.getByText("Gmail did not accept the change. It stays where it was.")).toBeInTheDocument();
     expect(screen.getByText(/Mails you changed yourself stay as you left them/)).toBeInTheDocument();
-    expect(screen.getByText(/Your mails were moved on 15 Nov at \d\d:\d\d\./)).toBeInTheDocument();
+    expect(screen.getByText(/^3 mails were moved on 15 Nov at \d\d:\d\d\.$/)).toBeInTheDocument();
     expect(screen.getByText("Only labels changed; nothing was deleted.")).toBeInTheDocument();
     expect(screen.getByText("Subject 3")).toBeInTheDocument();
     expect(screen.queryByText("Subject 1")).not.toBeInTheDocument();

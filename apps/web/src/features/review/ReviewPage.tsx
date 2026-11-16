@@ -40,19 +40,27 @@ function LoadFailed({ error, onRetry }: { error: unknown; onRetry: () => void })
   );
 }
 
+interface AppliedPlan {
+  id: string;
+  appliedAt: string | null;
+  movedCount: number | null;
+}
+
 /** The plan Move back is for: the open plan once applied, or the last applied one when none is open. */
-function appliedPlan(plan: PlanView): { id: string; appliedAt: string | null } | null {
+function appliedPlan(plan: PlanView): AppliedPlan | null {
+  const last = plan.lastPlan;
+  const known = last ? { appliedAt: last.appliedAt, movedCount: last.movedCount } : { appliedAt: null, movedCount: null };
   if (plan.state === "applied" && plan.id !== null) {
-    return { id: plan.id, appliedAt: plan.lastPlan?.appliedAt ?? null };
+    return { id: plan.id, ...known };
   }
-  return plan.state === null && plan.lastPlan ? { id: plan.lastPlan.id, appliedAt: plan.lastPlan.appliedAt } : null;
+  return plan.state === null && last ? { id: last.id, ...known } : null;
 }
 
 function Content({ plan }: { plan: PlanView }): ReactElement {
   const categories = useCategories();
   const applied = appliedPlan(plan);
   if (applied) {
-    return <AppliedPanel appliedAt={applied.appliedAt} planId={applied.id} />;
+    return <AppliedPanel appliedAt={applied.appliedAt} movedCount={applied.movedCount} planId={applied.id} />;
   }
   if (plan.state === null) {
     return <NoPlan />;
