@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_read import FetchedMail
@@ -209,6 +209,7 @@ class Rig:
             budget=self,
             now=self.clock,
             pinned=PINNED,
+            debounce=timedelta(minutes=10),
         )
 
     def remaining(self) -> int:

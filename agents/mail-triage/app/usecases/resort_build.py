@@ -38,7 +38,6 @@ if TYPE_CHECKING:
     from app.core.pinned import PinnedSenders
 
 __all__ = [
-    "DEBOUNCE",
     "PAGE_SIZE",
     "PLAN_CAP",
     "BuildList",
@@ -56,7 +55,6 @@ logger = logging.getLogger(__name__)
 
 PLAN_CAP = 5000  # mails a plan looks at, newest first (D15)
 PAGE_SIZE = 100
-DEBOUNCE = timedelta(minutes=10)  # how long the list must stay unchanged before a build starts (D14)
 SUBJECT_MAX = 120
 NAME_MAX = 120
 ADDRESS_MAX = 320
@@ -246,7 +244,7 @@ class ResortBuild:
         budget: BudgetView,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
-        debounce: timedelta = DEBOUNCE,
+        debounce: timedelta,  # how long the list must stay unchanged before a build starts (D14); from the settings
         cap: int = PLAN_CAP,
     ) -> None:
         """Wire the ports, the clock and the allow-list of pinned sender domains."""
