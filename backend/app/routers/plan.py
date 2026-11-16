@@ -83,7 +83,7 @@ _WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
 def _view(snapshot: PlanSnapshot) -> PlanView:
     plan = snapshot.open
     decisions = snapshot.decisions
-    last = snapshot.last_applied
+    last = snapshot.last_ended
     return PlanView(
         id=None if plan is None else plan.id,
         state=None if plan is None else plan.state,  # pyright: ignore[reportArgumentType]  # the table checks the set
@@ -116,7 +116,12 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
         apply_delay_minutes=snapshot.apply_delay_minutes,
         last_plan=None
         if last is None
-        else LastPlan(id=last.id, state="applied", applied_at=last.applied_at, moved_count=last.moved),
+        else LastPlan(
+            id=last.id,
+            state=last.state,  # pyright: ignore[reportArgumentType]  # the query selects the three states
+            ended_at=last.ended_at,
+            moved_count=last.moved,
+        ),
     )
 
 
@@ -145,7 +150,7 @@ def _scope_json(scope: GroupScope | IdsScope | AllScope) -> dict[str, Any]:
     },
 )
 async def read_plan(request: Request) -> PlanView:
-    """Return the open plan with its progress, groups, counts and apply time, and the last applied plan.
+    """Return the open plan with its progress, groups, counts and apply time, and the plan that ended last.
 
     Args:
         request: The request, whose app holds the database access.

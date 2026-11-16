@@ -523,9 +523,9 @@
       },
       "LastPlan": {
         "additionalProperties": false,
-        "description": "The plan applied most recently, the one \"Move back\" is offered for.",
+        "description": "The plan that ended most recently; \"Move back\" is offered for it only when it was applied.",
         "properties": {
-          "appliedAt": {
+          "endedAt": {
             "anyOf": [
               {
                 "format": "date-time",
@@ -535,7 +535,7 @@
                 "type": "null"
               }
             ],
-            "title": "Appliedat"
+            "title": "Endedat"
           },
           "id": {
             "format": "uuid",
@@ -548,7 +548,11 @@
             "type": "integer"
           },
           "state": {
-            "const": "applied",
+            "enum": [
+              "applied",
+              "cancelled",
+              "replaced"
+            ],
             "title": "State",
             "type": "string"
           }
@@ -556,7 +560,7 @@
         "required": [
           "id",
           "state",
-          "appliedAt",
+          "endedAt",
           "movedCount"
         ],
         "title": "LastPlan",
@@ -1554,7 +1558,7 @@
     },
     "/api/plan": {
       "get": {
-        "description": "Return the open plan with its progress, groups, counts and apply time, and the last applied plan.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The plan view; ``state`` is null while no plan is open.",
+        "description": "Return the open plan with its progress, groups, counts and apply time, and the plan that ended last.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The plan view; ``state`` is null while no plan is open.",
         "operationId": "read_plan_api_plan_get",
         "responses": {
           "200": {

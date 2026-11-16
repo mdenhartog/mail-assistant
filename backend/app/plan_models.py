@@ -66,14 +66,14 @@ class PlanCounts(BaseModel):
 
 
 class LastPlan(BaseModel):
-    """The plan applied most recently, the one "Move back" is offered for."""
+    """The plan that ended most recently; "Move back" is offered for it only when it was applied."""
 
     model_config = _CONFIG
 
     id: uuid.UUID
-    state: Literal["applied"]
-    applied_at: datetime | None
-    moved_count: Annotated[int, Field(ge=0)]  # mails the apply moved; kept on the plan after the items are removed
+    state: Literal["applied", "cancelled", "replaced"]
+    ended_at: datetime | None
+    moved_count: Annotated[int, Field(ge=0)]  # mails the apply moved; 0 for a plan that was not applied
 
 
 class PlanView(BaseModel):

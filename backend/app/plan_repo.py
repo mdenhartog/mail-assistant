@@ -28,12 +28,14 @@ _OPEN_PLAN = text(
     "FROM categories.plan "
     "WHERE mailbox_id = :mailbox AND state IN ('building', 'ready', 'scheduled', 'applying')"
 )
-# The apply removes the items it moved and adds their number to ``moved_count``; items still there are added.
-_LAST_APPLIED = text(
-    "SELECT p.id, p.terminal_at, p.moved_count + ("
+# The plan that ended most recently and is still kept (the purge removes the rest); a discarded one is not shown.
+# For an applied plan the apply removes the items it moved and adds their number to ``moved_count``; items still there
+# are added. A cancelled or replaced plan moved nothing.
+_LAST_ENDED = text(
+    "SELECT p.id, p.state, p.terminal_at, CASE WHEN p.state = 'applied' THEN p.moved_count + ("
     "SELECT count(*) FROM categories.plan_item i "
-    "WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id AND i.state = 'applied') AS moved "
-    "FROM categories.plan p WHERE p.mailbox_id = :mailbox AND p.state = 'applied' "
+    "WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id AND i.state = 'applied') ELSE 0 END AS moved "
+    "FROM categories.plan p WHERE p.mailbox_id = :mailbox AND p.state IN ('applied', 'cancelled', 'replaced') "
     "ORDER BY p.terminal_at DESC NULLS LAST, p.created_at DESC LIMIT 1"
 )
 _APPLY_CONFIG = text("SELECT threshold, delay_minutes FROM categories.apply_config WHERE mailbox_id = :mailbox")
@@ -93,11 +95,12 @@ class OpenPlan:
 
 
 @dataclass(frozen=True, slots=True)
-class AppliedPlan:
-    """A plan that was applied and when."""
+class EndedPlan:
+    """A plan that ended (applied, cancelled or replaced), how and when."""
 
     id: uuid.UUID
-    applied_at: datetime | None
+    state: str
+    ended_at: datetime | None
     moved: int
 
 
@@ -132,12 +135,12 @@ class ItemRow:
 
 @dataclass(frozen=True, slots=True)
 class PlanSnapshot:
-    """The open plan with its groups and decision counts, and the last applied plan."""
+    """The open plan with its groups and decision counts, and the plan that ended last."""
 
     open: OpenPlan | None
     groups: tuple[GroupRow, ...]
     decisions: dict[str, int]
-    last_applied: AppliedPlan | None
+    last_ended: EndedPlan | None
     apply_threshold: int | None
     apply_delay_minutes: int | None
 
@@ -199,7 +202,7 @@ class PlanRepository:
         self._mailbox = mailbox_id
 
     async def snapshot(self) -> PlanSnapshot:
-        """Read the open plan, its groups and decision counts, and the plan applied most recently.
+        """Read the open plan, its groups and decision counts, and the plan that ended most recently.
 
         Returns:
             The snapshot; no open plan when there is none.
@@ -207,7 +210,7 @@ class PlanRepository:
         params: dict[str, Any] = {"mailbox": self._mailbox}
         async with self._database.session() as session, session.begin():
             row = (await session.execute(_OPEN_PLAN, params)).first()
-            applied = (await session.execute(_LAST_APPLIED, params)).first()
+            ended = (await session.execute(_LAST_ENDED, params)).first()
             config = (await session.execute(_APPLY_CONFIG, params)).first()
             open_plan = (
                 None
@@ -241,7 +244,7 @@ class PlanRepository:
                     for g in await session.execute(_GROUPS, scope)
                 )
                 decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
-        last = None if applied is None else AppliedPlan(applied.id, _utc(applied.terminal_at), applied.moved)
+        last = None if ended is None else EndedPlan(ended.id, ended.state, _utc(ended.terminal_at), ended.moved)
         return PlanSnapshot(
             open_plan,
             groups,
