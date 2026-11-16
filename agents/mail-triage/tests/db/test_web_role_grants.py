@@ -232,6 +232,8 @@ async def test_given_the_web_role_when_its_table_privileges_are_listed_then_only
         # the plan half (U-mail-categories-12): the item columns are checked by test_plan_grants.py
         ("categories", "plan"),
         ("categories", "move_back_request"),
+        # the review page names the wait of a big move (U-mail-categories-32): read-only, test_plan_grants.py
+        ("categories", "apply_config"),
     }
 
 
