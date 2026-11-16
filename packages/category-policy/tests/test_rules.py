@@ -1,5 +1,9 @@
 """Direct boundary tests for the rules (AC-2, AC-8); the table lives in the contract file."""
 
+from dataclasses import FrozenInstanceError
+
+import pytest
+
 from category_policy import (
     DESCRIPTION_MAX,
     MAX_CATEGORIES,
@@ -63,3 +67,16 @@ def test_given_a_label_that_is_an_older_category_when_validated_then_the_name_ad
 
 def test_given_a_label_that_is_not_adoptable_when_validated_then_the_name_is_refused():
     assert _rules("Invoices", labels=["Assistant/Invoices"], adoptable=["Assistant/Other"]) == ["name_label_exists"]
+
+
+def test_given_an_adoptable_label_that_is_not_among_the_labels_when_validated_then_the_name_is_accepted():
+    assert _rules("Invoices", labels=[], adoptable=["Assistant/Invoices"]) == []
+
+
+def test_given_a_category_or_a_problem_when_changed_then_it_is_frozen_and_has_no_instance_dict():
+    category = Category("A", "x")
+    problem = Problem("name_empty", "name")
+    for value in (category, problem):
+        assert not hasattr(value, "__dict__")
+        with pytest.raises(FrozenInstanceError):
+            value.__setattr__("rule" if value is problem else "name", "z")
