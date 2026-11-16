@@ -27,6 +27,7 @@ __all__ = [
 LABEL_PREFIX = "Assistant/"
 ARCHIVE_LABEL = "Archive"
 _INBOX = "INBOX"
+_SPACED_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})  # controls, U+2028 and U+2029
 _EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT"})
 
 
@@ -62,9 +63,15 @@ def classify(label_names: Iterable[str]) -> Scope:
 
 
 def clean_display(text: str, cap: int) -> str:
-    """Text for the review page: format characters (bidi controls, zero-width) removed, other controls to a space.
+    """Text for the review page: format characters (bidi controls, zero-width) removed.
+
+    Controls and the line and paragraph separators become a space.
 
     The cap counts characters after cleaning (MC-20, AC-44).
     """
-    kept = (" " if unicodedata.category(char) == "Cc" else char for char in text if unicodedata.category(char) != "Cf")
+    kept = (
+        " " if unicodedata.category(char) in _SPACED_CATEGORIES else char
+        for char in text
+        if unicodedata.category(char) != "Cf"
+    )
     return "".join(kept)[:cap]
