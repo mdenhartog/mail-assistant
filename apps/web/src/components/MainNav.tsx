@@ -8,9 +8,9 @@ export interface MainNavProps {
   openItems?: number | undefined;
 }
 
-const LINK =
-  "inline-flex min-h-11 items-center gap-2 rounded-pill border-2 px-4 font-semibold text-text " +
-  "aria-[current=page]:border-primary aria-[current=page]:bg-surface-raised border-transparent";
+const LINK = "inline-flex min-h-11 items-center gap-2 rounded-pill border-2 px-4 font-semibold text-text ";
+const LINK_IDLE = LINK + "border-transparent";
+const LINK_CURRENT = LINK + "border-primary bg-surface-raised";
 
 /**
  * Main navigation of the signed-in pages: Settings, Categories and Review moves. The current page
@@ -31,7 +31,7 @@ export function MainNav({ openItems }: MainNavProps): ReactElement {
       <ul className="flex flex-wrap gap-2">
         {items.map((item) => (
           <li key={item.to}>
-            <NavLink className={LINK} to={item.to}>
+            <NavLink className={({ isActive }) => (isActive ? LINK_CURRENT : LINK_IDLE)} to={item.to}>
               {item.label}
               {item.to === paths.review && openItems !== undefined && openItems > 0 ? (
                 <>

@@ -27,7 +27,7 @@ export function Progress({ label, value, max }: ProgressProps): ReactElement {
       className="h-3 w-full overflow-hidden rounded-pill border border-border bg-surface-raised"
       role="progressbar"
     >
-      <div className="h-full bg-primary motion-safe:transition-[width] motion-safe:duration-200" style={{ width: `${String(percent)}%` }} />
+      <div className="h-full bg-primary motion-safe:transition-all motion-safe:duration-200" style={{ width: `${String(percent)}%` }} />
     </div>
   );
 }
