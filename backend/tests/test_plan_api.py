@@ -215,7 +215,7 @@ async def test_given_a_ready_plan_when_get_then_state_groups_counts_and_the_last
     assert body["lastPlan"] == {
         "id": str(applied.plan_id),
         "state": "applied",
-        "appliedAt": "2026-11-12T10:00:00Z",
+        "endedAt": "2026-11-12T10:00:00Z",
         "movedCount": 0,
     }
 
@@ -319,7 +319,7 @@ async def test_given_no_plan_when_get_then_the_state_is_null_and_there_is_nothin
     }
 
 
-async def test_given_two_applied_plans_when_get_then_the_last_plan_is_the_one_applied_most_recently(
+async def test_given_ended_plans_when_get_then_the_last_plan_is_the_one_that_ended_most_recently(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
@@ -327,11 +327,58 @@ async def test_given_two_applied_plans_when_get_then_the_last_plan_is_the_one_ap
     newer = await seed_plan(
         owner, state="applied", moves=(), terminal_at=datetime.fromisoformat("2026-11-10T10:00:00+00:00")
     )
-    await seed_plan(owner, state="replaced", moves=(), terminal_at=datetime.fromisoformat("2026-11-14T10:00:00+00:00"))
 
     body = (await call(api, "GET", "/api/plan")).json()
 
     assert body["lastPlan"]["id"] == str(newer.plan_id)
+
+
+@pytest.mark.parametrize("state", ["cancelled", "replaced"])
+async def test_given_a_plan_that_ended_without_moving_when_get_then_the_last_plan_says_how_it_ended(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    state: str,
+) -> None:
+    await seed_plan(owner, state="applied", moves=(), terminal_at=datetime.fromisoformat("2026-11-01T10:00:00+00:00"))
+    ended = await seed_plan(
+        owner, state=state, moves=(), terminal_at=datetime.fromisoformat("2026-11-14T10:00:00+00:00"), tag="e"
+    )
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["lastPlan"] == {
+        "id": str(ended.plan_id),
+        "state": state,
+        "endedAt": "2026-11-14T10:00:00Z",
+        "movedCount": 0,
+    }
+
+
+async def test_given_only_a_discarded_plan_when_get_then_there_is_no_last_plan(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed_plan(owner, state="discarded", moves=(), terminal_at=datetime.fromisoformat("2026-11-14T10:00:00+00:00"))
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["lastPlan"] is None
+
+
+async def test_given_an_older_applied_and_a_newer_discarded_plan_when_get_then_the_applied_one_is_shown(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    applied = await seed_plan(
+        owner, state="applied", moves=(), terminal_at=datetime.fromisoformat("2026-11-01T10:00:00+00:00")
+    )
+    await seed_plan(
+        owner, state="discarded", moves=(), terminal_at=datetime.fromisoformat("2026-11-14T10:00:00+00:00"), tag="d"
+    )
+
+    body = (await call(api, "GET", "/api/plan")).json()
+
+    assert body["lastPlan"]["id"] == str(applied.plan_id)
 
 
 # Criterion 2
