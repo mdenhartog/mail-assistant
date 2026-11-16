@@ -58,7 +58,7 @@ export function categoriesStates(): UiState[] {
     state("categories: not ready", async (page) => {
       await stubApi(page, { signedIn: true, getCategories: reply(200, { ...CATEGORIES, version: 0, ready: false, categories: [] }) });
       await page.goto("/categories");
-      await expect(page.getByText("Your categories are not ready yet.")).toBeVisible();
+      await expect(page.getByText("Your categories are still being set up.")).toBeVisible();
     }),
     state("categories: load failed", async (page) => {
       await stubApi(page, { signedIn: true, getCategories: reply(500) });

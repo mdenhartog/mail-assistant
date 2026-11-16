@@ -340,7 +340,7 @@ describe("Categories page: a save that does not store", () => {
     wire({ put: () => json({ type: "x", title: "Conflict", status: 409, reason: "not-ready", current }, 409) });
     await loaded();
     await save();
-    expect(await screen.findByText("Your categories are not ready yet.")).toBeInTheDocument();
+    expect(await screen.findByText("Your categories are still being set up.")).toBeInTheDocument();
   });
 
   it("given a 429, then it says too many saves", async () => {

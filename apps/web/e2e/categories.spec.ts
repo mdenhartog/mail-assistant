@@ -86,7 +86,7 @@ test("before the agent has written version 1 the page says the categories are no
   await signInThroughPage(page);
   await openCategories(page);
 
-  await expect(page.getByText("Your categories are not ready yet.")).toBeVisible();
+  await expect(page.getByText("Your categories are still being set up.")).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveCount(0);
   expect(versions()).toEqual([]);
 });
@@ -357,7 +357,7 @@ for (const viewport of VIEWPORTS) {
     await page.context().clearCookies();
     await signInThroughPage(page);
     await openCategories(page);
-    await expect(page.getByText("Your categories are not ready yet.")).toBeVisible();
+    await expect(page.getByText("Your categories are still being set up.")).toBeVisible();
     await settle(page);
     expect.soft(await axeProblems(page), "not ready: axe").toEqual([]);
   });

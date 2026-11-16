@@ -44,7 +44,7 @@ describe("Categories page: reading the list", () => {
   it("given the request is pending, then a skeleton with a busy status shows", () => {
     wire({ get: () => new Promise<Response>(() => undefined) });
     renderPage();
-    expect(screen.getByText("Loading your categories")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading your categories");
     expect(document.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(document.querySelectorAll("[data-skeleton]").length).toBeGreaterThan(0);
   });
@@ -58,11 +58,16 @@ describe("Categories page: reading the list", () => {
     expect(await screen.findByDisplayValue("Invoices")).toBeInTheDocument();
   });
 
-  it("given the agent has not written the first list, then the page says it is not ready and shows no form", async () => {
-    wire({ get: () => json({ ...LIST, version: 0, ready: false, categories: [] }) });
+  it("given the agent has not written the first list, then the page says it is being set up and Check again reads the list again", async () => {
+    let calls = 0;
+    wire({ get: () => (++calls === 1 ? json({ ...LIST, version: 0, ready: false, categories: [] }) : json(LIST)) });
     renderPage();
-    expect(await screen.findByText("Your categories are not ready yet.")).toBeInTheDocument();
+    expect(await screen.findByText("Your categories are still being set up.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Check again" }));
+
+    expect(await screen.findByDisplayValue("Invoices")).toBeInTheDocument();
   });
 
   it("given a 429 on the read, then it says to wait", async () => {
@@ -92,12 +97,33 @@ describe("Categories page: reading the list", () => {
   });
 });
 
+describe("Categories page: the limit", () => {
+  it("given 50 categories, then Add category is disabled and the message says what to do", async () => {
+    const many = Array.from({ length: 50 }, (_, index) => ({
+      id: `7f0c1c2e-1b1e-4c52-9d0e-${String(index).padStart(12, "0")}`,
+      name: `Category ${String(index)}`,
+      description: "Something",
+      mailCount: 0,
+    }));
+    wire({ get: () => json({ ...LIST, categories: many, olderCategories: [] }) });
+    renderPage();
+    await screen.findByDisplayValue("Category 0");
+    expect(screen.getByRole("button", { name: "Add category" })).toBeDisabled();
+    expect(screen.getByText("You have reached the limit of 50 categories. Remove one to add another.")).toBeInTheDocument();
+  });
+});
+
 describe("Categories page: older categories", () => {
   it("given an older category, when Add to my list is pressed, then it becomes a card and focus goes to its description (AC-53)", async () => {
     wire();
     await loaded();
     const older = screen.getByRole("region", { name: "Older category" });
     expect(within(older).getByText("Travel")).toBeInTheDocument();
+    expect(
+      within(older).getByText(
+        "These Gmail labels exist but are not on your list. Add one to use it for new mail. Its mails stay where they are, and you can write a description for it.",
+      ),
+    ).toBeInTheDocument();
 
     await userEvent.click(within(older).getByRole("button", { name: "Add to my list: Travel" }));
 

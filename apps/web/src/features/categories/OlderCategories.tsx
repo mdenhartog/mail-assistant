@@ -23,7 +23,7 @@ export function OlderCategories({ older, onAdopt }: OlderCategoriesProps): React
       <h2 className="font-display text-xl text-text" id={headingId}>
         {older.length === 1 ? "Older category" : "Older categories"}
       </h2>
-      <p className="text-sm text-text-muted">Labels you already have in Gmail that are not on your list.</p>
+      <p className="text-sm text-text-muted">These Gmail labels exist but are not on your list. Add one to use it for new mail. Its mails stay where they are, and you can write a description for it.</p>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {older.map((item) => {
           const name = nameOfLabel(item.labelName);

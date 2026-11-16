@@ -9,7 +9,9 @@ import { usePageTitle } from "@/pages/usePageTitle";
 function Loading(): ReactElement {
   return (
     <div aria-busy="true" className="mt-6">
-      <p className="text-text-muted">Loading your categories</p>
+      <p className="text-text-muted" role="status">
+        Loading your categories
+      </p>
       <div aria-hidden="true" className="mt-4 grid gap-4 sm:grid-cols-2">
         {[0, 1, 2, 3].map((row) => (
           <div className="h-40 rounded-card bg-divider motion-safe:animate-pulse" data-skeleton="" key={row} />
@@ -53,8 +55,17 @@ export function CategoriesPage(): ReactElement {
   } else if (!data.ready) {
     content = (
       <div className="mt-6">
-        <Banner kind="info" title="Your categories are not ready yet.">
-          The assistant is still setting them up. Try again in a few minutes.
+        <Banner
+          action={{
+            label: "Check again",
+            onClick: () => {
+              void refetch();
+            },
+          }}
+          kind="info"
+          title="Your categories are still being set up."
+        >
+          This can take a few minutes.
         </Banner>
       </div>
     );
