@@ -106,3 +106,33 @@ def test_given_normal_log_lines_when_emitted_then_ids_and_counts_stay_readable()
     logger.info("filed mail %s under %s (%d of %d)", "18c3f2a", "Assistant/Finance", 3, 10)
 
     assert records[0].getMessage() == "filed mail 18c3f2a under Assistant/Finance (3 of 10)"
+
+
+def test_given_log_extras_with_mail_headers_when_emitted_then_every_header_is_replaced_whatever_its_case() -> None:
+    logger, records = make_logger()
+    extras = {
+        "subject": "Your invoice",
+        "sender": "a@example.com",
+        "sender_name": "Alice",
+        "sender_address": "a@example.com",
+        "from": "Alice <a@example.com>",
+        "to": "me@example.com",
+        "Subject": "Re: Your invoice",
+        "FROM": "b@example.com",
+    }
+
+    logger.info("processed mail", extra=extras)
+
+    for name in extras:
+        assert records[0].__dict__[name] == REDACTED, name
+
+
+def test_given_a_sentry_event_with_mail_headers_when_sent_then_every_header_is_replaced_whatever_its_case() -> None:
+    names = ["subject", "sender", "sender_name", "sender_address", "from", "to", "Subject", "From", "TO"]
+    event = {"extra": dict.fromkeys(names, "private value"), "contexts": {"mail": {"Sender": "a@example.com"}}}
+
+    cleaned = sentry_before_send(Redactor([]))(event, {})
+
+    assert cleaned is not None
+    assert all(cleaned["extra"][name] == REDACTED for name in names)
+    assert cleaned["contexts"]["mail"]["Sender"] == REDACTED
