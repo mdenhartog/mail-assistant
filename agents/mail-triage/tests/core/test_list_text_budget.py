@@ -161,21 +161,21 @@ def test_given_a_changed_category_when_its_name_or_text_differs_then_the_entry_n
 
 def test_given_a_description_change_when_the_name_is_the_same_then_it_is_changed_not_renamed() -> None:
     for before, after in (("a", "b"), ("b", "a")):
-        entries = list_text._changed_entries([_cat("1", "N", before)], [_cat("1", "N", after)], 500)
-        assert entries == [f"~ Changed: N\n  Before: {before}\n  Now: {after}"]
+        entries = list_text._changed_entries([_cat("1", "Nn", before)], [_cat("1", "Nn", after)], 500)
+        assert entries == [f"~ Changed: Nn\n  Before: {before}\n  Now: {after}"]
 
 
 def test_given_the_same_text_after_the_cut_when_changed_then_it_says_only_that_the_description_changed() -> None:
-    was, now = _cat("1", "N", "abcdefX"), _cat("1", "N", "abcdefY")
-    assert list_text._changed_entry(was, now, 6) == "~ Changed: N\n  The description changed."
-    assert list_text._changed_entry(was, now, 0) == "~ Changed: N\n  The description changed."
-    assert list_text._changed_entry(was, now, 7) == "~ Changed: N\n  Before: abcdefX\n  Now: abcdefY"
-    assert list_text._changed_entry(now, was, 7) == "~ Changed: N\n  Before: abcdefY\n  Now: abcdefX"
+    was, now = _cat("1", "Nn", "abcdefX"), _cat("1", "Nn", "abcdefY")
+    assert list_text._changed_entry(was, now, 6) == "~ Changed: Nn\n  The description changed."
+    assert list_text._changed_entry(was, now, 0) == "~ Changed: Nn\n  The description changed."
+    assert list_text._changed_entry(was, now, 7) == "~ Changed: Nn\n  Before: abcdefX\n  Now: abcdefY"
+    assert list_text._changed_entry(now, was, 7) == "~ Changed: Nn\n  Before: abcdefY\n  Now: abcdefX"
 
 
 def test_given_a_rename_only_when_the_description_is_equal_then_only_the_head_is_shown() -> None:
-    assert list_text._changed_entry(_cat("1", "Aa", "d"), _cat("1", "Bb", "d"), 500) == "~ Renamed: Aa -> Bb"
-    assert list_text._changed_entry(_cat("1", "Bb", "d"), _cat("1", "Aa", "d"), 500) == "~ Renamed: Bb -> Aa"
+    assert list_text._changed_entry(_cat("1", "Aa", "desc"), _cat("1", "Bb", "desc"), 500) == "~ Renamed: Aa -> Bb"
+    assert list_text._changed_entry(_cat("1", "Bb", "desc"), _cat("1", "Aa", "desc"), 500) == "~ Renamed: Bb -> Aa"
 
 
 def test_given_added_and_removed_categories_when_listed_then_text_is_shown_only_with_room() -> None:
@@ -259,3 +259,11 @@ def test_given_a_long_entry_between_short_ones_when_it_does_not_fit_then_short_o
     assert text.startswith("+ Added: " + "a" * 40 + NL * 2 + list_text._NOT_FIT.format(shown=1, total=10)[:10])
     assert text.endswith(list_text._NOT_FIT.format(shown=1, total=10))
     assert "+ Added: c" not in text
+
+
+def test_given_short_entries_when_the_budget_ends_between_them_then_the_gap_of_two_is_counted() -> None:
+    new = [_cat(str(n), f"n{n}xyz"[:5]) for n in range(10)]  # entries of 14 characters, 16 with the gap
+    base = len(list_text._NOT_FIT.format(shown=10, total=10))
+    entries = [f"+ Added: {c.name}" for c in new]
+    text = list_text._changes_block([], new, base + 44)
+    assert text == (NL * 2).join([*entries[:2], list_text._NOT_FIT.format(shown=2, total=10)])
