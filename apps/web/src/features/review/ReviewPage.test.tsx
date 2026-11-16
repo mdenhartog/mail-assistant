@@ -390,7 +390,7 @@ describe("Review moves: building (AC-43)", () => {
 });
 
 describe("Review moves: the other states (AC-23)", () => {
-  const LAST = { id: PLAN_ID, state: "applied", appliedAt: "2026-11-15T13:00:00Z", movedCount: 3 };
+  const LAST = { id: PLAN_ID, state: "applied", endedAt: "2026-11-15T13:00:00Z", movedCount: 3 };
   const cases: [string, object, string][] = [
     ["no plan", NO_PLAN, "No review is open."],
     ["scheduled", { ...READY, state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }, "Your mails move at "],
@@ -400,6 +400,8 @@ describe("Review moves: the other states (AC-23)", () => {
     ["discarded", { ...READY, state: "discarded", groups: [] }, "This review was too old."],
     ["applied", { ...READY, state: "applied", groups: [], lastPlan: LAST }, "3 mails were moved on 15 Nov at "],
     ["applied and already retired", { ...NO_PLAN, lastPlan: LAST }, "3 mails were moved on 15 Nov at "],
+    ["cancelled and already retired", { ...NO_PLAN, lastPlan: { ...LAST, state: "cancelled", movedCount: 0 } }, "This review was cancelled."],
+    ["replaced and already retired", { ...NO_PLAN, lastPlan: { ...LAST, state: "replaced", movedCount: 0 } }, "This review was replaced."],
   ];
 
   it.each(cases)("given %s, then its banner shows", async (_name, plan, title) => {
@@ -438,7 +440,7 @@ describe("Review moves: the other states (AC-23)", () => {
 
   it("given the moved time is unknown, then the banner still says how many moved", async () => {
     wirePlan({
-      plan: () => json({ ...NO_PLAN, lastPlan: { ...LAST, appliedAt: null } }),
+      plan: () => json({ ...NO_PLAN, lastPlan: { ...LAST, endedAt: null } }),
       items: () => json({ items: [], page: 1, hasMore: false }),
     });
     await renderReview();
@@ -480,6 +482,27 @@ describe("Review moves: the other states (AC-23)", () => {
     await renderReview();
 
     expect(await screen.findByText("You moved this mail yourself, so I left it alone.")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["cancelled", "Nothing was moved."],
+    ["replaced", "You changed your categories"],
+  ])("given the last plan was %s, then the notice names the day and time and offers no Move back", async (state, body) => {
+    wirePlan({ plan: () => json({ ...NO_PLAN, lastPlan: { ...LAST, state, movedCount: 0 } }) });
+    await renderReview();
+
+    expect(await screen.findByText(new RegExp(`^This review was ${state} on 15 Nov at \d\d:\d\d\.$`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(body))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Move back" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Edit your categories" })).toHaveAttribute("href", "/categories");
+  });
+
+  it("given the last plan was cancelled and a plan is building, then the open plan wins", async () => {
+    wirePlan({ plan: () => json({ ...READY, state: "building", lastPlan: { ...LAST, state: "cancelled", movedCount: 0 } }) });
+    await renderReview();
+
+    expect(await screen.findByText(/checked/)).toBeInTheDocument();
+    expect(screen.queryByText(/This review was cancelled/)).not.toBeInTheDocument();
   });
 
   it("given Move back, then a red dialog asks first and confirming posts to the plan", async () => {

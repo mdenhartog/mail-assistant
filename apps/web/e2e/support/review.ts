@@ -23,7 +23,7 @@ const APPROVED = {
   groups: PLAN.groups.map((group, index) => (index === 0 ? { ...group, approved: 20 } : group)),
   counts: { items: 33, pending: 13, approved: 20, rejected: 0 },
 };
-const LAST = { id: PLAN.id, state: "applied", appliedAt: "2026-11-15T13:00:00Z", movedCount: 3 };
+const LAST = { id: PLAN.id, state: "applied", endedAt: "2026-11-15T13:00:00Z", movedCount: 3 };
 const NO_PLAN = { ...PLAN, id: null, state: null, groups: [], counts: { items: 0, pending: 0, approved: 0, rejected: 0 } };
 
 async function toReady(page: Page, handlers: Handlers = {}): Promise<void> {
