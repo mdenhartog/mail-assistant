@@ -106,7 +106,7 @@ test("an approval above the threshold waits and a Cancel from Telegram stops it"
 
   cancelFromTelegram();
   await page.reload();
-  await expect(page.getByText("This review was cancelled.")).toBeVisible();
+  await expect(page.getByText(/This review was cancelled/)).toBeVisible();
   expect(planState()).toBe("cancelled");
   expect(itemStates(), "the plan was cancelled before any item moved").toEqual(["approved/approved|20"]);
 });
@@ -155,7 +155,7 @@ async function reach(page: Page, state: (typeof STATES)[number]): Promise<void> 
     markApplied();
   }
   await page.reload();
-  await expect(page.getByText(state === "cancelled" ? "This review was cancelled." : /mails? (were|was) moved on /)).toBeVisible();
+  await expect(page.getByText(state === "cancelled" ? /This review was cancelled/ : /mails? (were|was) moved on /)).toBeVisible();
 }
 
 for (const viewport of VIEWPORTS) {
