@@ -67,6 +67,27 @@ async def test_a_crash_between_adding_and_removing_is_finished_on_retry_without_
     assert rig.store.state(plan) is PlanState.APPLIED
 
 
+async def test_apply_retry_with_intent_skips_mail_that_gained_archive() -> None:
+    rig = ApplyRig()
+    mid = rig.mail(("INBOX", rig.finance))
+    plan = rig.store.add_plan([item(mid, FINANCE, TRAVEL)])
+
+    def crash(_mid: str) -> None:
+        raise ConnectionResetError("the process dies between the two calls")
+
+    rig.mailbox.on_remove = crash
+    with pytest.raises(ConnectionResetError):
+        await rig.apply().run_once()
+    rig.mailbox.on_remove = None
+    rig.gmail.mail_table[mid].labels.add(rig.gmail.add_label("Archive"))  # the user archived it meanwhile
+    rig.clock.advance(timedelta(minutes=6))
+
+    await rig.apply().run_once()
+
+    assert rig.store.item(plan, mid).state is ItemState.SKIPPED
+    assert "Assistant/Finance" in rig.labels_of(mid)  # the old label is not removed from a mail that left the scope
+
+
 async def test_a_lost_answer_after_the_add_is_finished_on_retry() -> None:
     rig = ApplyRig()
     mid = rig.mail(("INBOX", rig.finance))

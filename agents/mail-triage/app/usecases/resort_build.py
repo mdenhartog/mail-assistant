@@ -17,7 +17,6 @@ import asyncio
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta  # used in runtime annotations of the dataclasses
 from email.utils import parseaddr
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
@@ -31,6 +30,7 @@ from app.usecases.triage import pinned_mail_kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+    from datetime import datetime, timedelta
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail

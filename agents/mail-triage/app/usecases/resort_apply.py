@@ -16,9 +16,10 @@ A swap is two Gmail calls and a database write. The order makes every crash reco
 3. the old label is removed;
 4. the item is marked applied.
 
-A retry finds the intent. Mail that already carries the new label is finished (the old label is removed when it is
-still there, and nothing else is called), so nothing moves twice. Mail that carries the new label *without* our intent
-was filed by the user and is skipped.
+A retry finds the intent. Mail that already carries the new label is checked again as it was before our add (scope,
+Archive, pinning and the old label; AC-35): a mail that left the scope meanwhile is skipped and keeps its old label.
+Otherwise it is finished (the old label is removed when it is still there, and nothing else is called), so nothing
+moves twice. Mail that carries the new label *without* our intent was filed by the user and is skipped.
 
 The notice holds numbers and the names of labels that are empty afterwards (D18); it never holds a sender or subject.
 """
@@ -28,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
@@ -298,6 +299,19 @@ class ResortApply:
             return False
         return True
 
+    async def _run_batch(self, plan_id: uuid.UUID, waiting: set[str]) -> bool:
+        """Apply the next batch of approved items; false when none is left. Items that fail join ``waiting``."""
+        found = await self._store.next_items(plan_id, self._batch + len(waiting))
+        items = [one for one in found if one.message_id not in waiting][: self._batch]
+        if not items:
+            return False
+        categories = await self._store.current_categories()
+        names = await asyncio.to_thread(self._mail.label_names)
+        for one in items:
+            if not await self._apply_item(plan_id, one, categories, names):
+                waiting.add(one.message_id)
+        return True
+
     async def _apply_plan(self, due: DuePlan, run_id: str) -> None:
         plan_id = due.plan_id
         waiting: set[str] = set()  # failed in this run: tried again in a later run, never at once (REV-005)
@@ -309,15 +323,8 @@ class ResortApply:
             if not await self._store.begin_batch(plan_id, run_id):
                 logger.info("apply stopped: the plan is no longer ours plan=%s", plan_id)
                 return
-            found = await self._store.next_items(plan_id, self._batch + len(waiting))
-            items = [one for one in found if one.message_id not in waiting][: self._batch]
-            if not items:
+            if not await self._run_batch(plan_id, waiting):
                 break
-            categories = await self._store.current_categories()
-            names = await asyncio.to_thread(self._mail.label_names)
-            for one in items:
-                if not await self._apply_item(plan_id, one, categories, names):
-                    waiting.add(one.message_id)
         if waiting:
             # The plan stays ``applying`` and its lease ends by itself: the next run is the next try for these items.
             logger.info("apply paused: %d item(s) wait for the next run plan=%s", len(waiting), plan_id)
@@ -359,7 +366,7 @@ class ResortApply:
         intent = await self._store.intent_for(plan_id, mid)
         try:
             if intent is not None and intent.new_label in held:
-                await self._finish_started(plan_id, intent, held)  # a retry: the add happened before
+                await self._retry(plan_id, one, mail, intent, categories, names, held)  # the add happened before
                 return
             checked = self._check(one, mail, categories, names, held)
             if isinstance(checked, SkipReason):
@@ -368,6 +375,30 @@ class ResortApply:
             await self._move(plan_id, mid, checked, names, intent, held)
         except MailGone:
             await self._skip(plan_id, mid, SkipReason.GONE)
+
+    async def _retry(  # noqa: PLR0913, PLR0917
+        self,
+        plan_id: uuid.UUID,
+        one: ApplyItem,
+        mail: FetchedMail,
+        intent: AuditMove,
+        categories: dict[str, str],
+        names: dict[str, str],
+        held: set[str],
+    ) -> None:
+        """Finish a swap whose add happened before, unless the mail is no longer one the plan may touch (AC-35).
+
+        The checks run on the mail as it was before our add (without the new label). When the old label is already
+        gone, the swap is done and only the item is marked.
+        """
+        before = held - {intent.new_label}
+        if not intent.old_label or intent.old_label in before:
+            view = replace(mail, labels=frozenset(i for i in mail.labels if i != intent.new_label))
+            checked = self._check(one, view, categories, names, before)
+            if isinstance(checked, SkipReason):
+                await self._skip(plan_id, mail.message_id, checked)
+                return
+        await self._finish_started(plan_id, intent, held)
 
     def _check(
         self, one: ApplyItem, mail: FetchedMail, categories: dict[str, str], names: dict[str, str], held: set[str]

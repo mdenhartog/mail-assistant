@@ -5,7 +5,8 @@ them). Everything is sent as escaped plain text: no tag is written here, so noth
 button. Control and format characters (also the bidirectional ones) become spaces, each piece is capped before it is
 escaped (a cut never lands inside an entity), and whole lines are dropped, never cut, so the message stays within
 Telegram's limit. A change notice shows every added, removed, renamed or re-described category first, with the old and
-the new text; unchanged categories come after as a summary. When the changes do not fit, the notice says so. A notice holds list data only: it never takes a sender or a subject. Nothing here logs.
+the new text; unchanged categories come after as a summary. When the changes do not fit, the notice says so.
+A notice holds list data only: it never takes a sender or a subject. Nothing here logs.
 """
 
 from __future__ import annotations
@@ -135,7 +136,7 @@ def _unchanged(old: Sequence[ListCategory], new: Sequence[ListCategory], room: i
 
 
 def _changes_block(old: Sequence[ListCategory], new: Sequence[ListCategory], budget: int) -> str:
-    """Every change with the most text that lets all of them fit; if none fits, as many whole entries as fit, said so."""
+    """Every change with the most text that lets all of them fit; else as many whole entries as fit, and it says so."""
     for cap in _TIERS:
         entries = _changed_entries(old, new, cap)
         if sum(len(e) + 2 for e in entries) <= budget:
