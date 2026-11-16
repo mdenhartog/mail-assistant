@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 CANCEL: Final = "plancancel"
 LOCK: Final = "planlock"
 MOVE_BACK: Final = "planback"
-CANCEL_LABEL: Final = "Cancel"
-LOCK_LABEL: Final = "Lock web sign-in"
+CANCEL_LABEL: Final = "Cancel the move"
+LOCK_LABEL: Final = "Stop it and lock web sign-in"
 MOVE_BACK_LABEL: Final = "Move back"
 _ACTIONS: Final = frozenset({CANCEL, LOCK, MOVE_BACK})
 _NONCE: Final = re.compile(r"[A-Za-z0-9_-]{22,40}")  # 10 + 1 + 40 stays under Telegram's 64 bytes of callback data
@@ -53,10 +53,18 @@ def split_button(data: str) -> tuple[str, str] | None:
     return action, nonce
 
 
-def scheduled_notice(count: int, at: datetime, *, cancel_data: str, lock_data: str) -> AlertMessage:
-    """'N mails move at T' with Cancel and Lock."""
+def scheduled_notice(count: int, at: datetime, *, now: datetime, cancel_data: str, lock_data: str) -> AlertMessage:
+    """'N mails move in M minutes (at HH:MM UTC)' with Cancel the move and Stop it and lock.
+
+    The zone is stated because the user's own time zone is not stored here.
+    """
     what = f"{count} mail moves" if count == 1 else f"{count} mails move"
-    text = f"{what} at {at:%Y-%m-%d %H:%M} UTC. Cancel before then to stop it, or lock web sign-in."
+    minutes = max(1, -(-int((at - now).total_seconds()) // 60))
+    unit = "minute" if minutes == 1 else "minutes"
+    text = (
+        f"{what} in {minutes} {unit} (at {at:%H:%M} UTC). Only labels change. "
+        "Cancel the move before then to stop it, or lock web sign-in."
+    )
     return AlertMessage(text, (Button(CANCEL_LABEL, cancel_data), Button(LOCK_LABEL, lock_data)))
 
 

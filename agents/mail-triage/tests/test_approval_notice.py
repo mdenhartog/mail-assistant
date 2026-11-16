@@ -20,7 +20,9 @@ async def test_given_an_approval_above_the_threshold_then_one_notice_with_cancel
 
     assert len(rig.chat.sent) == 1
     message = rig.chat.sent[0]
-    assert "60 mails move at 2026-11-14 09:15 UTC" in message.text
+    assert "60 mails move in 15 minutes (at 09:15 UTC)." in message.text
+    assert "Only labels change." in message.text
+    assert [b.label for b in message.buttons] == ["Cancel the move", "Stop it and lock web sign-in"]
     assert [b.label for b in message.buttons] == [approval_text.CANCEL_LABEL, approval_text.LOCK_LABEL]
     assert [approval_text.split_button(b.data)[0] for b in message.buttons] == [  # type: ignore[index]
         approval_text.CANCEL,

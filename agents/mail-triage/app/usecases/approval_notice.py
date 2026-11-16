@@ -120,7 +120,7 @@ class ApprovalNotice:
             lock = await self._button(approval_text.LOCK, plan.plan_id, now)
             await self._chat.send(
                 approval_text.scheduled_notice(
-                    plan.mail_count, plan.apply_after, cancel_data=cancel.data, lock_data=lock.data
+                    plan.mail_count, plan.apply_after, now=now, cancel_data=cancel.data, lock_data=lock.data
                 )
             )
             await self._store.mark_announced(plan.plan_id)
