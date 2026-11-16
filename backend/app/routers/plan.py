@@ -23,6 +23,7 @@ from app.plan_models import (
     ApproveRequest,
     DecisionRequest,
     DecisionResult,
+    GroupExample,
     GroupScope,
     IdsScope,
     LastPlan,
@@ -94,7 +95,14 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
             not_looked_at=0 if plan is None else plan.not_looked_at,
         ),
         groups=[
-            PlanGroup(from_category=g.old_id, to_category=g.new_id, count=g.count, approved=g.approved)
+            PlanGroup(
+                from_category=g.old_id,
+                to_category=g.new_id,
+                count=g.count,
+                approved=g.approved,
+                rejected=g.rejected,
+                example=GroupExample(sender_name=g.sender_name, sender_address=g.sender_address, subject=g.subject),
+            )
             for g in snapshot.groups
         ],
         counts=PlanCounts(
@@ -104,7 +112,11 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
             rejected=decisions.get("rejected", 0),
         ),
         apply_after=None if plan is None else plan.apply_after,
-        last_plan=None if last is None else LastPlan(id=last.id, state="applied", applied_at=last.applied_at),
+        apply_threshold=snapshot.apply_threshold,
+        apply_delay_minutes=snapshot.apply_delay_minutes,
+        last_plan=None
+        if last is None
+        else LastPlan(id=last.id, state="applied", applied_at=last.applied_at, moved_count=last.moved),
     )
 
 

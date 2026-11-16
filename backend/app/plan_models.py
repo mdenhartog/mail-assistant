@@ -31,6 +31,16 @@ class PlanProgress(BaseModel):
     not_looked_at: Annotated[int, Field(ge=0)]  # in scope but past the cap
 
 
+class GroupExample(BaseModel):
+    """One mail of a group, shown as text (ADR-0044): the lowest-numbered item, cleaned when the plan was built."""
+
+    model_config = _CONFIG
+
+    sender_name: str
+    sender_address: str
+    subject: str
+
+
 class PlanGroup(BaseModel):
     """The items that move from one category to another; the nil UUID is the built-in "Other"."""
 
@@ -40,6 +50,8 @@ class PlanGroup(BaseModel):
     to_category: Annotated[uuid.UUID, Field(serialization_alias="to")]
     count: Annotated[int, Field(ge=1)]
     approved: Annotated[int, Field(ge=0)]  # items of the group approved so far (AC-13)
+    rejected: Annotated[int, Field(ge=0)]  # items of the group rejected so far (AC-13)
+    example: GroupExample  # the row the collapsed group shows (C-18)
 
 
 class PlanCounts(BaseModel):
@@ -61,6 +73,7 @@ class LastPlan(BaseModel):
     id: uuid.UUID
     state: Literal["applied"]
     applied_at: datetime | None
+    moved_count: Annotated[int, Field(ge=0)]  # mails the apply moved; kept on the plan after the items are removed
 
 
 class PlanView(BaseModel):
@@ -74,6 +87,8 @@ class PlanView(BaseModel):
     groups: list[PlanGroup]
     counts: PlanCounts
     apply_after: datetime | None
+    apply_threshold: Annotated[int, Field(ge=1)] | None  # approve above this many mails needs the delay (AC-30)
+    apply_delay_minutes: Annotated[int, Field(ge=0)] | None  # None while the apply settings are not stored
     last_plan: LastPlan | None
 
 

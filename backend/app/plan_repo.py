@@ -28,15 +28,25 @@ _OPEN_PLAN = text(
     "FROM categories.plan "
     "WHERE mailbox_id = :mailbox AND state IN ('building', 'ready', 'scheduled', 'applying')"
 )
+# The apply removes the items it moved and adds their number to ``moved_count``; items still there are added.
 _LAST_APPLIED = text(
-    "SELECT id, terminal_at FROM categories.plan WHERE mailbox_id = :mailbox AND state = 'applied' "
-    "ORDER BY terminal_at DESC NULLS LAST, created_at DESC LIMIT 1"
+    "SELECT p.id, p.terminal_at, p.moved_count + ("
+    "SELECT count(*) FROM categories.plan_item i "
+    "WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id AND i.state = 'applied') AS moved "
+    "FROM categories.plan p WHERE p.mailbox_id = :mailbox AND p.state = 'applied' "
+    "ORDER BY p.terminal_at DESC NULLS LAST, p.created_at DESC LIMIT 1"
 )
+_APPLY_CONFIG = text("SELECT threshold, delay_minutes FROM categories.apply_config WHERE mailbox_id = :mailbox")
 _GROUPS = text(
-    "SELECT old_category_id, new_category_id, count(*) AS n, count(*) FILTER (WHERE decision = 'approved') AS approved "
-    "FROM categories.plan_item "
-    "WHERE mailbox_id = :mailbox AND plan_id = :plan "
-    "GROUP BY old_category_id, new_category_id ORDER BY n DESC, old_category_id, new_category_id"
+    "SELECT g.old_category_id, g.new_category_id, g.n, g.approved, g.rejected, "
+    "e.sender_name, e.sender_address, e.subject FROM ("
+    "SELECT old_category_id, new_category_id, count(*) AS n, "
+    "count(*) FILTER (WHERE decision = 'approved') AS approved, "
+    "count(*) FILTER (WHERE decision = 'rejected') AS rejected, min(id) AS first_id "
+    "FROM categories.plan_item WHERE mailbox_id = :mailbox AND plan_id = :plan "
+    "GROUP BY old_category_id, new_category_id) g "
+    "JOIN categories.plan_item e ON e.mailbox_id = :mailbox AND e.plan_id = :plan AND e.id = g.first_id "
+    "ORDER BY g.n DESC, g.old_category_id, g.new_category_id"
 )
 _DECISIONS = text(
     "SELECT decision, count(*) AS n FROM categories.plan_item "
@@ -88,6 +98,7 @@ class AppliedPlan:
 
     id: uuid.UUID
     applied_at: datetime | None
+    moved: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +109,10 @@ class GroupRow:
     new_id: uuid.UUID
     count: int
     approved: int
+    rejected: int
+    sender_name: str
+    sender_address: str
+    subject: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +138,8 @@ class PlanSnapshot:
     groups: tuple[GroupRow, ...]
     decisions: dict[str, int]
     last_applied: AppliedPlan | None
+    apply_threshold: int | None
+    apply_delay_minutes: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +208,7 @@ class PlanRepository:
         async with self._database.session() as session, session.begin():
             row = (await session.execute(_OPEN_PLAN, params)).first()
             applied = (await session.execute(_LAST_APPLIED, params)).first()
+            config = (await session.execute(_APPLY_CONFIG, params)).first()
             open_plan = (
                 None
                 if row is None
@@ -210,12 +228,28 @@ class PlanRepository:
             if open_plan is not None:
                 scope = {**params, "plan": open_plan.id}
                 groups = tuple(
-                    GroupRow(g.old_category_id, g.new_category_id, g.n, g.approved)
+                    GroupRow(
+                        g.old_category_id,
+                        g.new_category_id,
+                        g.n,
+                        g.approved,
+                        g.rejected,
+                        g.sender_name,
+                        g.sender_address,
+                        g.subject,
+                    )
                     for g in await session.execute(_GROUPS, scope)
                 )
                 decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
-        last = None if applied is None else AppliedPlan(applied.id, _utc(applied.terminal_at))
-        return PlanSnapshot(open_plan, groups, decisions, last)
+        last = None if applied is None else AppliedPlan(applied.id, _utc(applied.terminal_at), applied.moved)
+        return PlanSnapshot(
+            open_plan,
+            groups,
+            decisions,
+            last,
+            None if config is None else config.threshold,
+            None if config is None else config.delay_minutes,
+        )
 
     async def items(self, page: int, page_size: int, from_id: uuid.UUID | None, to_id: uuid.UUID | None) -> ItemsPage:
         """Read one page of the open plan's items, lowest id first.

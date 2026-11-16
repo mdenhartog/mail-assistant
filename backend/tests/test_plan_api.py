@@ -216,6 +216,7 @@ async def test_given_a_ready_plan_when_get_then_state_groups_counts_and_the_last
         "id": str(applied.plan_id),
         "state": "applied",
         "appliedAt": "2026-11-12T10:00:00Z",
+        "movedCount": 0,
     }
 
 
@@ -312,6 +313,8 @@ async def test_given_no_plan_when_get_then_the_state_is_null_and_there_is_nothin
         "groups": [],
         "counts": {"items": 0, "pending": 0, "approved": 0, "rejected": 0},
         "applyAfter": None,
+        "applyThreshold": None,
+        "applyDelayMinutes": None,
         "lastPlan": None,
     }
 
