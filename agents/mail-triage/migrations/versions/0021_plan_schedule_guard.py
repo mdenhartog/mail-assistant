@@ -23,6 +23,7 @@ down_revision = "0020"
 branch_labels = None
 depends_on = None
 
+_NEW_FUNCTION = "categories.plan_apply_after_guard()"
 _MEMBER = "pg_catalog.pg_has_role(current_user, 'categories_definer', 'USAGE')"
 
 _STATE_GUARD = f"""
@@ -82,6 +83,8 @@ def upgrade() -> None:
     op.execute(_STATE_GUARD)
     op.execute(_APPLY_AFTER_GUARD)
     op.execute(_TRIGGER)
+    op.execute(f"REVOKE ALL ON FUNCTION {_NEW_FUNCTION} FROM PUBLIC")
+    op.execute(f"ALTER FUNCTION {_NEW_FUNCTION} OWNER TO categories_definer")
 
 
 def downgrade() -> None:
