@@ -13,6 +13,7 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 import asyncpg
+import pytest
 from alembic import command
 
 from app.core.resort_plan import ItemState
@@ -86,12 +87,8 @@ async def test_given_the_agent_when_it_writes_the_count_itself_then_the_database
 ) -> None:
     await scheduled_plan(cat_owner, moves=1)
 
-    try:
+    with pytest.raises(asyncpg.InsufficientPrivilegeError):  # SQLSTATE 42501
         await cat_agent.execute("update categories.plan set moved_count = 99")
-    except asyncpg.PostgresError as error:
-        assert error.sqlstate == "42501"
-    else:
-        raise AssertionError("the agent wrote moved_count")
 
 
 async def test_given_the_api_when_it_reads_then_the_count_and_the_apply_settings_are_readable_and_not_writable(
@@ -111,12 +108,8 @@ async def test_given_the_api_when_it_reads_then_the_count_and_the_apply_settings
         "insert into categories.apply_config (mailbox_id, threshold, delay_minutes) values ('x', 1, 1)",
         "delete from categories.apply_config",
     ):
-        try:
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):  # SQLSTATE 42501
             await cat_api.execute(statement)
-        except asyncpg.PostgresError as error:
-            assert error.sqlstate == "42501", statement
-        else:
-            raise AssertionError(statement)
 
 
 async def test_given_0022_when_run_down_and_up_then_the_column_goes_and_comes_back_and_the_function_stays(
