@@ -68,7 +68,7 @@ function nameProblems(
   if (text.includes("/")) {
     rules.push("name_slash");
   }
-  if (FORBIDDEN.test(text)) {
+  if (text.includes("..") || FORBIDDEN.test(text)) {
     rules.push("name_forbidden_char");
   }
   const key = normaliseName(name);

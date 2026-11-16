@@ -97,7 +97,7 @@ def _name_problems(
         rules.append("name_too_long")
     if "/" in canonical:
         rules.append("name_slash")
-    if any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in canonical):
+    if ".." in canonical or any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in canonical):
         rules.append("name_forbidden_char")
     key = normalise_name(name)
     if key in RESERVED_NAMES:

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
@@ -337,7 +337,12 @@ class TriagePipeline:
         verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)
         policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
         outcome = decide_outcome(verdict, mail, current, self._now(), policy)
-        label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
+        try:
+            label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
+        except ValueError:  # the mailbox refuses this label name: file under Other, never lose the mail or its alert
+            logger.warning("label refused; filing under Other id=%s", mail.message_id)
+            outcome = replace(outcome, label=OTHER_LABEL)
+            label_id = await asyncio.to_thread(self._mail.ensure_label, OTHER_LABEL)
         await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
         await self._store.complete(mail.message_id, outcome)
         summary.filed += 1

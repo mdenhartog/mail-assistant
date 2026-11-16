@@ -72,6 +72,8 @@ class FakeMailbox:
 
     def ensure_label(self, name: str) -> str:
         self.calls.append("ensure_label")
+        if ".." in name:  # the real adapter refuses these names
+            raise ValueError("label names must start with Assistant/")
         return f"id:{name}"
 
     def file(self, message_id: str, label_id: str) -> None:
@@ -495,3 +497,18 @@ async def test_given_a_source_that_changes_on_its_second_call_when_one_mail_is_t
     assert source.calls == 1
     assert store.outcomes["m1"].alert is AlertState.HELD
     assert store.outcomes["m1"].release_at == datetime(2026, 11, 9, 13, 0, tzinfo=UTC)
+
+
+async def test_given_a_refused_label_when_an_urgent_mail_is_filed_then_it_goes_to_other_and_the_alert_is_stored() -> (
+    None
+):
+    odd = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Fin..ance", "Bills"),))
+    mailbox, store = FakeMailbox(["m1"]), FakeStore(current=odd)
+
+    summary = await pipeline(mailbox, FakeJudge(judgement(urgent=True)), store).run_once()
+
+    assert mailbox.filed == [("m1", "id:Assistant/Other")]
+    assert store.done["m1"].alert is AlertState.OPEN
+    assert store.outcomes["m1"].label == "Assistant/Other"
+    assert summary.alerts == 1
+    assert summary.retry_later == 0
