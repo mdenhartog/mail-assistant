@@ -187,6 +187,33 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
+// 5b (AC-59): filter by sender, sort, and select the matching mails only; the sender text stays out of the URL and storage
+test("filtering a group by sender and sorting it selects only the matching mails", async ({ page }) => {
+  await openReady(page, ABOVE_THRESHOLD);
+  await page.getByRole("button", { name: GROUP }).click();
+  await expect(page.getByRole("checkbox")).toHaveCount(20);
+
+  await page.getByRole("searchbox", { name: "Search by sender" }).fill("sender 1");
+  await expect(page.getByText("11 mails match")).toBeVisible();
+  await expect(page.getByRole("checkbox")).toHaveCount(11);
+
+  await page.getByRole("combobox", { name: "Sort mails" }).selectOption({ label: "Subject Z to A" });
+  await expect(page.getByRole("checkbox").first()).toHaveAccessibleName(/subject 19$/);
+
+  await page.getByRole("button", { name: "Select the mails that match" }).click();
+  await expect(page.getByText("Select all 11 mails that match?")).toBeVisible();
+  await page.getByRole("button", { name: "Select these 11 mails" }).click();
+  await expect(page.getByText("11 of 20 selected")).toBeVisible();
+
+  expect(page.url()).not.toMatch(/sender/i);
+  const stored = await page.evaluate(() => JSON.stringify([Object.entries(localStorage), Object.entries(sessionStorage)]));
+  expect(stored).not.toContain("sender 1");
+
+  await page.getByRole("searchbox", { name: "Search by sender" }).fill("no such sender");
+  await expect(page.getByText("No mail from that sender in this group")).toBeVisible();
+  expect(await axeProblems(page), "filtered group: axe").toEqual([]);
+});
+
 // 6 (AC-30): last, so the logs hold everything the tests above did. The canary stands for a sender and a subject.
 test("canary strings in the sender and subject of the planned mails are in no log of the stack", async ({ page }) => {
   await openReady(page, ABOVE_THRESHOLD);

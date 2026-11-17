@@ -1,13 +1,15 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UseInfiniteQueryResult, UseMutationResult, UseQueryResult, InfiniteData } from "@tanstack/react-query";
 
-import { approvePlan, fetchPlan, fetchPlanItems, moveBack, postDecision } from "@/api/plan/plan.api";
+import { approvePlan, fetchPlan, fetchPlanItems, moveBack, postDecision, searchPlanItems } from "@/api/plan/plan.api";
+import { NO_FILTER, isFiltering } from "@/api/plan/plan.types";
 import type {
   ApprovalResult,
   ApproveBody,
   DecisionBody,
   DecisionResult,
   GroupRef,
+  ItemFilter,
   MoveBackResult,
   PlanItemsPage,
   PlanView,
@@ -44,17 +46,24 @@ export function useOpenItems(enabled: boolean): number {
   return data ?? 0;
 }
 
-/** Pages of 100 items of one group (or of the whole plan with no group), fetched one by one with "Load more". */
+/**
+ * Pages of 100 items of one group (or of the whole plan with no group), fetched one by one with "Load more". With a
+ * filter the pages come from the search route (a POST). The key holds the filter in memory only; it is never turned
+ * into a URL, and no persister is set up, so the sender text is not stored.
+ */
 export function usePlanItems(
   group: GroupRef | null,
   enabled: boolean,
+  filter: ItemFilter = NO_FILTER,
 ): UseInfiniteQueryResult<InfiniteData<PlanItemsPage, number>> {
+  const searching = group !== null && isFiltering(filter);
   return useInfiniteQuery({
-    queryKey: [...planKey, "items", group],
-    queryFn: ({ pageParam }) => fetchPlanItems(group, pageParam),
+    queryKey: [...planKey, "items", group, searching ? filter : null],
+    queryFn: ({ pageParam }) => (searching ? searchPlanItems(group, filter, pageParam) : fetchPlanItems(group, pageParam)),
     initialPageParam: 1,
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     enabled,
   });
 }
