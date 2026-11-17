@@ -98,6 +98,10 @@ A mail you do not approve stays where it is, and stays out of later reviews unti
 
 If the review changed while you were looking at it, the page says "The review changed. Nothing was changed. Reload it to see what is there now." with **Reload the review**.
 
+### Search and sort the mails of a group
+
+Above the mails of a group, **Search by sender** shows only the mails whose sender name or address contains your text, ignoring capitals, and **Sort mails** puts them in order by sender or subject, up and down. The page says how many mails match ("2 mails match", or "At least 20 mails match" while more pages remain). The text you type is sent in the request body and is never part of a web address or stored in the browser. While a search is active, **Select the mails that match** loads every matching mail, asks "Select all N mails that match?" and selects exactly those mails, not the whole group. With only a sort and no search, **Select all** still covers the whole group.
+
 ### When the mails move
 
 - A small approval moves right away: "Your mails are being moved. Only labels change. This page updates by itself."
@@ -126,7 +130,6 @@ When web sign-in is locked, the Categories and Review moves pages do not show a 
 
 - You cannot edit categories in Telegram; the web app is the only place. Telegram only offers Undo, Cancel, Move back and the lock.
 - You cannot cancel a waiting move on the web page.
-- You cannot filter or sort a review by sender.
 - Several mailboxes and other Google accounts.
 - The assistant keeps a daily count of how many mails you re-filed by hand and how many sit under **Other**. It is written to the assistant's own log and database, and no page shows it yet.
 

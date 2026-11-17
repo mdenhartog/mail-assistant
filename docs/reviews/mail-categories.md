@@ -8,7 +8,7 @@ release: not released
 
 # Review record: mail categories (the list, the page "Categories" and "Review moves")
 
-The feature lets the user keep their own list of categories in the web app and re-sort mail already filed after a change of the list, with a review before anything moves. It is built in 34 units, U-mail-categories-01 to U-mail-categories-34 (the index is `docs/plans/mail-categories/index.md`; the plan has no unit 00). Release R1 is the list and the page "Categories" (U-01 to U-11); release R2 is the plan, the review page, the apply and Move back (U-12 to U-19); U-20 to U-25 connect them to PostgreSQL, Gmail and Telegram; U-26 to U-34 are the fixes of the challenge and verify phases. Nothing is deployed and nothing is released. The documentation of phase 8 is this record and the [user guide](../user-guide/mail-categories.md).
+The feature lets the user keep their own list of categories in the web app and re-sort mail already filed after a change of the list, with a review before anything moves. It is built in 36 units, U-mail-categories-01 to U-mail-categories-36 (the index is `docs/plans/mail-categories/index.md`; the plan has no unit 00). Release R1 is the list and the page "Categories" (U-01 to U-11); release R2 is the plan, the review page, the apply and Move back (U-12 to U-19); U-20 to U-25 connect them to PostgreSQL, Gmail and Telegram; U-26 to U-34 are the fixes of the challenge and verify phases. Nothing is deployed and nothing is released. The documentation of phase 8 is this record and the [user guide](../user-guide/mail-categories.md).
 
 ## Gates
 
@@ -17,7 +17,7 @@ The feature lets the user keep their own list of categories in the web app and r
 | 1 Spec | Approved by the user, 2026-11-14 (D1 to D19, round table); revised afterwards: the web lock answers 401 and the sign-in page says how to unlock (AC-32, commit `ef7f9cb`) | `docs/specs/mail-categories.md` |
 | 2 Threat model | Written; risks R-1 and MR-1 to MR-4 recorded; MR-4 accepted for R1 | `docs/security/mail-categories-threat-model.md` |
 | 3 Design | Approved; ADR-0042 to ADR-0047 (category contract, mailbox id, api reads sender and subject, closed-set judging, plan lifecycle, decision functions and purge); ADR-0048 (pinned mail alerts) and ADR-0049 (worker egress limited by CIDR) came during the build | `docs/design/mail-categories-design.md`, `docs/memory/index.md` |
-| 4 Plan | 34 units in 9 waves (wave 9 added after review and verify) | `docs/plans/mail-categories/index.md` |
+| 4 Plan | 36 units in 10 waves (wave 9 added after review and verify, wave 10 for the sender filter) | `docs/plans/mail-categories/index.md` |
 | 5 Build, test first | Every unit built on `feat/INT-004/mail-categories/r1`, commits with `Refs: INT-004` and `Unit:` trailers. Exception: see "Test-first exception" below | `git log` of the branch |
 | 6 Challenge | Findings fixed by U-26 to U-34, see "Challenge" | this file |
 | 7 Verify | Run on a real prod-like stack, see "Verification results" | this file |
@@ -39,6 +39,8 @@ The challenge of phase 6 (red team RED, security review SEC, code review REV and
 | U-32 Plan view: example, apply settings, moved count | The plan view carries an example mail per group, the threshold and delay of the apply, and the number of mails moved, so the review page and the approve summary can say them | review items |
 | U-33 Last plan | The last plan is the plan that ended most recently (applied, cancelled or replaced) and names its end time | review items |
 | U-34 Mutation gate | Mutation testing of the pure modules of INT-004 with a nightly workflow; surviving mutants were killed by new tests (scope, pinned, list_text, approval_text, resort_plan, category-policy) | REV items (test strength) |
+| U-35 Sender filter and sort in the api | `POST /api/plan/items/search` takes the sender text in a body (never in a URL), with a closed sort set and a stable order; the sort is one literal SQL statement with bound parameters (semgrep `avoid-sqlalchemy-text` found a string-built version). | AC-58 |
+| U-36 Sender search and sort on the review page | A labelled search field, a sort choice, a result count and "Select the mails that match", which decides exactly the matching ids. | AC-59 |
 
 ### Waiver REV-002
 
@@ -111,6 +113,8 @@ The paths are relative to the build worktree. "Agent" is `agents/mail-triage/tes
 | AC-55 | R1, R2 | Web `components/ConfirmDialog.test.tsx`, `ReviewPage.test.tsx`; E2E `categories.spec.ts` (keyboard flow of the save summary) |
 | AC-56 | R1, R2 | Agent `db/test_categories_purge.py`, `db/test_plan_functions.py` |
 | AC-57 | R2 | Agent `test_resort_apply_safety.py` (lock and cancel stop before the next batch), `test_resort_apply_move_back.py`, `core/test_resort_plan.py` |
+| AC-58 | R2 | Backend `test_plan_search.py` (filter, sort, stable paging, wildcards, canary, bounds, refusals) |
+| AC-59 | R2 | Web `ReviewFilter.test.tsx`, `plan.api.test.ts`; E2E `review.spec.ts` (journey 5b: filter, sort, select the matching mails) |
 
 Criteria with no or only partial automated test:
 
@@ -124,7 +128,7 @@ Criteria with no or only partial automated test:
 
 Phase 7 ran on a real prod-like stack (db, mail, api, web and the edge over HTTPS):
 
-- Playwright: 80 of 82 tests green, 2 skipped by design (projects `categories` and `review` included, so `/categories` and `/review` open by link and survive a reload, blocker B-1 of the R1 checklist).
+- Playwright: 81 of 83 tests green (after U-35 and U-36), 2 skipped by design (projects `categories` and `review` included, so `/categories` and `/review` open by link and survive a reload, blocker B-1 of the R1 checklist).
 - axe at four widths (320, 375, 768 and 1280 px): no violation; 200 % text: no horizontal scroll.
 - Canary strings typed into names, descriptions, senders and subjects are in no log of the stack; headers and logs checks green.
 - `Cache-Control: no-store` on list and plan responses holds through the edge; an approve body of 40 KB gets 413.
@@ -141,7 +145,7 @@ Phase 7 ran on a real prod-like stack (db, mail, api, web and the edge over HTTP
 4. `test_settings_store` has a two-session race that is flaky under load.
 5. The nightly mutation workflow has not run on GitHub yet; the scores above are the results of the U-34 runs.
 6. ADR-0049 (worker egress limited by CIDR) records an accepted residual risk. Before a deploy the production values `networkPolicy.https.podCidr` and `networkPolicy.https.serviceCidr` must be filled in.
-7. Parts of the spec text are not built, and the user guide does not describe them: the sentence "Saving will create a review of up to N mails" before a save (C-15), filter and sort of the review by sender (C-18; the api refuses a sender in the query) and a web Cancel. The spec still lists them; decide whether the spec or the build changes.
+7. Not built: a web Cancel (Cancel is Telegram only). The sentence "Saving will create a review of up to N mails" (C-15) was dropped from the spec on 2026-11-17; filter and sort by sender (C-18) was built as U-35 and U-36.
 8. The daily report of AC-46 is written to the agent's log and its report table; no Telegram message or web page shows it.
 9. In R1 an Undo of a list change does not move back mail filed under it (MR-4, to be accepted by the user in row 8 of the R1 checklist).
 
