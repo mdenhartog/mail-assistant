@@ -37,6 +37,15 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 | [U-mail-categories-23](U-mail-categories-23.md) | Connect the list notice and Telegram actions to PostgreSQL | backend | U-mail-categories-07, U-mail-categories-21 | no | 6 |
 | [U-mail-categories-24](U-mail-categories-24.md) | Plan progress, group approvals and the open-items badge | backend | U-mail-categories-17, U-mail-categories-18 | yes | 6 |
 | [U-mail-categories-25](U-mail-categories-25.md) | Connect the daily re-file report to PostgreSQL and Gmail | backend | U-mail-categories-10, U-mail-categories-23 | no | 7 |
+| [U-mail-categories-26](U-mail-categories-26.md) | Plan apply timing and the scheduling guard | backend | U-mail-categories-22, U-mail-categories-23 | no | 9 |
+| [U-mail-categories-27](U-mail-categories-27.md) | Review fixes: archive label, names, authentication results, log redaction | backend | U-mail-categories-05, U-mail-categories-06 | no | 9 |
+| [U-mail-categories-28](U-mail-categories-28.md) | Review fixes: hidden SQL parameters, debounce, retries, notice wording | backend | U-mail-categories-22 | no | 9 |
+| [U-mail-categories-29](U-mail-categories-29.md) | Review page wording and status | web | U-mail-categories-18 | no | 9 |
+| [U-mail-categories-30](U-mail-categories-30.md) | Categories page leave guard and save bar | web | U-mail-categories-09 | no | 9 |
+| [U-mail-categories-31](U-mail-categories-31.md) | Worker HTTPS egress limited by CIDR | infra | U-mail-categories-22 | no | 9 |
+| [U-mail-categories-32](U-mail-categories-32.md) | Plan view: example, apply settings, moved count | backend | U-mail-categories-17, U-mail-categories-24 | no | 9 |
+| [U-mail-categories-33](U-mail-categories-33.md) | Last plan | backend | U-mail-categories-32 | no | 9 |
+| [U-mail-categories-34](U-mail-categories-34.md) | Mutation gate for the INT-004 pure modules | backend | U-mail-categories-02, U-mail-categories-05 | no | 9 |
 
 ## Build order
 
@@ -67,3 +76,4 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 
 Unit (policy, state machine, classifier, parsers, formatters), integration on real PostgreSQL (migrations, privilege matrix, functions, races, retention), contract (OpenAPI with schemathesis, `category_cases.json`, fake versus real Gmail), component (Vitest, Testing Library, axe), end-to-end (Playwright) and a canary scan. Every criterion has a test named `test_<unit>_<behaviour>`; the AC ids of the spec are in the criteria.
 8. Wave 8 (units with Parallel yes run together, each in its own worktree): U-mail-categories-11
+9. Wave 9 (review and verify fixes, one at a time): U-mail-categories-26, U-mail-categories-27, U-mail-categories-28, U-mail-categories-29, U-mail-categories-30, U-mail-categories-31, U-mail-categories-32, U-mail-categories-33, U-mail-categories-34
