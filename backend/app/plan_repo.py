@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime  # datetime is used at run time to normalise the zone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -54,12 +54,23 @@ _DECISIONS = text(
     "SELECT decision, count(*) AS n FROM categories.plan_item "
     "WHERE mailbox_id = :mailbox AND plan_id = :plan GROUP BY decision"
 )
+# One literal statement: the sort arrives as bound parameters and every CASE is NULL unless its sort is the chosen one,
+# so the unchosen terms tie and the chosen one orders. The id breaks ties, so a page boundary never moves between calls.
 _ITEMS = text(
     "SELECT id, sender_name, sender_address, subject, old_category_id, new_category_id, decision, state, reason "
     "FROM categories.plan_item WHERE mailbox_id = :mailbox AND plan_id = :plan "
     "AND (CAST(:from_id AS uuid) IS NULL OR old_category_id = CAST(:from_id AS uuid)) "
     "AND (CAST(:to_id AS uuid) IS NULL OR new_category_id = CAST(:to_id AS uuid)) "
-    "ORDER BY id LIMIT :limit OFFSET :offset"
+    "AND (CAST(:sender AS text) IS NULL OR sender_name ILIKE :sender ESCAPE '\\' "
+    "OR sender_address ILIKE :sender ESCAPE '\\') "
+    "ORDER BY "
+    "CASE WHEN CAST(:sort AS text) = 'sender' AND NOT CAST(:descending AS boolean) THEN lower(sender_name) END ASC, "
+    "CASE WHEN CAST(:sort AS text) = 'sender' AND NOT CAST(:descending AS boolean) THEN lower(sender_address) END ASC, "
+    "CASE WHEN CAST(:sort AS text) = 'sender' AND CAST(:descending AS boolean) THEN lower(sender_name) END DESC, "
+    "CASE WHEN CAST(:sort AS text) = 'sender' AND CAST(:descending AS boolean) THEN lower(sender_address) END DESC, "
+    "CASE WHEN CAST(:sort AS text) = 'subject' AND NOT CAST(:descending AS boolean) THEN lower(subject) END ASC, "
+    "CASE WHEN CAST(:sort AS text) = 'subject' AND CAST(:descending AS boolean) THEN lower(subject) END DESC, "
+    "id LIMIT :limit OFFSET :offset"
 )
 _DECIDE = text("SELECT categories.record_decision(:mailbox, :plan, :count, CAST(:scope AS jsonb), :decision)")
 _APPROVE = text("SELECT state, apply_after FROM categories.approve_plan(:mailbox, :plan, :count)")
@@ -143,6 +154,23 @@ class PlanSnapshot:
     last_ended: EndedPlan | None
     apply_threshold: int | None
     apply_delay_minutes: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class ItemQuery:
+    """Which items of the open plan, and in which order; the default is every item, lowest id first."""
+
+    from_id: uuid.UUID | None = None
+    to_id: uuid.UUID | None = None
+    sender: str | None = None  # part of a name or address; matched literally and without regard to case
+    sort: Literal["sender", "subject"] | None = None
+    descending: bool = False
+
+
+def _like_pattern(text_: str) -> str:
+    """A contains-pattern in which ``%``, ``_`` and the backslash match themselves."""
+    escaped = text_.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,14 +282,13 @@ class PlanRepository:
             None if config is None else config.delay_minutes,
         )
 
-    async def items(self, page: int, page_size: int, from_id: uuid.UUID | None, to_id: uuid.UUID | None) -> ItemsPage:
-        """Read one page of the open plan's items, lowest id first.
+    async def items(self, page: int, page_size: int, query: ItemQuery) -> ItemsPage:
+        """Read one page of the open plan's items.
 
         Args:
             page: The page, from 1.
             page_size: The most items on a page.
-            from_id: Only items that leave this category, or None.
-            to_id: Only items that go to this category, or None.
+            query: The category and sender filters and the sort.
 
         Returns:
             The items and whether another page follows; empty when there is no open plan.
@@ -273,10 +300,13 @@ class PlanRepository:
             params: dict[str, Any] = {
                 "mailbox": self._mailbox,
                 "plan": plan.id,
-                "from_id": from_id,
-                "to_id": to_id,
+                "from_id": query.from_id,
+                "to_id": query.to_id,
+                "sender": None if not query.sender else _like_pattern(query.sender),
                 "limit": page_size + 1,
                 "offset": (page - 1) * page_size,
+                "sort": query.sort,
+                "descending": query.descending,
             }
             rows = (await session.execute(_ITEMS, params)).all()
         items = tuple(

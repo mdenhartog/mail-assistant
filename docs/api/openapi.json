@@ -521,6 +521,81 @@
         "title": "IdsScope",
         "type": "object"
       },
+      "ItemSearchRequest": {
+        "additionalProperties": false,
+        "description": "The body of ``POST /api/plan/items/search``. The sender text is personal data, so it is a body.",
+        "properties": {
+          "from": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "order": {
+            "default": "asc",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "title": "Order",
+            "type": "string"
+          },
+          "page": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender"
+          },
+          "sort": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sender",
+                  "subject"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "title": "ItemSearchRequest",
+        "type": "object"
+      },
       "LastPlan": {
         "additionalProperties": false,
         "description": "The plan that ended most recently; \"Move back\" is offered for it only when it was applied.",
@@ -1794,6 +1869,53 @@
           }
         },
         "summary": "Read Plan Items",
+        "tags": [
+          "plan"
+        ]
+      }
+    },
+    "/api/plan/items/search": {
+      "post": {
+        "description": "Return one page of the open plan's items filtered by sender text and sorted, as a read.\n\nThe sender text is personal data, so it travels in the body and never in a URL. Nothing is written.\n\nArgs:\n    body: The page, the optional category filters, sender text (part of a name or address, any case) and sort.\n    request: The request, whose app holds the database access.\n\nReturns:\n    The same page shape as the items route; without filter and sort it is the same answer.",
+        "operationId": "search_plan_items_api_plan_items_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanItemsPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session, or the web lock is set"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "description": "The body is malformed"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Search Plan Items",
         "tags": [
           "plan"
         ]

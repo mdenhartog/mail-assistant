@@ -11,6 +11,7 @@ MAX_IDS = 200  # AC-34: the most items one decision may name (the database funct
 PAGE_SIZE = 100  # AC-24: the most items one page of the review returns
 MAX_PAGE = 100  # 100 pages of 100 are twice the cap of 5 000 items per plan
 MAX_ITEM_ID = 999_999_999_999_999_999  # the largest id the database function accepts (18 digits)
+MAX_SENDER_TEXT = 100  # the longest sender text of the item search
 MAX_COUNT = 2_000_000_000  # an item count that fits the database's integer
 
 PlanState = Literal["building", "ready", "scheduled", "applying", "applied", "replaced", "discarded", "cancelled"]
@@ -116,6 +117,19 @@ class PlanItemsPage(BaseModel):
     items: list[PlanItem]
     page: Annotated[int, Field(ge=1)]
     has_more: bool
+
+
+class ItemSearchRequest(BaseModel):
+    """The body of ``POST /api/plan/items/search``. The sender text is personal data, so it is a body."""
+
+    model_config = _CONFIG
+
+    sender: Annotated[str, Field(max_length=MAX_SENDER_TEXT)] | None = None  # part of a name or address
+    sort: Literal["sender", "subject"] | None = None  # without a sort the items are in id order
+    order: Literal["asc", "desc"] = "asc"
+    page: Annotated[int, Field(ge=1, le=MAX_PAGE)] = 1
+    from_category: Annotated[uuid.UUID | None, Field(alias="from")] = None
+    to_category: Annotated[uuid.UUID | None, Field(alias="to")] = None
 
 
 class GroupRef(BaseModel):

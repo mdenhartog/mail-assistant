@@ -26,6 +26,7 @@ from app.plan_models import (
     GroupExample,
     GroupScope,
     IdsScope,
+    ItemSearchRequest,
     LastPlan,
     MoveBackResult,
     PlanConflict409,
@@ -37,7 +38,7 @@ from app.plan_models import (
     PlanProgress,
     PlanView,
 )
-from app.plan_repo import PlanConflict, PlanMalformed, PlanRepository, PlanSnapshot
+from app.plan_repo import ItemQuery, ItemsPage, PlanConflict, PlanMalformed, PlanRepository, PlanSnapshot
 from app.routers.settings import require_json
 
 if TYPE_CHECKING:
@@ -161,6 +162,27 @@ async def read_plan(request: Request) -> PlanView:
     return _view(await _repository(request).snapshot())
 
 
+def _items_page(found: ItemsPage, page: int) -> PlanItemsPage:
+    return PlanItemsPage(
+        items=[
+            PlanItem(
+                id=i.id,
+                sender_name=i.sender_name,
+                sender_address=i.sender_address,
+                subject=i.subject,
+                from_category=i.old_id,
+                to_category=i.new_id,
+                decision=i.decision,  # pyright: ignore[reportArgumentType]  # the table checks the set
+                state=i.state,  # pyright: ignore[reportArgumentType]  # the table checks the set
+                reason=i.reason,
+            )
+            for i in found.items
+        ],
+        page=page,
+        has_more=found.has_more,
+    )
+
+
 @router.get(
     "/plan/items",
     response_model=PlanItemsPage,
@@ -188,25 +210,31 @@ async def read_plan_items(
     Returns:
         The items with sender name and address and subject as text, and whether another page follows.
     """
-    found = await _repository(request).items(page, PAGE_SIZE, from_category, to_category)
-    return PlanItemsPage(
-        items=[
-            PlanItem(
-                id=i.id,
-                sender_name=i.sender_name,
-                sender_address=i.sender_address,
-                subject=i.subject,
-                from_category=i.old_id,
-                to_category=i.new_id,
-                decision=i.decision,  # pyright: ignore[reportArgumentType]  # the table checks the set
-                state=i.state,  # pyright: ignore[reportArgumentType]  # the table checks the set
-                reason=i.reason,
-            )
-            for i in found.items
-        ],
-        page=page,
-        has_more=found.has_more,
-    )
+    found = await _repository(request).items(page, PAGE_SIZE, ItemQuery(from_category, to_category))
+    return _items_page(found, page)
+
+
+@router.post(
+    "/plan/items/search",
+    response_model=PlanItemsPage,
+    dependencies=[Depends(limit("api")), Depends(session), Depends(csrf), Depends(require_json)],
+    responses=_WRITE_RESPONSES,
+)
+async def search_plan_items(body: ItemSearchRequest, request: Request) -> PlanItemsPage:
+    """Return one page of the open plan's items filtered by sender text and sorted, as a read.
+
+    The sender text is personal data, so it travels in the body and never in a URL. Nothing is written.
+
+    Args:
+        body: The page, the optional category filters, sender text (part of a name or address, any case) and sort.
+        request: The request, whose app holds the database access.
+
+    Returns:
+        The same page shape as the items route; without filter and sort it is the same answer.
+    """
+    query = ItemQuery(body.from_category, body.to_category, body.sender, body.sort, descending=body.order == "desc")
+    found = await _repository(request).items(body.page, PAGE_SIZE, query)
+    return _items_page(found, body.page)
 
 
 @router.post(
