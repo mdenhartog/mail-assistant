@@ -46,6 +46,8 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 | [U-mail-categories-32](U-mail-categories-32.md) | Plan view: example, apply settings, moved count | backend | U-mail-categories-17, U-mail-categories-24 | no | 9 |
 | [U-mail-categories-33](U-mail-categories-33.md) | Last plan | backend | U-mail-categories-32 | no | 9 |
 | [U-mail-categories-34](U-mail-categories-34.md) | Mutation gate for the INT-004 pure modules | backend | U-mail-categories-02, U-mail-categories-05 | no | 9 |
+| [U-mail-categories-35](U-mail-categories-35.md) | Filter and sort the plan items by sender | backend | U-mail-categories-32 | no | 10 |
+| [U-mail-categories-36](U-mail-categories-36.md) | Filter and sort controls on the Review moves page | web | U-mail-categories-35 | no | 10 |
 
 ## Build order
 
@@ -77,3 +79,4 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 Unit (policy, state machine, classifier, parsers, formatters), integration on real PostgreSQL (migrations, privilege matrix, functions, races, retention), contract (OpenAPI with schemathesis, `category_cases.json`, fake versus real Gmail), component (Vitest, Testing Library, axe), end-to-end (Playwright) and a canary scan. Every criterion has a test named `test_<unit>_<behaviour>`; the AC ids of the spec are in the criteria.
 8. Wave 8 (units with Parallel yes run together, each in its own worktree): U-mail-categories-11
 9. Wave 9 (review and verify fixes, one at a time): U-mail-categories-26, U-mail-categories-27, U-mail-categories-28, U-mail-categories-29, U-mail-categories-30, U-mail-categories-31, U-mail-categories-32, U-mail-categories-33, U-mail-categories-34
+10. Wave 10 (sender filter and sort, one at a time): U-mail-categories-35, U-mail-categories-36
