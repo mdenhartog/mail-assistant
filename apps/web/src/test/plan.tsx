@@ -93,6 +93,7 @@ export type Answer = Response | Promise<Response>;
 export interface PlanWiring {
   plan?: () => Answer;
   items?: (search: URLSearchParams) => Answer;
+  search?: (body: unknown) => Answer;
   decisions?: (body: unknown) => Answer;
   approve?: (body: unknown) => Answer;
   moveBack?: (planId: string) => Answer;
@@ -112,6 +113,7 @@ function route(wiring: PlanWiring, url: URL, body: unknown): Answer {
     "/api/categories": () => (wiring.categories ? wiring.categories() : json(CATEGORY_LIST)),
     "/api/plan": () => (wiring.plan ? wiring.plan() : json(READY)),
     "/api/plan/items": () => (wiring.items ? wiring.items(url.searchParams) : json(itemsPage(1, 3, false))),
+    "/api/plan/items/search": () => (wiring.search ? wiring.search(body) : wiring.items ? wiring.items(url.searchParams) : json(itemsPage(1, 3, false))),
     "/api/plan/decisions": () => (wiring.decisions ? wiring.decisions(body) : json({ changed: 1 })),
     "/api/plan/approve": () =>
       wiring.approve ? wiring.approve(body) : json({ state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }),

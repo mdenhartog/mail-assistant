@@ -184,6 +184,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan/items/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Plan Items
+         * @description Return one page of the open plan's items filtered by sender text and sorted, as a read.
+         *
+         *     The sender text is personal data, so it travels in the body and never in a URL. Nothing is written.
+         *
+         *     Args:
+         *         body: The page, the optional category filters, sender text (part of a name or address, any case) and sort.
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The same page shape as the items route; without filter and sort it is the same answer.
+         */
+        post: operations["search_plan_items_api_plan_items_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plan/{plan_id}/move-back": {
         parameters: {
             query?: never;
@@ -700,6 +729,31 @@ export interface components {
          */
         IdsScope: {
             ids: unknown;
+        };
+        /**
+         * ItemSearchRequest
+         * @description The body of ``POST /api/plan/items/search``. The sender text is personal data, so it is a body.
+         */
+        ItemSearchRequest: {
+            /** From */
+            from?: string | null;
+            /**
+             * Order
+             * @default asc
+             * @enum {string}
+             */
+            order: "asc" | "desc";
+            /**
+             * Page
+             * @default 1
+             */
+            page: number;
+            /** Sender */
+            sender?: string | null;
+            /** Sort */
+            sort?: ("sender" | "subject") | null;
+            /** To */
+            to?: string | null;
         };
         /**
          * LastPlan
@@ -1433,6 +1487,65 @@ export interface operations {
                 content?: never;
             };
             /** @description The page or a category id is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    search_plan_items_api_plan_items_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanItemsPage"];
+                };
+            };
+            /** @description No live session, or the web lock is set */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is malformed */
             422: {
                 headers: {
                     [name: string]: unknown;

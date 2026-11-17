@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, setCsrfToken } from "@/api/client";
-import { approvePlan, classifyPlanError, fetchPlan, fetchPlanItems, moveBack, postDecision } from "@/api/plan/plan.api";
+import { approvePlan, classifyPlanError, fetchPlan, fetchPlanItems, moveBack, postDecision, searchPlanItems } from "@/api/plan/plan.api";
 import { INVOICES, json } from "@/test/categories";
 import { EXAMPLE, OTHER_ID, PLAN_ID, READY, group, itemsPage, wirePlan } from "@/test/plan";
 
@@ -68,6 +68,33 @@ describe("plan api: reading", () => {
     const seen = wirePlan();
     await fetchPlanItems(null, 1);
     expect([...(seen[0]?.search.keys() ?? [])]).toEqual(["page"]);
+  });
+});
+
+describe("plan api: searching the items of a group (AC-59)", () => {
+  const GROUP = { from: OTHER_ID, to: INVOICES.id };
+
+  it("given a sender and a sort, then they go in the JSON body with the CSRF token and never in the URL", async () => {
+    setCsrfToken("tok");
+    const seen = wirePlan({ items: () => json(itemsPage(1, 2, false)) });
+    const page = await searchPlanItems(GROUP, { sender: "anna", sort: "subject-desc" }, 2);
+    expect(page.items).toHaveLength(2);
+    const call = seen[0];
+    expect([call?.method, call?.path]).toEqual(["POST", "/api/plan/items/search"]);
+    expect([...(call?.search.keys() ?? [])]).toEqual([]);
+    expect(call?.token).toBe("tok");
+    expect(call?.body).toEqual({ from: OTHER_ID, to: INVOICES.id, page: 2, sender: "anna", sort: "subject", order: "desc" });
+  });
+
+  it("given the default order and a sender, then no sort is sent", async () => {
+    const seen = wirePlan({ items: () => json(itemsPage(1, 1, false)) });
+    await searchPlanItems(GROUP, { sender: "anna", sort: "default" }, 1);
+    expect(seen[0]?.body).toEqual({ from: OTHER_ID, to: INVOICES.id, page: 1, sender: "anna" });
+  });
+
+  it("given an answer that breaks the contract, then it throws", async () => {
+    wirePlan({ items: () => json({ items: "no" }) });
+    await expect(searchPlanItems(GROUP, { sender: "a", sort: "default" }, 1)).rejects.toThrow("Unexpected items answer");
   });
 });
 

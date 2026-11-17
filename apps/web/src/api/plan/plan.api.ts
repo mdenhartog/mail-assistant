@@ -5,6 +5,7 @@ import type {
   DecisionBody,
   DecisionResult,
   GroupRef,
+  ItemFilter,
   MoveBackResult,
   PlanFailure,
   PlanItemsPage,
@@ -118,6 +119,29 @@ export async function fetchPlanItems(group: GroupRef | null, page: number): Prom
   const query = new URLSearchParams(group ? { from: group.from, to: group.to } : {});
   query.set("page", String(page));
   return read(await apiFetch(`/api/plan/items?${query.toString()}`), isItemsPage, "items");
+}
+
+const SORT_BODY = {
+  "sender-asc": { sort: "sender", order: "asc" },
+  "sender-desc": { sort: "sender", order: "desc" },
+  "subject-asc": { sort: "subject", order: "asc" },
+  "subject-desc": { sort: "subject", order: "desc" },
+} as const;
+
+/**
+ * One page of the items of a group, narrowed by sender text and sorted. The sender text is personal data, so it goes in
+ * the JSON body of a POST (with the CSRF token), never in a URL.
+ */
+export async function searchPlanItems(group: GroupRef, filter: ItemFilter, page: number): Promise<PlanItemsPage> {
+  const sender = filter.sender.trim();
+  const body = {
+    from: group.from,
+    to: group.to,
+    page,
+    ...(sender === "" ? {} : { sender }),
+    ...(filter.sort === "default" ? {} : SORT_BODY[filter.sort]),
+  };
+  return read(await post("/api/plan/items/search", body), isItemsPage, "items");
 }
 
 export async function postDecision(body: DecisionBody): Promise<DecisionResult> {

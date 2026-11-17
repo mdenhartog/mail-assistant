@@ -38,3 +38,24 @@ export type PlanFailure =
 
 /** The most ids one decision may name; more is sent as a group or in several requests. */
 export const MAX_IDS = 200;
+
+/** The sort choices of the review items; "default" keeps the order of the plan. */
+export type ItemSort = "default" | "sender-asc" | "sender-desc" | "subject-asc" | "subject-desc";
+
+/**
+ * What narrows and orders the mails of a group. The sender text is personal data: it lives in memory and in the body
+ * of a POST only, never in a URL, storage or a log (AC-59).
+ */
+export interface ItemFilter {
+  sender: string;
+  sort: ItemSort;
+}
+
+/** The most characters of sender text the API accepts. */
+export const MAX_SENDER_LENGTH = 100;
+
+export const NO_FILTER: ItemFilter = { sender: "", sort: "default" };
+
+export function isFiltering(filter: ItemFilter): boolean {
+  return filter.sender.trim() !== "" || filter.sort !== "default";
+}
