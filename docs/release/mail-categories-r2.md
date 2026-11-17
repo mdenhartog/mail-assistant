@@ -46,13 +46,15 @@ AC-32 as built for the web: a locked web answers 401 to every plan call and the 
 1. The agent half of every journey is covered by pytest with fakes only (table above). A browser journey with the agent needs fake Gmail, Google token and Telegram services in `deploy/prod-like/` and settings in the agent for their addresses (open point 1 of the R1 checklist).
 2. The apply time and the Cancel in the journeys are set by SQL; if the agent's guard or the table names change, `support/reviewDb.ts` changes with them.
 3. The `review` project resets the one mailbox, the sign-in tables and the plan tables, so it runs after `journey` and `categories`, by itself.
+4. Cancel of a scheduled plan exists only in the Telegram message; the web has no Cancel button in R2 (decided with the user).
+5. Before a production deploy, fill `networkPolicy.https.podCidr` and `serviceCidr` of the worker chart (ADR-0049, accepted residual risk).
 
 ## Checklist
 
 | # | Item | Owner | Evidence needed | Status |
 | --- | --- | --- | --- | --- |
 | 1 | The CI job `prod-like` runs the projects `categories` and `review` green with certificate checks on. | Build | The job log. | Open (not yet run) |
-| 2 | The agent's pytest for R2 (plan build, first R2 start, apply, skip, Move back, Cancel, threshold wait, notices, canary) is green. | Build | The test run. | Open |
+| 2 | The agent's pytest for R2 (plan build, first R2 start, apply, skip, Move back, Cancel, threshold wait, notices, canary) is green. | Build | The test run. | Done: `check.mjs full` ran the agent suite green with 98.2 % coverage on the integration branch (phase 7, 2026-11-16); the nightly mutation gate of U-34 scores 92.6 % to 100 % per module. |
 | 3 | **Manual smoke test with the real Gmail (mandatory).** On the local stack with the real mailbox: change the list, wait for the plan, open "Review moves", approve one small group, see the label change in Gmail, press Move back and see the labels restored, approve a group above the threshold and press Cancel in Telegram, check that Telegram shows the result. No fake covers this. | The user | A dated note: what worked and what did not, with the number of mails moved. | Open |
 | 4 | Gmail OAuth consent screen is "In production" (row 15 of `web-settings-prod.md`). | The user | The status with its date. | Open |
 | 5 | AC-32 understood: the lock is a 401 and the sign-in page (note above). | The user | A dated note that this is accepted. | Open |
