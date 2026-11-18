@@ -38,7 +38,16 @@ from app.plan_models import (
     PlanProgress,
     PlanView,
 )
-from app.plan_repo import ItemQuery, ItemsPage, PlanConflict, PlanMalformed, PlanRepository, PlanSnapshot
+from app.plan_repo import (
+    EndedPlan,
+    ItemQuery,
+    ItemsPage,
+    OpenPlan,
+    PlanConflict,
+    PlanMalformed,
+    PlanRepository,
+    PlanSnapshot,
+)
 from app.routers.settings import require_json
 
 if TYPE_CHECKING:
@@ -81,6 +90,31 @@ _WRITE_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+def progress_view(plan: OpenPlan | None) -> PlanProgress:
+    """How far the build is; every number is zero and the estimate unknown when no plan is open."""
+    if plan is None:
+        return PlanProgress(checked=0, cap=0, unclear=0, estimate=None, not_looked_at=0)
+    return PlanProgress(
+        checked=plan.checked,
+        cap=plan.cap,
+        unclear=plan.unclear,
+        estimate=plan.estimate,
+        not_looked_at=plan.not_looked_at,
+    )
+
+
+def last_plan_view(last: EndedPlan | None) -> LastPlan | None:
+    """The plan that ended most recently, or None when no plan has ended."""
+    if last is None:
+        return None
+    return LastPlan(
+        id=last.id,
+        state=last.state,  # pyright: ignore[reportArgumentType]  # the query selects the three states
+        ended_at=last.ended_at,
+        moved_count=last.moved,
+    )
+
+
 def _view(snapshot: PlanSnapshot) -> PlanView:
     plan = snapshot.open
     decisions = snapshot.decisions
@@ -88,13 +122,7 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
     return PlanView(
         id=None if plan is None else plan.id,
         state=None if plan is None else plan.state,  # pyright: ignore[reportArgumentType]  # the table checks the set
-        progress=PlanProgress(
-            checked=0 if plan is None else plan.checked,
-            cap=0 if plan is None else plan.cap,
-            unclear=0 if plan is None else plan.unclear,
-            estimate=None if plan is None else plan.estimate,
-            not_looked_at=0 if plan is None else plan.not_looked_at,
-        ),
+        progress=progress_view(plan),
         groups=[
             PlanGroup(
                 from_category=g.old_id,
@@ -115,14 +143,7 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
         apply_after=None if plan is None else plan.apply_after,
         apply_threshold=snapshot.apply_threshold,
         apply_delay_minutes=snapshot.apply_delay_minutes,
-        last_plan=None
-        if last is None
-        else LastPlan(
-            id=last.id,
-            state=last.state,  # pyright: ignore[reportArgumentType]  # the query selects the three states
-            ended_at=last.ended_at,
-            moved_count=last.moved,
-        ),
+        last_plan=last_plan_view(last),
     )
 
 
