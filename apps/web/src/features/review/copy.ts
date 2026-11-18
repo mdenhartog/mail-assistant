@@ -15,7 +15,7 @@ export function clockText(iso: string | null): string | null {
 }
 
 /** "15 Nov" in the reader's own time zone: the one date format of the review; an unreadable value gives null. */
-export function dayText(iso: string | null): string | null {
+function dayText(iso: string | null): string | null {
   if (iso === null) {
     return null;
   }

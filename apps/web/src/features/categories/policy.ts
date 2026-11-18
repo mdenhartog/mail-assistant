@@ -4,8 +4,8 @@
  * `category_cases.json`; this file adds no rule of its own. The api stays the authority: it checks again.
  */
 
-export const NAME_MAX = 40;
-export const DESCRIPTION_MAX = 500;
+const NAME_MAX = 40;
+const DESCRIPTION_MAX = 500;
 export const MAX_CATEGORIES = 50;
 export const LABEL_PREFIX = "Assistant/";
 const RESERVED_NAMES: readonly string[] = ["other", "archive"];
@@ -45,7 +45,7 @@ export function normaliseName(raw: string): string {
 }
 
 /** The Gmail label of a category name. */
-export function labelFor(name: string): string {
+function labelFor(name: string): string {
   return `${LABEL_PREFIX}${name.trim()}`;
 }
 

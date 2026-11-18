@@ -8,7 +8,7 @@ import { problemText } from "@/features/categories/problemText";
 import type { Row, RowField } from "@/features/categories/rows";
 
 /** Message per card key and field; a field that is not there is fine. */
-export type RowErrors = Record<string, Partial<Record<RowField, string>>>;
+type RowErrors = Record<string, Partial<Record<RowField, string>>>;
 
 /** What the last save left on the page (nothing while a save is in flight). */
 export type SaveResult = "saved" | "conflict" | "rate-limited" | "failed" | "refused" | null;

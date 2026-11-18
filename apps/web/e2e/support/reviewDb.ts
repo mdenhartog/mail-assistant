@@ -6,7 +6,7 @@ import { sql } from "./db";
 import { INVOICES_ID, OTHER_ID, resetCategories, seedList } from "./categoriesDb";
 
 const MAILBOX = "primary";
-export const PLAN_ID = "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa";
+const PLAN_ID = "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa";
 
 export interface PlanSeed {
   /** Mails in the one group "Other to Invoices". */

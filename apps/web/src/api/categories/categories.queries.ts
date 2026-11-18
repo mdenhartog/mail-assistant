@@ -4,7 +4,7 @@ import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import { classifySaveError, fetchCategories, putCategories } from "@/api/categories/categories.api";
 import type { CategoryList, CategoryListUpdate } from "@/api/categories/categories.types";
 
-export const categoriesKey = ["categories"] as const;
+const categoriesKey = ["categories"] as const;
 
 /**
  * The stored list. Kept until a save changes it: a refetch while the user types would replace the form

@@ -5,7 +5,7 @@ import { MAX_SENDER_LENGTH } from "@/api/plan/plan.types";
 import type { ItemSort } from "@/api/plan/plan.types";
 import { Button } from "@/components/Button";
 
-export const SORT_LABELS: Record<ItemSort, string> = {
+const SORT_LABELS: Record<ItemSort, string> = {
   default: "Default order",
   "sender-asc": "Sender A to Z",
   "sender-desc": "Sender Z to A",

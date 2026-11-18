@@ -89,7 +89,7 @@ export interface Seen {
   token: string | null;
 }
 
-export type Answer = Response | Promise<Response>;
+type Answer = Response | Promise<Response>;
 export interface PlanWiring {
   plan?: () => Answer;
   items?: (search: URLSearchParams) => Answer;

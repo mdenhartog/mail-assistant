@@ -6,7 +6,7 @@ import { Field } from "@/components/Field";
 import { countText } from "@/features/categories/copy";
 import type { Row, RowField } from "@/features/categories/rows";
 
-export const DESCRIPTION_HINT =
+const DESCRIPTION_HINT =
   "The model reads the description. Say what belongs here, for example: Invoices, receipts and payment confirmations.";
 
 const CONTROL =
