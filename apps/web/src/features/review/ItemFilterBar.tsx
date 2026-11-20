@@ -15,9 +15,9 @@ const SORT_LABELS: Record<ItemSort, string> = {
 
 const SORTS: ItemSort[] = ["default", "sender-asc", "sender-desc", "subject-asc", "subject-desc"];
 
-const CONTROL =
-  "min-h-11 w-full rounded-control border-2 border-border bg-surface-raised px-3 text-text " +
-  "motion-safe:transition-colors motion-safe:duration-200";
+// No colour transition here: it would also animate the focus ring (outline-color) from the text colour, and the ring
+// must have its token colour the moment the control takes focus.
+const CONTROL = "min-h-11 w-full rounded-control border-2 border-border bg-surface-raised px-3 text-text";
 
 export interface ItemFilterBarProps {
   text: string;

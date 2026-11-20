@@ -4,6 +4,7 @@ import type { ReactElement, RefObject } from "react";
 import type { CategoryList } from "@/api/categories/categories.types";
 import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
+import { StickyBar } from "@/components/StickyBar";
 import { CategoryCard } from "@/features/categories/CategoryCard";
 import { Intro, OtherCard } from "@/features/categories/Intro";
 import { LeaveGuard } from "@/features/categories/LeaveGuard";
@@ -98,15 +99,12 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
       </div>
       <OtherCard mailCount={list.other.mailCount} />
       <OlderCategories older={flow.older} onAdopt={flow.adopt} />
-      <div
-        className="sticky bottom-0 z-10 -mx-6 flex flex-wrap items-center gap-3 border-t border-divider bg-surface-raised px-6 py-3 sm:static sm:mx-0 sm:border-t-0 sm:bg-transparent sm:p-0"
-        data-save-bar=""
-      >
+      <StickyBar className="flex flex-wrap items-center gap-3">
         <Button disabled={!flow.dirty} loading={save.saving} type="submit" variant="primary">
           Save changes
         </Button>
         {changes.length > 0 ? <p className="text-sm text-text-muted">{`${changesText(changes.length)} not saved`}</p> : null}
-      </div>
+      </StickyBar>
       <SaveSummary
         onCancel={save.cancel}
         onConfirm={save.confirm}

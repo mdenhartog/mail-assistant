@@ -45,11 +45,11 @@ describe("Categories page: saving", () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  it("given edits, then the save bar counts them and sticks to the bottom below sm only", async () => {
+  it("given edits, then the save bar counts them and is the sticky action bar of the page", async () => {
     wire();
     await loaded();
-    const bar = saveButton().closest("[data-save-bar]");
-    expect(bar).toHaveClass("sticky", "bottom-0", "sm:static");
+    const bar = saveButton().closest("[data-action-bar]");
+    expect(bar).toHaveClass("data-sticky:sticky", "bottom-0");
     expect(within(bar as HTMLElement).queryByText(/not saved/)).not.toBeInTheDocument();
 
     await rename(1, "Bills");
