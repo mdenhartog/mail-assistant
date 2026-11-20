@@ -54,7 +54,7 @@ function decidedAfterApproval(): Handlers {
 async function toSummary(page: Page, handlers: Handlers = {}): Promise<void> {
   await toReady(page, { ...decidedAfterApproval(), ...handlers });
   await page.getByRole("button", { name: "Approve group: Other to Invoices" }).click();
-  await page.getByRole("button", { name: "Move 20 mails, labels only" }).first().click();
+  await page.getByRole("button", { name: "Move 20 mails to their new categories" }).first().click();
   await expect(page.getByRole("alertdialog", { name: "Move 20 mails?" })).toBeVisible();
 }
 
@@ -122,10 +122,10 @@ export function reviewStates(): UiState[] {
     state("review: approving", async (page) => {
       const gate = held(reply(200, { state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }));
       await toSummary(page, { postApprove: gate.handler });
-      await page.getByRole("alertdialog").getByRole("button", { name: "Move 20 mails, labels only" }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Move 20 mails to their new categories" }).click();
       return gate.release;
     }),
-    banner("review: scheduled", { ...PLAN, state: "scheduled", groups: [], applyAfter: "2026-11-15T14:20:00Z" }, "You can cancel in Telegram until then."),
+    banner("review: scheduled", { ...PLAN, state: "scheduled", groups: [], applyAfter: "2026-11-15T14:20:00Z" }, "Only labels change. To stop this, use Cancel in the Telegram message."),
     banner("review: applying", { ...PLAN, state: "applying", groups: [] }, "Your mails are being moved."),
     state("review: applied", (page) => toApplied(page)),
     state("review: move back asked", async (page) => {

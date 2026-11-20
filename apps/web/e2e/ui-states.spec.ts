@@ -306,7 +306,7 @@ test.describe("the approve summary", () => {
     await page.keyboard.press("Escape");
 
     await expect(dialog).toBeHidden();
-    await expect(page.getByRole("button", { name: "Move 20 mails, labels only" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Move 20 mails to their new categories" })).toBeFocused();
   });
 
   test("the confirm button is the normal one and the safe button comes first in the DOM", async ({ page }) => {
@@ -314,7 +314,7 @@ test.describe("the approve summary", () => {
     await STATES.find((candidate) => candidate.name === "review: summary")?.open(page);
 
     const names = await page.getByRole("alertdialog").getByRole("button").allTextContents();
-    expect(names).toEqual(["Not yet", "Move 20 mails, labels only"]);
+    expect(names).toEqual(["Not yet", "Move 20 mails to their new categories"]);
   });
 });
 
