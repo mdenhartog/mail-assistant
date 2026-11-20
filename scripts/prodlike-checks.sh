@@ -66,6 +66,24 @@ check_headers() {
   return "$failed"
 }
 
+# log_files_matching KIND VALUE DIR: the .log files of DIR that contain the value, one per line.
+# A number (a sign-in code, or a canary code written by the canary test) counts only as a whole number: digits next to
+# it mean it is part of a longer one, such as the 0.007834233 seconds of a response time, which is not a leak. Any other
+# value is a text and is found wherever it sits.
+log_files_matching() {
+  local kind="$1" value="$2" dir="$3"
+  if [ "$kind" = "sign-in-code" ] || [[ "$value" =~ ^[0-9]+$ ]]; then
+    grep -lE -- "(^|[^0-9])$value([^0-9]|\$)" "$dir"/*.log || true
+  else
+    grep -lF -- "$value" "$dir"/*.log || true
+  fi
+}
+
+# The tests source this file for the functions above and must not run the checks.
+if [ "${PRODLIKE_CHECKS_SOURCE_ONLY:-}" = "1" ]; then
+  return 0
+fi
+
 if [ "$mode" = "headers" ]; then
   check_headers
   exit $?
@@ -112,12 +130,7 @@ fi
 failed=0
 while IFS=$'\t' read -r kind value; do
   [ -n "$value" ] || continue
-  if [ "$kind" = "sign-in-code" ]; then
-    pattern="(^|[^0-9])$value([^0-9]|\$)"
-    matches="$(grep -lE -- "$pattern" "$out"/*.log || true)"
-  else
-    matches="$(grep -lF -- "$value" "$out"/*.log || true)"
-  fi
+  matches="$(log_files_matching "$kind" "$value" "$out")"
   if [ -n "$matches" ]; then
     echo "a $kind appears in: $matches"
     failed=1
