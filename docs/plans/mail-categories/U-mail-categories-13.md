@@ -9,7 +9,7 @@ feature: mail-categories
 - Layer: backend
 - Release: R2
 - Contract: `core/resort_plan.py` (pure): plan transitions `building, ready, scheduled, applying, applied, replaced, discarded, cancelled` and item transitions with the rules of the design (list change, Lock, Cancel, finish-first).
-- Files: agents/mail-triage/app/core/resort_plan.py, agents/mail-triage/tests/test_resort_plan.py
+- Files: agents/mail-triage/app/core/resort_plan.py, agents/mail-triage/tests/core/test_resort_plan.py
 - Depends on: U-mail-categories-02
 - Parallel: yes
 - Guardrails: guardrail-python, guardrail-pytest
