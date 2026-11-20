@@ -14,12 +14,12 @@ An alert that is held during quiet hours, or a snoozed alert that comes back, is
 
 ## Decision
 
-Marco approved (2026-11-09) storing a small amount of mail-derived content in PostgreSQL, next to the existing `mail_item` and `alert` tables:
+The user approved (2026-11-09) storing a small amount of mail-derived content in PostgreSQL, next to the existing `mail_item` and `alert` tables:
 
 - On `mail_item`: sender, subject and `Reply-To` (each capped), the model's `reason` and `summary` (capped as in the schema), whether an attachment exists, the SPF, DKIM and DMARC results, a failure counter, a `completed` flag and a short note.
-- On `alert`: which input the agent is waiting for from Marco (`awaiting_input`).
+- On `alert`: which input the agent is waiting for from the user (`awaiting_input`).
 - A new table `overview_log` (one row per day the overview was settled).
-- **Never stored:** the mail body, attachments, and the text of Marco's replies after the draft is used (the draft table keeps its body only until it is used or expires, as before).
+- **Never stored:** the mail body, attachments, and the text of the user's replies after the draft is used (the draft table keeps its body only until it is used or expires, as before).
 - **Retention:** the content columns are cleared 30 days after the mail was claimed; ids, label, urgency, confidence and audit entries stay.
 
 ## Consequences

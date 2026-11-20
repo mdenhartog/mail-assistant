@@ -11,11 +11,11 @@ guardrails: [guardrail-tailwind, guardrail-a11y]
 
 ## Context
 
-ADR-0010 asked for a generated design system, proposed as three directions at the first feature with a screen and chosen by Marco. `web-settings` is that feature. Three directions were drawn for the login page, the settings page and their states, in light and dark, at phone and desktop width: Paper Trail, Signal Desk and Pebble. Every text pair in all three passed WCAG 2.2 AA when measured on the rendered page (light and dark).
+ADR-0010 asked for a generated design system, proposed as three directions at the first feature with a screen and chosen by the user. `web-settings` is that feature. Three directions were drawn for the login page, the settings page and their states, in light and dark, at phone and desktop width: Paper Trail, Signal Desk and Pebble. Every text pair in all three passed WCAG 2.2 AA when measured on the rendered page (light and dark).
 
 ## Decision
 
-Direction **A, Paper Trail**, chosen by Marco on 2026-11-10: a calm letter from the assistant. Warm paper and ink with a clay accent, a serif display face (Newsreader) with a plain sans for text (Public Sans), small radius, hairline rules, almost still motion. One column of labelled rows with one italic assistant sentence on the settings page. Phone and desktop share one layout.
+Direction **A, Paper Trail**, chosen by the user on 2026-11-10: a calm letter from the assistant. Warm paper and ink with a clay accent, a serif display face (Newsreader) with a plain sans for text (Public Sans), small radius, hairline rules, almost still motion. One column of labelled rows with one italic assistant sentence on the settings page. Phone and desktop share one layout.
 
 - The values (palette, type, radius, spacing, motion) come from the approved direction and become `packages/tokens` through `design-tokens-bridge`, in the clickable prototype unit before any production screen. The placeholder tokens are replaced then.
 - Semantic token names only; every colour has a light and a dark value; the contrast test of `packages/tokens` covers text pairs at 4.5:1 and borders, focus rings and controls at 3:1.

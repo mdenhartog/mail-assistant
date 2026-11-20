@@ -1,7 +1,7 @@
 ---
 id: INT-007
 title: Chat with the agent in Telegram and WhatsApp
-originator: Marco
+originator: the user
 status: confirmed
 date: 2026-11-14
 ---

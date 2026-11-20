@@ -6,7 +6,7 @@ feature: web-settings
 # U-web-settings-49: Audit retention purge in the migrate job (R1 since 2026-11-13)
 
 - Layer: backend (database; agent image)
-- Contract: `python -m app purge` runs under the owner role as a step of the migrate job, after migrate and grants (not a CronJob, not a runtime role): it deletes `settings.settings_change` rows older than one year and `web_auth.security_event` rows older than 90 days (Marco, 2026-11-13) (injected clock) and expired `login_request` and `session` rows. `settings_change` stays append-only for the runtime roles through grants; the owner purge is the one documented delete path. The migrate command runs the step, so the Job and the compose service need no change.
+- Contract: `python -m app purge` runs under the owner role as a step of the migrate job, after migrate and grants (not a CronJob, not a runtime role): it deletes `settings.settings_change` rows older than one year and `web_auth.security_event` rows older than 90 days (the user, 2026-11-13) (injected clock) and expired `login_request` and `session` rows. `settings_change` stays append-only for the runtime roles through grants; the owner purge is the one documented delete path. The migrate command runs the step, so the Job and the compose service need no change.
 - Files: `agents/mail-triage/app/db/purge.py`, `agents/mail-triage/app/db/migrate.py`, `agents/mail-triage/app/__main__.py`, `agents/mail-triage/tests/db/test_purge.py`
 - Depends on: U-web-settings-07, U-web-settings-08
 - Parallel: yes

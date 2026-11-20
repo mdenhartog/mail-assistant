@@ -12,7 +12,7 @@ guardrails: [guardrail-oauth2-oidc]
 
 ## Context
 
-ADR-0008 fixed Google OAuth2 as the identity and reused the Gmail/Calendar consent for login. INT-002 adds the first web page, which only changes settings. Marco wants to reach it with his own account through a standard login page, without the page being tied to Google.
+ADR-0008 fixed Google OAuth2 as the identity and reused the Gmail/Calendar consent for login. INT-002 adds the first web page, which only changes settings. The user wants to reach it with their own account through a standard login page, without the page being tied to Google.
 
 ## Decision
 
@@ -29,6 +29,6 @@ The web UI has a login page that signs in through a **generic OIDC provider**, c
 
 ## Alternatives
 
-- Own accounts with passwords: more attack surface (storage, reset, brute force) for one user; rejected by Marco in favour of OIDC.
+- Own accounts with passwords: more attack surface (storage, reset, brute force) for one user; rejected by the user in favour of OIDC.
 - Both password login and OIDC: most work and surface; rejected.
 - Keep ADR-0008 unchanged: ties the page to Google and bundles mail scopes into login; rejected.

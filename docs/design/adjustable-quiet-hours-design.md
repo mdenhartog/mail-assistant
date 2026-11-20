@@ -4,7 +4,7 @@ intent: INT-002
 spec: docs/specs/adjustable-quiet-hours.md
 status: approved
 date: 2026-11-09
-approver: Marco
+approver: the user
 adrs: [ADR-0019, ADR-0023, ADR-0025, ADR-0026, ADR-0027, ADR-0028]
 ---
 
@@ -100,7 +100,7 @@ The daily overview window runs from the last settled instant, not from local mid
 
 | Risk | Answer |
 | --- | --- |
-| A bad row silences alerts | validated on read, CHECKs in the database, notice to Marco (AC-31, AC-34) |
+| A bad row silences alerts | validated on read, CHECKs in the database, notice to the user (AC-31, AC-34) |
 | Two writers | one row, version check, whole-row validation (AC-29) |
 | Clock-change days | UTC moments and the ADR-0027 rule (AC-28) |
 | Dialogue collisions | one conversation row, nonce buttons (AC-4, AC-5) |

@@ -36,7 +36,7 @@ Overview of the plan: what is built, in which order and what can run in parallel
 
 1. Wave 1 — in parallel: U-mail-triage-02, U-mail-triage-03, U-mail-triage-04, U-mail-triage-05, U-mail-triage-06, U-mail-triage-08, U-mail-triage-09, U-mail-triage-11, U-mail-triage-12, U-mail-triage-15, U-mail-triage-16, U-mail-triage-17, U-mail-triage-18; one at a time: U-mail-triage-01, U-mail-triage-07, U-mail-triage-10, U-mail-triage-13, U-mail-triage-14, U-mail-triage-19
 
-All code lives in the new component `agents/mail-triage` (ADR-0019), Python, no UI. Each unit gets its own git worktree and branch (`feat/mail-triage-<nn>-<slug>`), is built test-first (a failing test is shown before any implementation) and is merged by a PR that Marco approves. Test names follow `test_given_x_when_y_then_z`. Ids AC-n refer to the spec.
+All code lives in the new component `agents/mail-triage` (ADR-0019), Python, no UI. Each unit gets its own git worktree and branch (`feat/mail-triage-<nn>-<slug>`), is built test-first (a failing test is shown before any implementation) and is merged by a PR that the user approves. Test names follow `test_given_x_when_y_then_z`. Ids AC-n refer to the spec.
 
 Common guardrails for every unit: `guardrail-python`, `guardrail-pytest`. Others are listed per unit.
 
@@ -100,5 +100,5 @@ Every AC in the spec appears at least once. Self-check against the "too big" sig
 
 - U-07 depends on the `oauth_token` table from U-09; build U-09 first or together.
 - The Gmail and Telegram adapters are tested against fakes and recorded responses; real accounts are used only in U-19 and never in CI.
-- Marco provides the Anthropic API key, the Telegram bot token and a Google OAuth client before U-19, not before.
+- The user provides the Anthropic API key, the Telegram bot token and a Google OAuth client before U-19, not before.
 - The threat model is delivered by tests (security criteria); `red-team` and `code-reviewer` check them in phase 6.

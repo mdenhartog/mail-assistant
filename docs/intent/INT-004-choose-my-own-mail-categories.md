@@ -1,18 +1,18 @@
 ---
 id: INT-004
 title: Let me choose the mail categories myself
-originator: Marco
+originator: the user
 status: confirmed
 date: 2026-11-08
 ---
 
 ## What I want
 
-(English version, to be approved by Marco; his own words are kept under *Original wording*.)
+(English version, to be approved by the user; their own words are kept under *Original wording*.)
 
 Before the agent creates a category label for a mail, the mail goes through a categorisation layer. In that layer I state which categories I want to have. The agent then follows them, so that my mail ends up in the right places.
 
-As answered by Marco on 2026-11-08:
+As answered by the user on 2026-11-08:
 
 - I set the categories **only in the web application**, not through Telegram.
 - A category has a **name and a description**. The description tells the language model why a mail belongs there, so it can choose the right category.
@@ -26,7 +26,7 @@ As answered by Marco on 2026-11-08:
 
 ## Why (the problem, who has it, how often)
 
-Marco, for his personal mailbox. Today the agent invents the categories itself. On the first real run (2026-11-08) some mails were filed in places Marco does not want, and 36 of 75 old unread mails ended under "Other" because the agent had already reached its limit of 15 self-made categories. The list of categories is therefore not what Marco would choose.
+The user, for their personal mailbox. Today the agent invents the categories itself. On the first real run (2026-11-08) some mails were filed in places the user does not want, and 36 of 75 old unread mails ended under "Other" because the agent had already reached its limit of 15 self-made categories. The list of categories is therefore not what the user would choose.
 
 ## How I will know it works
 
@@ -42,15 +42,15 @@ Marco, for his personal mailbox. Today the agent invents the categories itself. 
 
 ## Open questions
 
-- The agent files mail by removing it from the inbox, which Gmail itself calls archiving. Which "archive" is meant to stay out of the sorting: mail that I archived myself without any category label? And what exactly counts as "in the categories": the mails that carry one of the agent's category labels? (Marco)
-- What does the overview of what will move show (the mail, from which category, to which category), and how does it stay readable when many mails move? (design, with Marco)
-- Several agents, each with its own mailbox, and one web application: does the web application show and manage all of them after I sign in? Does every mailbox have its own list of categories, or can mailboxes share one list? (Marco)
-- Which signed-in Google account may manage which agent and mailbox: only the owner of that mailbox, or an allow-list of accounts that I decide? (Marco)
+- The agent files mail by removing it from the inbox, which Gmail itself calls archiving. Which "archive" is meant to stay out of the sorting: mail that I archived myself without any category label? And what exactly counts as "in the categories": the mails that carry one of the agent's category labels? (the user)
+- What does the overview of what will move show (the mail, from which category, to which category), and how does it stay readable when many mails move? (design, with the user)
+- Several agents, each with its own mailbox, and one web application: does the web application show and manage all of them after I sign in? Does every mailbox have its own list of categories, or can mailboxes share one list? (the user)
+- Which signed-in Google account may manage which agent and mailbox: only the owner of that mailbox, or an allow-list of accounts that I decide? (the user)
 - Signing in with Google touches identity (ADR-0008, Google OAuth2) and the threat model; the Gmail permission of the agent stays separate from the sign-in of the web application. (decision-gate, threat-model)
 - The web application and the agent must share the list of categories. Which of them owns it, and how does the agent get changes (it runs as a separate service with its own database)? (design)
 - Descriptions are sent to the language model together with the mail. The same limits as today apply (ADR-0018), but the text of my descriptions becomes part of what the model reads. (threat-model)
 - This reverses two decisions of the base spec: D1 (the agent chooses categories itself) and the non-goal "No rules editor", and it replaces the fixed maximum of 15 categories (C2). It also adds a screen, which the base spec excluded (non-goal "No web or mobile screen"). The change goes into a new spec. (spec phase)
-- Is this one intent, or several (the category list and the web screen, the categorisation layer, sorting existing mail again)? (Marco)
+- Is this one intent, or several (the category list and the web screen, the categorisation layer, sorting existing mail again)? (the user)
 
 ## Original wording
 

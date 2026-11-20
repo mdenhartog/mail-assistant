@@ -4,7 +4,7 @@ intent: INT-002
 spec: docs/specs/web-settings.md
 threat_model: docs/security/web-settings-threat-model.md
 status: approved
-approver: Marco
+approver: the user
 date: 2026-11-10
 revision: 3 (after the round table of 2026-11-10 and the sign-in and exposure decisions of 2026-11-10)
 ---
@@ -13,18 +13,18 @@ revision: 3 (after the round table of 2026-11-10 and the sign-in and exposure de
 
 Screens and states: `web-settings-screens.md`. Visual direction: ADR-0035 (Pebble, which supersedes the Paper Trail choice of ADR-0031). Sign-in by username and e-mailed code: ADR-0036 (replaces ADR-0024). Local-only exposure: ADR-0037 (replaces ADR-0032). Web notices and the lock: ADR-0033. One api replica: ADR-0034. The settings contract and the audit are those of `adjustable-quiet-hours` (ADR-0025, ADR-0030).
 
-Revision 2 followed the round table (security, UX, QA, product owner) and the decisions of Marco: two releases, the stronger web notice, one api replica, and the hosting target chosen before staging. Revision 3 replaces the OIDC sign-in by the e-mailed code and the internet exposure by local-only access; everything else is unchanged.
+Revision 2 followed the round table (security, UX, QA, product owner) and the decisions of the user: two releases, the stronger web notice, one api replica, and the hosting target chosen before staging. Revision 3 replaces the OIDC sign-in by the e-mailed code and the internet exposure by local-only access; everything else is unchanged.
 
 ## Releases
 
 | | R1 (first usable release) | R2 (later) |
 | --- | --- | --- |
 | Sign-in | Username and e-mailed code, start-up configuration check (AC-2 to AC-7, AC-24, AC-29 to AC-31) | |
-| Page | View and save the four values, last-change line, zone combobox, conflict (AC-1, AC-9 to AC-11, C-7); an expired session sends Marco to sign in and back to `/settings` with the stored values (first half of AC-12) | Reset to defaults (AC-25); typed values kept across session expiry (second half of AC-12) |
+| Page | View and save the four values, last-change line, zone combobox, conflict (AC-1, AC-9 to AC-11, C-7); an expired session sends the user to sign in and back to `/settings` with the stored values (first half of AC-12) | Reset to defaults (AC-25); typed values kept across session expiry (second half of AC-12) |
 | Safety | CSRF and Origin, CSP, headers, route allow-list, 404 for internals, HTTPS and HSTS, limits (AC-8, AC-14 to AC-16, AC-18, AC-19); the web role (AC-17); the Telegram notice with Undo and lock (AC-13, ADR-0033); one security log entry per refusal (first half of AC-20); the retention purge (AC-21, D-19) | The Telegram alert after 5 wrong or expired codes (second half of AC-20) |
 | Delivery | Accessibility and responsive states (AC-22, AC-23), contract fixture (AC-26), prod-like edge with the mail catcher, chart, local ingress, NetworkPolicy, secrets | |
 
-AC-12 (second half) and AC-25 stay in R2 by decision of Marco; they are not built. On 2026-11-13 the wrong-code alert (AC-20, second half; U-48, ADR-0039), the automatic lock after 15 wrong codes in 24 hours (U-55, `/web_lock`, `/web_unlock`) and the retention purge (AC-21, D-19; U-49) came into R1; the purge is a gate before production. The table below is the original split; read the three items above as R1.
+AC-12 (second half) and AC-25 stay in R2 by decision of the user; they are not built. On 2026-11-13 the wrong-code alert (AC-20, second half; U-48, ADR-0039), the automatic lock after 15 wrong codes in 24 hours (U-55, `/web_lock`, `/web_unlock`) and the retention purge (AC-21, D-19; U-49) came into R1; the purge is a gate before production. The table below is the original split; read the three items above as R1.
 
 ## Facts in the existing code that shape the design
 
@@ -93,12 +93,12 @@ Cookies: `__Host-session` (256-bit random value, `HttpOnly`, `Secure`, `SameSite
 
 ## Deployment
 
-- Ingress: local only (ADR-0037). No public ingress, no public DNS and no port forward; the ingress or service listens on a private address with a local host name. `/api` and `/auth` to `api`, `/` to `web`, HTTP to HTTPS redirect, TLS 1.2 minimum and the 8 KB body cap, all as Traefik objects rendered by the chart (ADR-0040: a `Middleware` with `stsSeconds` for HSTS, a `redirectScheme` `Middleware` on the `web` entry point, a `TLSOption` with `VersionTLS12` and a `buffering` `Middleware`; no annotation text), a certificate from a private certificate authority that Marco's devices trust (issued by hand or by a cert-manager CA issuer, decided before staging), a certificate expiry alert at least 14 days ahead. The Traefik access log keeps the path and never the query string (set in the Traefik installation, a staging check).
+- Ingress: local only (ADR-0037). No public ingress, no public DNS and no port forward; the ingress or service listens on a private address with a local host name. `/api` and `/auth` to `api`, `/` to `web`, HTTP to HTTPS redirect, TLS 1.2 minimum and the 8 KB body cap, all as Traefik objects rendered by the chart (ADR-0040: a `Middleware` with `stsSeconds` for HSTS, a `redirectScheme` `Middleware` on the `web` entry point, a `TLSOption` with `VersionTLS12` and a `buffering` `Middleware`; no annotation text), a certificate from a private certificate authority that the user's devices trust (issued by hand or by a cert-manager CA issuer, decided before staging), a certificate expiry alert at least 14 days ahead. The Traefik access log keeps the path and never the query string (set in the Traefik installation, a staging check).
 - nginx: exact routes for the pages, 404 for the rest; proxy for `/auth/` in compose only.
 - NetworkPolicy: `api` and `web` accept ingress from one peer that selects the Traefik namespace and its pods (the same pods that `trustedProxyCidrs` names); `api` egress to the database, DNS and the SMTP host and port from configuration only (no general TCP 443 rule, no identity-provider egress); no `web-to-api` rule in Kubernetes.
 - Secrets (ADR-0029): a SealedSecret `<release>-api` (database URL of the web role, code-hash key, CSRF key, username-hash key); a second SealedSecret for the send-only SMTP credential; the migration Secret gains the web role password. The username, the e-mail address, the SMTP host and port and the public origin are plain values per environment (the address is personal data, not a secret).
 - Chart: `replicas: 1` for the api (ADR-0034).
-- The local host name, the private certificate authority and the SMTP account are decided before staging; the build and all tests run against the prod-like stack and do not wait for them. Two-step verification on Marco's mailbox is a condition for production (R-1, ADR-0033, ADR-0036).
+- The local host name, the private certificate authority and the SMTP account are decided before staging; the build and all tests run against the prod-like stack and do not wait for them. Two-step verification on the user's mailbox is a condition for production (R-1, ADR-0033, ADR-0036).
 
 ## Test strategy
 
@@ -116,7 +116,7 @@ Prod-like sequence in CI, in one job (replacing the separate `e2e` and `runtime-
 
 ## Clickable prototype (ADR-0009)
 
-Decision of Marco: yes. Scope reduced after the round table: the settings form with the zone combobox and live local time, the preview of a zone change, and the conflict banner; the login page and the other states are covered by the screens document (the login page of the prototype is superseded, see the hand-off). It is built as an artifact in the Pebble direction, runs in parallel with the backend units and does not gate them. The tokens unit runs in parallel too.
+Decision of the user: yes. Scope reduced after the round table: the settings form with the zone combobox and live local time, the preview of a zone change, and the conflict banner; the login page and the other states are covered by the screens document (the login page of the prototype is superseded, see the hand-off). It is built as an artifact in the Pebble direction, runs in parallel with the backend units and does not gate them. The tokens unit runs in parallel too.
 
 ## Corrections to the spec and the threat model
 

@@ -10,7 +10,7 @@ guardrails: [guardrail-gmail, guardrail-llm, guardrail-telegram, guardrail-sqlal
 
 ## Context
 
-`mail-triage` (spec `docs/specs/mail-triage.md`) must poll Gmail, judge mail with a model, start conversations with Marco in Telegram (alerts with buttons, drafts to confirm, reminders, a daily overview) and send mail only after confirmation. The scaffold has `channels/chat-gateway` (a stateless webhook relay: message in, agent answer out, public HTTPS needed) and `agents/assistant` (a Bedrock chat agent).
+`mail-triage` (spec `docs/specs/mail-triage.md`) must poll Gmail, judge mail with a model, start conversations with the user in Telegram (alerts with buttons, drafts to confirm, reminders, a daily overview) and send mail only after confirmation. The scaffold has `channels/chat-gateway` (a stateless webhook relay: message in, agent answer out, public HTTPS needed) and `agents/assistant` (a Bedrock chat agent).
 
 ## Decision
 

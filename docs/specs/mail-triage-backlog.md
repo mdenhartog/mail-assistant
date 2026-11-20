@@ -4,32 +4,32 @@ intent: INT-003
 extends: mail-triage
 status: approved
 date: 2026-11-08
-approver: Marco
+approver: the user
 ---
 
 # Mail triage: label the unread mail already in the inbox
 
 ## Summary
 
-Today the agent only handles mail that arrives after it first started (`docs/specs/mail-triage.md`, Behaviour 1: "mail that arrived since the last run"). The unread mail that was already in Marco's inbox is never categorised. This feature adds a **one-time catch-up** that files that unread mail with the same labels as new mail, without flooding Marco with alerts and without starving new mail of model budget.
+Today the agent only handles mail that arrives after it first started (`docs/specs/mail-triage.md`, Behaviour 1: "mail that arrived since the last run"). The unread mail that was already in the user's inbox is never categorised. This feature adds a **one-time catch-up** that files that unread mail with the same labels as new mail, without flooding the user with alerts and without starving new mail of model budget.
 
-Why: Marco expected his unread mail to be labelled and could not see it happen (INT-003). On 2026-11-08 the first real run left 213 unread mails untouched; after Marco cleared advertising, 75 were left.
+Why: The user expected their unread mail to be labelled and could not see it happen (INT-003). On 2026-11-08 the first real run left 213 unread mails untouched; after the user cleared advertising, 75 were left.
 
 ## Who it is for
 
-Marco, the single owner of the mailbox. No new screen and no new Telegram command.
+The user, the single owner of the mailbox. No new screen and no new Telegram command.
 
 ## Goals
 
 1. Every mail that was unread in the inbox when the catch-up started is filed under exactly one `Assistant/...` label and leaves the inbox.
 2. The catch-up runs once and starts by itself, also on an installation that is already running.
 3. New mail always comes first: the catch-up never delays or starves a mail that arrives today.
-4. Marco is not flooded: at most 5 Telegram alerts come from the catch-up.
+4. The user is not flooded: at most 5 Telegram alerts come from the catch-up.
 
 ## Non-goals
 
 - Read mail in the inbox is not touched. Mail outside the inbox (archive, other labels, spam, trash) is not touched.
-- No Telegram command, no switch and no setting to start or repeat the catch-up (Marco chose "automatic at start").
+- No Telegram command, no switch and no setting to start or repeat the catch-up (the user chose "automatic at start").
 - No change to how new mail is categorised, judged or alerted.
 - No new category set: the catch-up uses the same labels and the same judging as new mail.
 
@@ -40,7 +40,7 @@ Marco, the single owner of the mailbox. No new screen and no new Telegram comman
 - A new urgent mail waits behind old mail.
 - More than 5 alerts arrive from the catch-up, or the same old mail is processed twice.
 
-## Decisions made by Marco
+## Decisions made by the user
 
 | # | Decision | Source |
 | --- | --- | --- |
@@ -50,12 +50,12 @@ Marco, the single owner of the mailbox. No new screen and no new Telegram comman
 | B4 | New mail has priority over the catch-up; if the daily budget runs out, the catch-up continues the next day. | brainstorm, 2026-11-08 |
 | B5 | The catch-up works newest first. | brainstorm, 2026-11-08 |
 
-## My calls (Marco may change these)
+## My calls (the user may change these)
 
 - C-B1: The set to process is a snapshot: the unread inbox mails at the moment the catch-up starts. Mail that arrives later is normal new mail, not backlog.
 - C-B2: "Done" is stored as one marker in PostgreSQL (ADR-0007). No marker means the catch-up has not finished, so an installation that already runs will do it once after the update, and a fresh installation does it on its first start.
-- C-B3: The 5 alerts go to the **newest** 5 urgent old mails, because those are the ones Marco can still act on. Alerts follow the existing rules (quiet hours, one alert per mail, three actions).
-- C-B4: New mail is handled first in every run, and the catch-up may only use the daily model budget **above a reserve of 50 calls** (of the 200 a day), so a mail that arrives later in the day always still has budget. The reserve is fixed in the code, like the quiet hours. Added in phase 3 (design); needs Marco's approval.
+- C-B3: The 5 alerts go to the **newest** 5 urgent old mails, because those are the ones the user can still act on. Alerts follow the existing rules (quiet hours, one alert per mail, three actions).
+- C-B4: New mail is handled first in every run, and the catch-up may only use the daily model budget **above a reserve of 50 calls** (of the 200 a day), so a mail that arrives later in the day always still has budget. The reserve is fixed in the code, like the quiet hours. Added in phase 3 (design); needs the user's approval.
 - C-B5: Old urgent mail that gets no alert is written to the daily overview (D10) once, and is not alerted later.
 
 ## Behaviour
@@ -95,7 +95,7 @@ Marco, the single owner of the mailbox. No new screen and no new Telegram comman
 
 ## Constraints from existing decisions
 
-- ADR-0007 PostgreSQL holds the marker and the list state; ADR-0014 routing and the budget stay as they are; ADR-0018 accepts sending Marco's own mail to the model; ADR-0011 grants only the Gmail scopes that are already in use (reading unread inbox mail needs no new scope).
+- ADR-0007 PostgreSQL holds the marker and the list state; ADR-0014 routing and the budget stay as they are; ADR-0018 accepts sending the user's own mail to the model; ADR-0011 grants only the Gmail scopes that are already in use (reading unread inbox mail needs no new scope).
 - Hard rule 2 (rebuild-not-patch): the "budget out" outcome of the judge changes from "needs attention" to "stop" only for catch-up mail. This must be a clean second path in the use case, not a flag on the existing one.
 
 ## Approaches considered
@@ -104,9 +104,9 @@ Marco, the single owner of the mailbox. No new screen and no new Telegram comman
 | --- | --- | --- |
 | A (my call) | A separate catch-up pass in the polling run with its own marker, working from a snapshot of the unread inbox mails. | Clean, testable, does not touch the new-mail path; adds one marker and one list of state. |
 | B | Move the stored Gmail history position back in time. | Gmail history only reaches back a limited time and includes read mail, so it cannot express "unread only" and cannot be bounded. Rejected. |
-| C | A Telegram command (for example `/catchup`) that starts it. | Marco chose automatic; a command is a new interaction and a bigger change. Rejected. |
+| C | A Telegram command (for example `/catchup`) that starts it. | The user chose automatic; a command is a new interaction and a bigger change. Rejected. |
 
 ## Open questions (not blockers)
 
-- None for Marco right now. C-B3 (which 5 alerts) and C-B5 are my calls; say if you want another rule.
+- None for the user right now. C-B3 (which 5 alerts) and C-B5 are my calls; say if you want another rule.
 - For the design phase: how to pass "budget used up" from the judge to the catch-up without a flag, and where the snapshot list is stored.
