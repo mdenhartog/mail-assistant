@@ -49,4 +49,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0048 · Pinned mail: Google security mail raises an urgent alert, own sign-in code mail stays silent · area:security · tags:mail-categories,mail-triage,telegram,privacy · decisions/ADR-0048-pinned-mail-alerts.md
 - ADR-0049 · Worker egress on 443 is limited by CIDR exceptions, not by host; egress proxy or FQDN policy is a later option · area:security · tags:mail-triage,kubernetes,networkpolicy,egress,helm · decisions/ADR-0049-worker-egress-cidr-exceptions.md
 - ADR-0050 · The sender search of the review items is a POST with the text in the body, never a GET query parameter · area:security · tags:mail-categories,privacy,api,web · decisions/ADR-0050-sender-search-in-post-body.md
+- ADR-0051 · The plan build looks at a small number of mails per run and goes on in the next run · area:operations · tags:mail-categories,mail-triage,runner,heartbeat,kubernetes · decisions/ADR-0051-plan-build-in-slices.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
