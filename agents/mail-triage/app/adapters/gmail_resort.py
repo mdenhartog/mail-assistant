@@ -33,6 +33,7 @@ OTHER_LABEL = f"{LABEL_PREFIX}Other"
 ARCHIVE = "Archive"
 ME = "me"
 HTTP_CONFLICT = 409
+HTTP_BAD_REQUEST = 400
 _RESERVED = frozenset({"other", "archive"})
 
 
@@ -42,6 +43,10 @@ class LabelRefused(ValueError):  # noqa: N818  # a refusal, not a failure of Gma
 
 class LabelNameTaken(RuntimeError):  # noqa: N818
     """Gmail already has a label with that name."""
+
+
+class LabelNameRejected(RuntimeError):  # noqa: N818
+    """Gmail refused the label name (HTTP 400): the name cannot be used as it is. The error text is not kept."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +153,8 @@ class GmailResort:
         try:
             made = self._run(self._service.users().labels().create(userId=ME, body=body))
         except HttpError as error:
+            if error.resp.status == HTTP_BAD_REQUEST:
+                raise LabelNameRejected(name) from None  # the text of Gmail's answer can name the label: drop it
             if error.resp.status != HTTP_CONFLICT:
                 raise
             existing = next((x for x in self.list_labels() if x.name.casefold() == name.casefold()), None)
@@ -170,5 +177,7 @@ class GmailResort:
         except HttpError as error:
             if error.resp.status == HTTP_CONFLICT:
                 raise LabelNameTaken(new_name) from error
+            if error.resp.status == HTTP_BAD_REQUEST:
+                raise LabelNameRejected(new_name) from None
             raise
         self._names[label_id] = new_name

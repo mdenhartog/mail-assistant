@@ -2,14 +2,16 @@
 
 Each run, in this order, with Gmail effects first and the cursor last:
 
-1. ``Archive`` exists (created when missing, never touched otherwise, never given mail: AC-25).
+1. ``Archive`` exists (created when missing, never touched otherwise, never given mail: AC-25). When Gmail refuses
+   the name, the run goes on without it.
 2. No list yet: version 1 is seeded from the ``Assistant/`` labels that exist (AC-49).
 3. Every category and "Other" has its Gmail label; a label is found by the id kept in ``category_label``, then by
    name, then made. A name-only change renames the label by id: no plan, no model call, no mail touched (AC-40).
 4. The mail counts and the names of all ``Assistant/`` labels are refreshed for the api, so a label that is not on
    the list shows as an older category and its mail keeps it (AC-53). No label is ever deleted (D18).
 5. ``list_cursor`` moves to the list version, only when nothing failed. A crash before this step repeats the run;
-   every step looks at what Gmail has now, so nothing is done twice.
+   every step looks at what Gmail has now, so nothing is done twice. A category label that Gmail refuses is counted as
+   failed and the others are still made.
 
 Logs hold counts only, never label names or mail.
 """
@@ -23,7 +25,15 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
-from app.adapters.gmail_resort import ARCHIVE, LABEL_PREFIX, OTHER_LABEL, Label, LabelNameTaken, is_category_label
+from app.adapters.gmail_resort import (
+    ARCHIVE,
+    LABEL_PREFIX,
+    OTHER_LABEL,
+    Label,
+    LabelNameRejected,
+    LabelNameTaken,
+    is_category_label,
+)
 from app.core.scope import is_archive_label
 
 if TYPE_CHECKING:
@@ -154,6 +164,8 @@ class ListSync:
             created += made
             renamed += renamed_now
             failed += clash
+            if label is None:
+                continue  # Gmail refused the name: this category has no label yet, the others go on
             if category_id != OTHER_ID and known != StoredLabel(label.id, label.name):
                 await self._store.save_label(category_id, label.id, label.name)
             counts[category_id] = await asyncio.to_thread(self._gmail.count_mail, label.id)
@@ -166,20 +178,25 @@ class ListSync:
 
     async def _ensure(
         self, name: str, known: StoredLabel | None, by_id: dict[str, Label], by_name: dict[str, Label]
-    ) -> tuple[Label, int, int, int]:
+    ) -> tuple[Label | None, int, int, int]:
         """The label for ``name``: found by its stored id, then by name, else made; renamed by id when it differs.
 
-        Returns the label and the counts of created, renamed and failed (a name another label already has).
+        Returns the label and the counts of created, renamed and failed. A name that another label already has, or
+        that Gmail refuses, counts as failed; when Gmail refuses to make the label there is no label (``None``).
         """
         label = (by_id.get(known.label_id) if known else None) or by_name.get(name.casefold())
         created = 1 if label is None else 0
         if label is None:
-            label = await asyncio.to_thread(self._gmail.create_label, name)
+            try:
+                label = await asyncio.to_thread(self._gmail.create_label, name)
+            except LabelNameRejected:
+                logger.warning("list sync: Gmail refused the name of a label it was asked to make")
+                return None, 0, 0, 1
         renamed = failed = 0
         if label.name != name:
             try:
                 await asyncio.to_thread(self._gmail.rename_label, label.id, name)
-            except LabelNameTaken:
+            except (LabelNameTaken, LabelNameRejected):
                 failed = 1
             else:
                 renamed = 1
@@ -192,6 +209,12 @@ class ListSync:
         """Make ``Archive`` when no top-level label of that name exists (case does not matter, C-14)."""
         if any(is_archive_label(name) for name in by_name):
             return
-        label = await asyncio.to_thread(self._gmail.create_label, ARCHIVE)
+        try:
+            label = await asyncio.to_thread(self._gmail.create_label, ARCHIVE)
+        except LabelNameRejected:
+            # Archive is the user's own place for mail that must stay where it is; it is made as a courtesy. Without it
+            # the sync of the categories goes on, and a missing Archive does not keep the run from being done.
+            logger.warning("list sync: Gmail refused to make the Archive label; the sync goes on without it")
+            return
         by_name[label.name.casefold()] = label
         by_id[label.id] = label
