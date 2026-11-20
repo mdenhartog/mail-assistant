@@ -1,5 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import type { RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import { vi } from "vitest";
 
 import { Layout } from "@/components/Layout";
@@ -7,11 +10,42 @@ import type { LayoutAccount } from "@/components/Layout";
 import { expectNoAxeViolations } from "@/test/axe";
 import { expectMotionOnlyWhenSafe } from "@/test/motion";
 
+/** The signed-in layout holds links, so it always renders inside a router. */
+function render(ui: ReactElement, options?: RenderOptions): ReturnType<typeof rtlRender> {
+  return rtlRender(ui, { wrapper: MemoryRouter, ...options });
+}
+
 function account(extra: Partial<LayoutAccount> = {}): LayoutAccount {
   return { maskedAddress: "m***@example.com", onSignOut: vi.fn(), ...extra };
 }
 
 describe("Layout", () => {
+  it("given an account, when rendered, then the main navigation is between the header and main with the open items badge", () => {
+    rtlRender(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <Layout account={account()} openItems={842}>
+          <h1>Settings</h1>
+        </Layout>
+      </MemoryRouter>,
+    );
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /Review moves/ })).toHaveAccessibleName("Review moves 842 open items");
+    expect(screen.getByRole("banner").compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("main")).not.toContainElement(nav);
+  });
+
+  it("given no account, when rendered, then there is no navigation", () => {
+    rtlRender(
+      <MemoryRouter>
+        <Layout>
+          <p>x</p>
+        </Layout>
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+  });
+
   it("given the page, when tabbing once, then the skip link is first and Enter moves focus to main", async () => {
     render(
       <Layout account={account()}>

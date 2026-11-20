@@ -7,7 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from app.core.security import public
-from app.db import EXPECTED_CONTRACT_VERSION, Database, DatabaseUnavailable, read_contract_version
+from app.db import (
+    EXPECTED_CONTRACT_VERSION,
+    MINIMUM_CATEGORIES_CONTRACT_VERSION,
+    Database,
+    DatabaseUnavailable,
+    read_categories_contract_version,
+    read_contract_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,5 +69,14 @@ async def readiness(request: Request) -> HealthResponse:
         raise HTTPException(status_code=503, detail="Service unavailable") from None
     if version != EXPECTED_CONTRACT_VERSION:
         logger.error("database.contract_mismatch expected=%s found=%s", EXPECTED_CONTRACT_VERSION, version)
+        raise HTTPException(status_code=503, detail="Service unavailable")
+    try:
+        categories = await read_categories_contract_version(database)
+    except DatabaseUnavailable:
+        raise HTTPException(status_code=503, detail="Service unavailable") from None
+    if categories < MINIMUM_CATEGORIES_CONTRACT_VERSION:
+        logger.error(
+            "database.categories_contract_mismatch minimum=%s found=%s", MINIMUM_CATEGORIES_CONTRACT_VERSION, categories
+        )
         raise HTTPException(status_code=503, detail="Service unavailable")
     return HealthResponse(status="ok")

@@ -47,4 +47,6 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0046 · Re-sort plans: lifecycle, Gmail operations, delayed apply, Telegram exception to D1 · area:architecture · tags:mail-categories,gmail,telegram,budget · decisions/ADR-0046-resort-plan-lifecycle.md
 - ADR-0047 · Database functions are the api's only write path for plan decisions; retention through an owner-role purge · area:security · tags:mail-categories,postgresql,audit,retention · decisions/ADR-0047-decision-functions-and-purge.md
 - ADR-0048 · Pinned mail: Google security mail raises an urgent alert, own sign-in code mail stays silent · area:security · tags:mail-categories,mail-triage,telegram,privacy · decisions/ADR-0048-pinned-mail-alerts.md
+- ADR-0049 · Worker egress on 443 is limited by CIDR exceptions, not by host; egress proxy or FQDN policy is a later option · area:security · tags:mail-triage,kubernetes,networkpolicy,egress,helm · decisions/ADR-0049-worker-egress-cidr-exceptions.md
+- ADR-0050 · The sender search of the review items is a POST with the text in the body, never a GET query parameter · area:security · tags:mail-categories,privacy,api,web · decisions/ADR-0050-sender-search-in-post-body.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md

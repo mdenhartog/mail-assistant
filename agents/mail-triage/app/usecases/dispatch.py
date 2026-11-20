@@ -13,6 +13,10 @@ the buttons and answers of its own conversation; the older snooze and reply ques
   button (or of the pending question for text). ``advance`` is atomic and rotates the nonce, so a double tap, or a tap
   and a text at once, reach the handler once; the loser finds the nonce stale and does nothing.
 
+- The buttons of a category list notice (``catundo:<nonce>``, ``catlock:<nonce>``) go to the registered
+  ``ListActionsPort``, which has its own nonce record; they too never touch the conversation.
+- The buttons of a plan notice (``plancancel:<nonce>``, ``planlock:<nonce>``, ``planback:<nonce>``) go to the registered
+  ``PlanActionsPort`` in the same way.
 - The buttons of a web notice (``webundo:<token>``, ``weblock:<token>``), ``/web_lock`` and ``/web_unlock`` go to the
   registered ``WebActionsPort``. They have their own token record: they never read, claim, start or clear the
   conversation.
@@ -28,7 +32,7 @@ import re
 from datetime import timedelta
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
-from app.core import settings_text
+from app.core import approval_text, list_text, settings_text
 from app.core.alert_state import AlertState
 from app.core.settings_text import UNDO_CHANGED
 
@@ -192,6 +196,22 @@ class WebActionsPort(Protocol):
         ...
 
 
+class ListActionsPort(Protocol):
+    """The buttons of a category list notice (``ListNoticeActions``)."""
+
+    async def on_button(self, command: Command, action: str, nonce: str) -> None:
+        """Run ``catundo`` or ``catlock`` for ``nonce``."""
+        ...
+
+
+class PlanActionsPort(Protocol):
+    """The buttons of a plan notice (``PlanNoticeActions``): Cancel, Lock and Move back."""
+
+    async def on_button(self, command: Command, action: str, nonce: str) -> None:
+        """Run ``plancancel``, ``planlock`` or ``planback`` for ``nonce``."""
+        ...
+
+
 class DialogueHandler(Protocol):
     """A dialogue the router can start and feed (the settings dialogue).
 
@@ -345,6 +365,8 @@ class CommandRouter:
         self._commands: dict[str, DialogueHandler] = {}
         self._cursor = cursor
         self._web: WebActionsPort | None = None
+        self._list: ListActionsPort | None = None
+        self._plan: PlanActionsPort | None = None
 
     def register(self, handler: DialogueHandler) -> None:
         """Add a dialogue: its slash commands start it, and its conversation kind routes buttons and text to it."""
@@ -354,6 +376,14 @@ class CommandRouter:
     def register_web_actions(self, actions: WebActionsPort) -> None:
         """Add the buttons of the web notice and the unlock command."""
         self._web = actions
+
+    def register_list_actions(self, actions: ListActionsPort) -> None:
+        """Add the buttons of the category list notice."""
+        self._list = actions
+
+    def register_plan_actions(self, actions: PlanActionsPort) -> None:
+        """Add the buttons of the delayed-apply and result notices."""
+        self._plan = actions
 
     async def handle(self, command: Command) -> None:
         """Run one update, once: skip a redelivered one; store its id only after it was handled (a failure raises)."""
@@ -411,11 +441,27 @@ class CommandRouter:
         if claimed is not None:
             await owner.on_text(claimed, text)
 
-    async def _button(self, command: Command) -> None:
+    async def _notice_button(self, command: Command) -> bool:
+        """Run the button of a web or list notice (own record, never the conversation); ``False`` if not."""
         web = settings_text.split_web_button(command.data)
         if web is not None:
-            if self._web is not None:  # a web notice has its own token record and never touches the conversation
+            if self._web is not None:
                 await self._web.on_button(command, *web)
+            return True
+        listed = list_text.split_button(command.data)
+        if listed is not None:
+            if self._list is not None:
+                await self._list.on_button(command, *listed)
+            return True
+        planned = approval_text.split_button(command.data)
+        if planned is not None:
+            if self._plan is not None:
+                await self._plan.on_button(command, *planned)
+            return True
+        return False
+
+    async def _button(self, command: Command) -> None:
+        if await self._notice_button(command):
             return
         started = _START.fullmatch(command.data)
         if started is not None:

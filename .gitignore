@@ -42,3 +42,7 @@ playwright/.auth/
 # The local week-test stack: generated secrets and database dumps (scripts/local-stack.mjs, U-web-settings-73)
 deploy/local/secrets.env
 deploy/local/backups/
+.eslintcache
+
+# Saved Playwright session of the e2e setup project (a live session cookie)
+apps/web/playwright/.auth/

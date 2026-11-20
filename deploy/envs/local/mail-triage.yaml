@@ -11,6 +11,11 @@ envFromSecret: mail-triage-secrets
 database:
   tls:
     caConfigMap: mail-triage-db-ca
+# HTTPS egress excludes the cluster's own ranges (ADR-0049); these are the kind defaults (k3d/k3s: 10.42.0.0/16, 10.43.0.0/16).
+networkPolicy:
+  https:
+    podCidr: 10.244.0.0/16
+    serviceCidr: 10.96.0.0/16
 env:
   POLL_INTERVAL_SECONDS: "60"
 # Migration Job (ADR-0025): runs as a PreSync hook with the OWNER credentials from the Secret named here (a name only;

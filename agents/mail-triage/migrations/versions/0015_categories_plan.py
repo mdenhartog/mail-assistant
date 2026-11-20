@@ -1,0 +1,501 @@
+"""Mail categories, plan half (INT-004, ADR-0046, ADR-0047): plans, items, decisions, approvals and the apply audit.
+
+Upgrade: ``plan`` (a partial unique index allows one open plan per mailbox), ``plan_item``, ``plan_decision``,
+``plan_approval``, ``apply_audit`` and ``move_back_request``, with the guard that keeps a plan's state moves equal to
+``app.core.resort_plan``. The decision functions come in the same revision (see below). Rights are in
+``app/db/grants.sql``; nothing is granted here.
+
+Revision ID: 0015
+Revises: 0014
+"""
+
+import importlib.util
+from pathlib import Path
+
+import sqlalchemy as sa
+from alembic import op
+
+revision = "0015"
+down_revision = "0014"
+branch_labels = None
+depends_on = None
+
+_SCHEMA = "categories"
+_TZ = sa.DateTime(timezone=True)
+_NOW = sa.text("now()")
+_PLAN_STATES = "('building', 'ready', 'scheduled', 'applying', 'applied', 'replaced', 'discarded', 'cancelled')"
+_ITEM_STATES = "('pending', 'approved', 'rejected', 'applied', 'skipped', 'failed')"
+_CHANNELS = "('telegram', 'web', 'operator')"
+
+
+def _mailbox() -> sa.Column[str]:
+    """The mailbox id of ADR-0043: first column of every key."""
+    return sa.Column("mailbox_id", sa.String(64), sa.ForeignKey("categories.mailbox.id"), nullable=False)
+
+
+def _create_plan_tables() -> None:
+    op.create_table(
+        "plan",
+        _mailbox(),
+        sa.Column("id", sa.Uuid, nullable=False, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("list_version", sa.Integer, nullable=False),
+        sa.Column("state", sa.String(16), nullable=False, server_default="building"),
+        sa.Column("apply_after", _TZ),
+        sa.Column("build_cursor", sa.Text),
+        sa.Column("checked_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("cap", sa.Integer, nullable=False, server_default="5000"),
+        sa.Column("unclear_count", sa.Integer, nullable=False, server_default="0"),
+        sa.Column("created_at", _TZ, nullable=False, server_default=_NOW),
+        sa.Column("last_activity_at", _TZ, nullable=False, server_default=_NOW),
+        sa.Column("terminal_at", _TZ),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_plan"),
+        sa.CheckConstraint(f"state IN {_PLAN_STATES}", name="ck_plan_state"),
+        sa.CheckConstraint("checked_count >= 0 AND cap >= 1 AND unclear_count >= 0", name="ck_plan_counts"),
+        schema=_SCHEMA,
+    )
+    # One open plan per mailbox (ADR-0046): a second build waits until the first is terminal.
+    op.create_index(
+        "uq_plan_one_open",
+        "plan",
+        ["mailbox_id"],
+        unique=True,
+        schema=_SCHEMA,
+        postgresql_where=sa.text("state NOT IN ('applied', 'replaced', 'discarded', 'cancelled')"),
+    )
+    op.create_table(
+        "plan_item",
+        sa.Column("mailbox_id", sa.String(64), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("message_id", sa.String(64), nullable=False),
+        sa.Column("sender_name", sa.Text, nullable=False),
+        sa.Column("sender_address", sa.Text, nullable=False),
+        sa.Column("subject", sa.Text, nullable=False),
+        # The nil UUID stands for the built-in "Other"; the categories are those of the plan's list version.
+        sa.Column("old_category_id", sa.Uuid, nullable=False),
+        sa.Column("new_category_id", sa.Uuid, nullable=False),
+        sa.Column("decision", sa.String(16), nullable=False, server_default="pending"),
+        sa.Column("state", sa.String(16), nullable=False, server_default="pending"),
+        sa.Column("reason", sa.String(64)),
+        sa.Column("decided_at", _TZ),
+        sa.PrimaryKeyConstraint("mailbox_id", "plan_id", "id", name="pk_plan_item"),
+        sa.ForeignKeyConstraint(
+            ["mailbox_id", "plan_id"],
+            ["categories.plan.mailbox_id", "categories.plan.id"],
+            name="fk_plan_item_plan",
+        ),
+        sa.UniqueConstraint("mailbox_id", "plan_id", "message_id", name="uq_plan_item_message"),
+        sa.CheckConstraint("char_length(subject) <= 120", name="ck_plan_item_subject"),
+        sa.CheckConstraint("decision IN ('pending', 'approved', 'rejected')", name="ck_plan_item_decision"),
+        sa.CheckConstraint(f"state IN {_ITEM_STATES}", name="ck_plan_item_state"),
+        # An item that was moved, skipped or failed was approved; the agent cannot invent an approval.
+        sa.CheckConstraint(
+            "state NOT IN ('applied', 'skipped', 'failed') OR decision = 'approved'", name="ck_plan_item_applied"
+        ),
+        sa.CheckConstraint("state NOT IN ('approved', 'rejected') OR state = decision", name="ck_plan_item_decided"),
+        schema=_SCHEMA,
+    )
+    op.create_index(
+        "ix_plan_item_group",
+        "plan_item",
+        ["mailbox_id", "plan_id", "old_category_id", "new_category_id"],
+        schema=_SCHEMA,
+    )
+
+
+def _create_audit_tables() -> None:
+    # No foreign keys to plan below: these rows live a year, the plan 14 days after it ended.
+    op.create_table(
+        "plan_decision",
+        _mailbox(),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("scope", sa.String(8), nullable=False),
+        sa.Column("item_count", sa.Integer, nullable=False),
+        sa.Column("decision", sa.String(16), nullable=False),
+        sa.Column("channel", sa.String(16), nullable=False),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_plan_decision"),
+        sa.CheckConstraint("scope IN ('group', 'ids', 'all')", name="ck_plan_decision_scope"),
+        sa.CheckConstraint(f"channel IN {_CHANNELS}", name="ck_plan_decision_channel"),
+        schema=_SCHEMA,
+    )
+    op.create_table(
+        "plan_approval",
+        _mailbox(),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("approved_count", sa.Integer, nullable=False),
+        sa.Column("channel", sa.String(16), nullable=False),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_plan_approval"),
+        sa.CheckConstraint("approved_count >= 0", name="ck_plan_approval_count"),
+        sa.CheckConstraint(f"channel IN {_CHANNELS}", name="ck_plan_approval_channel"),
+        schema=_SCHEMA,
+    )
+    op.create_index("ix_plan_approval_at", "plan_approval", ["mailbox_id", "at"], schema=_SCHEMA)
+    op.create_table(
+        "apply_audit",
+        _mailbox(),
+        sa.Column("id", sa.BigInteger, sa.Identity(always=True), nullable=False),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("message_id", sa.String(64), nullable=False),
+        sa.Column("old_label", sa.Text, nullable=False),
+        sa.Column("new_label", sa.Text, nullable=False),
+        # The channel is the one the move was approved or requested through; the actor is the writing login.
+        sa.Column("channel", sa.String(16), nullable=False),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "id", name="pk_apply_audit"),
+        sa.CheckConstraint(f"channel IN {_CHANNELS}", name="ck_apply_audit_channel"),
+        schema=_SCHEMA,
+    )
+    op.create_index("ix_apply_audit_plan", "apply_audit", ["mailbox_id", "plan_id"], schema=_SCHEMA)
+    op.create_table(
+        "move_back_request",
+        _mailbox(),
+        sa.Column("plan_id", sa.Uuid, nullable=False),
+        sa.Column("processed", sa.Boolean, nullable=False, server_default=sa.false()),
+        sa.Column("actor_digest", sa.CHAR(64), nullable=False),
+        sa.Column("at", _TZ, nullable=False, server_default=_NOW),
+        sa.PrimaryKeyConstraint("mailbox_id", "plan_id", name="pk_move_back_request"),
+        schema=_SCHEMA,
+    )
+
+
+# The legal moves are those of app.core.resort_plan (a test compares both). An illegal move is a 409 (ERRCODE MC409).
+_PLAN_GUARD = """
+CREATE FUNCTION categories.plan_state_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF (OLD.state, NEW.state) NOT IN (
+        ('building', 'ready'), ('building', 'replaced'),
+        ('ready', 'replaced'), ('ready', 'scheduled'), ('ready', 'discarded'),
+        ('scheduled', 'cancelled'), ('scheduled', 'applying'),
+        ('applying', 'cancelled'), ('applying', 'applied')) THEN
+        RAISE EXCEPTION 'this plan state move is not allowed' USING ERRCODE = 'MC409';
+    END IF;
+    IF NEW.state IN ('applied', 'replaced', 'discarded', 'cancelled') THEN
+        NEW.terminal_at := now();
+    END IF;
+    RETURN NEW;
+END
+$$
+"""
+
+# The actor and the time of an apply audit row are the database's (ADR-0030); the writer names only the channel.
+_AUDIT_DERIVE = """
+CREATE FUNCTION categories.apply_audit_derive() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    NEW.at := now();
+    NEW.actor_digest := encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex');
+    RETURN NEW;
+END
+$$
+"""
+
+# A move-back request is for an applied plan of the same mailbox, and its actor and time are the database's. The plan
+# itself is purged 14 days after it ended, so the request has no foreign key (it lives a year).
+_MOVE_BACK_CHECK = """
+CREATE FUNCTION categories.move_back_request_check() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM categories.plan p
+                    WHERE p.mailbox_id = NEW.mailbox_id AND p.id = NEW.plan_id AND p.state = 'applied') THEN
+        RAISE EXCEPTION 'only an applied plan can be moved back' USING ERRCODE = 'MC409';
+    END IF;
+    NEW.at := now();
+    NEW.processed := false;
+    NEW.actor_digest := encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex');
+    RETURN NEW;
+END
+$$
+"""
+
+# The api's only way to set a decision (ADR-0047). The plan is locked, so a decision cannot race the agent's
+# compare-and-set; no SQL is built from an argument; refusals carry fixed texts and no row value. MC409 is a 409 for the
+# api (state, count or id mismatch), 22023 a malformed call. The channel and the actor are the session role's.
+_RECORD_DECISION = r"""
+CREATE FUNCTION categories.record_decision(p_mailbox text, p_plan uuid, p_count integer, p_scope jsonb, p_decision text)
+RETURNS integer
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    v_state text;
+    v_total integer;
+    v_kind text;
+    v_ids bigint[];
+    v_from uuid;
+    v_to uuid;
+    v_group_count integer;
+    v_changed integer;
+    v_uuid text := '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
+BEGIN
+    IF p_decision IS NULL OR p_decision NOT IN ('approved', 'rejected') THEN
+        RAISE EXCEPTION 'the decision is not valid' USING ERRCODE = '22023';
+    END IF;
+    IF p_scope IS NULL OR jsonb_typeof(p_scope) IS DISTINCT FROM 'object'
+        OR coalesce(p_scope ->> 'kind', '') NOT IN ('group', 'ids', 'all') THEN
+        RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+    END IF;
+    v_kind := p_scope ->> 'kind';
+
+    SELECT p.state INTO v_state FROM categories.plan p WHERE p.mailbox_id = p_mailbox AND p.id = p_plan FOR UPDATE;
+    IF NOT FOUND OR v_state <> 'ready' THEN
+        RAISE EXCEPTION 'the plan is not ready' USING ERRCODE = 'MC409';
+    END IF;
+    SELECT count(*) INTO v_total FROM categories.plan_item i WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan;
+    IF p_count IS DISTINCT FROM v_total THEN
+        RAISE EXCEPTION 'the plan has changed' USING ERRCODE = 'MC409';
+    END IF;
+
+    IF v_kind = 'ids' THEN
+        IF jsonb_typeof(p_scope -> 'ids') IS DISTINCT FROM 'array' THEN
+            RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+        END IF;
+        IF jsonb_array_length(p_scope -> 'ids') > 200 THEN
+            RAISE EXCEPTION 'too many ids' USING ERRCODE = 'MC409';
+        END IF;
+        IF jsonb_array_length(p_scope -> 'ids') = 0 OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(p_scope -> 'ids') e
+             WHERE jsonb_typeof(e) <> 'number' OR (e #>> '{}') !~ '^[0-9]{1,18}$') THEN
+            RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+        END IF;
+        SELECT array_agg(DISTINCT (e #>> '{}')::bigint) INTO v_ids FROM jsonb_array_elements(p_scope -> 'ids') e;
+        IF (SELECT count(*) FROM categories.plan_item i
+             WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.id = ANY (v_ids)) <> cardinality(v_ids) THEN
+            RAISE EXCEPTION 'an id does not belong to the plan' USING ERRCODE = 'MC409';
+        END IF;
+    ELSIF v_kind = 'group' THEN
+        IF NOT coalesce((p_scope ->> 'from') ~ v_uuid, false) OR NOT coalesce((p_scope ->> 'to') ~ v_uuid, false)
+            OR jsonb_typeof(p_scope -> 'groupCount') IS DISTINCT FROM 'number'
+            OR NOT coalesce((p_scope ->> 'groupCount') ~ '^[0-9]{1,9}$', false) THEN
+            RAISE EXCEPTION 'the scope is not valid' USING ERRCODE = '22023';
+        END IF;
+        v_from := (p_scope ->> 'from')::uuid;
+        v_to := (p_scope ->> 'to')::uuid;
+        v_group_count := (p_scope ->> 'groupCount')::integer;
+        IF (SELECT count(*) FROM categories.plan_item i
+             WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan
+               AND i.old_category_id = v_from AND i.new_category_id = v_to) <> v_group_count THEN
+            RAISE EXCEPTION 'the group has changed' USING ERRCODE = 'MC409';
+        END IF;
+    END IF;
+
+    UPDATE categories.plan_item i
+       SET decision = p_decision, state = p_decision, decided_at = now()
+     WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.state IN ('pending', 'approved', 'rejected')
+       AND (v_kind = 'all'
+            OR (v_kind = 'ids' AND i.id = ANY (v_ids))
+            OR (v_kind = 'group' AND i.old_category_id = v_from AND i.new_category_id = v_to));
+    GET DIAGNOSTICS v_changed = ROW_COUNT;
+
+    INSERT INTO categories.plan_decision (mailbox_id, plan_id, scope, item_count, decision, channel, actor_digest, at)
+    VALUES (p_mailbox, p_plan, v_kind, v_changed, p_decision,
+            CASE session_user
+                WHEN 'mail_triage_runtime' THEN 'telegram'
+                WHEN 'web_settings_runtime' THEN 'web'
+                ELSE 'operator'
+            END,
+            encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex'), now());
+    UPDATE categories.plan SET last_activity_at = now() WHERE mailbox_id = p_mailbox AND id = p_plan;
+    RETURN v_changed;
+END
+$$
+"""
+
+# The approval commit point (ADR-0046, ADR-0047). One locked transaction: the still-pending items become rejections,
+# the approval is recorded, the approvals of the mailbox over the last 24 hours (this one included) are summed and the
+# plan is scheduled for now, or for now plus the delay when the sum is strictly above the threshold. The threshold and
+# the delay are read from apply_config (agent-written); the function takes no parameter for them. A repeated call on a
+# scheduled plan returns its current state.
+_APPROVE_PLAN = r"""
+CREATE FUNCTION categories.approve_plan(p_mailbox text, p_plan uuid, p_count integer)
+RETURNS TABLE (state text, apply_after timestamptz)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+#variable_conflict use_column
+DECLARE
+    v_state text;
+    v_version integer;
+    v_after timestamptz;
+    v_total integer;
+    v_approved integer;
+    v_sum bigint;
+    v_threshold integer;
+    v_delay integer;
+BEGIN
+    SELECT p.state, p.list_version, p.apply_after INTO v_state, v_version, v_after
+      FROM categories.plan p WHERE p.mailbox_id = p_mailbox AND p.id = p_plan FOR UPDATE;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'the plan is not ready' USING ERRCODE = 'MC409';
+    END IF;
+    IF v_state = 'scheduled' THEN
+        RETURN QUERY SELECT v_state, v_after;
+        RETURN;
+    END IF;
+    IF v_state <> 'ready' THEN
+        RAISE EXCEPTION 'the plan is not ready' USING ERRCODE = 'MC409';
+    END IF;
+    SELECT count(*) INTO v_total FROM categories.plan_item i WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan;
+    IF p_count IS DISTINCT FROM v_total THEN
+        RAISE EXCEPTION 'the plan has changed' USING ERRCODE = 'MC409';
+    END IF;
+    SELECT c.threshold, c.delay_minutes INTO v_threshold, v_delay
+      FROM categories.apply_config c WHERE c.mailbox_id = p_mailbox;
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'the apply settings are not ready' USING ERRCODE = 'MC409';
+    END IF;
+
+    UPDATE categories.plan_item i SET decision = 'rejected', state = 'rejected', decided_at = now()
+     WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.decision = 'pending';
+    INSERT INTO categories.rejection (mailbox_id, message_id, list_version, rejected_at)
+    SELECT i.mailbox_id, i.message_id, v_version, now()
+      FROM categories.plan_item i
+     WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.decision = 'rejected'
+    ON CONFLICT (mailbox_id, message_id)
+    DO UPDATE SET list_version = excluded.list_version, rejected_at = excluded.rejected_at;
+
+    SELECT count(*) INTO v_approved
+      FROM categories.plan_item i WHERE i.mailbox_id = p_mailbox AND i.plan_id = p_plan AND i.decision = 'approved';
+    INSERT INTO categories.plan_approval (mailbox_id, plan_id, approved_count, channel, actor_digest, at)
+    VALUES (p_mailbox, p_plan, v_approved,
+            CASE session_user
+                WHEN 'mail_triage_runtime' THEN 'telegram'
+                WHEN 'web_settings_runtime' THEN 'web'
+                ELSE 'operator'
+            END,
+            encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex'), now());
+    SELECT coalesce(sum(a.approved_count), 0) INTO v_sum FROM categories.plan_approval a
+     WHERE a.mailbox_id = p_mailbox AND a.at > now() - interval '24 hours';
+
+    v_after := CASE WHEN v_sum > v_threshold THEN now() + make_interval(mins => v_delay) ELSE now() END;
+    UPDATE categories.plan p SET state = 'scheduled', apply_after = v_after, last_activity_at = now()
+     WHERE p.mailbox_id = p_mailbox AND p.id = p_plan;
+    RETURN QUERY SELECT 'scheduled'::text, v_after;
+END
+$$
+"""
+
+_TRIGGERS = (
+    "CREATE TRIGGER plan_state_guard BEFORE UPDATE OF state ON categories.plan "
+    "FOR EACH ROW WHEN (OLD.state IS DISTINCT FROM NEW.state) EXECUTE FUNCTION categories.plan_state_guard()",
+    "CREATE TRIGGER apply_audit_derive BEFORE INSERT ON categories.apply_audit "
+    "FOR EACH ROW EXECUTE FUNCTION categories.apply_audit_derive()",
+    "CREATE TRIGGER move_back_request_check BEFORE INSERT ON categories.move_back_request "
+    "FOR EACH ROW EXECUTE FUNCTION categories.move_back_request_check()",
+)
+_FUNCTIONS = (
+    "categories.plan_state_guard()",
+    "categories.apply_audit_derive()",
+    "categories.move_back_request_check()",
+    "categories.record_decision(text, uuid, integer, jsonb, text)",
+    "categories.approve_plan(text, uuid, integer)",
+)
+
+
+# The retention of the plan half joins purge_expired() (ADR-0047; still no parameters, still the database clock):
+# the items of an applied plan go at once, those of a plan that ended or that nobody has touched for 14 days go with
+# it, a plan goes 14 days after it ended, and the decision, approval, apply audit and move-back rows go after a year.
+# A rejection is not touched here: it stays until the list changes (the list half deletes it then).
+_PURGE_PLAN_PART = """
+    DELETE FROM categories.plan_decision WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan_decision', n);
+    DELETE FROM categories.plan_approval WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan_approval', n);
+    DELETE FROM categories.apply_audit WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('apply_audit', n);
+    DELETE FROM categories.move_back_request WHERE at < pg_catalog.now() - interval '1 year';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('move_back_request', n);
+    DELETE FROM categories.plan_item i USING categories.plan p
+     WHERE p.mailbox_id = i.mailbox_id AND p.id = i.plan_id
+       AND (p.state = 'applied'
+            OR p.terminal_at < pg_catalog.now() - interval '14 days'
+            OR (p.state IN ('building', 'ready')
+                AND p.last_activity_at < pg_catalog.now() - interval '14 days'));
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan_item', n);
+    DELETE FROM categories.plan WHERE terminal_at < pg_catalog.now() - interval '14 days';
+    GET DIAGNOSTICS n = ROW_COUNT;
+    removed := removed || jsonb_build_object('plan', n);
+"""
+_DOWN_MARK = "    -- A rejection lives until the list changes again.\n"
+
+
+def _list_half_purge() -> str:
+    """The purge of revision 0014, read from that revision so that there is one copy of it."""
+    path = Path(__file__).with_name("0014_categories.py")
+    spec = importlib.util.spec_from_file_location("categories_0014", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("revision 0014 cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return str(module._PURGE).replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION", 1)
+
+
+def _purge_with_plan_half() -> str:
+    body = _list_half_purge()
+    if _DOWN_MARK not in body:
+        raise RuntimeError("the purge of revision 0014 has changed shape")
+    return body.replace(_DOWN_MARK, _PURGE_PLAN_PART.lstrip("\n") + _DOWN_MARK, 1)
+
+
+# The functions of this schema are owned by a role that cannot log in (AC-56): a stolen runtime or owner password does
+# not give the rights a definer function runs with. The role holds table rights only on this schema; grants.sql keeps
+# them current for tables added later. A role is cluster-wide, so it is created when missing and never dropped here.
+_DEFINER_SETUP = (
+    "DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'categories_definer') THEN "
+    "CREATE ROLE categories_definer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT; END IF; END $$",
+    "GRANT categories_definer TO CURRENT_USER",  # the migrating role may hand the functions over
+    "GRANT USAGE, CREATE ON SCHEMA categories TO categories_definer",
+    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA categories TO categories_definer",
+)
+_DEFINER_TEARDOWN = (
+    "REVOKE ALL ON ALL TABLES IN SCHEMA categories FROM categories_definer",
+    "REVOKE ALL ON SCHEMA categories FROM categories_definer",
+)
+_REOWN = (
+    "DO $$ DECLARE f regprocedure; BEGIN "
+    "FOR f IN SELECT p.oid::regprocedure FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+    "WHERE n.nspname = 'categories' LOOP "
+    "EXECUTE format('ALTER FUNCTION %s OWNER TO {owner}', f); END LOOP; END $$"
+)
+_REOWN_UP = _REOWN.format(owner="categories_definer")
+_REOWN_DOWN = _REOWN.format(owner="current_user")
+
+
+def upgrade() -> None:
+    """Create the plan tables, the state guard and its trigger."""
+    _create_plan_tables()
+    _create_audit_tables()
+    for function_sql in (_PLAN_GUARD, _AUDIT_DERIVE, _MOVE_BACK_CHECK, _RECORD_DECISION, _APPROVE_PLAN):
+        op.execute(function_sql)
+    for statement in _TRIGGERS:
+        op.execute(statement)
+    for function in _FUNCTIONS:
+        op.execute(f"REVOKE ALL ON FUNCTION {function} FROM PUBLIC")
+    op.execute(_purge_with_plan_half())  # before the hand-over: only the owner of a function may replace it
+    for statement in _DEFINER_SETUP:
+        op.execute(statement)
+    op.execute(_REOWN_UP)
+
+
+def downgrade() -> None:
+    """Remove what upgrade made; the list half of revision 0014 stays.
+
+    The definer role is cluster-wide (like the runtime roles) and stays; its rights on this schema are taken back and
+    the functions of the list half go back to the migrating role.
+    """
+    op.execute(_REOWN_DOWN)
+    op.execute(_list_half_purge())  # the purge of revision 0014 again, without the plan tables
+    for statement in _DEFINER_TEARDOWN:
+        op.execute(statement)
+    for function in _FUNCTIONS:
+        op.execute(f"DROP FUNCTION {function} CASCADE")
+    for table in ("move_back_request", "apply_audit", "plan_approval", "plan_decision", "plan_item", "plan"):
+        op.drop_table(table, schema=_SCHEMA)

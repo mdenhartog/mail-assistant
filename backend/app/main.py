@@ -72,7 +72,11 @@ def build_app(settings: Settings, *, clock: Clock, ids: IdSource, codes: CodeSou
     app.state.mailer = mailer
     app.state.limit_guard = InProcessLimitGuard(settings)
     install_error_handlers(app)
-    app.add_middleware(BodyLimitMiddleware, limit_bytes=settings.body_limit_bytes)
+    app.add_middleware(
+        BodyLimitMiddleware,
+        limit_bytes=settings.body_limit_bytes,
+        route_limits=settings.route_body_limits,
+    )
     # Added last, so it is the outermost.
     app.add_middleware(HttpSurfaceMiddleware, ids=ids, docs_enabled=settings.docs_enabled)
     for mounted in discover_routers():

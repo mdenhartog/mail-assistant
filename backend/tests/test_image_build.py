@@ -103,6 +103,8 @@ def test_given_the_dockerignore_when_read_then_only_the_allow_listed_paths_enter
         "!backend/pyproject.toml",
         "!backend/uv.lock",
         "!backend/app",
+        "!packages/category-policy/pyproject.toml",
+        "!packages/category-policy/category_policy",
         "!packages/schedule-policy/pyproject.toml",
         "!packages/schedule-policy/schedule_policy",
     }
@@ -110,6 +112,38 @@ def test_given_the_dockerignore_when_read_then_only_the_allow_listed_paths_enter
     assert ".env" not in text.replace("*", "")  # nothing re-includes it; the deny-all already keeps it out
     assert "!.git" not in text
     assert "node_modules" not in "".join(allowed)
+
+
+DOCKERIGNORES = sorted(ROOT.glob("*/*/Dockerfile.dockerignore")) + sorted(ROOT.glob("*/Dockerfile.dockerignore"))
+
+
+def copy_sources(dockerfile: Path) -> list[str]:
+    """The repo-root-relative sources of every COPY from the build context (not from another stage)."""
+    sources: list[str] = []
+    text = dockerfile.read_text(encoding="utf-8").replace(chr(92) + chr(10), " ")  # a backslash continues the line
+    for line in text.splitlines():
+        parts = line.split()
+        if not parts or parts[0] != "COPY" or any(part.startswith("--from=") for part in parts):
+            continue
+        args = [part for part in parts[1:] if not part.startswith("--")]
+        sources.extend(source.removeprefix("./") for source in args[:-1])
+    return sources
+
+
+@pytest.mark.parametrize("ignore", DOCKERIGNORES, ids=lambda path: path.parent.relative_to(ROOT).as_posix())
+def test_given_a_dockerfile_when_built_from_the_repo_root_then_every_copy_source_is_in_the_allow_list(
+    ignore: Path,
+) -> None:
+    """`docker build` fails with "not found" for a COPY source the allow-list of the build context leaves out."""
+    rules = [line for line in ignore.read_text(encoding="utf-8").splitlines() if line and not line.startswith("#")]
+    allowed = [rule[1:] for rule in rules if rule.startswith("!")]
+    sources = copy_sources(ignore.with_name("Dockerfile"))
+
+    assert sources
+    missing = [
+        source for source in sources if not any(source == path or source.startswith(f"{path}/") for path in allowed)
+    ]
+    assert missing == [], f"{ignore.relative_to(ROOT)} does not allow the COPY sources {missing}"
 
 
 @pytest.mark.parametrize("name", ["api", "api-dev", "api-test"])

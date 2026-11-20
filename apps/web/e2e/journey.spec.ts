@@ -275,7 +275,9 @@ test("the documentation, health and metrics paths are 404 through the edge; plai
   const secure = await request.get("/login");
   expect(secure.headers()["strict-transport-security"]).toBe("max-age=31536000");
 
-  const plain = await request.get("http://127.0.0.1:8081/settings", { maxRedirects: 0 });
+  const plain = await request.get(`http://127.0.0.1:${process.env.EDGE_HTTP_PORT ?? "8081"}/settings`, {
+    maxRedirects: 0,
+  });
   expect([301, 308]).toContain(plain.status());
   expect(plain.headers()["location"]).toBe(`${baseURL ?? PUBLIC_ORIGIN}/settings`);
 });

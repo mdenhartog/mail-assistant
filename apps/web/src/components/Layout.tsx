@@ -3,6 +3,7 @@ import type { MouseEvent, ReactElement, ReactNode } from "react";
 
 import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
+import { MainNav } from "@/components/MainNav";
 
 export interface LayoutAccount {
   maskedAddress: string;
@@ -14,17 +15,19 @@ export interface LayoutAccount {
 export interface LayoutProps {
   /** Present on pages that need a session; public pages leave it out. */
   account?: LayoutAccount;
+  /** Review items waiting, shown as the badge of the navigation (signed-in pages only). */
+  openItems?: number;
   children: ReactNode;
 }
 
 /**
  * Page frame: skip link first, header with the brand (and the masked address and Sign out when
- * signed in), then the single `main` landmark that holds the page.
+ * signed in), the main navigation when signed in, then the single `main` landmark that holds the page.
  *
  * @example
  * <Layout account={{ maskedAddress: "m***@example.com", onSignOut }}><h1>Settings</h1></Layout>
  */
-export function Layout({ account, children }: LayoutProps): ReactElement {
+export function Layout({ account, openItems, children }: LayoutProps): ReactElement {
   const mainRef = useRef<HTMLElement>(null);
   const skip = (event: MouseEvent<HTMLAnchorElement>): void => {
     event.preventDefault();
@@ -50,6 +53,7 @@ export function Layout({ account, children }: LayoutProps): ReactElement {
           </>
         ) : null}
       </header>
+      {account ? <MainNav openItems={openItems} /> : null}
       {account?.signOutFailed ? (
         <div className="px-6 pt-4">
           <Banner kind="danger" title="Could not sign out.">

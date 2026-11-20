@@ -93,6 +93,22 @@ def _database_problems(settings: Settings) -> Iterator[str]:
         yield "database_url"
 
 
+def _route_limits_valid(limits: dict[str, int]) -> bool:
+    """Every key is ``"METHOD /path"`` and every limit is at least 1 byte."""
+    for route, limit in limits.items():
+        method, _, path = route.partition(" ")
+        if not method.isupper() or not path.startswith("/") or limit < 1:
+            return False
+    return True
+
+
+def _body_limit_problems(settings: Settings) -> Iterator[str]:
+    if settings.body_limit_bytes < 1:
+        yield "body_limit_bytes"
+    if not _route_limits_valid(settings.route_body_limits):
+        yield "route_body_limits"
+
+
 def _limit_problems(settings: Settings) -> Iterator[str]:
     # Without a trusted proxy every client shares the proxy's address and so one rate-limit bucket (RT-02, SEC-01).
     if settings.environment == "production" and not settings.trusted_proxy_cidrs:
@@ -108,8 +124,6 @@ def _limit_problems(settings: Settings) -> Iterator[str]:
         yield "rate_limit_per_minute"
     if settings.rate_window_seconds < 1:
         yield "rate_window_seconds"
-    if settings.body_limit_bytes < 1:
-        yield "body_limit_bytes"
 
 
 def validate_startup(settings: Settings) -> None:
@@ -126,6 +140,7 @@ def validate_startup(settings: Settings) -> None:
         *_key_problems(settings),
         *_database_problems(settings),
         *_limit_problems(settings),
+        *_body_limit_problems(settings),
     )
     fields = tuple(dict.fromkeys(problems))
     if fields:

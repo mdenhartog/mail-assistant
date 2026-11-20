@@ -73,7 +73,7 @@ async def _refused(connection: asyncpg.Connection, statement: str) -> str | None
     try:
         await connection.execute(statement)
     except asyncpg.PostgresError as error:
-        return error.sqlstate
+        return str(error.sqlstate)  # pyright: ignore[reportAttributeAccessIssue]  # asyncpg types it on subclasses
     return None
 
 
@@ -222,6 +222,18 @@ async def test_given_the_web_role_when_its_table_privileges_are_listed_then_only
         ("web_auth", "session"),
         ("web_auth", "security_event"),
         ("web_auth", "web_lock"),
+        # mail categories (INT-004): the exact columns are checked by test_categories_grants.py
+        ("categories", "mailbox"),
+        ("categories", "category_identity"),
+        ("categories", "list_version"),
+        ("categories", "category"),
+        ("categories", "category_count"),
+        ("categories", "gmail_label"),
+        # the plan half (U-mail-categories-12): the item columns are checked by test_plan_grants.py
+        ("categories", "plan"),
+        ("categories", "move_back_request"),
+        # the review page names the wait of a big move (U-mail-categories-32): read-only, test_plan_grants.py
+        ("categories", "apply_config"),
     }
 
 

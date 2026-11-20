@@ -10,6 +10,10 @@ database:
   tls:
     sslMode: verify-full
     caConfigMap: REQUIRED # REQUIRED database-ca-configmap (ConfigMap with the key ca.crt of the database CA)
+networkPolicy:
+  https: # HTTPS egress is 0.0.0.0/0 on 443 except the metadata range and these two cluster ranges (ADR-0049)
+    podCidr: REQUIRED # REQUIRED pod-cidr (the cluster's pod network CIDR)
+    serviceCidr: REQUIRED # REQUIRED service-cidr (the cluster's service network CIDR)
 env:
   POLL_INTERVAL_SECONDS: "60"
 migration:

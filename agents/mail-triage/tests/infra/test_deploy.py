@@ -633,14 +633,16 @@ def test_given_the_mutation_workflow_when_read_then_each_module_is_mutated_and_r
         if job.get("defaults", {}).get("run", {}).get("working-directory") == directory
     ]
 
-    assert len(jobs) == 1
-    commands = run_steps(jobs[0])
-    assert "uv sync --frozen" in commands
-    assert re.search(r"uv run cosmic-ray init cosmic-ray\.toml \S+", commands)
-    assert re.search(r"uv run cosmic-ray exec cosmic-ray\.toml \S+", commands)
-    assert re.search(r"uv run cr-rate \S+ --fail-over 15\b", commands)  # at most 15 % survivors = score >= 85 %
-    assert commands.index("cosmic-ray init") < commands.index("cosmic-ray exec") < commands.index("cr-rate")
-    assert (ROOT / directory / "cosmic-ray.toml").is_file()
+    assert jobs  # a directory may hold several gates, each with its own config (U-mail-categories-34)
+    for job in jobs:
+        commands = run_steps(job)
+        config = re.search(r"uv run cosmic-ray init (cosmic-ray\S*\.toml) \S+", commands)
+        assert config
+        assert re.search(rf"uv run cosmic-ray exec {re.escape(config[1])} \S+", commands)
+        assert "uv sync --frozen" in commands
+        assert re.search(r"uv run cr-rate \S+ --fail-over 15\b", commands)  # at most 15 % survivors = score >= 85 %
+        assert commands.index("cosmic-ray init") < commands.index("cosmic-ray exec") < commands.index("cr-rate")
+        assert (ROOT / directory / config[1]).is_file()
 
 
 RATING = re.compile(r"cr-rate|mutation/run\.py")

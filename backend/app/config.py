@@ -56,12 +56,20 @@ class Settings(BaseSettings):
     # Must equal the agent's run interval (POLL_INTERVAL_SECONDS, 60 by default) rounded up to whole minutes.
     notice_interval_minutes: int = Field(default=1, description="Agent run interval in whole minutes, rounded up.")
 
+    # The one mailbox the category list belongs to (ADR-0043: configuration until several mailboxes exist), and the
+    # saves of the list per hour for the account (AC-33).
+    categories_mailbox_id: str = Field(default="primary", min_length=1, max_length=64)
+    category_saves_per_hour: int = Field(default=10, gt=0)
+
     # Limits (C-4); tests lower them.
     rate_limit_per_minute: int = 30
     rate_window_seconds: int = 60
     # Most counters the in-process limiter holds per window; a new key over it is refused (SEC-06).
     rate_max_counters: int = Field(default=10000, gt=0)
     body_limit_bytes: int = 8192
+    # Own body limit per route, keyed "METHOD /path"; a route that is not listed has ``body_limit_bytes`` (MC-12).
+    # The full category list (50 categories, 500-character descriptions) is about 27 KB.
+    route_body_limits: dict[str, int] = Field(default_factory=lambda: {"PUT /api/categories": 32768})
     code_ttl_seconds: int = 600
     resend_cooldown_seconds: int = 60
     codes_per_hour: int = 5

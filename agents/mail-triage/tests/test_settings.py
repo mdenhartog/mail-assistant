@@ -45,6 +45,42 @@ def test_given_all_required_values_when_settings_load_then_they_are_typed_with_s
     assert settings.anthropic_api_key.get_secret_value() == VALID["ANTHROPIC_API_KEY"]
 
 
+def test_given_no_pinned_settings_when_settings_load_then_only_google_security_mail_is_pinned() -> None:
+    senders = load_settings(VALID).pinned_senders
+
+    assert senders.google_security == frozenset({"accounts.google.com"})
+    assert senders.sign_in == frozenset()  # deployment configuration, no default (ADR-0048)
+
+
+def test_given_the_two_pinned_settings_when_settings_load_then_each_is_a_clean_lowercase_set() -> None:
+    env = {
+        **VALID,
+        "GOOGLE_SECURITY_SENDER_DOMAINS": " Accounts.Google.com, other.example.test ,,",
+        "SIGN_IN_MAIL_DOMAINS": " Login.Example.test ",
+    }
+
+    senders = load_settings(env).pinned_senders
+
+    assert senders.google_security == frozenset({"accounts.google.com", "other.example.test"})
+    assert senders.sign_in == frozenset({"login.example.test"})
+
+
+def test_given_an_empty_sign_in_setting_when_settings_load_then_it_means_none() -> None:
+    assert load_settings({**VALID, "SIGN_IN_MAIL_DOMAINS": ""}).pinned_senders.sign_in == frozenset()
+
+
+@pytest.mark.parametrize("name", ["GOOGLE_SECURITY_SENDER_DOMAINS", "SIGN_IN_MAIL_DOMAINS"])
+@pytest.mark.parametrize("value", [" , ", "not a domain", "user@example.test", "a" * 300])
+def test_given_an_unusable_pinned_setting_when_settings_load_then_startup_fails(name: str, value: str) -> None:
+    with pytest.raises(SettingsError):
+        load_settings({**VALID, name: value})
+
+
+def test_given_an_empty_google_security_setting_when_settings_load_then_startup_fails() -> None:
+    with pytest.raises(SettingsError):
+        load_settings({**VALID, "GOOGLE_SECURITY_SENDER_DOMAINS": ""})
+
+
 def test_given_settings_when_inspected_then_quiet_hours_are_not_configurable() -> None:
     """Spec C7: quiet hours, overview time and time zone are constants in code, not settings."""
     names = set(Settings.model_fields)

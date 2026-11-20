@@ -1,11 +1,13 @@
 # syntax=docker/dockerfile:1
 # Renovate pins these base images to digests (guardrail-docker).
 # Build context: the repository root (docker build -f backend/Dockerfile .), because the backend depends on the shared
-# package packages/schedule-policy (a uv path dependency, ../packages/schedule-policy). The directory layout below mirrors
+# packages packages/schedule-policy and packages/category-policy (uv path dependencies, ../packages/...). The directory layout below mirrors
 # the repository so that the relative path in pyproject.toml and uv.lock resolves.
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /srv/backend
+COPY packages/category-policy/pyproject.toml /srv/packages/category-policy/pyproject.toml
+COPY packages/category-policy/category_policy /srv/packages/category-policy/category_policy
 COPY packages/schedule-policy/pyproject.toml /srv/packages/schedule-policy/pyproject.toml
 COPY packages/schedule-policy/schedule_policy /srv/packages/schedule-policy/schedule_policy
 COPY backend/pyproject.toml backend/uv.lock ./

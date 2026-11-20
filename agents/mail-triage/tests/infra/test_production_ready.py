@@ -53,6 +53,8 @@ WORKER_SUPPLY: dict[str, Any] = {
     "envFromSecret": "fixture-agent-secrets",
     "database.tls.caConfigMap": "fixture-db-ca",
     "migration.secretName": "fixture-migration",
+    "networkPolicy.https.podCidr": "10.42.0.0/16",
+    "networkPolicy.https.serviceCidr": "10.43.0.0/16",
 }
 
 
@@ -352,7 +354,7 @@ def test_given_the_rendered_production_ingress_when_searched_then_hsts_redirect_
     assert not {"stsIncludeSubdomains", "stsPreload"} & set(hsts[0]["spec"]["headers"])
     assert len(redirects) == 1
     assert redirects[0]["spec"]["redirectScheme"] == {"scheme": "https", "permanent": True}  # port 443
-    assert [m["spec"]["buffering"] for m in limits] == [{"maxRequestBodyBytes": 8192}]
+    assert sorted(m["spec"]["buffering"]["maxRequestBodyBytes"] for m in limits) == [8192, 32768]
     assert [o["spec"]["minVersion"] for o in options] == ["VersionTLS12"]
     assert "includeSubDomains" not in str(docs)
     assert "preload" not in str(docs).lower()

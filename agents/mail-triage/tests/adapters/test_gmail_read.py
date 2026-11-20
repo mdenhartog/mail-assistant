@@ -203,6 +203,33 @@ def test_given_a_mail_with_attachments_when_fetched_then_only_headers_and_text_a
     assert "fields" in get_call
 
 
+def test_given_two_authentication_results_headers_when_fetched_then_all_are_kept_topmost_first(
+    gmail: FakeGmail,
+) -> None:
+    """U-mail-categories-05, MC-19: the pinned check needs the topmost header, not the one a dict happens to keep."""
+    gmail.messages["m3"] = {
+        "id": "m3",
+        "threadId": "t3",
+        "labelIds": ["INBOX"],
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [
+                {"name": "Authentication-Results", "value": "mx.google.com; dmarc=pass header.from=real.example"},
+                {"name": "From", "value": "a@real.example"},
+                {"name": "authentication-results", "value": "mx.google.com; dmarc=pass header.from=forged.example"},
+            ],
+            "body": {"data": b64("hi")},
+        },
+    }
+
+    mail = reader(gmail).fetch("m3")
+
+    assert mail.auth_results == (
+        "mx.google.com; dmarc=pass header.from=real.example",
+        "mx.google.com; dmarc=pass header.from=forged.example",
+    )
+
+
 def test_given_a_mail_with_only_html_when_fetched_then_the_text_is_extracted_without_scripts(gmail: FakeGmail) -> None:
     html = "<html><style>p{}</style><script>alert(1)</script><p>Hello <b>Marco</b></p></html>"
     gmail.messages["m2"] = {

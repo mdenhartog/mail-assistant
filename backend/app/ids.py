@@ -1,7 +1,10 @@
+import base64
 import secrets
+import uuid
 from typing import Protocol
 
 _ID_BYTES = 32
+_UUID_BYTES = 16
 
 
 class IdSource(Protocol):
@@ -23,6 +26,10 @@ class IdSource(Protocol):
         """Return a new request id."""
         ...
 
+    def category_id(self) -> uuid.UUID:
+        """Return the stable id of a new category."""
+        ...
+
 
 class SecretsIdSource:
     """Production id source."""
@@ -42,3 +49,7 @@ class SecretsIdSource:
     def request_id(self) -> str:
         """Return a new request id (43 URL-safe characters)."""
         return self.token(_ID_BYTES)
+
+    def category_id(self) -> uuid.UUID:
+        """Return the id of a new category (a random version 4 UUID made from 16 random bytes of the token source)."""
+        return uuid.UUID(bytes=base64.urlsafe_b64decode(self.token(_UUID_BYTES) + "=="), version=4)

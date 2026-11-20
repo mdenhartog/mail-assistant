@@ -32,6 +32,9 @@ def _runner(now: Any = lambda: None) -> Any:
         client=httpx.AsyncClient(timeout=httpx.Timeout(5.0)),
         mailbox=object(),
         sender=object(),
+        labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=None,  # type: ignore[arg-type]
         now=now,

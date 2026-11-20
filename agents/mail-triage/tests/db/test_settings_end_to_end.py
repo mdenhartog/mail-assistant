@@ -101,6 +101,9 @@ async def agent(engine: AsyncEngine) -> Agent:
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet), timeout=httpx.Timeout(5.0)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=Path(mkdtemp()) / "heartbeat",
         now=lambda: holder[0].now,
@@ -131,7 +134,7 @@ async def test_given_an_empty_settings_table_when_the_agent_runs_then_the_first_
 
     await agent.runner.mail_cycle()
 
-    assert agent.gmail.filed == [("gm-1", "id:Assistant/Finance")]
+    assert agent.gmail.filed == [("gm-1", "id:Assistant/Other")]
     assert len(_alerts(agent)) == 1  # 13:00 in Amsterdam: not quiet hours, so the alert goes out at once
     assert len(agent.internet.messages) == 1  # and Marco is told nothing else
     assert await agent.scalar("select count(*) from settings.schedule") == 0  # reading writes no default row
@@ -146,7 +149,7 @@ async def test_given_the_settings_schema_is_absent_when_the_agent_runs_then_it_k
     await agent.runner.mail_cycle()
     await agent.runner.mail_cycle()
 
-    assert agent.gmail.filed == [("gm-1", "id:Assistant/Finance")]
+    assert agent.gmail.filed == [("gm-1", "id:Assistant/Other")]
     assert len(_alerts(agent)) == 1  # the defaults decided: the alert went out
     notices = [m for m in agent.internet.messages if "cannot use your saved settings" in m["text"]]
     assert len(notices) == 1  # C-9: Marco is told once per incident, naming the values in use
@@ -167,7 +170,7 @@ async def test_given_a_time_zone_change_over_telegram_when_the_next_run_happens_
 
     await agent.runner.mail_cycle()
 
-    assert agent.gmail.filed == [("gm-1", "id:Assistant/Finance")]  # filing goes on
+    assert agent.gmail.filed == [("gm-1", "id:Assistant/Other")]  # filing goes on
     assert _alerts(agent) == []  # but the alert is held until the quiet hours end in Melbourne
     assert await agent.scalar("select state from alert") == "held"
 

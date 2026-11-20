@@ -118,10 +118,11 @@ class Internet:
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.anthropic.com":
             self.model_calls += 1
-            content = json.loads(json.loads(request.content)["messages"][0]["content"])
+            blocks = json.loads(request.content)["messages"][0]["content"]  # the list block, then the one mail
+            content = json.loads(blocks[1]["text"])["mail"]
             urgent = "URGENT" in content["text"]
             verdict = {
-                "category": "Finance",
+                "category_id": "00000000-0000-0000-0000-000000000000",
                 "urgent": urgent,
                 "reason": "asks for an answer" if urgent else "routine",
                 "summary": "a summary",
@@ -156,6 +157,9 @@ def agent(  # noqa: PLR0913, PLR0917 - the fakes of the world are passed in, lik
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=tmp / "heartbeat",
         now=clock.now,

@@ -38,7 +38,8 @@ class FakeGmail:
             subject="Invoice due Friday",
             text="Please pay the attached invoice by Friday.",
             has_attachment=False,
-            headers={"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass"},
+            headers={},
+            auth_results=("mx.google.com; spf=pass; dkim=pass; dmarc=pass",),
         )
         self.filed: list[tuple[str, str]] = []
         self.sent: list[tuple[FetchedMail, ConfirmedDraft]] = []
@@ -80,7 +81,7 @@ class FakeInternet:
         if request.url.host == "api.anthropic.com":
             self.model_calls += 1
             verdict = {
-                "category": "Finance",
+                "category_id": "00000000-0000-0000-0000-000000000000",
                 "urgent": True,
                 "reason": "Invoice due on Friday",
                 "summary": "The supplier wants payment.",
@@ -140,6 +141,9 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,
@@ -150,7 +154,7 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
 
     await run.mail_cycle()
 
-    assert gmail.filed == [("gm-1", "id:Assistant/Finance")]
+    assert gmail.filed == [("gm-1", "id:Assistant/Other")]  # no list version exists yet, so everything is "Other"
     [alert] = internet.messages
     assert "boss@example.com" in alert["text"]
     assert "Invoice due Friday" in alert["text"]
@@ -196,6 +200,9 @@ async def test_given_the_agent_runs_twice_when_the_same_mail_is_listed_then_it_a
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
+        labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,

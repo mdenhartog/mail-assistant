@@ -11,6 +11,7 @@ values.schema.json enforces: controller traefik, tls and hsts on, host under the
 {{- $ns := .Release.Namespace }}
 {{- $headers := printf "%s-security-headers" .Release.Name }}
 {{- $limit := printf "%s-body-limit" .Release.Name }}
+{{- $categoriesLimit := printf "%s-body-limit-categories" .Release.Name }}
 {{- $redirect := printf "%s-redirect-https" .Release.Name }}
 {{- $tlsOption := printf "%s-tls12" .Release.Name }}
 apiVersion: traefik.io/v1alpha1
@@ -32,7 +33,17 @@ metadata:
 spec:
   # The outer 8 KB cap (ADR-0034, W-9): a larger request body gets 413. The api enforces the same limit itself.
   buffering:
-    maxRequestBodyBytes: 8192
+    maxRequestBodyBytes: {{ $ingress.bodyLimitBytes }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $categoriesLimit }}
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  # The 32 KB cap of the list save only (MC-12): a full list is about 27 KB. Used by the IngressRoute below, nowhere else.
+  buffering:
+    maxRequestBodyBytes: {{ $ingress.categoriesBodyLimitBytes }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -86,6 +97,31 @@ spec:
           - path: /
             pathType: Prefix
             backend: { service: { name: {{ .Release.Name }}-web, port: { name: http } } }
+---
+# The list save: exact method and path, so POST, the trailing-slash variant and every other /api path stay on the Ingress
+# above with the 8 KB cap. The explicit priority makes this router win over the /api prefix router. Same HSTS Middleware,
+# TLS option and certificate secret as the Ingress; plain HTTP is redirected by the Ingress below (every path).
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Release.Name }}-categories
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`) && Method(`PUT`) && Path(`/api/categories`)" $ingress.host | quote }}
+      priority: 1000
+      middlewares:
+        - name: {{ $categoriesLimit }}
+        - name: {{ $headers }}
+      services:
+        - name: {{ .Release.Name }}-api
+          port: http
+  tls:
+    secretName: {{ .Release.Name }}-tls
+    options:
+      name: {{ $tlsOption }}
 ---
 # Plain HTTP only redirects to HTTPS: the router on the web entry point has the redirect Middleware and no TLS section.
 apiVersion: networking.k8s.io/v1

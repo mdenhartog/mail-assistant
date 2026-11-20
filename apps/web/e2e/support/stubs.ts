@@ -26,6 +26,13 @@ export interface Handlers {
   resetSettings?: Handler;
   logout?: Handler;
   places?: Handler;
+  getCategories?: Handler;
+  putCategories?: Handler;
+  getPlan?: Handler;
+  getPlanItems?: Handler;
+  postDecision?: Handler;
+  postApprove?: Handler;
+  postMoveBack?: Handler;
 }
 
 export interface Stub {
@@ -133,6 +140,57 @@ const resetToDefaults: Handler = async (route, { state }) => {
   })(route, { n: 0, state });
 };
 
+export const CATEGORIES = {
+  version: 5,
+  ready: true,
+  categories: [
+    { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120 },
+    { id: "00000000-0000-4000-8000-000000000002", name: "Newsletters", description: "Weekly digests and product news I read on Sunday.", mailCount: 1 },
+    { id: "00000000-0000-4000-8000-000000000003", name: "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", description: "https://example.com/a/very/long/address/that/has/no/spaces/at/all/and/keeps/going/and/going", mailCount: 0 },
+  ],
+  other: { mailCount: 42 },
+  olderCategories: [{ labelName: "Assistant/Travel", mailCount: null }],
+} as const;
+
+const putCategoriesEcho: Handler = async (route, { state }) => {
+  const sent = (route.request().postDataJSON() ?? {}) as { version?: number };
+  await reply(200, { ...CATEGORIES, version: (sent.version ?? CATEGORIES.version) + 1 })(route, { n: 0, state });
+};
+
+export const PLAN = {
+  id: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa",
+  state: "ready",
+  progress: { checked: 900, cap: 5000, unclear: 2, estimate: 2000, notLookedAt: 0 },
+  groups: [
+    { from: "00000000-0000-0000-0000-000000000000", to: "00000000-0000-4000-8000-000000000001", count: 20, approved: 0, rejected: 0, example: { senderName: "Acme Billing", senderAddress: "billing@acme.example", subject: "Your invoice" } },
+    { from: "00000000-0000-4000-8000-000000000002", to: "00000000-0000-4000-8000-000000000001", count: 12, approved: 0, rejected: 0, example: { senderName: "Acme Billing", senderAddress: "billing@acme.example", subject: "Your invoice" } },
+    { from: "00000000-0000-4000-8000-0000000000ff", to: "00000000-0000-4000-8000-000000000003", count: 1, approved: 0, rejected: 0, example: { senderName: "Acme Billing", senderAddress: "billing@acme.example", subject: "Your invoice" } },
+  ],
+  counts: { items: 33, pending: 33, approved: 0, rejected: 0 },
+  applyAfter: null,
+  applyThreshold: 50,
+  applyDelayMinutes: 30,
+  lastPlan: null,
+} as const;
+
+export function planItems(first: number, size: number, hasMore: boolean, page = 1): unknown {
+  return {
+    page,
+    hasMore,
+    items: Array.from({ length: size }, (_, index) => ({
+      id: first + index,
+      senderName: index % 5 === 0 ? `‮PayPal Support ${String(first + index)}‬` : `Sender ${String(first + index)} with a rather long display name`,
+      senderAddress: `someone.with.a.long.address.${String(first + index)}@example.com`,
+      subject: index % 7 === 0 ? "W".repeat(80) : `Your invoice ${String(first + index)} for the month is ready to download`,
+      from: "00000000-0000-0000-0000-000000000000",
+      to: "00000000-0000-4000-8000-000000000001",
+      decision: "pending",
+      state: "pending",
+      reason: null,
+    })),
+  };
+}
+
 type Endpoint = keyof Stub["calls"];
 
 function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
@@ -145,6 +203,16 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     resetSettings: resetToDefaults,
     logout: reply(204),
     places: reply(200, PLACES),
+    getCategories: reply(200, CATEGORIES),
+    putCategories: putCategoriesEcho,
+    getPlan: reply(200, PLAN),
+    getPlanItems: async (route, call) => {
+      const page = Number(new URL(route.request().url()).searchParams.get("page") ?? "1");
+      await reply(200, planItems((page - 1) * 12 + 1, page < 2 ? 12 : 8, page < 2, page))(route, call);
+    },
+    postDecision: reply(200, { changed: 20 }),
+    postApprove: reply(200, { state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }),
+    postMoveBack: reply(200, { processed: false }),
     ...given,
   };
   return [
@@ -156,20 +224,34 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     ["resetSettings", "/api/settings/reset", "POST", own.resetSettings],
     ["logout", "/auth/logout", "POST", own.logout],
     ["places", "/api/places", "GET", own.places],
+    ["getCategories", "/api/categories", "GET", own.getCategories],
+    ["putCategories", "/api/categories", "PUT", own.putCategories],
+    ["getPlan", "/api/plan", "GET", own.getPlan],
+    ["getPlanItems", "/api/plan/items", "GET", own.getPlanItems],
+    ["postDecision", "/api/plan/decisions", "POST", own.postDecision],
+    ["postApprove", "/api/plan/approve", "POST", own.postApprove],
+    ["postMoveBack", "/api/plan/:id/move-back", "POST", own.postMoveBack],
   ];
+}
+
+/** A path matches exactly, or segment by segment where the stub path has `:id`. */
+function samePath(stubPath: string, pathname: string): boolean {
+  const want = stubPath.split("/");
+  const have = pathname.split("/");
+  return want.length === have.length && want.every((part, index) => part.startsWith(":") || part === have[index]);
 }
 
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, getPlan: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),
     async (route) => {
       const { pathname } = new URL(route.request().url());
       const method = route.request().method();
-      const hit = table.find(([, path, verb]) => path === pathname && verb === method);
+      const hit = table.find(([, path, verb]) => samePath(path, pathname) && verb === method);
       if (!hit) {
         await route.fulfill({ status: 599, body: `No stub for ${method} ${pathname}` });
         return;

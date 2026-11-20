@@ -1,6 +1,7 @@
 """Response headers, request id, the body limit and the last-resort 500 answer."""
 
 import logging
+from collections.abc import Mapping
 
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.exceptions import HTTPException
@@ -85,24 +86,29 @@ class BodyLimitMiddleware:
 
     A declared ``Content-Length`` over the limit is refused without calling the app. A body without a length
     (chunked) is counted as it is read and refused with 413 the moment it passes the limit.
+
+    The limit is ``limit_bytes`` unless ``route_limits`` has an own limit for the request, keyed
+    ``"METHOD /path"`` (exact path).
     """
 
-    def __init__(self, app: ASGIApp, *, limit_bytes: int) -> None:
-        """Keep the next app and the limit from the settings."""
+    def __init__(self, app: ASGIApp, *, limit_bytes: int, route_limits: Mapping[str, int]) -> None:
+        """Keep the next app, the default limit and the per-route limits from the settings."""
         self._app = app
-        self._limit = limit_bytes
+        self._default_limit = limit_bytes
+        self._route_limits = dict(route_limits)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Serve one request, refusing it when its body is too big."""
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
+        limit = self._route_limits.get(f"{scope['method']} {scope['path']}", self._default_limit)
         declared = Headers(scope=scope).get("content-length")
         if declared is not None:
             if not declared.isascii() or not declared.isdigit():
                 await problem_response(400)(scope, receive, send)
                 return
-            if int(declared) > self._limit:
+            if int(declared) > limit:
                 await problem_response(413)(scope, receive, send)
                 return
         received = 0
@@ -112,7 +118,7 @@ class BodyLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 received += len(message.get("body", b""))
-                if received > self._limit:
+                if received > limit:
                     raise HTTPException(status_code=413)
             return message
 

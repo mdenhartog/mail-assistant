@@ -104,15 +104,6 @@ async def test_given_no_position_when_read_then_none_and_a_saved_position_is_ret
     assert await store.history_id() == "200"
 
 
-async def test_given_filed_mails_when_labels_are_asked_then_each_label_is_listed_once(store: PgStore) -> None:
-    await add(store, "m1", outcome("Assistant/Finance"))
-    await add(store, "m2", outcome("Assistant/Finance"))
-    await add(store, "m3", outcome("Assistant/Travel"))
-    await store.claim("m4", "t4")  # claimed, no label yet
-
-    assert sorted(await store.known_labels()) == ["Assistant/Finance", "Assistant/Travel"]
-
-
 async def test_given_an_urgent_mail_when_completed_then_an_alert_with_its_content_can_be_delivered(
     store: PgStore,
 ) -> None:

@@ -15,8 +15,16 @@ RUN pnpm --filter web exec vite build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03 AS runtime
 # Pick up the Alpine security fixes that are newer than the base image, then drop root again.
+# The base image ships four nginx modules (xslt, geoip, image-filter, njs) that this app never loads (no `load_module`).
+# They pin nginx to its exact version, so a plain `apk upgrade` cannot move nginx, and the xslt module is the only
+# reason libxml2 is there. Removing them lets nginx itself be upgraded and drops that code from the image.
+# The nginx version is left unpinned on purpose: the base image already pins nginx to one version, and that pin is
+# what has to move whenever Alpine ships a security fix (the base image itself is pinned by digest).
 USER 0
-RUN apk upgrade --no-cache
+# hadolint ignore=DL3018
+RUN apk del --no-cache nginx-module-xslt nginx-module-geoip nginx-module-image-filter nginx-module-njs \
+    && apk add --no-cache --upgrade nginx \
+    && apk upgrade --no-cache
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY apps/web/snippets/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --from=build /repo/apps/web/dist /usr/share/nginx/html

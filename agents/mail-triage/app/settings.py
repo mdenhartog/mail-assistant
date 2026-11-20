@@ -9,15 +9,26 @@ the defaults live in ``schedule_policy.policy``.
 from __future__ import annotations
 
 import os
+import re
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
+from app.core.pinned import PinnedSenders
 from app.db.engine import DatabaseTls
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+
+_DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
+
+
+def _clean_domains(raw: str) -> list[str]:
+    """The lower case domain names of a comma separated list; empty when nothing usable is in it."""
+    domains = [d.strip().casefold() for d in raw.split(",") if d.strip()]
+    return domains if all(_DOMAIN.fullmatch(d) for d in domains) else []
 
 
 class SettingsError(ValueError):
@@ -64,8 +75,53 @@ class Settings(DatabaseTlsSettings):
     google_client_secret: SecretStr = Field(min_length=1)
     token_encryption_key: SecretStr = Field(min_length=1)  # Fernet key for the stored refresh token (AC-25)
     poll_interval_seconds: int = Field(default=60, ge=1)  # spec C1
+    mailbox_id: str = Field(default="primary", min_length=1, max_length=64)  # ADR-0043: the mailbox this agent serves
+    list_sync_interval_seconds: int = Field(default=60, ge=1)  # how often the category list is synced with Gmail
+    # The plan build and apply (ADR-0046): how long the list must stay unchanged before a build starts, how many mails a
+    # plan looks at, how often the apply looks for due plans, and the approval threshold and delay (written to the
+    # database at start, where the approval function reads them; the api never sets them).
+    plan_debounce_minutes: int = Field(default=10, ge=1)
+    plan_cap: int = Field(default=5000, ge=1)
+    apply_poll_seconds: int = Field(default=60, ge=1)
+    apply_threshold: int = Field(default=50, ge=1)
+    apply_delay_minutes: int = Field(default=15, ge=0)
+    # The daily re-file report (AC-46): the hour of the clock (UTC) from which it runs, once a day, and the most mails
+    # one run fetches from Gmail.
+    refile_report_hour: int = Field(default=6, ge=0, le=23)
+    refile_report_cap: int = Field(default=500, ge=1)
     daily_model_budget: int = Field(default=200, ge=0)  # model calls per day (AC-26)
     alerts_per_hour: int = Field(default=5, ge=1)  # individual alerts per hour before batching (AC-26)
+    # Comma separated sender domains, each mail only counted when Gmail shows DMARC pass (AC-39, ADR-0045, ADR-0048).
+    # Google's own security mail: pinned to the inbox and alerted. The default is Google's security sender.
+    google_security_sender_domains: str = Field(default="accounts.google.com", max_length=2000)
+    # The sender domains of the app's own sign-in code mail: pinned and silent. Deployment configuration, no default.
+    sign_in_mail_domains: str = Field(default="", max_length=2000)
+
+    @field_validator("google_security_sender_domains")
+    @classmethod
+    def _google_domains(cls, raw: str) -> str:
+        domains = _clean_domains(raw)
+        if not domains:
+            raise ValueError("a comma separated list of domain names is needed")
+        return ",".join(domains)
+
+    @field_validator("sign_in_mail_domains")
+    @classmethod
+    def _sign_in_domains(cls, raw: str) -> str:
+        if not raw:
+            return ""
+        domains = _clean_domains(raw)
+        if not domains:
+            raise ValueError("a comma separated list of domain names is needed")
+        return ",".join(domains)
+
+    @property
+    def pinned_senders(self) -> PinnedSenders:
+        """The allow-lists of the two pinned mail kinds, lower case."""
+        return PinnedSenders(
+            google_security=frozenset(self.google_security_sender_domains.split(",")),
+            sign_in=frozenset(filter(None, self.sign_in_mail_domains.split(","))),
+        )
 
     @classmethod
     def settings_customise_sources(

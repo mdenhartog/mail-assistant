@@ -25,6 +25,37 @@ jobs:
       - if: always()  # a failing rating must not hide which mutants survived
         run: uv run cr-report "$RUNNER_TEMP/mail-triage.sqlite" --show-pending --surviving-only --show-diff
 
+  mail-triage-categories:
+    # app/core pinned.py, scope.py, list_text.py, approval_text.py and resort_plan.py (U-mail-categories-34)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults: { run: { working-directory: agents/mail-triage } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run cosmic-ray init cosmic-ray-categories.toml "$RUNNER_TEMP/mail-triage-categories.sqlite"
+      - run: uv run cr-filter-operators "$RUNNER_TEMP/mail-triage-categories.sqlite" cosmic-ray-categories.toml
+      - run: uv run cosmic-ray exec cosmic-ray-categories.toml "$RUNNER_TEMP/mail-triage-categories.sqlite"
+      - run: uv run cr-rate "$RUNNER_TEMP/mail-triage-categories.sqlite" --fail-over 15
+      - if: always()  # a failing rating must not hide which mutants survived
+        run: uv run cr-report "$RUNNER_TEMP/mail-triage-categories.sqlite" --show-pending --surviving-only --show-diff
+
+  category-policy:
+    # packages/category-policy: policy.py (U-mail-categories-02, -34)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults: { run: { working-directory: packages/category-policy } }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - run: uv sync --frozen
+      - run: uv run cosmic-ray init cosmic-ray.toml "$RUNNER_TEMP/category-policy.sqlite"
+      - run: uv run cosmic-ray exec cosmic-ray.toml "$RUNNER_TEMP/category-policy.sqlite"
+      - run: uv run cr-rate "$RUNNER_TEMP/category-policy.sqlite" --fail-over 15
+      - if: always()  # a failing rating must not hide which mutants survived
+        run: uv run cr-report "$RUNNER_TEMP/category-policy.sqlite" --show-pending --surviving-only --show-diff
+
   schedule-policy:
     # packages/schedule-policy: policy.py, parse.py and places.py (U-quiet-hours-01)
     runs-on: ubuntu-latest

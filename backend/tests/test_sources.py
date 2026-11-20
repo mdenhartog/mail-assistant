@@ -57,6 +57,18 @@ def test_named_ids_are_distinct_and_43_chars() -> None:
     assert all(len(v) == 43 for v in values)
 
 
+def test_category_ids_are_distinct_random_uuids() -> None:
+    ids = SecretsIdSource()
+    values = {ids.category_id() for _ in range(100)}
+    assert len(values) == 100
+    assert {value.version for value in values} == {4}
+
+
+def test_fake_category_ids_count() -> None:
+    ids = FakeIds()
+    assert ids.category_id() != ids.category_id()
+
+
 def test_fake_ids_count() -> None:
     ids = FakeIds()
     assert ids.session_id() == "session-1"

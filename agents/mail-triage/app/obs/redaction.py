@@ -15,7 +15,22 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
 REDACTED = "[redacted]"
-SENSITIVE_FIELDS = frozenset({"mail_body", "body", "text", "snippet", "payload", "draft_body"})
+SENSITIVE_FIELDS = frozenset(
+    {
+        "mail_body",
+        "body",
+        "text",
+        "snippet",
+        "payload",
+        "draft_body",
+        "subject",
+        "sender",
+        "sender_name",
+        "sender_address",
+        "from",
+        "to",
+    }
+)
 _SHAPES = (
     (re.compile(r"(?<=bot)\d+:[A-Za-z0-9_-]+"), "<redacted>"),  # Telegram bot token inside an API URL
     (re.compile(r"sk-ant-[A-Za-z0-9_-]+"), REDACTED),  # Anthropic key
@@ -51,9 +66,8 @@ class RedactionFilter(logging.Filter):
         """Scrub the message and replace the fields that carry mail text."""
         record.msg = self._redactor.scrub(record.getMessage())
         record.args = None
-        for name in SENSITIVE_FIELDS:
-            if hasattr(record, name):
-                setattr(record, name, REDACTED)
+        for name in [name for name in vars(record) if name.casefold() in SENSITIVE_FIELDS]:
+            setattr(record, name, REDACTED)
         return True
 
 
@@ -61,7 +75,7 @@ def _clean(node: Any, redactor: Redactor) -> Any:  # noqa: ANN401
     if isinstance(node, dict):
         mapping = cast("dict[str, Any]", node)
         return {
-            key: REDACTED if key in SENSITIVE_FIELDS else _clean(value, redactor)
+            key: REDACTED if key.casefold() in SENSITIVE_FIELDS else _clean(value, redactor)
             for key, value in mapping.items()
             if key != "vars"  # local variables of a stack frame are dropped entirely
         }

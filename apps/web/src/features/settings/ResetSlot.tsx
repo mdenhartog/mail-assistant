@@ -51,6 +51,7 @@ export function ResetSlot({ busy, onReset }: ResetSlotProps): ReactElement {
         }}
         open={asking}
         title={`${LABEL}?`}
+        tone="danger"
       >
         <p>
           {`This replaces your saved settings with: ${DEFAULTS}. The time zone is reset too. It takes effect at once for new alerts.`}

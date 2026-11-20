@@ -24,9 +24,15 @@ resources:
 # The worker touches this file at the end of every loop; the probe fails when it is older than maxAgeSeconds.
 heartbeat: { path: /tmp/heartbeat, maxAgeSeconds: 180 }
 # Outbound: DNS, HTTPS (Gmail, Anthropic, Telegram) and these ports inside the same namespace (the database).
-# A Kubernetes NetworkPolicy cannot name hosts; pinning HTTPS to the three services needs a CNI with FQDN policies.
+# A Kubernetes NetworkPolicy cannot name hosts, so HTTPS is 0.0.0.0/0 on 443 except 169.254.0.0/16 (cloud metadata) and
+# the two cluster ranges below (ADR-0049). Pinning it to the three services needs an egress proxy or an FQDN-capable CNI.
+# podCidr and serviceCidr must match the cluster (kubectl cluster-info dump | grep -m2 -E 'cluster-cidr|service-cluster-ip-range');
+# the defaults are the kind ones. Production values must set both (REQUIRED); the schema refuses an empty or too wide value.
 networkPolicy:
   databasePorts: [5432]
+  https:
+    podCidr: 10.244.0.0/16
+    serviceCidr: 10.96.0.0/16
 # Database migration (ADR-0025): a Job that runs before every install/upgrade as an Argo CD PreSync hook (and as a Helm
 # pre-install/pre-upgrade hook when the chart is used without Argo CD). It connects as the OWNER role, migrates, and sets
 # up the runtime role. Off by default: only a worker with a database needs it.
