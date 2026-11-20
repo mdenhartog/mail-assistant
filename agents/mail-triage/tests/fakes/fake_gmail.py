@@ -46,6 +46,7 @@ class _Faults:
     after_change: int = 0
     transient: list[int] = field(default_factory=list)
     racing_creates: set[str] = field(default_factory=set)
+    refused_names: dict[str, int] = field(default_factory=dict)
     before_modify: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
 
 
@@ -133,6 +134,15 @@ class FakeGmail:
     def race_on_create(self, name: str) -> None:
         """The next ``labels().create`` of ``name`` finds it made by an overlapping run: 409, one label stays."""
         self.faults.racing_creates.add(name)
+
+    def refuse_name(self, name: str, status: int = 400) -> None:
+        """Gmail refuses ``name`` for ``labels().create`` and for a rename to it (400 by default)."""
+        self.faults.refused_names[name] = status
+
+    def check_name_allowed(self, name: str) -> None:
+        status = self.faults.refused_names.get(name)
+        if status is not None:
+            raise http_error(status, "Invalid label name", "invalidArgument" if status == 400 else "forbidden")
 
     def change_before_next_modify(
         self, mid: str, add: list[str] | None = None, remove: list[str] | None = None
@@ -251,6 +261,7 @@ class _Labels:
 
         def action() -> dict[str, str]:
             name = str(body["name"])
+            g.check_name_allowed(name)
             if name in g.faults.racing_creates:
                 g.faults.racing_creates.discard(name)
                 g.add_label(name)  # the overlapping run got there first
@@ -266,6 +277,7 @@ class _Labels:
             if id not in g.label_table or id in SYSTEM_LABELS:
                 raise http_error(404 if id not in g.label_table else 400, "Invalid label", "invalidArgument")
             name = str(body["name"])
+            g.check_name_allowed(name)
             g.check_name_free(name, except_id=id)
             g.label_table[id] = name
             return {"id": id, "name": name}
