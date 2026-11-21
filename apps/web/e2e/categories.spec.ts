@@ -160,21 +160,25 @@ test("a save without a change makes no new version", async ({ page }) => {
 });
 
 // 6 (AC-2, AC-40 second half): one row per rule that the user can reach from the page
-const RESERVED = "That name is kept for the assistant. Pick another.";
+const RESERVED = "The first part of a name cannot be Archive or Other. Those are kept for the assistant.";
 const REFUSED: { rule: string; name: string; description?: string; text: string }[] = [
   { rule: "empty name", name: "", text: "Give the category a name." },
-  { rule: "slash", name: "Bills/Phone", text: "A name cannot contain a slash." },
+  {
+    rule: "empty part",
+    name: "Bills//Phone",
+    text: "Every part of a name needs text. Remove the extra slash or fill the empty part.",
+  },
   { rule: "reserved Other", name: "Other", text: RESERVED },
   { rule: "reserved Archive in other case", name: "ARCHIVE", text: RESERVED },
   { rule: "look-alike of Archive (fullwidth)", name: "Ａrchive", text: RESERVED },
   { rule: "duplicate in other case", name: "invoices", text: "Another category already has this name." },
-  { rule: "name too long", name: "x".repeat(41), text: "Use at most 40 characters for the name." },
+  { rule: "part too long", name: "x".repeat(41), text: "Use at most 40 characters for each part of the name." },
   { rule: "empty description", name: "Bills", description: "", text: "Say what belongs in this category." },
   {
     rule: "description too long",
     name: "Bills",
-    description: "d".repeat(501),
-    text: "Use at most 500 characters for the description.",
+    description: "d".repeat(1501),
+    text: "Use at most 1500 characters for the description.",
   },
 ];
 
@@ -386,10 +390,12 @@ test("canary strings typed into names and descriptions are in no log of the stac
   await openSeeded(page);
 
   await page.getByRole("button", { name: "Add category" }).click();
-  await page.getByLabel("Name").last().fill(`${canary}/refused`);
+  await page.getByLabel("Name").last().fill(`${canary}//refused`);
   await page.getByLabel("Description").last().fill(`${canary} refused description`);
   await pressSave(page);
-  await expect(page.getByText("A name cannot contain a slash.")).toBeVisible();
+  await expect(
+    page.getByText("Every part of a name needs text. Remove the extra slash or fill the empty part."),
+  ).toBeVisible();
 
   await page.getByLabel("Name").last().fill(`${canary}-ok`);
   await page.getByLabel("Description").last().fill(`${canary} saved description`);
