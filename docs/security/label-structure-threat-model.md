@@ -78,7 +78,7 @@ Likelihood and impact are L, M or H.
 
 STRIDE coverage check: Spoofing (LS-1 to 3, 18, 20, 21), Tampering (LS-4 to 6, 7, 9, 11, 12, 19, 20), Repudiation (LS-16), Information disclosure (LS-6, 12, 17), Denial of service (LS-5, 13 to 15, 18), Elevation of privilege (LS-8, 10, 11). No STRIDE type is left unassessed.
 
-## Accepted risks (the user decides; ADR in phase 3)
+## Accepted risks (accepted by the user on 2026-11-21; ADR in phase 3)
 
 | id | risk | why it is acceptable |
 | --- | --- | --- |
@@ -88,5 +88,5 @@ STRIDE coverage check: Spoofing (LS-1 to 3, 18, 20, 21), Tampering (LS-4 to 6, 7
 
 ## Open questions → decision-gate
 
-1. The user's decision on AR-1, AR-2 and AR-3 as written (open point 1 of the spec).
+1. AR-1, AR-2 and AR-3 are accepted by the user as written (2026-11-21).
 2. ADRs to record in phase 3: sender rules and the authenticated sender; judging with topic, extra label and the urgency-only call; plan lifecycle as two plans, the confidence threshold and system approval; YAML upload as an input boundary; archive label name in the list (supersedes ADR-0052); always-notify alert; category contract v2. AR-1 to AR-3 are recorded as accepted risks.

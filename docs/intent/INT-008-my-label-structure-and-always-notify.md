@@ -2,9 +2,9 @@
 id: INT-008
 title: My own label structure, sender rules and always-notify
 originator: the user
-status: draft
+status: confirmed
 date: 2026-11-21
-amended: 2026-11-21 (after the phase 2 round table; confirmed on first writing, to be confirmed again)
+amended: 2026-11-21 (after the phase 2 round table; confirmed again by the user on 2026-11-21)
 ---
 
 ## What I want
