@@ -51,6 +51,9 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 | [U-mail-categories-37](U-mail-categories-37.md) | A failed step names the Gmail status and reason in the log | backend | U-mail-categories-21 | yes | 11 |
 | [U-mail-categories-38](U-mail-categories-38.md) | A label name that Gmail refuses does not stop the label sync | backend | U-mail-categories-37 | no | 12 |
 | [U-mail-categories-39](U-mail-categories-39.md) | The plan build works in slices so the mail cycle and the heartbeat go on | backend | U-mail-categories-14 | no | 13 |
+| [U-mail-categories-40](U-mail-categories-40.md) | The archive label name is a validated setting | backend | U-mail-categories-38 | no | 14 |
+| [U-mail-categories-41](U-mail-categories-41.md) | The protected label follows the setting | backend | U-mail-categories-40 | no | 14 |
+| [U-mail-categories-42](U-mail-categories-42.md) | The web page and the guide speak of the archive label, not of Archive | web | U-mail-categories-41 | no | 14 |
 
 ## Build order
 
@@ -86,3 +89,4 @@ Unit (policy, state machine, classifier, parsers, formatters), integration on re
 11. Wave 11 (operations fix after the first deploy, in parallel): U-mail-categories-37
 12. Wave 12 (operations fix after the first deploy, one at a time): U-mail-categories-38
 13. Wave 13 (operations fix after the first deploy, one at a time): U-mail-categories-39
+14. Wave 14 (the archive label name is a setting, one at a time): U-mail-categories-40, U-mail-categories-41, U-mail-categories-42

@@ -50,4 +50,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0049 · Worker egress on 443 is limited by CIDR exceptions, not by host; egress proxy or FQDN policy is a later option · area:security · tags:mail-triage,kubernetes,networkpolicy,egress,helm · decisions/ADR-0049-worker-egress-cidr-exceptions.md
 - ADR-0050 · The sender search of the review items is a POST with the text in the body, never a GET query parameter · area:security · tags:mail-categories,privacy,api,web · decisions/ADR-0050-sender-search-in-post-body.md
 - ADR-0051 · The plan build looks at a small number of mails per run and goes on in the next run · area:operations · tags:mail-categories,mail-triage,runner,heartbeat,kubernetes · decisions/ADR-0051-plan-build-in-slices.md
+- ADR-0052 · The name of the archive label is a setting of the agent, default Assistant/Archive · area:product · tags:mail-categories,mail-triage,gmail,configuration · decisions/ADR-0052-archive-label-name-is-a-setting.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
