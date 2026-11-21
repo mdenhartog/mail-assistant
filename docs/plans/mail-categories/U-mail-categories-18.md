@@ -16,7 +16,7 @@ feature: mail-categories
 - Criteria:
   1. Given a plan with groups, Then they are collapsed with count and per-group Approve and Keep all in place (AC-12) (type: happy)
   2. Given a group, When 'Select all 80 in this group' is pressed, Then it only selects; 'Approve group' records the decision (AC-13) (type: happy)
-  3. Given selected mails, Then the button reads 'Move N mails, labels only' and the summary dialog names counts per group (AC-13, AC-55) (type: happy)
+  3. Given selected mails, Then the button reads 'Move N mails to their new categories' with the line 'Only labels change, nothing is deleted' under it, and the summary dialog names counts per group (AC-13, AC-55) (type: happy)
   4. Given a plan being built, Then it shows 'n of about m checked, nothing moves yet' and the number not looked at (AC-43) (type: happy)
   5. Given a list of 1 000 items, Then pages of 100 with Load more render within the bound and keep a stable DOM so focus stays on a ticked box (AC-24) (type: edge)
   6. Given sender names with bidi or look-alike characters, Then the real address shows beside the name and format characters are removed (AC-44) (type: security)

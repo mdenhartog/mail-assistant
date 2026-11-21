@@ -31,7 +31,7 @@ The one mailbox owner, mostly on a phone, who looks at the page now and then, an
 | Save summary | Before saving, shows "Renames only change the label" and "Saving will create a review of up to N mails" and, when a pending plan exists, "This replaces the pending review and discards your decisions" | rename only, creates review, replaces review |
 | Review moves, overview | See the plan and the groups; open a group | no plan, building ("340 of about 2 000 checked, nothing moves yet"), ready with groups, ready with cap reached ("1 200 not looked at"), scheduled ("moves at 14:20, Cancel"), applying, applied (counts, "Move back", empty labels named), replaced by a list change, cancelled, 403 lock, session expired |
 | Review moves, group | Approve group, Keep all, select mails | collapsed, expanded, partial selection ("12 of 80 selected", "select all 80 in this group"), paging ("Load more"), skipped and failed with a plain reason ("You moved this mail yourself") |
-| Approve summary | Dialog with counts per group, "labels only, nothing is deleted", "you can move back"; the button says "Move 842 mails" | normal, above the threshold ("waits 15 minutes, you can cancel in Telegram") |
+| Approve summary | Dialog with counts per group, "labels only, nothing is deleted", "you can move back"; the button says "Move 842 mails to their new categories" | normal, above the threshold ("waits 15 minutes, you can cancel in Telegram") |
 
 ## Flow map
 
