@@ -1,0 +1,5 @@
+Authentication-Results: forged.example.invalid; dkim=pass header.d=example.com; dmarc=pass
+Received: from untrusted.example.invalid ([203.0.113.7]) by mx.example.test
+Authentication-Results: mx.example.test; dkim=fail header.d=example.com
+From: Test Sender <sender@example.com>
+Message-ID: <test-0004@example.test>

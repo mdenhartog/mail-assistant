@@ -1,0 +1,8 @@
+Authentication-Results: mx.example.test; dkim=pass header.d=example.com
+From: Test Forwarder <forwarder@example.com>
+Content-Type: multipart/mixed; boundary="test-boundary"
+Message-ID: <test-0009@example.test>
+=== attached message/rfc822 ===
+Authentication-Results: mx.example.test; dkim=pass header.d=example.net; dmarc=pass
+From: Inner Sender <inner@example.net>
+Message-ID: <test-0010@example.test>
