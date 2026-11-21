@@ -13,6 +13,7 @@ from tests.resort_build_support import RESERVE, TRAVEL, Rig
 
 async def test_the_newest_5000_are_in_the_plan_and_the_rest_is_not_looked_at() -> None:
     rig = Rig(daily_total=RESERVE + 2 * SCOPE_MAILS + 10)
+    await rig.start_plan()
     ids = seed_scope_mails(rig.gmail, SCOPE_MAILS)
     rig.judge.answer = TRAVEL
 
@@ -33,6 +34,7 @@ async def test_the_newest_5000_are_in_the_plan_and_the_rest_is_not_looked_at() -
 
 async def test_zero_budget_never_uses_the_reserve_and_the_build_continues_the_next_day() -> None:
     rig = Rig(daily_total=RESERVE + 6)  # room for three mails above the reserve
+    await rig.start_plan()
     for n in range(5):
         rig.gmail.add_mail(("INBOX",), subject=f"s{n}")
     rig.judge.answer = TRAVEL
@@ -57,26 +59,21 @@ async def test_zero_budget_never_uses_the_reserve_and_the_build_continues_the_ne
     assert len(rig.store.items_of(rig.store.plan())) == 5  # no mail judged twice, none skipped
 
 
-async def test_several_saves_start_one_build_after_the_debounce() -> None:
+async def test_a_list_change_builds_no_plan_even_when_the_debounce_time_has_passed() -> None:
     rig = Rig()
     rig.gmail.add_mail(("INBOX",), subject="a")
-    await rig.build.run_once()  # the first plan, at the first start
-    for _ in range(3):
+    for _ in range(3):  # saved by hand, by upload or by Undo: all are a new list version
         rig.store.save_list()
-        rig.clock.advance(timedelta(minutes=2))
+        rig.clock.advance(timedelta(hours=1))
         assert (await rig.build.run_once()).status is BuildStatus.IDLE
-    assert len(rig.store.plans) == 1  # only the first plan, now replaced
-    assert rig.store.plan().state is PlanState.REPLACED
-
-    rig.clock.advance(timedelta(minutes=8))
-    assert (await rig.build.run_once()).status is BuildStatus.READY
-    assert len(rig.store.plans) == 2
-    assert (await rig.build.run_once()).status is BuildStatus.IDLE
-    assert len(rig.store.plans) == 2
+    assert rig.store.plans == []
+    assert rig.judge.calls == 0
+    assert not [c for c in rig.gmail.calls if "modify" in c]  # no mail moves
 
 
 async def test_a_newer_list_cancels_the_build_without_half_written_items() -> None:
     rig = Rig(daily_total=RESERVE + 4)
+    await rig.start_plan()
     for n in range(4):
         rig.gmail.add_mail(("INBOX", rig.finance_label), subject=f"s{n}")
     rig.judge.answer = TRAVEL
@@ -87,17 +84,17 @@ async def test_a_newer_list_cancels_the_build_without_half_written_items() -> No
 
     rig.store.save_list()
     rig.clock.advance(timedelta(days=1, minutes=11))
-    await rig.build.run_once()
+    await rig.build.run_once()  # the outdated plan is replaced and no new one starts
 
     replaced = next(p for p in rig.store.plans if p.plan_id == old.plan_id)
     assert replaced.state is PlanState.REPLACED
     assert rig.store.items_of(replaced) == []
-    assert rig.store.plan().plan_id != old.plan_id
-    assert rig.store.plan().list_version == rig.store.list.version
+    assert rig.store.plans == [replaced]
 
 
 async def test_a_list_saved_during_the_build_stops_it_before_another_mail_is_judged() -> None:
     rig = Rig()
+    await rig.start_plan()
     for n in range(5):
         rig.gmail.add_mail(("INBOX", rig.finance_label), subject=f"s{n}")
     rig.judge.answer = TRAVEL
@@ -112,13 +109,15 @@ async def test_a_list_saved_during_the_build_stops_it_before_another_mail_is_jud
     assert rig.telegram.texts == []
 
 
-async def test_a_plan_that_is_scheduled_lets_the_next_build_wait() -> None:
-    rig = Rig()
-    rig.gmail.add_mail(("INBOX",), subject="a")
-    await rig.build.run_once()
-    rig.store.plans[-1] = replace(rig.store.plan(), state=PlanState.SCHEDULED)
-    rig.store.save_list()
-    rig.clock.advance(timedelta(hours=1))
+async def test_a_plan_that_is_scheduled_or_applying_is_left_alone_when_the_list_changes() -> None:
+    for state in (PlanState.SCHEDULED, PlanState.APPLYING):
+        rig = Rig()
+        await rig.start_plan()
+        rig.gmail.add_mail(("INBOX",), subject="a")
+        await rig.build.run_once()
+        rig.store.plans[-1] = replace(rig.store.plan(), state=state)
+        rig.store.save_list()
+        rig.clock.advance(timedelta(hours=1))
 
-    assert (await rig.build.run_once()).status is BuildStatus.IDLE
-    assert len(rig.store.plans) == 1
+        assert (await rig.build.run_once()).status is BuildStatus.IDLE
+        assert [p.state for p in rig.store.plans] == [state]  # not replaced, no new plan
