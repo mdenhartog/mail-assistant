@@ -475,9 +475,8 @@ class Filing(Base):
     mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
     message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     list_version: Mapped[int] = mapped_column(Integer, primary_key=True)
-    category_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     filed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
-    # Migration 0024 (ADR-0053): the topic and extra labels, how the mail was filed and the sender entry that matched.
+    # Migrations 0024, 0025 (ADR-0053): topic and extra label, how the mail was filed, the sender entry that matched.
     topic_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     extra_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     source: Mapped[str] = mapped_column(String(24), server_default="model")
