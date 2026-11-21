@@ -3,7 +3,7 @@ name = "category-policy"
 version = "0.1.0"
 description = "Shared category policy: name rules, limits, label mapping and decisions (INT-004)"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pyyaml>=6.0.3"]
 
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]
@@ -22,6 +22,7 @@ dev = [
     "pytest>=9.2.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.17.3",
+    "types-pyyaml>=6.0",
 ]
 
 [tool.uv]

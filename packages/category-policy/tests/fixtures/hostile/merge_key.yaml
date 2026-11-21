@@ -1,0 +1,7 @@
+schema: 1
+categories:
+  - &base
+    name: Huis
+    description: A
+  - <<: *base
+    name: Auto

@@ -1,0 +1,63 @@
+# Mail categories - template, format "schema 1".
+#
+# Copy this file, change the examples to your own mail and upload it on the Categories page.
+# Uploading replaces the whole list after a preview; nothing is saved until you confirm.
+# Rules of the format:
+#   - Plain UTF-8 text. Indent with SPACES (a tab is refused). No byte order mark. At most 256 KiB.
+#   - Only the fields shown below exist. Unknown fields, anchors (&), aliases (*), merge keys (<<) and tags (!) are refused.
+#   - Write each field once.
+#   - A problem is reported as "line 12, categories[0].senders[3]" with a fixed text; it never repeats what you wrote.
+
+# schema (required): the version of this format. It must be exactly 1.
+schema: 1
+
+# generalInstructions (optional): text that applies to every category, up to 4000 characters.
+# Use it for rules that do not belong to one category. Leave it out or write "" for none.
+generalInstructions: >-
+  Mail from the school and from the doctor is always important.
+  Prefer the most specific category.
+
+# archiveLabel (optional): the Gmail label that archived mail is moved to.
+# Default: Assistant/Archive. A name outside Assistant/ is allowed. It may not be a Gmail system label
+# (INBOX, SPAM, ...) and may not be the label of one of your categories.
+archiveLabel: Assistant/Archive
+
+# categories (required): the list, in the order you want it. At most 100.
+# Mail that fits no category goes to the built-in "Other"; do not write a category called Other or Archive.
+categories:
+
+  # name (required): the category name. Nest with "/" (Huis/Energie gives the label Assistant/Huis/Energie).
+  #   Each part is at most 40 characters. Names are compared without regard to letter case.
+  - name: Huis/Energie
+
+    # kind (optional): "topic" (default) or "extra".
+    #   A mail gets exactly one topic. An extra label is added next to the topic (for example Facturen).
+    kind: topic
+
+    # description (required): what belongs in this category, in your own words, up to 1500 characters.
+    #   The assistant reads this text to decide; be concrete. Conditions on the subject line can only be written here.
+    description: Energy contracts, meter readings, yearly statements and tariff changes.
+
+    # senders (optional): senders whose mail always goes to this category, without asking the model.
+    #   An entry is a full address or a domain, written as plain text (no patterns, no wildcards).
+    #   A domain entry matches only that domain unless you write the long form with subdomains: true.
+    #   At most 100 entries per category; an entry may appear in one topic and one extra category at most.
+    #   Public mail providers (such as gmail.com) cannot be listed as a domain, only as full addresses.
+    senders:
+      - energie.example.com            # a domain: matches anyone at energie.example.com
+      - service@gas.example.net        # a full address: matches only this sender
+      - entry: example.org             # long form: "entry" is the address or domain ...
+        subdomains: true               # ... and "subdomains: true" also matches mail.example.org, a.b.example.org
+
+    # notify (optional): true or false (default false). Write exactly true or false; yes, no and on are refused.
+    #   true: always send a notice for mail of this category.
+    notify: true
+
+  # An extra label: no senders, no tick, only the required fields and the kind.
+  - name: Facturen
+    kind: extra
+    description: Any invoice or payment request, whatever the topic.
+
+  # The smallest category: only name and description.
+  - name: Persoonlijk
+    description: Personal mail from friends and family.

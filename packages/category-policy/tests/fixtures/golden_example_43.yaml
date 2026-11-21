@@ -1,0 +1,284 @@
+# Anonymised example of a 43-category structure (nested names, one extra label, ticks, sender lists).
+# Every sender domain is an example.* domain. The real conversion is reviewed by its owner and is not in the repository.
+schema: 1
+generalInstructions: Mail from the school and from the general practitioner is always important. Prefer
+  the most specific category. Anything that fits no category stays in Other.
+archiveLabel: Assistant/Archive
+categories:
+- name: Huis
+  kind: topic
+  description: Anything about the house that has no more specific home below.
+  senders: []
+  notify: false
+- name: Huis/Energie
+  kind: topic
+  description: Energy contracts, meter readings, yearly statements and tariff changes.
+  senders:
+  - energie.example.com
+  - service@gas.example.net
+  notify: true
+- name: Huis/Water
+  kind: topic
+  description: Water company letters and meter reading requests.
+  senders:
+  - water.example.org
+  notify: false
+- name: Huis/Verzekeringen
+  kind: topic
+  description: Home and contents insurance policies and renewals.
+  senders:
+  - verzekering.example.com
+  notify: false
+- name: Huis/Onderhoud
+  kind: topic
+  description: 'Repairs, quotes and appointments with tradespeople for the house. Meaning lost: the original
+    rule also looked at the subject line (mails whose subject mentions an appointment); that condition
+    is kept here as text only.'
+  senders:
+  - entry: klusbedrijf.example.net
+    subdomains: true
+  notify: false
+- name: Huis/Internet en TV
+  kind: topic
+  description: Internet, TV and telephone provider mail, outages and contract changes.
+  senders:
+  - internet.example.com
+  notify: false
+- name: Huis/Gemeente
+  kind: topic
+  description: 'Municipality letters: waste collection, local taxes, permits.'
+  senders:
+  - entry: gemeente.example.org
+    subdomains: true
+  notify: false
+- name: Chalet/Camping
+  kind: topic
+  description: 'The chalet at the holiday park: park news, bookings, service costs.'
+  senders:
+  - camping.example.com
+  - info@park.example.net
+  notify: true
+- name: Chalet/Verhuur
+  kind: topic
+  description: 'Rental of the chalet: booking requests, guest messages, payouts. Meaning lost: the original
+    rule also looked at the subject line (mails whose subject starts with a booking number); that condition
+    is kept here as text only.'
+  senders:
+  - verhuur.example.com
+  notify: false
+- name: Chalet/Onderhoud
+  kind: topic
+  description: Maintenance and repairs at the chalet.
+  senders: []
+  notify: false
+- name: Chalet/Verzekering
+  kind: topic
+  description: Insurance of the chalet.
+  senders:
+  - chalet-verzekering.example.org
+  notify: false
+- name: Financien/Bank
+  kind: topic
+  description: Bank statements, card notices and security messages.
+  senders:
+  - entry: bank.example.com
+    subdomains: true
+  - alerts@bank2.example.net
+  notify: true
+- name: Financien/Belasting
+  kind: topic
+  description: Tax authority letters, assessments and refunds.
+  senders:
+  - belasting.example.org
+  notify: true
+- name: Financien/Pensioen
+  kind: topic
+  description: Pension fund statements and overviews.
+  senders:
+  - pensioen.example.com
+  notify: false
+- name: Financien/Beleggen
+  kind: topic
+  description: Investment account reports and broker notices.
+  senders:
+  - broker.example.net
+  notify: false
+- name: Financien/Hypotheek
+  kind: topic
+  description: Mortgage statements, rate changes and advisor mail.
+  senders:
+  - hypotheek.example.com
+  notify: false
+- name: Gezondheid/Huisarts
+  kind: topic
+  description: General practitioner messages, appointments and test results.
+  senders:
+  - huisarts.example.org
+  notify: true
+- name: Gezondheid/Tandarts
+  kind: topic
+  description: Dentist reminders and invoices.
+  senders:
+  - tandarts.example.net
+  notify: false
+- name: Gezondheid/Zorgverzekering
+  kind: topic
+  description: Health insurance statements and claims.
+  senders:
+  - zorg.example.com
+  notify: false
+- name: Gezondheid/Apotheek
+  kind: topic
+  description: Pharmacy pickup notices and repeat prescriptions.
+  senders:
+  - apotheek.example.org
+  notify: false
+- name: Auto/Onderhoud
+  kind: topic
+  description: 'Garage appointments, service reminders and MOT notices. Meaning lost: the original rule
+    also looked at the subject line (mails whose subject contains a licence plate); that condition is
+    kept here as text only.'
+  senders:
+  - garage.example.net
+  notify: false
+- name: Auto/Verzekering
+  kind: topic
+  description: Car insurance policies and renewals.
+  senders:
+  - autoverzekering.example.com
+  notify: false
+- name: Auto/Belasting en tol
+  kind: topic
+  description: Road tax, tolls and fines.
+  senders:
+  - tol.example.org
+  notify: false
+- name: Reizen/Vluchten
+  kind: topic
+  description: Flight bookings, check-in and changes.
+  senders:
+  - entry: airline.example.com
+    subdomains: true
+  notify: false
+- name: Reizen/Hotels
+  kind: topic
+  description: Hotel and holiday home bookings and confirmations.
+  senders:
+  - entry: hotels.example.net
+    subdomains: true
+  notify: false
+- name: Reizen/Treinen
+  kind: topic
+  description: Train tickets and travel disruptions.
+  senders:
+  - trein.example.org
+  notify: false
+- name: Werk/Salaris
+  kind: topic
+  description: Payslips and employment conditions.
+  senders:
+  - salaris.example.com
+  notify: false
+- name: Werk/Vakbond
+  kind: topic
+  description: Union newsletters and member offers.
+  senders:
+  - vakbond.example.net
+  notify: false
+- name: Familie/School
+  kind: topic
+  description: 'School newsletters, parent evenings and absence notices. Meaning lost: the original rule
+    also looked at the subject line (mails whose subject names a class); that condition is kept here as
+    text only.'
+  senders:
+  - school.example.org
+  notify: true
+- name: Familie/Verjaardagen
+  kind: topic
+  description: Birthday invitations and family gatherings.
+  senders: []
+  notify: false
+- name: Familie/Sportclub
+  kind: topic
+  description: Sports club training schedules, fees and match news.
+  senders:
+  - sportclub.example.com
+  notify: false
+- name: Winkelen/Bestellingen
+  kind: topic
+  description: Order confirmations and shipping notices.
+  senders:
+  - entry: shop.example.com
+    subdomains: true
+  - entry: webwinkel.example.net
+    subdomains: true
+  notify: false
+- name: Winkelen/Retouren
+  kind: topic
+  description: Returns, refunds and warranty claims.
+  senders:
+  - retour.example.org
+  notify: false
+- name: Nieuwsbrieven/Nieuws
+  kind: topic
+  description: News digests and daily briefings.
+  senders:
+  - nieuws.example.com
+  notify: false
+- name: Nieuwsbrieven/Hobby
+  kind: topic
+  description: Hobby newsletters and club magazines.
+  senders:
+  - hobby.example.net
+  notify: false
+- name: Abonnementen/Streaming
+  kind: topic
+  description: Streaming service receipts and plan changes.
+  senders:
+  - streaming.example.com
+  notify: false
+- name: Abonnementen/Software
+  kind: topic
+  description: Software licences, renewals and release notes.
+  senders:
+  - entry: software.example.org
+    subdomains: true
+  notify: false
+- name: Overheid/Berichtenbox
+  kind: topic
+  description: Government message box notifications.
+  senders:
+  - berichtenbox.example.org
+  notify: true
+- name: Persoonlijk
+  kind: topic
+  description: Personal mail from friends that is not about any topic above.
+  senders: []
+  notify: false
+- name: Hobby/Fotografie
+  kind: topic
+  description: Photography gear, prints and photo contests.
+  senders:
+  - fotografie.example.net
+  notify: false
+- name: Vrijwilligerswerk
+  kind: topic
+  description: Volunteer organisation planning and requests.
+  senders:
+  - vrijwilliger.example.com
+  notify: false
+- name: Pakketten
+  kind: topic
+  description: Parcel tracking and delivery notices that are not orders.
+  senders:
+  - entry: pakket.example.net
+    subdomains: true
+  notify: false
+- name: Facturen
+  kind: extra
+  description: 'Any invoice or payment request, whatever the topic. Ticked: always notify.'
+  senders:
+  - entry: factuur.example.com
+    subdomains: true
+  - billing@invoices.example.net
+  notify: true

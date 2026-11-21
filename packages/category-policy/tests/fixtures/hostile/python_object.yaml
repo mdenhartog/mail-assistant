@@ -1,0 +1,4 @@
+schema: 1
+categories:
+  - name: !!python/object/apply:os.system ["echo owned"]
+    description: A
