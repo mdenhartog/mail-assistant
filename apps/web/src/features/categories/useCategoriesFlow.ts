@@ -57,7 +57,7 @@ export function useCategoriesFlow(list: CategoryList): CategoriesFlow {
   const append = (name: string, field: RowField): void => {
     counter.current += 1;
     const key = `new-${String(counter.current)}`;
-    setRows((current) => [...current, { key, id: null, name, description: "", mailCount: null }]);
+    setRows((current) => [...current, { key, id: null, name, description: "", mailCount: null, kind: "topic", notify: false, senders: [] }]);
     focus(key, field);
   };
 

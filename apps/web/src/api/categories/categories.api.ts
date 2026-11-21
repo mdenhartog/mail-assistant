@@ -11,8 +11,25 @@ function isCategory(value: unknown): boolean {
     typeof value["id"] === "string" &&
     typeof value["name"] === "string" &&
     typeof value["description"] === "string" &&
-    typeof value["mailCount"] === "number"
+    typeof value["mailCount"] === "number" &&
+    hasListFields(value)
   );
+}
+
+function hasListFields(value: Record<string, unknown>): boolean {
+  return (
+    (value["kind"] === "topic" || value["kind"] === "extra") &&
+    typeof value["notify"] === "boolean" &&
+    allOf(value["senders"], isSender)
+  );
+}
+
+function isIndex(value: unknown): boolean {
+  return value === null || typeof value === "number";
+}
+
+function isSender(value: unknown): boolean {
+  return isRecord(value) && typeof value["entry"] === "string" && typeof value["subdomains"] === "boolean";
 }
 
 function isOlder(value: unknown): boolean {
@@ -36,6 +53,7 @@ function isList(value: unknown): value is CategoryList {
     isRecord(value) &&
     typeof value["version"] === "number" &&
     typeof value["ready"] === "boolean" &&
+    typeof value["generalInstructions"] === "string" &&
     allOf(value["categories"], isCategory) &&
     allOf(value["olderCategories"], isOlder) &&
     isOther(value["other"])
@@ -47,7 +65,9 @@ function isProblem(value: unknown): value is CategoryProblem {
     isRecord(value) &&
     typeof value["rule"] === "string" &&
     typeof value["field"] === "string" &&
-    (value["index"] === null || typeof value["index"] === "number")
+    isIndex(value["index"]) &&
+    isIndex(value["position"]) &&
+    isIndex(value["otherIndex"])
   );
 }
 
