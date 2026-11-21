@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
     "asyncpg>=0.32.0",
+    "category-policy",
     "cryptography>=50.0.2",
     "google-api-python-client>=2.201.0",
     "google-auth>=2.62.1",
@@ -36,8 +37,9 @@ dev = [
 exclude-newer = "7 days"
 package = false
 
-# Shared package of INT-002 (design: Packaging). The image is built from the repo root so this path exists there too.
+# Shared packages of INT-002 and INT-004 (design: Packaging). The image is built from the repo root so this path exists there too.
 [tool.uv.sources]
+category-policy = { path = "../../packages/category-policy" }
 schedule-policy = { path = "../../packages/schedule-policy" }
 
 # Temporary: versions already locked that are younger than the cooldown. Remove after 2026-11-15 (ADR-0022).
@@ -76,7 +78,7 @@ max-complexity = 8
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "schedule_policy"]
+known-first-party = ["app", "category_policy", "schedule_policy"]
 
 [tool.pyright]
 typeCheckingMode = "strict"
