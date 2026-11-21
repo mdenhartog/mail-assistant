@@ -16,7 +16,7 @@ Open **Categories**. You see:
 
 - One card per category with a **Name**, a **Description** and the number of mails in it ("12 mails").
 - A card **Other** with the text "Mail that fits no category". The assistant files a mail there when nothing on your list fits. You cannot rename or delete **Other**.
-- The line "When you save, new mail is filed using this list. Mail already filed stays where it is." and the note "Archive is left alone. Mail you put in the Gmail label Archive is never re-sorted."
+- The line "When you save, new mail is filed using this list. Mail already filed stays where it is." and the note "Your archive label is left alone. Mail you put in your archive label in Gmail is never re-sorted."
 
 The assistant files a mail only under a category of your list, or under **Other**. It never invents a category.
 
@@ -77,7 +77,7 @@ Buttons only work in your own chat, once, and for a limited time. A second or la
 
 ## The Review moves page
 
-When you change a description or delete a category, the assistant checks your already filed mail again and prepares a review. It tells you in Telegram with numbers only, for example "Plan ready: 340 mails checked, 12 to move, 0 unclear, 0 not looked at. Review it in the web app." Mail in spam or trash, and mail in the Gmail label Archive, is never looked at.
+When you change a description or delete a category, the assistant checks your already filed mail again and prepares a review. It tells you in Telegram with numbers only, for example "Plan ready: 340 mails checked, 12 to move, 0 unclear, 0 not looked at. Review it in the web app." Mail in spam or trash, and mail in your archive label, is never looked at.
 
 Open **Review moves**.
 
@@ -138,3 +138,9 @@ When web sign-in is locked, the Categories and Review moves pages do not show a 
 - [Mail categories specification](../specs/mail-categories.md)
 - [Change your settings on the web](web-settings.md)
 - [Quiet hours and other settings in Telegram](quiet-hours.md)
+
+## The archive label
+
+Mail that is handled and that you want to keep, but no longer need in your inbox, can go in your archive label. The assistant never re-sorts it and never puts mail there. By default the label is `Assistant/Archive`; the assistant makes it when it is missing. Gmail refuses the plain name `Archive`, which is why the default sits under `Assistant/`.
+
+You choose the name with the setting `ARCHIVE_LABEL` of the mail-triage agent (in the local stack `MAIL_TRIAGE_ARCHIVE_LABEL`, in the Helm chart `env.ARCHIVE_LABEL`). It must be a name outside `Assistant/`, for example `Bewaard` or `Mail/Done`, or exactly `Assistant/Archive`. A wrong value stops the agent at start and names the setting. If you change the name, the old label stays as it is and is no longer protected, so move the mail you want to keep to the new label first, or the next plan may propose to move it.

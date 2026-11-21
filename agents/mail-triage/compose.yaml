@@ -91,6 +91,8 @@ services:
       ALERTS_PER_HOUR: ${MAIL_TRIAGE_ALERTS_PER_HOUR:-5}
       GOOGLE_SECURITY_SENDER_DOMAINS: ${MAIL_TRIAGE_GOOGLE_SECURITY_SENDER_DOMAINS:-accounts.google.com}
       SIGN_IN_MAIL_DOMAINS: ${MAIL_TRIAGE_SIGN_IN_MAIL_DOMAINS:-}
+      # The protected label (spec C-14, ADR-0052): outside Assistant/, or exactly Assistant/Archive.
+      ARCHIVE_LABEL: ${MAIL_TRIAGE_ARCHIVE_LABEL:-Assistant/Archive}
 
   # The one-time Gmail consent (U-web-settings-76), run by `node scripts/local-stack.mjs consent`: it is not started by
   # `up`. The one-shot server listens on 0.0.0.0 inside the container (CONSENT_BIND_HOST); the port is published on the
