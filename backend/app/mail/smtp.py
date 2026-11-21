@@ -54,6 +54,9 @@ class SmtpMailSender:
                     use_tls=False,
                     tls_context=self._context,
                     timeout=timeout,
+                    # Without this the library calls socket.getfqdn(), which waits on DNS and can take longer than
+                    # the whole send timeout; the From domain is a valid EHLO name and needs no lookup.
+                    local_hostname=settings.smtp_from.rpartition("@")[2],
                 )
         except (aiosmtplib.SMTPException, OSError, TimeoutError) as error:
             failure = type(error).__name__

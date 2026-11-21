@@ -6,8 +6,11 @@ import base64
 import hashlib
 import io
 import logging
+import socket
 import threading
+import urllib.error
 import urllib.request
+from typing import TYPE_CHECKING
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -26,7 +29,22 @@ from app.consent import (
     run_consent,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 REDIRECT = "http://127.0.0.1:8765/callback"
+
+
+def _announce(ports: list[int], ready: threading.Event) -> Callable[[int], None]:
+    """Return an ``on_ready`` callback that records the port and signals the test thread."""
+
+    def on_ready(port: int) -> None:
+        ports.append(port)
+        ready.set()
+
+    return on_ready
+
+
 SECRET = "client-secret-value"  # noqa: S105 - fake
 CODE = "4/0AX-authorisation-code"
 REFRESH = "1//0g-refresh-token-value"
@@ -168,9 +186,7 @@ def test_given_a_browser_redirect_when_received_then_the_query_is_returned_and_n
     ready = threading.Event()
 
     def serve() -> None:
-        result.append(
-            receive_redirect("127.0.0.1", 0, timeout=5, on_ready=lambda port: (ports.append(port), ready.set()))
-        )
+        result.append(receive_redirect("127.0.0.1", 0, timeout=5, on_ready=_announce(ports, ready)))
 
     ports: list[int] = []
     thread = threading.Thread(target=serve)
@@ -224,7 +240,7 @@ def test_given_a_wildcard_server_when_the_browser_calls_back_on_the_loopback_the
 
     def serve() -> None:
         result.append(
-            receive_redirect("0.0.0.0", 0, timeout=5, on_ready=lambda port: (ports.append(port), ready.set()))  # noqa: S104
+            receive_redirect("0.0.0.0", 0, timeout=5, on_ready=_announce(ports, ready))  # noqa: S104
         )
 
     thread = threading.Thread(target=serve)
@@ -235,6 +251,21 @@ def test_given_a_wildcard_server_when_the_browser_calls_back_on_the_loopback_the
     thread.join(5)
 
     assert result == [{"code": "abc", "state": "xyz"}]
+
+
+def test_given_a_slow_hostname_lookup_when_the_redirect_server_starts_then_it_is_ready_without_a_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def lookup_that_must_not_run(name: str = "") -> str:
+        raise AssertionError("socket.getfqdn was called; on some networks it takes seconds")
+
+    monkeypatch.setattr(socket, "getfqdn", lookup_that_must_not_run)
+    ready: list[int] = []
+
+    with pytest.raises(ConsentError, match="no redirect arrived in time"):
+        receive_redirect("127.0.0.1", 0, timeout=0.2, on_ready=ready.append)
+
+    assert len(ready) == 1
 
 
 def test_given_no_browser_when_the_wait_ends_then_the_one_shot_server_gives_up_with_a_clear_error() -> None:

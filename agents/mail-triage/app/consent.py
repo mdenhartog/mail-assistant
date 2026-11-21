@@ -16,6 +16,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import socketserver
 import sys
 import time
 from dataclasses import dataclass
@@ -163,6 +164,21 @@ async def run_consent(  # noqa: PLR0913
     await store.save(token)
 
 
+class _LoopbackServer(HTTPServer):
+    """HTTP server that does not look up its own host name.
+
+    ``HTTPServer.server_bind`` calls ``socket.getfqdn()``, which waits on DNS and can take many seconds on some
+    networks; the one-shot redirect server never uses the name.
+    """
+
+    def server_bind(self) -> None:
+        """Bind the socket and record the address without a name lookup."""
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = port
+
+
 def receive_redirect(host: str, port: int, *, timeout: float, on_ready: Callable[[int], None]) -> dict[str, str]:
     """Serve until the callback arrives; return its query parameters. Everything else gets a 404."""
     if host not in BIND_HOSTS:
@@ -185,7 +201,7 @@ def receive_redirect(host: str, port: int, *, timeout: float, on_ready: Callable
             return
 
     deadline = time.monotonic() + timeout
-    with HTTPServer((host, port), Handler) as server:
+    with _LoopbackServer((host, port), Handler) as server:
         server.timeout = 0.5
         on_ready(server.server_address[1])
         while not received and time.monotonic() < deadline:

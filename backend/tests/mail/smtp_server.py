@@ -159,6 +159,7 @@ def smtp_server(
     controller = Controller(
         _Handler(received, stall=stall),
         hostname=HOST,
+        server_hostname=HOST,  # otherwise aiosmtpd calls socket.getfqdn(), which can take longer than ready_timeout
         port=port,
         tls_context=tls_context,
         require_starttls=tls_context is not None,
