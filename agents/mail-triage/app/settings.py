@@ -180,6 +180,16 @@ class MigrateSettings(DatabaseTlsSettings):
     database_owner_url: SecretStr = Field(min_length=1)  # contains the owner's password
     runtime_role_password: SecretStr = Field(min_length=1)
     web_role_password: SecretStr = Field(min_length=1)  # password of web_settings_runtime (ADR-0033)
+    # Read once, when the migration creates the list settings of the existing versions (ADR-0059); afterwards the name
+    # lives in the database and the variable is ignored.
+    archive_label: str = _DEFAULT_ARCHIVE_LABEL
+
+    @field_validator("archive_label")
+    @classmethod
+    def _archive_label_usable(cls, value: str) -> str:
+        if not _usable_archive_label(value):
+            raise ValueError("not a usable archive label")  # the value is never echoed
+        return value
 
     @classmethod
     def settings_customise_sources(

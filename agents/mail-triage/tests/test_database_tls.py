@@ -228,7 +228,7 @@ async def test_given_verify_full_when_the_job_upgrades_then_alembic_connects_wit
 
     captured: dict[str, Any] = {}
 
-    def fake_upgrade(url: str, connect_args_: dict[str, Any]) -> None:
+    def fake_upgrade(url: str, connect_args_: dict[str, Any], archive_label: str | None) -> None:
         captured.update(connect_args_)
         raise RuntimeError("stop after the upgrade was asked for")
 

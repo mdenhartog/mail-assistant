@@ -92,8 +92,8 @@ async def test_given_v1_rows_when_the_chain_runs_to_head_twice_then_the_rows_are
         await _add(connection, 1, "Receipts", "bills", 49)
         before = await connection.fetch("select * from categories.category")
 
-        await _up(database_url, "head")
-        await _up(database_url, "head")
+        await _up(database_url, "0023")
+        await _up(database_url, "0023")
 
         assert await connection.fetch("select * from categories.category") == before
     finally:
@@ -103,7 +103,7 @@ async def test_given_v1_rows_when_the_chain_runs_to_head_twice_then_the_rows_are
 async def test_given_rows_within_the_v1_limits_when_downgraded_then_the_v1_checks_are_back_and_up_again_v2(
     database_url: str,
 ) -> None:
-    await _up(database_url, "head")
+    await _up(database_url, "0023")
     connection = await asyncpg.connect(plain_url(database_url))
     try:
         await _add(connection, 1, "n" * 40, "d" * 500, 49)
@@ -116,7 +116,7 @@ async def test_given_rows_within_the_v1_limits_when_downgraded_then_the_v1_check
         with pytest.raises(asyncpg.CheckViolationError):
             await _add(connection, 2, "n" * 41)
 
-        await _up(database_url, "head")
+        await _up(database_url, "0023")
         v2 = await _definitions(connection)
         assert _numbers(v2["ck_category_name_length"]) == [1, 215]
         assert _numbers(v2["ck_category_description_length"]) == [1500]
@@ -132,7 +132,7 @@ async def test_given_rows_within_the_v1_limits_when_downgraded_then_the_v1_check
 async def test_given_a_row_beyond_the_v1_limits_when_downgraded_then_it_stops_with_a_clear_error_and_changes_nothing(
     database_url: str, name: str, description: str, position: int
 ) -> None:
-    await _up(database_url, "head")
+    await _up(database_url, "0023")
     connection = await asyncpg.connect(plain_url(database_url))
     try:
         await _add(connection, 1, name, description, position)

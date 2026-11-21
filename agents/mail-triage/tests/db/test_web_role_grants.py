@@ -229,6 +229,10 @@ async def test_given_the_web_role_when_its_table_privileges_are_listed_then_only
         ("categories", "category"),
         ("categories", "category_count"),
         ("categories", "gmail_label"),
+        # the contract v2 (U-label-structure-05): senders, list settings and upload previews; test_categories_grants.py
+        ("categories", "category_sender"),
+        ("categories", "list_settings"),
+        ("categories", "upload_preview"),
         # the plan half (U-mail-categories-12): the item columns are checked by test_plan_grants.py
         ("categories", "plan"),
         ("categories", "move_back_request"),

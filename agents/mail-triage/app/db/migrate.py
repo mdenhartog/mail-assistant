@@ -72,16 +72,18 @@ class SchemaNotReady(RuntimeError):  # noqa: N818 - reads as a state, not as an 
     """The database is not at the Alembic head this build expects. The message holds revisions only, never a URL."""
 
 
-def _config(url: str, connect_args: dict[str, Any] | None = None) -> Config:
+def _config(url: str, connect_args: dict[str, Any] | None = None, archive_label: str | None = None) -> Config:
     config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
     config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
     config.attributes["connect_args"] = connect_args or {}  # read by migrations/env.py: the TLS context is no string
+    if archive_label is not None:
+        config.attributes["archive_label"] = archive_label  # read once by revision 0024 (ADR-0059)
     return config
 
 
-def _upgrade(url: str, connect_args: dict[str, Any]) -> None:
-    command.upgrade(_config(url, connect_args), "head")
+def _upgrade(url: str, connect_args: dict[str, Any], archive_label: str | None) -> None:
+    command.upgrade(_config(url, connect_args, archive_label), "head")
 
 
 def expected_head() -> str:
@@ -153,7 +155,11 @@ async def _roles_with_membership(connection: asyncpg.Connection) -> list[str]:
 
 
 async def migrate_database(
-    owner_url: str, passwords: Mapping[str, str], tls: DatabaseTls | None = None, clock: Clock = SYSTEM_CLOCK
+    owner_url: str,
+    passwords: Mapping[str, str],
+    tls: DatabaseTls | None = None,
+    clock: Clock = SYSTEM_CLOCK,
+    archive_label: str | None = None,
 ) -> None:
     """Migrate as the owner, then make the roles of ``ROLES`` and their grants match this build. Safe to run again.
 
@@ -161,6 +167,8 @@ async def migrate_database(
     the lock connection use the same one. The roles are hardened and committed first; a role with a
     membership then stops the job (``RuntimeRoleNotSafe``) before the grants are applied. The last step is the
     retention purge (``clock`` says what time it is); if it fails the job raises MigrationStepFailed (step ``purge``).
+    ``archive_label`` is the name the job read from its environment; revision 0024 stores it, once, in the list
+    settings of the versions that exist then (None means the default ``Assistant/Archive``).
     """
     lock = await _connect(owner_url, tls)
     try:
@@ -168,7 +176,7 @@ async def migrate_database(
         if missing:  # before anything is changed; names the role, never a value
             raise ValueError(f"no password given for the role(s): {', '.join(missing)}")
         await lock.execute("select pg_advisory_lock($1)", MIGRATION_LOCK_KEY)  # waits for a job that is still running
-        await asyncio.to_thread(_upgrade, owner_url, connect_args(tls) if tls is not None else {})
+        await asyncio.to_thread(_upgrade, owner_url, connect_args(tls) if tls is not None else {}, archive_label)
         async with lock.transaction():
             for role in ROLES:
                 await _ensure_role(lock, role.name, passwords[role.name])

@@ -57,6 +57,9 @@ services:
       DATABASE_OWNER_URL: ${MAIL_TRIAGE_DATABASE_OWNER_URL:-postgresql+asyncpg://app:${POSTGRES_PASSWORD:-}@db:5432/app}
       RUNTIME_ROLE_PASSWORD: ${MAIL_TRIAGE_RUNTIME_PASSWORD:-}
       WEB_ROLE_PASSWORD: ${WEB_ROLE_PASSWORD:-}
+      # Read once by the contract v2 migration into the list settings (U-label-structure-05, ADR-0059); afterwards the
+      # archive label is set on the Categories page and this value is ignored.
+      ARCHIVE_LABEL: ${MAIL_TRIAGE_ARCHIVE_LABEL:-Assistant/Archive}
     volumes:
       - ../../deploy/prod-like/certs:/certs:ro
 
