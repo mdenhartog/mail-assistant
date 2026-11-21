@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_read import FetchedMail
 from app.core.judgement import OTHER_ID, Judgement, ListedCategory, NeedsAttention
 from app.core.pinned import PinnedSenders
 from app.core.resort_plan import PlanState
-from app.usecases.resort_build import BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild
+from app.usecases.resort_build import PLAN_CAP, BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild
 from tests.fakes.budget_ledger import BudgetLedger
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_gmail import FakeGmail
@@ -211,9 +211,12 @@ class Rig:
             now=self.clock,
             pinned=PINNED,
             archive_label="Archive",
-            debounce=timedelta(minutes=10),
             per_run=per_run,
         )
+
+    async def start_plan(self) -> None:
+        """A ``building`` plan for the current list, as a request will create it (U-label-structure-22)."""
+        await self.store.create_plan(self.store.list.version, PLAN_CAP)
 
     def remaining(self) -> int:
         """The budget view the use case reads: what the day still allows, the reserve included."""

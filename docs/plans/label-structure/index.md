@@ -6,7 +6,7 @@ spec: docs/specs/label-structure.md
 
 # My own label structure, sender rules and always-notify
 
-The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 30 units in two releases: R1 (units 01 to 17 and 28 to 30) and R2 (units 18 to 27). Units 28 to 30 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy, so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
+The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 31 units in two releases: R1 (units 01 to 17 and 28 to 31) and R2 (units 18 to 27). Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
 
 ## Units
 
@@ -16,7 +16,8 @@ The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/de
 | [U-label-structure-02](U-label-structure-02.md) | category-policy v2: names, kinds, limits, archive rule, confidence scale | backend | — | yes | 1 |
 | [U-label-structure-06](U-label-structure-06.md) | Remove the automatic plan (R1) | backend | — | yes | 1 |
 | [U-label-structure-28](U-label-structure-28.md) | The agent follows the policy v2 name rules | backend | U-label-structure-02 | yes | 1 |
-| [U-label-structure-29](U-label-structure-29.md) | The api follows the policy v2 name rules and limits | backend | U-label-structure-02 | yes | 1 |
+| [U-label-structure-31](U-label-structure-31.md) | Relax the category check constraints to the v2 limits | backend | U-label-structure-02 | yes | 1 |
+| [U-label-structure-29](U-label-structure-29.md) | The api follows the policy v2 name rules and limits | backend | U-label-structure-02, U-label-structure-31 | yes | 1 |
 | [U-label-structure-30](U-label-structure-30.md) | The web app follows the policy v2 name rules | web | U-label-structure-02 | yes | 1 |
 | [U-label-structure-03](U-label-structure-03.md) | category-policy v2: sender entries, the matcher and the refused domains | backend | U-label-structure-02 | yes | 2 |
 | [U-label-structure-05](U-label-structure-05.md) | Migration for contract v2 (R1) | backend | U-label-structure-02 | yes | 2 |
@@ -47,7 +48,7 @@ The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/de
 
 R1:
 
-1. Wave 1 — in parallel: U-label-structure-01, U-label-structure-02, U-label-structure-06; units 28, 29 and 30 are built on top of the branch of unit 02 (in parallel with each other) and one pull request carries units 02, 28, 29 and 30, one commit group per unit
+1. Wave 1 — in parallel: U-label-structure-01, U-label-structure-02, U-label-structure-06; units 28, 29, 30 and 31 are built on top of the branch of unit 02 (28, 30 and 31 in parallel; 29 needs the constraints of 31 for its limit tests) and one pull request carries units 02, 31, 28, 29 and 30, one commit group per unit
 2. Wave 2 (after wave 1) — in parallel: U-label-structure-03, U-label-structure-05, U-label-structure-07
 3. Wave 3 (after wave 2) — U-label-structure-04 and U-label-structure-11 in parallel; U-label-structure-08 and U-label-structure-09 one at a time (both in the filing flow)
 4. Wave 4 (after wave 3) — U-label-structure-10 and U-label-structure-15 in parallel; U-label-structure-12 and U-label-structure-13 one at a time (both change the OpenAPI document)

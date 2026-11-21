@@ -103,7 +103,7 @@ def test_given_a_label_that_is_not_a_category_label_when_renamed_then_it_is_refu
 
 
 @pytest.mark.parametrize(
-    "target", ["Archive", "Work", "INBOX", "Assistant/", "Assistant/Other", "Assistant/Archive", "Assistant/a/b", ""]
+    "target", ["Archive", "Work", "INBOX", "Assistant/", "Assistant/Other", "Assistant/Archive", ""]
 )
 def test_given_a_target_name_outside_the_category_rules_when_renamed_then_it_is_refused(target: str) -> None:
     gmail = FakeGmail()
@@ -113,6 +113,68 @@ def test_given_a_target_name_outside_the_category_rules_when_renamed_then_it_is_
         resort(gmail).rename_label(label, target)
 
     assert gmail.label_table[label] == "Assistant/Bills"
+
+
+def test_given_a_nested_target_name_when_renamed_then_the_label_takes_it() -> None:
+    gmail = FakeGmail()
+    label = gmail.add_label("Assistant/Bills")
+
+    resort(gmail).rename_label(label, "Assistant/Huis/Energie")
+
+    assert gmail.label_table[label] == "Assistant/Huis/Energie"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "Assistant/Archive/Old",
+        "Assistant/other/x",
+        "Assistant//b",
+        "Assistant/a//b",
+        "Assistant/a/",
+        "/Assistant/a",
+        "Assistant/a/../b",
+        "Assistant/" + "a" * 216,
+    ],
+    ids=[
+        "archive-first",
+        "other-first",
+        "empty-first",
+        "empty-middle",
+        "trailing-slash",
+        "leading-slash",
+        "dotdot",
+        "226",
+    ],
+)
+def test_given_a_nested_target_outside_the_v2_rules_when_renamed_then_it_is_refused(target: str) -> None:
+    gmail = FakeGmail()
+    label = gmail.add_label("Assistant/Bills")
+
+    with pytest.raises(LabelRefused):
+        resort(gmail).rename_label(label, target)
+
+    assert gmail.label_table[label] == "Assistant/Bills"
+
+
+def test_given_a_nested_source_label_when_renamed_then_it_is_a_category_label_and_changes() -> None:
+    gmail = FakeGmail()
+    label = gmail.add_label("Assistant/Huis/Energie")
+
+    resort(gmail).rename_label(label, "Assistant/Huis/Gas")
+
+    assert gmail.label_table[label] == "Assistant/Huis/Gas"
+
+
+def test_given_a_label_of_225_characters_when_renamed_to_then_it_is_taken() -> None:
+    gmail = FakeGmail()
+    label = gmail.add_label("Assistant/Bills")
+    target = "Assistant/" + "/".join(["a" * 40] * 5) + "/" + "a" * 10
+
+    assert len(target) == 225
+    resort(gmail).rename_label(label, target)
+
+    assert gmail.label_table[label] == target
 
 
 @pytest.mark.parametrize(

@@ -9,7 +9,7 @@ feature: label-structure
 - Layer: backend
 - Contract: the existing category list endpoints (`backend/app/categories_models.py`, `categories_write.py`) keep working on top of `category-policy` v2: nested names are accepted, the limits are 1 500 characters for a description and 100 categories, the problem codes are the new ones (`name_segment_empty`, `name_segment_too_long`, `name_label_too_long`, and the others of unit 02), and the response mapping and the OpenAPI example use them. No new fields: kinds, senders and ticks come in unit 11. This unit lands in the same pull request as unit 02.
 - Files: `backend/app/categories_models.py`, `backend/app/categories_write.py`, `docs/api/openapi.json` (problem codes), `backend/tests/test_categories_api.py` and the other backend tests that name the old rules
-- Depends on: U-label-structure-02
+- Depends on: U-label-structure-02, U-label-structure-31
 - Parallel: yes
 - Guardrails: guardrail-fastapi, guardrail-pydantic, guardrail-pytest
 - Criteria:

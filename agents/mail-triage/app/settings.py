@@ -100,10 +100,9 @@ class Settings(DatabaseTlsSettings):
     poll_interval_seconds: int = Field(default=60, ge=1)  # spec C1
     mailbox_id: str = Field(default="primary", min_length=1, max_length=64)  # ADR-0043: the mailbox this agent serves
     list_sync_interval_seconds: int = Field(default=60, ge=1)  # how often the category list is synced with Gmail
-    # The plan build and apply (ADR-0046): how long the list must stay unchanged before a build starts, how many mails a
+    # The plan build and apply (ADR-0046): how many mails a
     # plan looks at, how often the apply looks for due plans, and the approval threshold and delay (written to the
     # database at start, where the approval function reads them; the api never sets them).
-    plan_debounce_minutes: int = Field(default=10, ge=1)
     plan_cap: int = Field(default=5000, ge=1)
     apply_poll_seconds: int = Field(default=60, ge=1)
     apply_threshold: int = Field(default=50, ge=1)

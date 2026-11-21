@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 from googleapiclient.errors import HttpError
 
 from app.adapters.gmail_read import BACKOFF_SECONDS, MAX_ATTEMPTS, retryable
+from category_policy import label_for, validate_category
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -33,7 +34,7 @@ OTHER_LABEL = f"{LABEL_PREFIX}Other"
 ME = "me"
 HTTP_CONFLICT = 409
 HTTP_BAD_REQUEST = 400
-_RESERVED = frozenset({"other", "archive"})
+_PLACEHOLDER_DESCRIPTION = "x"  # validate_category checks a description too; only the name problems matter here
 
 
 class LabelRefused(ValueError):  # noqa: N818  # a refusal, not a failure of Gmail
@@ -57,15 +58,11 @@ class Label:
 
 
 def is_category_label(name: str) -> bool:
-    """True for ``Assistant/<name>`` with one level, a non-reserved name and no path tricks."""
+    """True for ``Assistant/<name>`` when ``category-policy`` accepts ``<name>`` and the label is in its stored form."""
+    if not name.startswith(LABEL_PREFIX):
+        return False
     base = name[len(LABEL_PREFIX) :]
-    return (
-        name.startswith(LABEL_PREFIX)
-        and bool(base.strip())
-        and "/" not in base
-        and ".." not in name
-        and base.strip().casefold() not in _RESERVED
-    )
+    return label_for(base) == name and not validate_category(base, _PLACEHOLDER_DESCRIPTION, (), (), ())
 
 
 def _under_prefix(name: str) -> bool:

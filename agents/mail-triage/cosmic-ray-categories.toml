@@ -1,4 +1,4 @@
-# Mutation testing for INT-004 (U-mail-categories-34): the pure modules app/core/pinned.py, scope.py, list_text.py,
+# Mutation testing for INT-004 (U-mail-categories-34): the pure modules app/core/authentication.py, pinned.py, scope.py, list_text.py,
 # approval_text.py and resort_plan.py, score >= 85 %. The other app/core modules are gated by cosmic-ray.toml or not pure.
 # Keep the session file outside the repo. From agents/mail-triage:
 #   uv run cosmic-ray init cosmic-ray-categories.toml $TMP/categories.sqlite
@@ -27,7 +27,7 @@ test-command = 'uv run --no-sync python -c "import faulthandler, sys, pytest; fa
 #
 # Equivalent mutants that survive on purpose (checked one by one, not hidden):
 #  - `if TYPE_CHECKING:` -> `if not TYPE_CHECKING:` in every module: it only imports names used in annotations.
-#  - pinned.py: `==` -> `is` on one-character strings (CPython interns them, so the result is the same);
+#  - authentication.py: `==` -> `is` on one-character strings (CPython interns them, so the result is the same);
 #    `depth == 0` -> `depth <= 0` (depth is never negative inside a comment); `char == "("` -> `char >= "("`
 #    (the character there is `(` or `"`, and `"` sorts below `(`); `!= 1` -> `> 1` on the count of dmarc results
 #    (zero results end in the same refusal); `while index < len(header)` -> `!=` (index never passes the end);
