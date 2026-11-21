@@ -1,0 +1,69 @@
+---
+id: INT-008
+title: My own label structure, sender rules and always-notify
+originator: the user
+status: confirmed
+date: 2026-11-21
+---
+
+## What I want
+
+(English version, to be approved by the user; their own words are kept under *Original wording*.)
+
+I researched my mailbox (together with Claude, with the Opus model) and wrote a label structure with classification instructions. I want the application to follow it instead of the categories it has now.
+
+- **My structure becomes the list.** Names may be nested (for example `Huis/Energie`). A mail gets one topic label and, where it applies, one extra label such as `Facturen`. Descriptions may be long enough to hold my sender lists and notes, and the list has general instructions that apply to all categories.
+- **Sender rules.** A category may name senders. When a mail's sender is named, the mail is filed there directly and the language model is skipped. A category's sender list may be empty.
+- **Always notify.** In every category I can tick "always notify". When a new mail is filed in such a category, I get a Telegram notification. This comes on top of what the agent already does: it keeps notifying me about mail it judges important from the content. I must not get two notifications for one mail.
+- **Upload.** I can always load my categories from a file (a YAML file; an upload replaces the whole list after a preview; the app can export the current list in the same format). This is not a one-time action.
+- **Archive label in the app.** The name of the archive label, now an environment variable, I set in the application.
+- **Sort again only on a button.** A change of the list applies to new mail only. Mail already in my inbox is re-sorted only when I press a button "Sort everything again", and I see what will move before it moves, as in INT-004.
+
+## Why (the problem, who has it, how often)
+
+I (the owner of the mailbox) cannot express my label structure in the application today: names may not nest, a mail gets exactly one label, descriptions are short and there is no place for rules that apply to all categories. I also only hear about mail the agent judges urgent, so mail in categories I care about (for example invoices) can go by unnoticed, and the archive label can only be changed by changing the environment.
+
+## How I will know it works
+
+- I can upload my list from a file, see a preview, and the Categories page then shows my nested categories with their description, senders and "always notify" tick.
+- A new mail from a named sender lands in that sender's category without a model call.
+- A new mail in a category with "always notify" gives me one Telegram notification, also when it is not urgent, and only one when it is also urgent.
+- Changing the list does not move any old mail; pressing "Sort everything again" does start a review of what is in my inbox, which I approve before anything moves.
+- I can change the archive label name on the Categories page and the agent uses it.
+
+## What it must not do
+
+- It must not delete mail and must not send mail on its own (as in INT-001).
+- It must not give two notifications for one mail.
+- It must not move old mail without my pressing the button and approving.
+- It must not place a mail by a sender rule on the strength of a forged sender address.
+
+## Open questions
+
+- A sender rule skips the model, so such a mail gets no urgency judgement and no extra label from the model; "always notify" is the way to hear about it. Is that acceptable for every category? (decided by the user in the brainstorm: yes; check again in the spec)
+- The `From` address can be forged. A sender rule must only act on an authenticated sender. (threat-model)
+- An uploaded file is untrusted input (size, YAML parsing, schema). (threat-model)
+- This reverses parts of INT-004 (no `/` in names, exactly one label per mail, 500 characters per description, automatic re-sort after a list change, the archive label as an environment setting). A new spec; INT-004 itself stays as it is. (spec phase)
+- Sender and subject of mail are used in notifications and previews, as today (ADR-0018); no new personal data is stored. (threat-model)
+
+## Original wording
+
+> Ik weet niet of dat dit een nieuwe intent moet worden. Of dat je die bij 4 wil plaatsen. Maar ik heb een lepelstructuur gemaakt. En de manier hoe de agent de klassificatie van de e-mail moet doen. Wat ik daarnaast graag zou willen hebben. Is nu wordt er zo nu en dan wordt er een notificatie naar Telegram gestuurd. Maar ik wil eigenlijk de categorieën kunnen aankiezen. Of kunnen kiezen als daar iets nieuws in zit. Dat ik daarvan dan een berichtje krijg. [...] De labels zijn echt een onderzoek van mijn mailbox. Ook door Claude, door jou zelf, maar met het Opus model. En ik wil op basis daarvan dat de applicatie wordt aangepast zoals het nu is.
+>
+> Wat ik ook wil, is dat degene wat nu de mail order is, dat staat nu in een environment variabele, maar dat wil ik gewoon via de applicatie kunnen instellen. En ik wil, als ik een wijziging maak, dat ik toch alles opnieuw wil kunnen laten indexeren, wat er dan op dat moment nog in mijn inbox zit. En het allerlaatste is de Telegram agent, die zorgt er nu voor dat ik notificatie krijg. Dat moet zeker zo blijven. Echter komt er alleen één ding bij, is dat als ik een categorie aangeef, altijd notificeren.
+>
+> Geneste namen mogen wel degelijk.
+>
+> Ik wil alleen alles opnieuw categoriseren of sorteren als ik op een button druk. Dus en anders is het alleen met de nieuwe mail.
+>
+> Wat ik wil is dat ik in een categorie een vinkje kan zetten. Die aangeeft dat als daar iets nieuws in komt, dan moet je het altijd melden. En dat is buiten hetgeen wat je nu al hebt gemaakt. Uiteraard moet dat niet voor een dubbele melding zorgen.
+>
+> Facturen is maar een voorbeeld. Dus het moet bij elke categorie kunnen dat vinkje zetten.
+>
+> Ik wil dat je B kiest. [sender rules in code]
+>
+> Ja, ik wil nummer 2. Als er echt een afzender staat, want afzenders zouden leeg kunnen zijn, hè, dan moet het gewoon direct daar geplaatst worden. En dan kan je het model verder overslaan.
+>
+> Ik wil de categorieën altijd in de basis via een bestand kunnen uploaden. Dus dat is niet een eenmalige actie, maar ik wil dat het mogelijk is om categorieën vanuit een bestand te kunnen uploaden. En op je tweede vraag, ik druk zelf gewoon op alles nieuw sorteren.
+>
+> een YAML-bestand past.
