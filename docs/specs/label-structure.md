@@ -265,6 +265,6 @@ Every criterion is Given/When/Then; the matrix of criterion, test name and layer
 All answered by the user on 2026-11-21:
 
 1. **Accepted risks.** AR-1, AR-2 and AR-3 are accepted as written in the threat model (AR-1 includes platform senders that relay text written by anyone).
-2. **A mail with a missing or unparsable  in a ticked category** alerts with "sender not verified" (AC-22).
+2. **A mail with a missing or unparsable `From` in a ticked category** alerts with "sender not verified" (AC-22).
 3. **A skill that scans a mailbox** and writes the YAML is its own intent, INT-009 (draft); this feature provides the format, the template and the example (D21).
 4. **INT-008 is amended** for D9, D12, D13 and D21 and confirmed again by the user.
