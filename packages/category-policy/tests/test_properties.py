@@ -1,9 +1,9 @@
-"""Property-based tests on random Unicode (criterion 8)."""
+"""Property-based tests on random Unicode."""
 
 from hypothesis import given
 from hypothesis import strategies as st
 
-from category_policy import RULES, normalise_name, validate_category
+from category_policy import RULES, label_for, normalise_name, validate_category, validate_instructions
 
 TEXT = st.text(max_size=80)
 
@@ -15,11 +15,24 @@ def test_given_any_unicode_when_validated_then_it_never_raises_and_returns_known
     assert {p.rule for p in problems} <= set(RULES)
 
 
+@given(text=st.text(max_size=5000))
+def test_given_any_instructions_when_validated_then_it_never_raises_and_returns_known_rules(text: str):
+    assert {p.rule for p in validate_instructions(text)} <= set(RULES)
+
+
 @given(name=TEXT)
 def test_given_any_name_when_normalised_twice_then_the_result_is_stable(name: str):
     once = normalise_name(name)
 
     assert normalise_name(once) == once
+
+
+@given(name=TEXT)
+def test_given_any_name_when_labelled_then_the_label_starts_with_the_prefix_and_is_stable(name: str):
+    label = label_for(name)
+
+    assert label.startswith("Assistant/")
+    assert label_for(label.removeprefix("Assistant/")) == label
 
 
 @given(name=TEXT, padding=st.sampled_from(["", " ", "\t", "  "]))
