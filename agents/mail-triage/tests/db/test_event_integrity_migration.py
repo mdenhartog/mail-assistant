@@ -20,9 +20,9 @@ if TYPE_CHECKING:
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
-WEB_PASSWORD = "web-test-only"  # noqa: S105  # what the first test to make the shared role used (login request)
+WEB_PASSWORD = "web-test-password"  # noqa: S105  # what the first test to make the shared role used (login request)
 AGENT_ROLE = "mail_triage_runtime"
-AGENT_PASSWORD = "agent-test-only"  # noqa: S105  # same: roles are cluster-wide and this file sorts first
+AGENT_PASSWORD = "runtime-test-only"  # noqa: S105  # same: roles are cluster-wide and this file sorts first
 CLIENT = "c" * 64
 USER = "u" * 64
 

@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
-WEB_PASSWORD = "web-test-only"  # noqa: S105  # a throwaway role in a throwaway container
+WEB_PASSWORD = "web-test-password"  # noqa: S105  # a throwaway role in a throwaway container
 AGENT_ROLE = "mail_triage_runtime"
-AGENT_PASSWORD = "agent-test-only"  # noqa: S105  # a throwaway role in a throwaway container
+AGENT_PASSWORD = "runtime-test-only"  # noqa: S105  # a throwaway role in a throwaway container
 NO_CLIENT = "0" * 64
 
 _ROW = (
