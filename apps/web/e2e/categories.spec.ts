@@ -76,7 +76,7 @@ test("a visitor without a session is sent to the login page for /settings and th
   await expect(page).toHaveURL(/\/login/);
 
   expect((await request.get("/api/categories")).status()).toBe(401);
-  const put = await request.put("/api/categories", { data: { version: 0, categories: [] } });
+  const put = await request.put("/api/categories", { data: { version: 0, generalInstructions: "", categories: [] } });
   expect([401, 403]).toContain(put.status());
   expect(versions()).toEqual([]);
 });

@@ -103,6 +103,7 @@ export interface PlanWiring {
 const CATEGORY_LIST = {
   version: 3,
   ready: true,
+  generalInstructions: "",
   categories: [INVOICES, NEWS],
   other: { mailCount: 7 },
   olderCategories: [],
