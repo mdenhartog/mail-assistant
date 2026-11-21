@@ -1,4 +1,4 @@
-"""The glue between the category list API and the shared rules of ``category_policy`` (U-mail-categories-04).
+"""The glue between the category list API and the shared rules of ``category_policy`` (v2, U-label-structure-11).
 
 Pure functions: no database, no clock, no randomness (the ids of new categories come from the id source).
 """
@@ -13,9 +13,21 @@ from app.categories_models import (
     CategoryProblem,
     OlderCategory,
     OtherItem,
+    SenderItem,
 )
-from app.categories_repo import OTHER_ID, StoredCategory, StoredList
-from category_policy import LABEL_PREFIX, Category, label_for, normalise_name, validate_list
+from app.categories_repo import OTHER_ID, StoredCategory, StoredList, StoredSender
+from category_policy import (
+    LABEL_PREFIX,
+    Category,
+    SenderCategory,
+    SenderEntry,
+    label_for,
+    normalise_name,
+    parse_entry,
+    validate_entries,
+    validate_instructions,
+    validate_list,
+)
 from category_policy.policy import RESERVED_NAMES
 
 
@@ -80,20 +92,46 @@ def to_response(stored: StoredList) -> CategoryList:
                 id=category.id,
                 name=category.name,
                 description=category.description,
+                kind=category.kind,
+                notify=category.notify,
+                senders=[SenderItem(entry=sender.entry, subdomains=sender.subdomains) for sender in category.senders],
                 mail_count=stored.counts.get(category.id, 0),
             )
             for category in stored.categories
         ],
+        general_instructions=stored.general_instructions,
         other=OtherItem(mail_count=stored.counts.get(OTHER_ID, 0)),
         older_categories=[OlderCategory(label_name=label, mail_count=None) for label in older_labels(stored)],
     )
 
 
-def problems_of(items: list[CategoryInput], stored: StoredList) -> list[CategoryProblem]:
+def _sender_problems(items: list[CategoryInput]) -> list[CategoryProblem]:
+    categories = [
+        SenderCategory(
+            item.name,
+            item.kind,
+            tuple(SenderEntry(sender.entry, sender.subdomains) for sender in item.senders),
+        )
+        for item in items
+    ]
+    return [
+        CategoryProblem(
+            rule=problem.rule,
+            field="senders",
+            index=problem.index,
+            position=problem.position,
+            other_index=problem.other_index,
+        )
+        for problem in validate_entries(categories)
+    ]
+
+
+def problems_of(items: list[CategoryInput], instructions: str, stored: StoredList) -> list[CategoryProblem]:
     """Check a whole list against the shared rules and the ids of the stored list.
 
     Args:
         items: The categories as sent.
+        instructions: The general instructions as sent.
         stored: The stored list: the known ids and the Gmail labels. A name whose label is an older category adopts it;
             a kept category's own label is no clash.
 
@@ -103,20 +141,30 @@ def problems_of(items: list[CategoryInput], stored: StoredList) -> list[Category
     own = _labels_in_use(items, stored)
     existing = [label for label in stored.labels if normalise_name(label) not in own]
     found = [
-        CategoryProblem(rule=problem.rule, field=problem.field, index=problem.index)  # pyright: ignore[reportArgumentType]
-        for problem in validate_list(
-            [Category(item.name, item.description) for item in items], existing, older_labels(stored)
+        CategoryProblem(
+            rule=problem.rule,
+            field=problem.field,  # pyright: ignore[reportArgumentType]
+            index=problem.index,
+            position=None,
+            other_index=None,
         )
+        for problem in [
+            *validate_list(
+                [Category(item.name, item.description, item.kind) for item in items], existing, older_labels(stored)
+            ),
+            *validate_instructions(instructions),
+        ]
     ]
+    found.extend(_sender_problems(items))
     known = {category.id for category in stored.categories}
     seen: set[uuid.UUID] = set()
     for index, item in enumerate(items):
         if item.id is None:
             continue
         if item.id not in known:
-            found.append(CategoryProblem(rule="id_unknown", field="id", index=index))
+            found.append(CategoryProblem(rule="id_unknown", field="id", index=index, position=None, other_index=None))
         elif item.id in seen:
-            found.append(CategoryProblem(rule="id_duplicate", field="id", index=index))
+            found.append(CategoryProblem(rule="id_duplicate", field="id", index=index, position=None, other_index=None))
         seen.add(item.id)
     return found
 
@@ -124,7 +172,10 @@ def problems_of(items: list[CategoryInput], stored: StoredList) -> list[Category
 def build(
     items: list[CategoryInput], new_id: Callable[[], uuid.UUID]
 ) -> tuple[list[StoredCategory], frozenset[uuid.UUID]]:
-    """Turn a valid list into the rows to store: canonical names, trimmed descriptions, ids for the new ones.
+    """Turn a valid list into the rows to store: canonical names, trimmed descriptions, senders in stored form.
+
+    The senders of a category are in the order of their entry (the order a read gives them).
+    The returned ids are those of the new categories.
 
     Args:
         items: The valid categories in order.
@@ -140,18 +191,44 @@ def build(
         if category_id is None:
             category_id = new_id()
             created.add(category_id)
-        rows.append(StoredCategory(category_id, canonical_text(item.name), item.description.strip()))
+        rows.append(
+            StoredCategory(
+                category_id,
+                canonical_text(item.name),
+                item.description.strip(),
+                item.kind,
+                notify=item.notify,
+                senders=_stored_senders(item.senders),
+            )
+        )
     return rows, frozenset(created)
 
 
-def is_unchanged(rows: list[StoredCategory], stored: StoredList) -> bool:
-    """Tell whether the new list equals the stored one: same categories, names, descriptions and order.
+def _stored_senders(senders: list[SenderItem]) -> tuple[StoredSender, ...]:
+    """Return the entries of a valid category in stored form, ordered by entry."""
+    parsed = [parse_entry(sender.entry, sender.subdomains) for sender in senders]
+    return tuple(
+        sorted(
+            (StoredSender(entry.value, entry.is_domain, entry.subdomains) for entry in parsed if entry is not None),
+            key=lambda sender: sender.entry,
+        )
+    )
+
+
+def canonical_instructions(raw: str) -> str:
+    """Return the stored form of the general instructions: trimmed (the length the rules measure)."""
+    return raw.strip()
+
+
+def is_unchanged(rows: list[StoredCategory], instructions: str, stored: StoredList) -> bool:
+    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order and instructions.
 
     Args:
         rows: The rows built from the request.
+        instructions: The general instructions in their stored form.
         stored: The stored list.
 
     Returns:
         True when saving would add nothing.
     """
-    return tuple(rows) == stored.categories
+    return tuple(rows) == stored.categories and instructions == stored.general_instructions

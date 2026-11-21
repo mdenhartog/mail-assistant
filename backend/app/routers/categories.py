@@ -1,4 +1,4 @@
-"""Category list routes: ``GET`` and ``PUT`` ``/api/categories`` (U-mail-categories-04, ADR-0042)."""
+"""Category list routes: ``GET`` and ``PUT`` ``/api/categories`` (U-mail-categories-04, ADR-0042; v2, ADR-0053)."""
 
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError
 
 from app.categories_models import CategoryConflict409, CategoryList, CategoryListUpdate, CategoryProblem422
 from app.categories_repo import CategoriesRepository, StoredList, VersionConflict
-from app.categories_write import build, is_unchanged, problems_of, to_response
+from app.categories_write import build, canonical_instructions, is_unchanged, problems_of, to_response
 from app.core.security import csrf, session
 from app.errors import PROBLEM_MEDIA_TYPE, RateLimited, problem_response
 from app.limit_guard import limit
@@ -46,7 +46,7 @@ def _refusal(body: CategoryListUpdate, stored: StoredList) -> JSONResponse | Non
         return _conflict(stored, "not-ready")
     if body.version != stored.version:
         return _conflict(stored, "version")
-    problems = problems_of(body.categories, stored)
+    problems = problems_of(body.categories, body.general_instructions, stored)
     if not problems:
         return None
     refusal = CategoryProblem422(type="about:blank", title="Unprocessable content", status=422, problems=problems)
@@ -120,10 +120,11 @@ async def write_categories(body: CategoryListUpdate, request: Request) -> Catego
         return refusal
     ids: IdSource = request.app.state.ids
     rows, new_ids = build(body.categories, ids.category_id)
-    if is_unchanged(rows, stored):
+    instructions = canonical_instructions(body.general_instructions)
+    if is_unchanged(rows, instructions, stored):
         return to_response(stored)
     try:
-        await repository.add_version(stored.version, rows, new_ids)
+        await repository.add_version(stored.version, rows, new_ids, instructions)
     except VersionConflict:
         return _conflict(await repository.read(), "version")
     except DBAPIError:

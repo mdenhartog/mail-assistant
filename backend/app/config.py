@@ -68,8 +68,12 @@ class Settings(BaseSettings):
     rate_max_counters: int = Field(default=10000, gt=0)
     body_limit_bytes: int = 8192
     # Own body limit per route, keyed "METHOD /path"; a route that is not listed has ``body_limit_bytes`` (MC-12).
-    # The full category list (50 categories, 500-character descriptions) is about 27 KB.
-    route_body_limits: dict[str, int] = Field(default_factory=lambda: {"PUT /api/categories": 32768})
+    # The list save is 2 MiB (U-label-structure-11). Worst case of a list at the v2 maxima, as compact ASCII JSON:
+    # 100 categories x (1 500 description + 225 name + 90 other keys) = 181 500 bytes, 4 000 general instructions, and
+    # 100 x 100 = 10 000 sender entries x (45 bytes of keys and punctuation + the entry). Real entries are 15 to 60
+    # characters, so a full list is about 1.24 MB; 2 MiB leaves room for entries of about 145 characters on average in
+    # all 10 000 places. Above it the generic 413 answers; the edge (Traefik) cap must not be lower.
+    route_body_limits: dict[str, int] = Field(default_factory=lambda: {"PUT /api/categories": 2 * 1024 * 1024})
     code_ttl_seconds: int = 600
     resend_cooldown_seconds: int = 60
     codes_per_hour: int = 5

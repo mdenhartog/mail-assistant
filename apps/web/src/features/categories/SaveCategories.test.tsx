@@ -36,6 +36,11 @@ async function rename(position: number, name: string): Promise<void> {
   }
 }
 
+/** A stored category as the PUT carries it: everything the api returned except the mail count. */
+function V2(item: typeof INVOICES | typeof NEWS): Omit<typeof INVOICES, "mailCount" | "kind"> & { kind: "topic" | "extra" } {
+  return { id: item.id, name: item.name, description: item.description, kind: item.kind, notify: item.notify, senders: item.senders };
+}
+
 const saveButton = (): HTMLElement => screen.getByRole("button", { name: "Save changes" });
 
 describe("Categories page: saving", () => {
@@ -123,9 +128,10 @@ describe("Categories page: saving", () => {
         token: TOKEN,
         body: {
           version: 3,
+          generalInstructions: LIST.generalInstructions,
           categories: [
-            { id: INVOICES.id, name: "Bills", description: INVOICES.description },
-            { id: NEWS.id, name: NEWS.name, description: NEWS.description },
+            { ...V2(INVOICES), name: "Bills" },
+            V2(NEWS),
           ],
         },
       },
@@ -147,8 +153,8 @@ describe("Categories page: saving", () => {
       expect(seen.puts).toHaveLength(1);
     });
     expect(seen.puts[0]?.body.categories).toEqual([
-      { id: INVOICES.id, name: "Invoices", description: INVOICES.description },
-      { name: "Travel", description: "Flights and hotels" },
+      V2(INVOICES),
+      { name: "Travel", description: "Flights and hotels", kind: "topic", notify: false, senders: [] },
     ]);
   });
 
@@ -287,7 +293,7 @@ describe("Categories page: invalid fields (AC-2)", () => {
             type: "about:blank",
             title: "Unprocessable",
             status: 422,
-            problems: [{ rule: "name_label_exists", field: "name", index: 1 }],
+            problems: [{ rule: "name_label_exists", field: "name", index: 1, position: null, otherIndex: null }],
           },
           422,
         ),
@@ -302,6 +308,72 @@ describe("Categories page: invalid fields (AC-2)", () => {
       expect(card(2).getByLabelText("Name")).toHaveFocus();
     });
     expect(card(2).getByLabelText("Name")).toBeInvalid();
+  });
+
+  it("given a description edit, then the body carries kind, notify, senders and the general instructions unchanged", async () => {
+    const seen = wire();
+    await loaded();
+    const field = card(1).getByLabelText("Description");
+    await userEvent.clear(field);
+    await userEvent.type(field, "Bills only");
+    await userEvent.click(saveButton());
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(seen.puts[0]?.body.generalInstructions).toBe("Keep receipts for the tax year.");
+    expect(seen.puts[0]?.body.categories[0]).toMatchObject({
+      kind: "extra",
+      notify: true,
+      senders: [{ entry: "billing@example.com", subdomains: false }],
+    });
+  });
+
+  it("given a 422 with the v2 problem shape, then a known field still shows its text and a senders problem shows the generic sentence", async () => {
+    wire({
+      put: () =>
+        json(
+          {
+            type: "about:blank",
+            title: "Unprocessable",
+            status: 422,
+            problems: [
+              { rule: "name_duplicate", field: "name", index: 1, position: 2, otherIndex: 0 },
+              { rule: "sender_invalid", field: "senders", index: 0, position: 1, otherIndex: null },
+            ],
+          },
+          422,
+        ),
+    });
+    await loaded();
+    await rename(2, "Trips");
+    await userEvent.click(saveButton());
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByText("Another category already has this name.")).toBeInTheDocument();
+  });
+
+  it("given a 422 that only names senders or instructions, then the page shows the refused banner", async () => {
+    wire({
+      put: () =>
+        json(
+          {
+            type: "about:blank",
+            title: "Unprocessable",
+            status: 422,
+            problems: [{ rule: "instructions_too_long", field: "instructions", index: null, position: null, otherIndex: null }],
+          },
+          422,
+        ),
+    });
+    await loaded();
+    await rename(1, "Bills");
+    await userEvent.click(saveButton());
+    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByText("Another category already has this name.")).not.toBeInTheDocument();
   });
 
   it("has no axe violations with errors shown", async () => {

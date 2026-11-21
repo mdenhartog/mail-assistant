@@ -137,14 +137,31 @@
             ],
             "title": "Id"
           },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "notify": {
+            "title": "Notify",
+            "type": "boolean"
+          },
+          "senders": {
+            "items": {
+              "$ref": "#/components/schemas/SenderItem"
+            },
+            "title": "Senders",
+            "type": "array"
           }
         },
         "required": [
           "name",
-          "description"
+          "description",
+          "kind",
+          "notify",
+          "senders"
         ],
         "title": "CategoryInput",
         "type": "object"
@@ -162,6 +179,9 @@
             "title": "Id",
             "type": "string"
           },
+          "kind": {
+            "$ref": "#/components/schemas/Kind"
+          },
           "mailCount": {
             "minimum": 0.0,
             "title": "Mailcount",
@@ -170,12 +190,26 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "notify": {
+            "title": "Notify",
+            "type": "boolean"
+          },
+          "senders": {
+            "items": {
+              "$ref": "#/components/schemas/SenderItem"
+            },
+            "title": "Senders",
+            "type": "array"
           }
         },
         "required": [
           "id",
           "name",
           "description",
+          "kind",
+          "notify",
+          "senders",
           "mailCount"
         ],
         "title": "CategoryItem",
@@ -191,6 +225,10 @@
             },
             "title": "Categories",
             "type": "array"
+          },
+          "generalInstructions": {
+            "title": "Generalinstructions",
+            "type": "string"
           },
           "olderCategories": {
             "items": {
@@ -216,6 +254,7 @@
           "version",
           "ready",
           "categories",
+          "generalInstructions",
           "other",
           "olderCategories"
         ],
@@ -233,6 +272,10 @@
             "title": "Categories",
             "type": "array"
           },
+          "generalInstructions": {
+            "title": "Generalinstructions",
+            "type": "string"
+          },
           "version": {
             "minimum": 0.0,
             "title": "Version",
@@ -241,21 +284,24 @@
         },
         "required": [
           "version",
-          "categories"
+          "categories",
+          "generalInstructions"
         ],
         "title": "CategoryListUpdate",
         "type": "object"
       },
       "CategoryProblem": {
         "additionalProperties": false,
-        "description": "One refusal: the rule, the field and the position of the category (None for the whole list). No value.",
+        "description": "One refusal: the rule, the field, the category (None for the whole list) and for a sender entry its position.\n\n``other_index`` names the category that already has the entry of a ``sender_duplicate`` (the same category when it\nrepeats the entry itself). No value is ever carried.",
         "properties": {
           "field": {
             "enum": [
               "name",
               "description",
               "id",
-              "list"
+              "list",
+              "senders",
+              "instructions"
             ],
             "title": "Field",
             "type": "string"
@@ -271,6 +317,28 @@
             ],
             "title": "Index"
           },
+          "otherIndex": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Otherindex"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
           "rule": {
             "title": "Rule",
             "type": "string"
@@ -279,7 +347,9 @@
         "required": [
           "rule",
           "field",
-          "index"
+          "index",
+          "position",
+          "otherIndex"
         ],
         "title": "CategoryProblem",
         "type": "object"
@@ -595,6 +665,15 @@
         },
         "title": "ItemSearchRequest",
         "type": "object"
+      },
+      "Kind": {
+        "description": "What a category is for.\n\nA mail has exactly one ``topic`` (or the built-in \"Other\") and at most one ``extra`` label next to it.",
+        "enum": [
+          "topic",
+          "extra"
+        ],
+        "title": "Kind",
+        "type": "string"
       },
       "LastPlan": {
         "additionalProperties": false,
@@ -1272,6 +1351,26 @@
           "resendAfterSeconds"
         ],
         "title": "RequestCodeResponse",
+        "type": "object"
+      },
+      "SenderItem": {
+        "additionalProperties": false,
+        "description": "A sender entry of a category: a full address or a domain, with the opt-in for subdomains.\n\nOn a save it is the text as typed; on a read it is the stored form (lower-case A-labels).",
+        "properties": {
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "subdomains": {
+            "title": "Subdomains",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entry",
+          "subdomains"
+        ],
+        "title": "SenderItem",
         "type": "object"
       },
       "SessionInfo": {

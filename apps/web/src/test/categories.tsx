@@ -11,17 +11,24 @@ export const INVOICES = {
   name: "Invoices",
   description: "Invoices, receipts and payment confirmations.",
   mailCount: 12,
+  kind: "extra" as const,
+  notify: true,
+  senders: [{ entry: "billing@example.com", subdomains: false }],
 };
 export const NEWS = {
   id: "7f0c1c2e-1b1e-4c52-9d0e-0a6a1b1c0002",
   name: "Newsletters",
   description: "Weekly digests I read on Sunday.",
   mailCount: 1,
+  kind: "topic" as const,
+  notify: false,
+  senders: [] as { entry: string; subdomains: boolean }[],
 };
 
 export const LIST = {
   version: 3,
   ready: true,
+  generalInstructions: "Keep receipts for the tax year.",
   categories: [INVOICES, NEWS],
   other: { mailCount: 7 },
   olderCategories: [{ labelName: "Assistant/Travel", mailCount: null }],
@@ -32,7 +39,18 @@ export function json(body: unknown, status = 200, headers: Record<string, string
 }
 
 export interface Put {
-  body: { version: number; categories: { id?: string; name: string; description: string }[] };
+  body: {
+    version: number;
+    generalInstructions: string;
+    categories: {
+      id?: string;
+      name: string;
+      description: string;
+      kind: "topic" | "extra";
+      notify: boolean;
+      senders: { entry: string; subdomains: boolean }[];
+    }[];
+  };
   token: string | null;
 }
 
