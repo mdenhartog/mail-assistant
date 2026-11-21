@@ -106,7 +106,11 @@ async def test_given_a_filed_mail_when_completed_then_the_filing_row_has_ids_and
         "list_version",
         "category_id",
         "filed_at",
-    }  # no mail text
+        "topic_id",
+        "extra_id",
+        "source",
+        "source_ref",
+    }  # no mail text; source_ref is the matched sender entry, nothing of the mail itself
 
 
 async def test_given_a_pinned_mail_when_completed_then_no_filing_row_is_written_and_the_overview_skips_it(

@@ -265,6 +265,12 @@ async def test_given_no_archive_label_when_the_migration_runs_then_the_default_i
         await connection.close()
 
 
+async def _restore_shared_passwords(connection: asyncpg.Connection) -> None:
+    """The migrate job sets its own role passwords; the roles are shared in the container, so put theirs back."""
+    await connection.execute(f"ALTER ROLE {RUNTIME_ROLE} PASSWORD 'runtime-test-only'")
+    await connection.execute(f"ALTER ROLE {WEB_ROLE} PASSWORD 'web-test-password'")
+
+
 async def test_given_a_custom_archive_label_when_the_migrate_job_runs_then_the_migrated_rows_hold_it(
     database_url: str,
 ) -> None:
@@ -277,6 +283,7 @@ async def test_given_a_custom_archive_label_when_the_migrate_job_runs_then_the_m
 
         assert await connection.fetchval("select archive_label from categories.list_settings") == "Mail/Done"
     finally:
+        await _restore_shared_passwords(connection)
         await connection.close()
 
 
@@ -290,6 +297,7 @@ async def test_given_no_archive_label_when_the_migrate_job_runs_then_the_default
 
         assert await connection.fetchval("select archive_label from categories.list_settings") == DEFAULT_ARCHIVE
     finally:
+        await _restore_shared_passwords(connection)
         await connection.close()
 
 

@@ -397,7 +397,13 @@ def test_given_the_compose_file_when_read_then_a_one_shot_migrate_service_uses_t
     assert migrate["cap_drop"] == ["ALL"]
     assert "no-new-privileges:true" in migrate["security_opt"]
     assert "ports" not in migrate
-    assert set(migrate["environment"]) == {*OWNER_KEYS, "ENVIRONMENT", "DATABASE_SSL", "DATABASE_CA_FILE"}
+    assert set(migrate["environment"]) == {
+        *OWNER_KEYS,
+        "ENVIRONMENT",
+        "DATABASE_SSL",
+        "DATABASE_CA_FILE",
+        "ARCHIVE_LABEL",
+    }
     assert "app:${POSTGRES_PASSWORD" in migrate["environment"]["DATABASE_OWNER_URL"]  # the bootstrap owner of the db
 
 
