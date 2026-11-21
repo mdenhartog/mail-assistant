@@ -135,7 +135,7 @@ def test_given_no_archive_label_value_when_settings_load_then_it_is_assistant_ar
     assert load_settings(VALID).archive_label == "Assistant/Archive"
 
 
-@pytest.mark.parametrize("value", ["Bewaard", "Mail/Done", "Assistant/Archive", "assistant/archive"])
+@pytest.mark.parametrize("value", ["Bewaard", "Mail/Done", "Assistant/Archive"])
 def test_given_a_valid_archive_label_when_settings_load_then_it_is_kept(value: str) -> None:
     assert load_settings({**VALID, "ARCHIVE_LABEL": value}).archive_label == value
 
@@ -154,6 +154,11 @@ def test_given_a_valid_archive_label_when_settings_load_then_it_is_kept(value: s
         "Assistant/Other",
         "Assistant/Travel",
         "Assistant/",
+        "assistant/archive",
+        "ASSISTANT/ARCHIVE",
+        "Mail/",
+        "/Mail",
+        "Mail//x",
         "a" * 226,
     ],
 )

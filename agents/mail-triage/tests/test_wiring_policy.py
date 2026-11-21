@@ -93,3 +93,29 @@ def test_given_a_fake_clock_when_the_runner_is_built_then_the_store_and_the_rout
     from_router = vars(runner._router)["_conversations"]
     assert from_store is from_router
     assert vars(from_store)["_now"] is clock
+
+
+def test_given_an_archive_label_setting_when_the_wiring_is_built_then_every_component_protects_that_label() -> None:
+    engine = create_async_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")  # never connected in this test
+    runner: Any = build_runner(
+        load_settings({**VALID, "ARCHIVE_LABEL": "Bewaard"}),
+        sessions=async_sessionmaker(engine, expire_on_commit=False),
+        client=httpx.AsyncClient(timeout=httpx.Timeout(5.0)),
+        mailbox=object(),
+        sender=object(),
+        labels=object(),  # type: ignore[arg-type]
+        build_mailbox=object(),  # type: ignore[arg-type]
+        apply_mailbox=object(),  # type: ignore[arg-type]
+        own_address="marco@example.com",
+        heartbeat=None,  # type: ignore[arg-type]
+        now=lambda: None,
+    )
+
+    protected = [
+        runner._list_sync._archive,
+        runner._resort_build._archive,
+        runner._resort_apply._archive,
+        runner._move_back._archive,
+    ]
+
+    assert protected == ["Bewaard"] * 4
