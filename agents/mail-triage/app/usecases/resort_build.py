@@ -2,10 +2,11 @@
 
 ADR-0046 point 3, spec AC-9, AC-10, AC-11, AC-13, AC-17, AC-18, AC-33, AC-52, AC-54.
 
-A build starts when the list has been stable for the debounce time, and at the first start when no plan exists. It
-lists mail newest first, reads each mail once, and writes an item only when the category would change. It spends only
-the model budget above the reserve of ADR-0021; when that is used up the plan stays ``building`` and the next run
-continues from the stored cursor. Nothing here moves or labels mail: the mailbox port has no write.
+No build starts by itself (spec D12): a list change or a first start creates no plan. This use case only continues a
+plan that is ``building`` and replaces a ``building`` or ``ready`` plan that a newer list outdated. It lists mail
+newest first, reads each mail once, and writes an item only when the category would change. It spends only the model
+budget above the reserve of ADR-0021; when that is used up the plan stays ``building`` and the next run continues from
+the stored cursor. Nothing here moves or labels mail: the mailbox port has no write.
 
 Every write of progress is one compare-and-set on the plan, so a plan that was replaced meanwhile gets no more items.
 The notice holds numbers only (AC-18); logs hold ids and counts, never mail text.
@@ -23,14 +24,14 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.judgement import OTHER_ID, Filing, ListedCategory, NeedsAttention, resolve
-from app.core.resort_plan import PlanState, build_may_start, on_list_changed
+from app.core.resort_plan import PlanState, on_list_changed
 from app.core.scope import LABEL_PREFIX, Scope, assistant_labels, classify, clean_display
 from app.usecases.catchup import BUDGET_RESERVE, CALLS_PER_MAIL
 from app.usecases.triage import pinned_mail_kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
@@ -249,7 +250,6 @@ class ResortBuild:
         now: Callable[[], datetime],
         pinned: PinnedSenders,
         archive_label: str,  # the protected label (C-14, ADR-0052)
-        debounce: timedelta,  # how long the list must stay unchanged before a build starts (D14); from the settings
         cap: int = PLAN_CAP,
         per_run: int = BUILD_SLICE,  # how many mails one run looks at before it pauses (ADR-0051)
     ) -> None:
@@ -262,12 +262,11 @@ class ResortBuild:
         self._now = now
         self._pinned = pinned
         self._archive = archive_label
-        self._debounce = debounce
         self._cap = cap
         self._per_run = per_run
 
     async def run_once(self) -> BuildResult:
-        """Replace a plan that a newer list outdated, start a build when due, and work on the plan being built."""
+        """Replace a plan that a newer list outdated and work on the plan being built; never start a plan."""
         current = await self._store.current_list()
         if current.version == 0:
             return BuildResult(BuildStatus.IDLE)
@@ -276,23 +275,13 @@ class ResortBuild:
             if on_list_changed(latest.state).discard_decisions:
                 await self._store.replace_plan(latest.plan_id)
             latest = await self._store.latest_plan()
-        plan = latest if self._continues(latest, current) else await self._start(latest, current)
-        if plan is None:
+        if latest is None or not self._continues(latest, current):
             return BuildResult(BuildStatus.IDLE)
-        return await self._build(plan, current)
+        return await self._build(latest, current)
 
     @staticmethod
-    def _continues(latest: PlanRecord | None, current: BuildList) -> bool:
-        return latest is not None and latest.state is PlanState.BUILDING and latest.list_version == current.version
-
-    async def _start(self, latest: PlanRecord | None, current: BuildList) -> PlanRecord | None:
-        if not build_may_start(latest.state if latest else None):
-            return None
-        if latest is not None:
-            stable = self._now() - current.changed_at >= self._debounce
-            if latest.list_version >= current.version or not stable:
-                return None
-        return await self._store.create_plan(current.version, self._cap)
+    def _continues(latest: PlanRecord, current: BuildList) -> bool:
+        return latest.state is PlanState.BUILDING and latest.list_version == current.version
 
     async def _build(self, plan: PlanRecord, current: BuildList) -> BuildResult:
         if plan.cursor is None:
