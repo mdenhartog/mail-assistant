@@ -32,7 +32,8 @@ LIST_TABLES = {
 }
 PLAN_TABLES = {"plan", "plan_item", "plan_decision", "plan_approval", "apply_audit", "move_back_request"}  # 0015
 REPORT_TABLES = {"refile_report"}  # 0019
-ALL_TABLES = LIST_TABLES | PLAN_TABLES | REPORT_TABLES
+CONTRACT_V2_TABLES = {"category_sender", "list_settings", "upload_preview"}  # 0024
+ALL_TABLES = LIST_TABLES | PLAN_TABLES | REPORT_TABLES | CONTRACT_V2_TABLES
 
 
 def _plain(url: str) -> str:

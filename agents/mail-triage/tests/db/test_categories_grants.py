@@ -30,6 +30,9 @@ TABLES = (
     "rejection",
     "telegram_action",
     "apply_config",
+    "category_sender",
+    "list_settings",
+    "upload_preview",
 )
 OPERATIONS = ("select", "insert", "update", "delete", "truncate")
 
@@ -69,7 +72,21 @@ MATRIX: dict[str, Row] = {
     "gmail_label": Row(api=Rights(select=ALL), agent=_REPLACED),
     "category_label": Row(agent=_REPLACED),
     "filing": Row(
-        agent=Rights(select=ALL, insert=frozenset({"mailbox_id", "message_id", "list_version", "category_id"}))
+        agent=Rights(
+            select=ALL,
+            insert=frozenset(
+                {
+                    "mailbox_id",
+                    "message_id",
+                    "list_version",
+                    "category_id",
+                    "topic_id",
+                    "extra_id",
+                    "source",
+                    "source_ref",
+                }
+            ),
+        )
     ),
     "list_cursor": Row(agent=_REPLACED),
     "rejection": Row(agent=Rights(select=ALL, insert=frozenset({"mailbox_id", "message_id", "list_version"}))),
@@ -81,6 +98,18 @@ MATRIX: dict[str, Row] = {
         )
     ),
     "apply_config": Row(api=Rights(select=ALL), agent=Rights(select=ALL, insert=ALL, update=ALL)),
+    # INT-008 (U-label-structure-05): insert-only like category; the preview belongs to the api alone (ADR-0058).
+    "category_sender": Row(api=Rights(select=ALL, insert=ALL), agent=Rights(select=ALL, insert=ALL)),
+    "list_settings": Row(api=Rights(select=ALL, insert=ALL), agent=Rights(select=ALL, insert=ALL)),
+    "upload_preview": Row(
+        api=Rights(
+            select=ALL,
+            insert=frozenset(
+                {"mailbox_id", "id", "session_digest", "file_hash", "base_version", "content", "expires_at"}
+            ),
+            update=frozenset({"used_at"}),
+        )
+    ),
 }
 ROLES = {"api": API_ROLE, "agent": AGENT_ROLE}
 
