@@ -309,7 +309,12 @@ async def migrate(settings: MigrateSettings) -> int:
     """The migrate command: schema, runtime role and grants, as the owner role. Returns an exit code."""
     try:
         passwords = {role.name: getattr(settings, role.password_setting).get_secret_value() for role in ROLES}
-        await migrate_database(settings.database_owner_url.get_secret_value(), passwords, settings.database_tls)
+        await migrate_database(
+            settings.database_owner_url.get_secret_value(),
+            passwords,
+            settings.database_tls,
+            archive_label=settings.archive_label,
+        )
     except (RuntimeRoleNotSafe, MigrationStepFailed) as error:
         logger.error("migration failed: %s", error)  # names the role or the step only, never a password or a URL
         return EXIT_MIGRATION_FAILED

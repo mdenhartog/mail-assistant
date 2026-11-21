@@ -115,7 +115,8 @@ GRANT INSERT ON categories.mailbox TO mail_triage_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON categories.category_count, categories.gmail_label, categories.category_label,
     categories.list_cursor TO mail_triage_runtime;
 -- Appended only (retention is the owner's purge_expired()).
-GRANT INSERT (mailbox_id, message_id, list_version, category_id) ON categories.filing TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, message_id, list_version, category_id, topic_id, extra_id, source, source_ref)
+    ON categories.filing TO mail_triage_runtime;
 GRANT INSERT (mailbox_id, message_id, list_version) ON categories.rejection TO mail_triage_runtime;
 -- A button is created and consumed once: only used_at ever changes.
 GRANT INSERT (mailbox_id, nonce_hash, chat_id, kind, target, expires_at) ON categories.telegram_action
@@ -170,3 +171,13 @@ GRANT EXECUTE ON FUNCTION categories.remove_applied_items(text, uuid) TO mail_tr
 -- appends a row through this function alone (it runs as the definer) and never reads one back; retention is the purge.
 GRANT EXECUTE ON FUNCTION categories.record_refile_report(text, integer, integer, integer, integer, integer)
     TO mail_triage_runtime;
+
+-- Category contract v2 (INT-008, U-label-structure-05, ADR-0053, ADR-0058). Senders and list settings follow the
+-- insert-only version rules of category: select and insert for both roles, nothing else (the deferred trigger accepts a
+-- row only for a version created in the same transaction). The upload preview is the api's alone: it creates a
+-- preview and marks it used; the agent has no right on it. Expired previews go with purge_expired().
+GRANT SELECT, INSERT ON categories.category_sender, categories.list_settings TO web_settings_runtime, mail_triage_runtime;
+GRANT SELECT ON categories.upload_preview TO web_settings_runtime;
+GRANT INSERT (mailbox_id, id, session_digest, file_hash, base_version, content, expires_at)
+    ON categories.upload_preview TO web_settings_runtime;
+GRANT UPDATE (used_at) ON categories.upload_preview TO web_settings_runtime;

@@ -28,6 +28,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    false,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -388,6 +389,7 @@ class Category(Base):
         CheckConstraint("char_length(name) BETWEEN 1 AND 215", name="ck_category_name_length"),
         CheckConstraint("char_length(description) <= 1500", name="ck_category_description_length"),
         CheckConstraint("position BETWEEN 0 AND 99", name="ck_category_position"),
+        CheckConstraint("kind IN ('topic', 'extra')", name="ck_category_kind"),
         {"schema": "categories"},
     )
 
@@ -397,6 +399,8 @@ class Category(Base):
     name: Mapped[str] = mapped_column(Text)
     description: Mapped[str] = mapped_column(Text, server_default="")
     position: Mapped[int] = mapped_column(SmallInteger)
+    kind: Mapped[str] = mapped_column(String(8), server_default="topic")  # migration 0024
+    notify: Mapped[bool] = mapped_column(Boolean, server_default=false())  # migration 0024
 
 
 class ListAudit(Base):
@@ -461,13 +465,23 @@ class Filing(Base):
     """Which category a mail was filed under with which list version; no sender and no subject (AC-22)."""
 
     __tablename__ = "filing"
-    __table_args__ = (Index("ix_filing_filed_at", "mailbox_id", "filed_at"), {"schema": "categories"})
+    __table_args__ = (
+        Index("ix_filing_filed_at", "mailbox_id", "filed_at"),
+        CheckConstraint("source IN ('model', 'sender_rule', 'sender_rule_not_applied')", name="ck_filing_source"),
+        CheckConstraint("char_length(source_ref) <= 320", name="ck_filing_source_ref_length"),
+        {"schema": "categories"},
+    )
 
     mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
     message_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     list_version: Mapped[int] = mapped_column(Integer, primary_key=True)
     category_id: Mapped[uuid.UUID] = mapped_column(Uuid)
     filed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    # Migration 0024 (ADR-0053): the topic and extra labels, how the mail was filed and the sender entry that matched.
+    topic_id: Mapped[uuid.UUID] = mapped_column(Uuid)
+    extra_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    source: Mapped[str] = mapped_column(String(24), server_default="model")
+    source_ref: Mapped[str | None] = mapped_column(Text)
 
 
 class ListCursor(Base):
@@ -726,3 +740,71 @@ class RefileReport(Base):
     refiled: Mapped[int] = mapped_column(Integer)
     in_other: Mapped[int] = mapped_column(Integer)
     gone: Mapped[int] = mapped_column(Integer)
+
+
+# --- Category contract v2 (INT-008, ADR-0053, ADR-0058): migration 0024 ---------------------------------------------
+
+
+class CategorySender(Base):
+    """A sender entry of a category in one list version. Insert-only, like ``category``."""
+
+    __tablename__ = "category_sender"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["mailbox_id", "version", "category_id"],
+            ["categories.category.mailbox_id", "categories.category.version", "categories.category.id"],
+            name="fk_category_sender_category",
+        ),
+        CheckConstraint("char_length(entry) BETWEEN 1 AND 320", name="ck_category_sender_entry_length"),
+        CheckConstraint("is_domain OR NOT subdomains", name="ck_category_sender_subdomains"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    entry: Mapped[str] = mapped_column(Text, primary_key=True)
+    is_domain: Mapped[bool] = mapped_column(Boolean)
+    subdomains: Mapped[bool] = mapped_column(Boolean, server_default=false())
+
+
+class ListSettings(Base):
+    """The list-level fields of one list version: the general instructions and the archive label name."""
+
+    __tablename__ = "list_settings"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["mailbox_id", "version"],
+            ["categories.list_version.mailbox_id", "categories.list_version.version"],
+            name="fk_list_settings_list_version",
+        ),
+        CheckConstraint("char_length(general_instructions) <= 4000", name="ck_list_settings_instructions"),
+        CheckConstraint("char_length(archive_label) BETWEEN 1 AND 225", name="ck_list_settings_archive_label"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer, primary_key=True)
+    general_instructions: Mapped[str] = mapped_column(Text, server_default="")
+    archive_label: Mapped[str] = mapped_column(Text)
+
+
+class UploadPreview(Base):
+    """The preview of a YAML upload: bound to a session, a file hash and a list version; written by the api only."""
+
+    __tablename__ = "upload_preview"
+    __table_args__ = (
+        CheckConstraint("base_version >= 0", name="ck_upload_preview_base_version"),
+        Index("ix_upload_preview_expires_at", "expires_at"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    session_digest: Mapped[str] = mapped_column(CHAR(64))
+    file_hash: Mapped[str] = mapped_column(CHAR(64))
+    base_version: Mapped[int] = mapped_column(Integer)
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
