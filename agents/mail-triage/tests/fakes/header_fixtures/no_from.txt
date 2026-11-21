@@ -1,0 +1,3 @@
+Authentication-Results: mx.example.test; dkim=pass header.d=example.com
+Subject: No sender at all
+Message-ID: <test-0008@example.test>

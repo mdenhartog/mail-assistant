@@ -1,0 +1,4 @@
+Authentication-Results: mx.example.test; dkim=pass header.d=example.com
+Authentication-Results: mx.example.test; spf=fail smtp.mailfrom=example.net
+From: Test Sender <sender@example.com>
+Message-ID: <test-0002@example.test>

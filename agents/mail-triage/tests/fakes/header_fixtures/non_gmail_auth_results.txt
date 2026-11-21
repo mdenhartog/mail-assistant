@@ -1,0 +1,3 @@
+Authentication-Results: spamfilter.example.invalid; dkim=pass header.d=example.com
+From: Test Sender <sender@example.com>
+Message-ID: <test-0006@example.test>

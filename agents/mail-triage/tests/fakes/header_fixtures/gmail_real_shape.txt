@@ -1,0 +1,17 @@
+Delivered-To: owner@example.test
+Received: by 2001:db8:6000:1::1 with SMTP id test1csp1;
+ Mon, 02 Nov 2026 08:00:00 -0800 (PST)
+ARC-Authentication-Results: i=1; mx.google.com;
+ dkim=pass header.i=@example.com header.s=sel1 header.b=AbCdEfGh;
+ spf=pass (google.com: domain of sender@example.com designates 192.0.2.10 as permitted sender) smtp.mailfrom=sender@example.com;
+ dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=example.com
+Authentication-Results: mx.google.com;
+ dkim=pass header.i=@example.com header.s=sel1 header.b=AbCdEfGh;
+ spf=pass (google.com: domain of sender@example.com designates 192.0.2.10 as permitted sender) smtp.mailfrom=sender@example.com;
+ dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=example.com
+Return-Path: <sender@example.com>
+Message-ID: <test-0001@example.test>
+Date: Mon, 2 Nov 2026 08:00:00 +0000
+From: Test Sender <sender@example.com>
+To: owner@example.test
+Subject: Test invoice
