@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from sqlalchemy import Row
+    from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.db import Database
 
@@ -109,6 +110,40 @@ class RecentSaves:
 
 class VersionConflict(Exception):  # noqa: N818  # a state of the list, not a fault of the caller
     """The list is not at the version the writer based its change on (or another writer got there first)."""
+
+
+async def _insert_rows(session: AsyncSession, params: dict[str, Any], categories: Sequence[StoredCategory]) -> None:
+    """Insert the category rows and the sender rows of one new version, one batch per table.
+
+    A list of 100 categories with 100 senders each is 10 000 sender rows, so each table gets one statement.
+    """
+    category_rows = [
+        {
+            **params,
+            "id": category.id,
+            "name": category.name,
+            "description": category.description,
+            "position": position,
+            "kind": category.kind.value,
+            "notify": category.notify,
+        }
+        for position, category in enumerate(categories)
+    ]
+    if category_rows:
+        await session.execute(_INSERT_CATEGORY, category_rows)
+    sender_rows = [
+        {
+            **params,
+            "category_id": category.id,
+            "entry": sender.entry,
+            "is_domain": sender.is_domain,
+            "subdomains": sender.subdomains,
+        }
+        for category in categories
+        for sender in category.senders
+    ]
+    if sender_rows:
+        await session.execute(_INSERT_SENDER, sender_rows)
 
 
 class CategoriesRepository:
@@ -202,34 +237,7 @@ class CategoriesRepository:
                 await session.execute(_INSERT_VERSION, params)
                 for new_id in sorted(new_ids):
                     await session.execute(_INSERT_IDENTITY, {"mailbox": self._mailbox, "id": new_id})
-                # One batch per table: a list of 100 categories with 100 senders each is 10 000 rows.
-                category_rows = [
-                    {
-                        **params,
-                        "id": category.id,
-                        "name": category.name,
-                        "description": category.description,
-                        "position": position,
-                        "kind": category.kind.value,
-                        "notify": category.notify,
-                    }
-                    for position, category in enumerate(categories)
-                ]
-                if category_rows:
-                    await session.execute(_INSERT_CATEGORY, category_rows)
-                sender_rows = [
-                    {
-                        **params,
-                        "category_id": category.id,
-                        "entry": sender.entry,
-                        "is_domain": sender.is_domain,
-                        "subdomains": sender.subdomains,
-                    }
-                    for category in categories
-                    for sender in category.senders
-                ]
-                if sender_rows:
-                    await session.execute(_INSERT_SENDER, sender_rows)
+                await _insert_rows(session, params, categories)
                 previous = (
                     await session.execute(_SETTINGS, {"mailbox": self._mailbox, "version": expected_version})
                 ).one_or_none()
