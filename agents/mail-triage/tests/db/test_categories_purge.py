@@ -27,7 +27,7 @@ async def _seed_rows(owner: asyncpg.Connection, age: str, tag: str, *, expires_a
         f"values ('mb2', {AUDIT_VERSION[tag]}, '[]', '[]', 'web', '{'a' * 64}', {age})"
     )
     await owner.execute(
-        "insert into categories.filing (mailbox_id, message_id, list_version, category_id, filed_at) "
+        "insert into categories.filing (mailbox_id, message_id, list_version, topic_id, filed_at) "
         f"values ('mb2', '{tag}', 1, '{'0' * 8}-0000-0000-0000-000000000000', {age})"
     )
     await owner.execute(

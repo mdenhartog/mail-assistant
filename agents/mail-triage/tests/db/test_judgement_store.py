@@ -96,7 +96,7 @@ async def test_given_a_filed_mail_when_completed_then_the_filing_row_has_ids_and
     await store.complete("m2", outcome("Assistant/Other", FilingEntry(OTHER_ID, 1)))
 
     rows = await cat_owner.fetch("select * from categories.filing order by message_id")
-    assert [(r["mailbox_id"], r["message_id"], r["list_version"], r["category_id"]) for r in rows] == [
+    assert [(r["mailbox_id"], r["message_id"], r["list_version"], r["topic_id"]) for r in rows] == [
         (MAILBOX, "m1", 1, bills),
         (MAILBOX, "m2", 1, uuid.UUID(OTHER_ID)),
     ]
@@ -104,13 +104,13 @@ async def test_given_a_filed_mail_when_completed_then_the_filing_row_has_ids_and
         "mailbox_id",
         "message_id",
         "list_version",
-        "category_id",
-        "filed_at",
         "topic_id",
+        "filed_at",
         "extra_id",
         "source",
         "source_ref",
     }  # no mail text; source_ref is the matched sender entry, nothing of the mail itself
+    assert [(r["extra_id"], r["source"], r["source_ref"]) for r in rows] == [(None, "model", None)] * 2
 
 
 async def test_given_a_pinned_mail_when_completed_then_no_filing_row_is_written_and_the_overview_skips_it(

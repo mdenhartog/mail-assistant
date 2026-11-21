@@ -43,7 +43,7 @@ async def _seed_two_mailboxes(owner: asyncpg.Connection, api: asyncpg.Connection
         f"('mb1', '{ids['Bills']}', 7), ('mb1', '{OTHER_ID}', 3), ('mb2', '{work}', 99), ('mb2', '{OTHER_ID}', 55)"
     )
     await owner.execute(
-        "insert into categories.filing (mailbox_id, message_id, list_version, category_id) values "
+        "insert into categories.filing (mailbox_id, message_id, list_version, topic_id) values "
         f"('mb1', '{SHARED_MESSAGE}', 2, '{ids['Travel']}'), ('mb2', '{SHARED_MESSAGE}', 1, '{work}')"
     )
     return {**ids, "Work": work}

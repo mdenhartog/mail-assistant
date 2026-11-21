@@ -79,7 +79,6 @@ MATRIX: dict[str, Row] = {
                     "mailbox_id",
                     "message_id",
                     "list_version",
-                    "category_id",
                     "topic_id",
                     "extra_id",
                     "source",

@@ -33,7 +33,7 @@ CANARY_SUBJECT = "canary-subject-4711"
 async def _file(owner: asyncpg.Connection, message_id: str, category: str, version: int, age_days: float) -> None:
     """A filing row as the agent writes it, then backdated by the owner (the time is the database's)."""
     await owner.execute(
-        "insert into categories.filing (mailbox_id, message_id, list_version, category_id, filed_at) "
+        "insert into categories.filing (mailbox_id, message_id, list_version, topic_id, filed_at) "
         "values ($1, $2, $3, $4::uuid, now() - $5 * interval '1 day')",
         MAILBOX,
         message_id,
@@ -96,7 +96,7 @@ async def test_given_filings_when_asked_then_the_newest_row_of_each_mail_in_the_
     await _file(cat_owner, "old", finance, 1, 20)  # outside the period
     await cat_owner.execute("insert into categories.mailbox (id) values ('other') on conflict do nothing")
     await cat_owner.execute(
-        "insert into categories.filing (mailbox_id, message_id, list_version, category_id) "
+        "insert into categories.filing (mailbox_id, message_id, list_version, topic_id) "
         "values ('other', 'x', 1, $1::uuid)",
         finance,
     )  # another mailbox
