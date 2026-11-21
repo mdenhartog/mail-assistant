@@ -208,6 +208,7 @@ def _alter_filing() -> None:
     )
     op.execute(_BRIDGE_FUNCTION)
     op.execute("REVOKE ALL ON FUNCTION categories.filing_topic_bridge() FROM PUBLIC")
+    op.execute("ALTER FUNCTION categories.filing_topic_bridge() OWNER TO categories_definer")
     op.execute(_BRIDGE_TRIGGER)
 
 
