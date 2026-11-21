@@ -2,7 +2,7 @@
 feature: label-structure
 intent: INT-008
 spec: docs/specs/label-structure.md
-status: draft
+status: approved
 date: 2026-11-21
 ---
 

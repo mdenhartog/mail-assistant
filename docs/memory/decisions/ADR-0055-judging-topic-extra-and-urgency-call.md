@@ -1,7 +1,7 @@
 ---
 id: ADR-0055
 title: "Judging with a topic and an extra label, and a small urgency-only call for sender-rule mail"
-status: proposed
+status: accepted
 area: architecture
 tags: [label-structure, mail-triage, llm, prompt-injection, budget]
 date: 2026-11-21

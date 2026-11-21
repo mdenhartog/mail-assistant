@@ -1,7 +1,7 @@
 ---
 id: ADR-0053
 title: "Category contract v2: nested names, kinds, senders, ticks, list-level settings"
-status: proposed
+status: accepted
 area: architecture
 tags: [label-structure, mail-categories, postgresql, contract, shared-package]
 date: 2026-11-21

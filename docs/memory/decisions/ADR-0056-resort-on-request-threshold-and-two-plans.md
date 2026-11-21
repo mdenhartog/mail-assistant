@@ -1,7 +1,7 @@
 ---
 id: ADR-0056
 title: "Re-sort on request: a typed confidence threshold, two plans and system approval"
-status: proposed
+status: accepted
 area: architecture
 tags: [label-structure, mail-triage, postgresql, plans, security]
 date: 2026-11-21

@@ -1,7 +1,8 @@
 ---
 id: ADR-0052
 title: "The name of the archive label is a setting of the agent, default Assistant/Archive"
-status: accepted
+status: superseded
+superseded_by: ADR-0059
 area: product
 tags: [mail-categories, mail-triage, gmail, configuration]
 date: 2026-11-21

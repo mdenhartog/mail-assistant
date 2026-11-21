@@ -1,7 +1,7 @@
 ---
 id: ADR-0054
 title: "Sender rules act only on a sender that Gmail authenticated; one verifier for rules and pinned mail"
-status: proposed
+status: accepted
 area: security
 tags: [label-structure, mail-triage, gmail, spoofing, dmarc]
 date: 2026-11-21

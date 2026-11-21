@@ -1,7 +1,7 @@
 ---
 id: ADR-0057
 title: "Always notify: a tick per category raises one alert next to the urgency alert"
-status: proposed
+status: accepted
 area: product
 tags: [label-structure, mail-triage, telegram, alerts]
 date: 2026-11-21

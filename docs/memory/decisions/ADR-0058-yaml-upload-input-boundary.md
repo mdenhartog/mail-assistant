@@ -1,7 +1,7 @@
 ---
 id: ADR-0058
 title: "YAML upload and export: a hardened input boundary with a bound preview"
-status: proposed
+status: accepted
 area: security
 tags: [label-structure, api, yaml, input-validation, csrf]
 date: 2026-11-21
