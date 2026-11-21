@@ -7,7 +7,7 @@ feature: label-structure
 
 - Component: api
 - Layer: backend
-- Contract: `GET` and `PUT /api/categories` extended with `kind`, `notify`, `senders[]` (`entry`, `subdomains`), `generalInstructions`; the rules come from `category-policy` v2; versions stay insert-only with the audit record and the Telegram change notice; GET adds per-entry counts of skipped (not authenticated) mails; the OpenAPI schema and the contract test file are updated.
+- Contract: `GET` and `PUT /api/categories` extended with `kind`, `notify`, `senders[]` (`entry`, `subdomains`), `generalInstructions`; the rules come from `category-policy` v2; versions stay insert-only with the audit record and the Telegram change notice; GET adds per-entry counts of skipped (not authenticated) mails; the OpenAPI schema and the contract test file are updated; the body limit of `PUT /api/categories` (32 KiB, set for 50 categories of 500 characters, MC-12) is raised to fit a list at the v2 maxima with senders (100 categories, 1 500 characters, 100 entries each), with the number chosen and recorded in this unit and its test (`test_route_body_limits.py`) updated; a list above it still gets the generic 413.
 - Files: `backend/app/routers/categories.py`, `backend/app/services/categories.py`, `backend/app/schemas/categories.py`, `docs/api/openapi.json`, tests in `backend/tests/`
 - Depends on: U-label-structure-02, U-label-structure-03, U-label-structure-05
 - Parallel: yes
