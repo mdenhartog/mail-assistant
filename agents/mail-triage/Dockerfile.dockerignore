@@ -4,6 +4,8 @@
 !agents/mail-triage/uv.lock
 !agents/mail-triage/app
 !agents/mail-triage/migrations
+!packages/category-policy/pyproject.toml
+!packages/category-policy/category_policy
 !packages/schedule-policy/pyproject.toml
 !packages/schedule-policy/schedule_policy
 **/__pycache__

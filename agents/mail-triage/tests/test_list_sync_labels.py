@@ -9,6 +9,7 @@ import pytest
 from app.adapters.gmail_resort import GmailResort
 from app.db.models import OTHER_ID
 from app.usecases.list_sync import ListSync
+from category_policy import MAX_CATEGORIES
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.list_store import FakeListStore
 
@@ -70,15 +71,24 @@ async def test_given_two_overlapping_runs_when_both_make_archive_then_it_exists_
 
 async def test_given_a_first_start_when_the_sync_runs_then_version_one_is_seeded_from_the_current_labels() -> None:
     gmail = FakeGmail()
-    for name in ("Assistant/Travel", "Assistant/Bills", "Assistant/Other", "Assistant/Old/Nested", "Work"):
+    for name in (
+        "Assistant/Travel",
+        "Assistant/Bills",
+        "Assistant/Other",
+        "Assistant/Old/Nested",
+        "Assistant//Bad",
+        "Archive/x",
+        "Work",
+    ):
         gmail.add_label(name)
     store = FakeListStore()
 
     result = await make(gmail, store).run()
 
-    assert store.seeded == [("Bills", "Travel")]  # sorted; Other is built in; nested and foreign labels stay out
+    # sorted; Other is built in; nested names are categories (v2); foreign and malformed labels stay out
+    assert store.seeded == [("Bills", "Old/Nested", "Travel")]
     assert (result.version, store.version, store.cursor_version) == (1, 1, 1)
-    assert [c.name for c in store.categories] == ["Bills", "Travel"]
+    assert [c.name for c in store.categories] == ["Bills", "Old/Nested", "Travel"]
 
 
 async def test_given_no_labels_at_all_when_the_first_sync_runs_then_an_empty_version_one_exists() -> None:
@@ -91,7 +101,7 @@ async def test_given_no_labels_at_all_when_the_first_sync_runs_then_an_empty_ver
 
 async def test_given_more_labels_than_the_cap_or_unfit_names_when_seeded_then_only_fit_ones_are_listed() -> None:
     gmail = FakeGmail()
-    for number in range(55):
+    for number in range(MAX_CATEGORIES + 5):
         gmail.add_label(f"Assistant/C{number:02d}")
     gmail.add_label("Assistant/" + "x" * 41)
     gmail.add_label("Assistant/Archive")
@@ -99,7 +109,7 @@ async def test_given_more_labels_than_the_cap_or_unfit_names_when_seeded_then_on
 
     await make(gmail, store).run()
 
-    assert len(store.categories) == 50
+    assert len(store.categories) == MAX_CATEGORIES
     assert all(c.name not in {"Archive", "x" * 41} for c in store.categories)
     assert "Assistant/Archive" in store.label_names  # not lost: it is shown as an older label
 
