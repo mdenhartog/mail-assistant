@@ -1,31 +1,49 @@
-"""Shared category policy (INT-004): name rules, limits, label mapping and decisions."""
+"""Shared category policy, version 2 (INT-008): name rules per segment, kinds, limits and label mapping."""
 
+from category_policy.kinds import Kind
 from category_policy.policy import (
+    ARCHIVE_LABEL_DEFAULT,
     DECISIONS,
     DESCRIPTION_MAX,
+    INSTRUCTIONS_MAX,
+    LABEL_MAX,
     LABEL_PREFIX,
     MAX_CATEGORIES,
-    NAME_MAX,
+    RESERVED_NAMES,
     RULES,
+    SEGMENT_MAX,
     Category,
     Problem,
+    at_or_above,
+    confidence_pct,
     label_for,
     normalise_name,
+    validate_archive_label,
     validate_category,
+    validate_instructions,
     validate_list,
 )
 
 __all__ = [
+    "ARCHIVE_LABEL_DEFAULT",
     "DECISIONS",
     "DESCRIPTION_MAX",
+    "INSTRUCTIONS_MAX",
+    "LABEL_MAX",
     "LABEL_PREFIX",
     "MAX_CATEGORIES",
-    "NAME_MAX",
+    "RESERVED_NAMES",
     "RULES",
+    "SEGMENT_MAX",
     "Category",
+    "Kind",
     "Problem",
+    "at_or_above",
+    "confidence_pct",
     "label_for",
     "normalise_name",
+    "validate_archive_label",
     "validate_category",
+    "validate_instructions",
     "validate_list",
 ]
