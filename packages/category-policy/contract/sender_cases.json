@@ -1,0 +1,120 @@
+{
+ "description": "Contract cases for sender entries and the matcher (INT-008, C-4, D15, AC-10 to AC-14, AC-61). One file shared by category_policy, the agent and the api. 'entry' rows parse one entry: 'value' is the stored lower-case A-label form, or null when the entry is refused as invalid. 'validate' rows validate a list of categories ({name, kind, entries: [{text, subdomains}]}); 'problems' lists [rule, category index, entry position or null, other category index or null] in reporting order. 'match' rows run the matcher over the same category shape: 'from' is the value of the From header (null is a missing header) and 'topic' and 'extra' are the names of the categories that match, or null. Look-alikes use unicode escapes.",
+ "entry": [
+  {"id": "domain", "text": "Example.NL", "subdomains": false, "value": "example.nl"},
+  {"id": "domain-trim", "text": "  example.nl ", "subdomains": true, "value": "example.nl"},
+  {"id": "address", "text": "Info@Example.nl", "subdomains": false, "value": "info@example.nl"},
+  {"id": "idn", "text": "bücher.nl", "subdomains": false, "value": "xn--bcher-kva.nl"},
+  {"id": "punycode", "text": "xn--bcher-kva.nl", "subdomains": false, "value": "xn--bcher-kva.nl"},
+  {"id": "address-with-subdomains", "text": "a@example.nl", "subdomains": true, "value": null},
+  {"id": "wildcard", "text": "*.example.nl", "subdomains": false, "value": null},
+  {"id": "wildcard-address", "text": "*@example.nl", "subdomains": false, "value": null},
+  {"id": "regex", "text": "^a.*@example.nl$", "subdomains": false, "value": null},
+  {"id": "single-label", "text": "example", "subdomains": false, "value": null},
+  {"id": "leading-dot", "text": ".example.nl", "subdomains": false, "value": null},
+  {"id": "trailing-dot", "text": "example.nl.", "subdomains": false, "value": null},
+  {"id": "space", "text": "ex ample.nl", "subdomains": false, "value": null},
+  {"id": "empty", "text": "", "subdomains": false, "value": null},
+  {"id": "two-at", "text": "a@b@example.nl", "subdomains": false, "value": null},
+  {"id": "fullwidth", "text": "ｅxample.nl", "subdomains": false, "value": null},
+  {"id": "zero-width", "text": "example​.nl", "subdomains": false, "value": null},
+  {"id": "bad-punycode", "text": "xn--.nl", "subdomains": false, "value": null},
+  {"id": "label-too-long", "text": "__label_64__.nl", "subdomains": false, "value": null}
+ ],
+ "validate": [
+  {"id": "valid", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}, {"text": "info@example.com", "subdomains": false}]}
+   ], "problems": []},
+  {"id": "invalid-entry", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": false}, {"text": "*.example.nl", "subdomains": false}]}
+   ], "problems": [["sender_invalid", 0, 1, null]]},
+  {"id": "duplicate-topic", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "Example.NL", "subdomains": false}]},
+    {"name": "B", "kind": "topic", "entries": [{"text": "x.nl", "subdomains": false}, {"text": "example.nl", "subdomains": true}]}
+   ], "problems": [["sender_duplicate", 1, 1, 0]]},
+  {"id": "duplicate-extra-punycode", "categories": [
+    {"name": "A", "kind": "extra", "entries": [{"text": "bücher.nl", "subdomains": false}]},
+    {"name": "B", "kind": "extra", "entries": [{"text": "xn--bcher-kva.nl", "subdomains": false}]}
+   ], "problems": [["sender_duplicate", 1, 0, 0]]},
+  {"id": "duplicate-inside-one", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "a@example.nl", "subdomains": false}, {"text": "A@EXAMPLE.nl", "subdomains": false}]}
+   ], "problems": [["sender_duplicate", 0, 1, 0]]},
+  {"id": "topic-and-extra-may-share", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": false}]},
+    {"name": "B", "kind": "extra", "entries": [{"text": "example.nl", "subdomains": false}]}
+   ], "problems": []},
+  {"id": "public-mailbox-domain", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "gmail.com", "subdomains": false}]}
+   ], "problems": [["sender_refused_domain", 0, 0, null]]},
+  {"id": "sending-platform-domain", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "sendgrid.net", "subdomains": true}, {"text": "tenant.onmicrosoft.com", "subdomains": false}]}
+   ], "problems": [["sender_refused_domain", 0, 0, null], ["sender_refused_domain", 0, 1, null]]},
+  {"id": "address-on-refused-domain", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "oma@gmail.com", "subdomains": false}, {"text": "bounce@amazonses.com", "subdomains": false}]}
+   ], "problems": []},
+  {"id": "too-many", "generate_entries": 101, "categories": [{"name": "A", "kind": "topic", "entries": []}],
+   "problems": [["sender_too_many", 0, null, null]]},
+  {"id": "exactly-the-limit", "generate_entries": 100, "categories": [{"name": "A", "kind": "topic", "entries": []}],
+   "problems": []}
+ ],
+ "match": [
+  {"id": "address-beats-domain", "categories": [
+    {"name": "Energy", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": false}]},
+    {"name": "Billing", "kind": "topic", "entries": [{"text": "info@example.nl", "subdomains": false}]}
+   ], "from": "info@example.nl", "topic": "Billing", "extra": null},
+  {"id": "domain-when-address-differs", "categories": [
+    {"name": "Energy", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": false}]},
+    {"name": "Billing", "kind": "topic", "entries": [{"text": "info@example.nl", "subdomains": false}]}
+   ], "from": "Other <other@example.nl>", "topic": "Energy", "extra": null},
+  {"id": "subdomain-without-opt-in", "categories": [
+    {"name": "Energy", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": false}]}
+   ], "from": "a@mail.example.nl", "topic": null, "extra": null},
+  {"id": "subdomain-with-opt-in", "categories": [
+    {"name": "Energy", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@mail.example.nl", "topic": "Energy", "extra": null},
+  {"id": "deep-subdomain-longest", "categories": [
+    {"name": "Wide", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]},
+    {"name": "Narrow", "kind": "topic", "entries": [{"text": "shop.example.nl", "subdomains": true}]}
+   ], "from": "a@x.shop.example.nl", "topic": "Narrow", "extra": null},
+  {"id": "topic-and-extra", "categories": [
+    {"name": "Energy", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": false}]},
+    {"name": "Invoices", "kind": "extra", "entries": [{"text": "info@example.nl", "subdomains": false}]}
+   ], "from": "info@example.nl", "topic": "Energy", "extra": "Invoices"},
+  {"id": "hyphen-look-alike", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@evil-example.nl", "topic": null, "extra": null},
+  {"id": "no-dot-boundary", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@evilexample.nl", "topic": null, "extra": null},
+  {"id": "suffix-attack", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@example.nl.evil.com", "topic": null, "extra": null},
+  {"id": "cyrillic-look-alike", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@exаmple.nl", "topic": null, "extra": null},
+  {"id": "fullwidth-look-alike", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@ｅxample.nl", "topic": null, "extra": null},
+  {"id": "missing-from", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": null, "topic": null, "extra": null},
+  {"id": "several-from", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "a@example.nl, b@example.nl", "topic": null, "extra": null},
+  {"id": "unparsable-from", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "not an address", "topic": null, "extra": null},
+  {"id": "display-name-forges-address", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "example.nl", "subdomains": true}]}
+   ], "from": "\"a@example.nl\" <a@evil.com>", "topic": null, "extra": null},
+  {"id": "idn-either-form", "categories": [
+    {"name": "A", "kind": "topic", "entries": [{"text": "bücher.nl", "subdomains": false}]}
+   ], "from": "a@xn--bcher-kva.nl", "topic": "A", "extra": null},
+  {"id": "address-on-refused-domain", "categories": [
+    {"name": "Family", "kind": "topic", "entries": [{"text": "oma@gmail.com", "subdomains": false}]}
+   ], "from": "oma@gmail.com", "topic": "Family", "extra": null},
+  {"id": "other-address-on-refused-domain", "categories": [
+    {"name": "Family", "kind": "topic", "entries": [{"text": "oma@gmail.com", "subdomains": false}]}
+   ], "from": "stranger@gmail.com", "topic": null, "extra": null}
+ ]
+}
