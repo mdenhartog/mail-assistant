@@ -170,27 +170,37 @@ async def test_given_the_apply_poll_when_cycles_follow_each_other_then_the_apply
 
 def test_given_the_settings_when_they_are_loaded_then_the_resort_numbers_have_defaults_and_can_be_set() -> None:
     default = load_settings(VALID)
-    assert (default.plan_debounce_minutes, default.plan_cap, default.apply_poll_seconds) == (10, 5000, 60)
+    assert (default.plan_cap, default.apply_poll_seconds) == (5000, 60)
     assert (default.apply_threshold, default.apply_delay_minutes) == (50, 15)
 
     custom = load_settings(
         VALID
         | {
-            "PLAN_DEBOUNCE_MINUTES": "3",
             "PLAN_CAP": "7",
             "APPLY_POLL_SECONDS": "5",
             "APPLY_THRESHOLD": "9",
             "APPLY_DELAY_MINUTES": "0",
         }
     )
-    assert (custom.plan_debounce_minutes, custom.plan_cap, custom.apply_poll_seconds) == (3, 7, 5)
+    assert (custom.plan_cap, custom.apply_poll_seconds) == (7, 5)
     assert (custom.apply_threshold, custom.apply_delay_minutes) == (9, 0)
 
 
-@pytest.mark.parametrize("key", ["PLAN_DEBOUNCE_MINUTES", "PLAN_CAP", "APPLY_POLL_SECONDS", "APPLY_THRESHOLD"])
+@pytest.mark.parametrize("key", ["PLAN_CAP", "APPLY_POLL_SECONDS", "APPLY_THRESHOLD"])
 def test_given_a_resort_number_below_one_when_settings_load_then_the_key_is_named(key: str) -> None:
     with pytest.raises(SettingsError, match=key):
         load_settings(VALID | {key: "0"})
+
+
+@pytest.mark.parametrize("value", ["10", "0", "not a number"])
+def test_given_the_removed_debounce_setting_in_the_environment_when_the_agent_starts_then_it_starts_and_ignores_it(
+    value: str,
+) -> None:
+    loaded = load_settings(VALID | {"PLAN_DEBOUNCE_MINUTES": value})
+
+    assert not hasattr(loaded, "plan_debounce_minutes")
+    built = _wired({"PLAN_DEBOUNCE_MINUTES": value})
+    assert "_debounce" not in vars(vars(built)["_resort_build"])
 
 
 def _wired(extra: dict[str, str] | None = None) -> Any:
@@ -210,11 +220,10 @@ def _wired(extra: dict[str, str] | None = None) -> Any:
     )
 
 
-def test_given_the_wiring_when_built_then_the_debounce_the_cap_and_the_apply_poll_come_from_the_settings() -> None:
-    built = _wired({"PLAN_DEBOUNCE_MINUTES": "3", "PLAN_CAP": "7", "APPLY_POLL_SECONDS": "5"})
+def test_given_the_wiring_when_built_then_the_cap_and_the_apply_poll_come_from_the_settings() -> None:
+    built = _wired({"PLAN_CAP": "7", "APPLY_POLL_SECONDS": "5"})
 
     build = vars(built)["_resort_build"]
-    assert vars(build)["_debounce"] == timedelta(minutes=3)
     assert vars(build)["_cap"] == 7
     assert vars(built)["_resort_apply_every"] == timedelta(seconds=5)
 
