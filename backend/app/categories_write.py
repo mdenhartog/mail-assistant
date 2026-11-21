@@ -3,7 +3,6 @@
 Pure functions: no database, no clock, no randomness (the ids of new categories come from the id source).
 """
 
-import unicodedata
 import uuid
 from collections.abc import Callable
 
@@ -21,15 +20,15 @@ from category_policy.policy import RESERVED_NAMES
 
 
 def canonical_text(raw: str) -> str:
-    """Trim and apply NFKC, the form category_policy measures and the one that is stored.
+    """Return the stored form of a name: look-alikes folded, NFKC, every segment trimmed (the form the rules measure).
 
     Args:
-        raw: The text as typed.
+        raw: The name as typed.
 
     Returns:
         The stored form of a name.
     """
-    return unicodedata.normalize("NFKC", raw.strip()).strip()
+    return label_for(raw).removeprefix(LABEL_PREFIX)
 
 
 def older_labels(stored: StoredList) -> list[str]:

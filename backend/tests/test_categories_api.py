@@ -6,10 +6,12 @@ privilege on the audit).
 """
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -21,6 +23,9 @@ from app.auth.cookies import COOKIE_NAME
 from app.auth.csrf import csrf_token
 from app.auth.digest import username_digest
 from app.auth.session import SessionStore, attach_sessions
+from app.categories_models import CategoryInput
+from app.categories_repo import StoredCategory, StoredList
+from app.categories_write import problems_of
 from app.db import Database
 from app.ids import SecretsIdSource
 from app.security_events import SecurityEvents
@@ -44,6 +49,9 @@ OTHER_MAILBOX = "second"
 NIL = "00000000-0000-0000-0000-000000000000"
 GENERIC_401 = {"type": "about:blank", "title": "Unauthorized", "status": 401}
 GENERIC_403 = {"type": "about:blank", "title": "Forbidden", "status": 403}
+CASES: dict[str, Any] = json.loads(
+    (Path(__file__).resolve().parents[2] / "packages/category-policy/contract/category_cases.json").read_text("utf-8")
+)
 VERSIONS = "select count(*) from categories.list_version where mailbox_id = $1"
 
 
@@ -246,16 +254,18 @@ async def test_given_the_same_names_in_another_order_when_put_then_it_is_a_new_v
     [
         ([entry("")], "name_empty", "name", 0),
         ([entry("   ")], "name_empty", "name", 0),
-        ([entry("x" * 41)], "name_too_long", "name", 0),
-        ([entry("a/b")], "name_slash", "name", 0),
+        ([entry("x" * 41)], "name_segment_too_long", "name", 0),
+        ([entry("a//b")], "name_segment_empty", "name", 0),
+        ([entry("a/")], "name_segment_empty", "name", 0),
+        ([entry("/".join(["x" * 40] * 6))], "name_label_too_long", "name", 0),
         ([entry("a" + chr(0x202E) + "b")], "name_forbidden_char", "name", 0),
         ([entry("Other")], "name_reserved", "name", 0),
         ([entry(" OTHER ")], "name_reserved", "name", 0),
         ([entry("Archive")], "name_reserved", "name", 0),
         ([entry("Bills"), entry("bills")], "name_duplicate", "name", 1),
         ([entry("Bills", "")], "description_empty", "description", 0),
-        ([entry("Bills", "d" * 501)], "description_too_long", "description", 0),
-        ([entry(f"C{n}") for n in range(51)], "list_too_many", "list", None),
+        ([entry("Bills", "d" * 1501)], "description_too_long", "description", 0),
+        ([entry(f"C{n}") for n in range(101)], "list_too_many", "list", None),
         ([entry("Invoices")], "name_label_exists", "name", 0),
         ([entry("Bills", id_=str(uuid.uuid4()))], "id_unknown", "id", 0),
     ],
@@ -281,6 +291,94 @@ async def test_given_an_invalid_rule_when_put_then_422_with_problems_and_nothing
     assert {"rule": rule, "field": field, "index": index} in body["problems"]
     assert all(set(problem) == {"rule", "field", "index"} for problem in body["problems"])
     assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+# Criteria 1 to 3
+async def test_given_a_nested_name_the_limits_and_100_categories_when_put_then_it_is_accepted_and_stored_trimmed(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    categories = [entry(" Huis / Energie ", "d" * 1500), entry("y" * 40 + "/" + "z" * 40)]
+    categories += [entry(f"C{n}") for n in range(98)]
+
+    response = await put(api, 1, categories)
+
+    assert response.status_code == 200
+    names = [c["name"] for c in response.json()["categories"]]
+    assert len(names) == 100
+    assert names[0] == "Huis/Energie"
+    assert len(response.json()["categories"][0]["description"]) == 1500
+
+
+async def test_given_a_label_of_225_characters_when_put_then_it_is_accepted(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    name = "/".join(["x" * 40] * 5 + ["y" * 14])  # 5 * 41 + 14 = 219, plus "Assistant/" is 229: trim to 225
+    name = name[: 225 - len("Assistant/")]
+
+    response = await put(api, 1, [entry(name)])
+
+    assert response.status_code == 200
+
+
+# Criterion 5
+def _stored(labels: list[str], adoptable: list[str], existing: list[str]) -> StoredList:
+    adopted = {label.casefold() for label in adoptable}
+    owned = [label for label in labels if label.casefold() not in adopted and label.startswith("Assistant/")]
+    names = [*existing, *(label.removeprefix("Assistant/") for label in owned)]
+    categories = tuple(StoredCategory(uuid.uuid4(), name, "x") for name in names)
+    return StoredList(1, categories, {}, tuple(labels))
+
+
+def _fill(description: str) -> str:
+    return "d" * int(description.strip("_")) if description.startswith("__") else description
+
+
+def _nested(name: str) -> str:
+    if not name.startswith("__label_len_"):
+        return name
+    length = int(name.removeprefix("__label_len_").removesuffix("__")) - len("Assistant/")
+    parts: list[str] = []
+    while length > 0:
+        parts.append("a" * min(40, length))
+        length -= min(40, length) + 1
+    return "/".join(parts)
+
+
+@pytest.mark.parametrize("case", CASES["category"], ids=[c["id"] for c in CASES["category"]])
+def test_given_a_shared_category_case_when_the_api_checks_the_list_then_the_rules_match(case: dict[str, Any]) -> None:
+    items = [CategoryInput(name=name, description="x") for name in case["existing"]]
+    items.append(CategoryInput(name=_nested(case["name"]), description=_fill(case["description"])))
+    stored = _stored(case["labels"], case["adoptable"], [])
+
+    problems = problems_of(items, stored)
+
+    assert [p.rule for p in problems if p.index == len(items) - 1] == case["rules"]
+
+
+@pytest.mark.parametrize("case", CASES["list"], ids=[c["id"] for c in CASES["list"]])
+def test_given_a_shared_list_case_when_the_api_checks_the_list_then_the_problems_match(case: dict[str, Any]) -> None:
+    if "generate" in case:
+        items = [CategoryInput(name=f"Category {i}", description="x") for i in range(case["generate"])]
+    else:
+        items = [CategoryInput(name=c["name"], description=c["description"]) for c in case["categories"]]
+    stored = _stored(case["labels"], case["adoptable"], [])
+
+    problems = problems_of(items, stored)
+
+    assert [[p.index, p.rule] for p in problems] == case["problems"]
+
+
+# Criterion 6
+def test_given_the_backend_when_read_then_nothing_names_a_removed_rule() -> None:
+    removed = ["name_" + "too_long", "name_" + "slash"]  # built in pieces so this file does not match itself
+    root = Path(__file__).resolve().parents[1]
+    sources = [*(root / "app").rglob("*.py"), *(root / "tests").rglob("*.py")]
+
+    assert [(path.name, rule) for path in sources for rule in removed if rule in path.read_text("utf-8")] == []
 
 
 async def test_given_a_name_that_is_an_older_category_when_put_then_it_is_adopted_not_refused(

@@ -8,7 +8,7 @@
 # order, the hardening, the CA mount, the database settings and the Google settings. The consent service gets no
 # Telegram or model secret.
 x-agent-service: &agent-service
-  # Repo-root context (paths in an included file are relative to this file): the image carries packages/schedule-policy.
+  # Repo-root context (paths in an included file are relative to this file): the image carries packages/schedule-policy and packages/category-policy.
   build: { context: ../.., dockerfile: agents/mail-triage/Dockerfile }
   depends_on:
     db: { condition: service_healthy }

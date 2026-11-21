@@ -385,9 +385,9 @@ class Category(Base):
         ),
         UniqueConstraint("mailbox_id", "version", "position", name="uq_category_position"),
         UniqueConstraint("mailbox_id", "version", "name", name="uq_category_name"),
-        CheckConstraint("char_length(name) BETWEEN 1 AND 40", name="ck_category_name_length"),
-        CheckConstraint("char_length(description) <= 500", name="ck_category_description_length"),
-        CheckConstraint("position BETWEEN 0 AND 49", name="ck_category_position"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 215", name="ck_category_name_length"),
+        CheckConstraint("char_length(description) <= 1500", name="ck_category_description_length"),
+        CheckConstraint("position BETWEEN 0 AND 99", name="ck_category_position"),
         {"schema": "categories"},
     )
 

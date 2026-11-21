@@ -3,11 +3,13 @@
 # (see compose.yaml and deploy/charts/worker). It does not migrate when it starts: `python -m app migrate` is a separate
 # one-shot job with the owner role (ADR-0025).
 # Build context: the repository root (docker build -f agents/mail-triage/Dockerfile .), because the agent depends on the
-# shared package packages/schedule-policy (a uv path dependency, ../../packages/schedule-policy). The directory layout
+# shared packages packages/schedule-policy and packages/category-policy (uv path dependencies, ../../packages/...). The directory layout
 # below mirrors the repository so that the relative path in pyproject.toml and uv.lock resolves.
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS build
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /srv/agents/mail-triage
+COPY packages/category-policy/pyproject.toml /srv/packages/category-policy/pyproject.toml
+COPY packages/category-policy/category_policy /srv/packages/category-policy/category_policy
 COPY packages/schedule-policy/pyproject.toml /srv/packages/schedule-policy/pyproject.toml
 COPY packages/schedule-policy/schedule_policy /srv/packages/schedule-policy/schedule_policy
 COPY agents/mail-triage/pyproject.toml agents/mail-triage/uv.lock ./
@@ -24,7 +26,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONTZPATH=/nonexistent-zonei
 RUN python -m pip uninstall --yes pip \
     && groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home --home-dir /home/app --shell /usr/sbin/nologin app
 WORKDIR /srv/agents/mail-triage
-# Only the agent directory: schedule_policy is installed into its virtual environment, its sources stay behind.
+# Only the agent directory: schedule_policy and category_policy are installed into its virtual environment, its sources stay behind.
 COPY --from=build --chown=app:app /srv/agents/mail-triage /srv/agents/mail-triage
 USER 10001:10001
 CMD ["python", "-m", "app"]

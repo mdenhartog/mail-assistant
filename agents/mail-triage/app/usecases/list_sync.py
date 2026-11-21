@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import unicodedata
 import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
@@ -34,6 +33,7 @@ from app.adapters.gmail_resort import (
     is_category_label,
 )
 from app.core.scope import is_archive_label
+from category_policy import MAX_CATEGORIES, normalise_name
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -42,10 +42,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-NAME_MAX = 40  # as category-policy
-MAX_CATEGORIES = 50  # as category-policy
 OTHER_ID = uuid.UUID(int=0)  # the nil UUID stands for "Other" in ``category_count``
-_FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cf"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,18 +117,12 @@ class ListSyncStore(Protocol):
 
 
 def seed_names(labels: Sequence[Label]) -> tuple[str, ...]:
-    """Category names for list version 1: the one-level ``Assistant/`` labels that fit the name rules, sorted."""
+    """Category names for list version 1: the ``Assistant/`` labels that fit the policy name rules, sorted."""
     found: dict[str, str] = {}
     for label in sorted(labels, key=lambda item: item.name):
-        name = label.name[len(LABEL_PREFIX) :]
-        fits = (
-            is_category_label(label.name)
-            and name == name.strip()
-            and len(name) <= NAME_MAX
-            and not any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in name)
-        )
-        if fits:
-            found.setdefault(unicodedata.normalize("NFKC", name).casefold(), name)
+        if is_category_label(label.name):
+            name = label.name[len(LABEL_PREFIX) :]
+            found.setdefault(normalise_name(name), name)
     return tuple(found.values())[:MAX_CATEGORIES]
 
 
