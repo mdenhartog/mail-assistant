@@ -2,6 +2,7 @@
 id: ADR-0046
 title: "Re-sort plans: lifecycle, Gmail operations, delayed apply and the Telegram exception to D1"
 status: accepted
+partly_superseded_by: ADR-0056 (decisions 1 to 4)
 area: architecture
 tags: [mail-categories, mail-triage, gmail, telegram, budget]
 date: 2026-11-14

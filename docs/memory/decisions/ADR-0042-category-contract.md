@@ -2,6 +2,7 @@
 id: ADR-0042
 title: "Category contract: own schema, insert-only list versions, shared category-policy package"
 status: accepted
+partly_superseded_by: ADR-0053 (decision 5)
 area: architecture
 tags: [mail-categories, postgresql, contract, shared-package]
 date: 2026-11-14

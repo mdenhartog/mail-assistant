@@ -2,6 +2,7 @@
 id: ADR-0045
 title: "Judging against the user's list: closed set, urgency separate, security mail pinned"
 status: accepted
+partly_superseded_by: ADR-0055 (decisions 1 and 3)
 area: architecture
 tags: [mail-categories, mail-triage, llm, prompt-injection]
 date: 2026-11-14
