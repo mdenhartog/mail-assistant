@@ -7,6 +7,8 @@ privilege on the audit).
 
 import asyncio
 import json
+import logging
+import time
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -18,18 +20,21 @@ import asyncpg
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from app.auth.cookies import COOKIE_NAME
 from app.auth.csrf import csrf_token
 from app.auth.digest import username_digest
 from app.auth.session import SessionStore, attach_sessions
-from app.categories_models import CategoryInput
+from app.categories_models import CategoryInput, SenderItem
 from app.categories_repo import StoredCategory, StoredList
 from app.categories_write import problems_of
 from app.db import Database
 from app.ids import SecretsIdSource
 from app.security_events import SecurityEvents
 from app.startup import attach_database
+from category_policy import Kind
 from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, used here without editing them
     db,
     owner,
@@ -51,6 +56,10 @@ GENERIC_401 = {"type": "about:blank", "title": "Unauthorized", "status": 401}
 GENERIC_403 = {"type": "about:blank", "title": "Forbidden", "status": 403}
 CASES: dict[str, Any] = json.loads(
     (Path(__file__).resolve().parents[2] / "packages/category-policy/contract/category_cases.json").read_text("utf-8")
+)
+ARCHIVE = "Assistant/Archive"
+SENDER_CASES: dict[str, Any] = json.loads(
+    (Path(__file__).resolve().parents[2] / "packages/category-policy/contract/sender_cases.json").read_text("utf-8")
 )
 VERSIONS = "select count(*) from categories.list_version where mailbox_id = $1"
 
@@ -74,14 +83,21 @@ async def api(web_database: Database) -> AsyncIterator[Api]:  # noqa: F811
         yield Api(http, app, store)
 
 
-async def seed(
+async def seed(  # noqa: PLR0913  # the switches say which parts of the v2 list the test needs
     owner: asyncpg.Connection,  # noqa: F811
     categories: list[tuple[str, str]],
     *,
     version: int = 1,
     mailbox: str = MAILBOX,
+    details: dict[int, dict[str, Any]] | None = None,
+    instructions: str = "",
+    archive_label: str = ARCHIVE,
+    settings: bool = True,
 ) -> list[str]:
-    """Write one list version as the owner and return the ids in order."""
+    """Write one list version as the owner and return the ids in order.
+
+    ``details`` maps a position to ``kind``, ``notify`` and ``senders`` (a list of ``(entry, is_domain, subdomains)``).
+    """
     ids = [str(uuid.uuid4()) for _ in categories]
     async with owner.transaction():
         await owner.execute("insert into categories.mailbox (id) values ($1) on conflict do nothing", mailbox)
@@ -89,18 +105,41 @@ async def seed(
             "insert into categories.list_version (mailbox_id, version) values ($1, $2)", mailbox, version
         )
         for position, (cid, (name, description)) in enumerate(zip(ids, categories, strict=True)):
+            extra = (details or {}).get(position, {})
             await owner.execute(
                 "insert into categories.category_identity (mailbox_id, id) values ($1, $2)", mailbox, uuid.UUID(cid)
             )
             await owner.execute(
-                "insert into categories.category (mailbox_id, version, id, name, description, position) "
-                "values ($1, $2, $3, $4, $5, $6)",
+                "insert into categories.category (mailbox_id, version, id, name, description, position, kind, notify) "
+                "values ($1, $2, $3, $4, $5, $6, $7, $8)",
                 mailbox,
                 version,
                 uuid.UUID(cid),
                 name,
                 description,
                 position,
+                extra.get("kind", "topic"),
+                extra.get("notify", False),
+            )
+            for text, is_domain, subdomains in extra.get("senders", []):
+                await owner.execute(
+                    "insert into categories.category_sender "
+                    "(mailbox_id, version, category_id, entry, is_domain, subdomains) values ($1, $2, $3, $4, $5, $6)",
+                    mailbox,
+                    version,
+                    uuid.UUID(cid),
+                    text,
+                    is_domain,
+                    subdomains,
+                )
+        if settings:
+            await owner.execute(
+                "insert into categories.list_settings (mailbox_id, version, general_instructions, archive_label) "
+                "values ($1, $2, $3, $4)",
+                mailbox,
+                version,
+                instructions,
+                archive_label,
             )
     return ids
 
@@ -144,12 +183,37 @@ async def get(api: Api, **switches: Any) -> Any:
     return await request(api, "GET", **switches)
 
 
-async def put(api: Api, version: int, categories: list[dict[str, Any]], **switches: Any) -> Any:
-    return await request(api, "PUT", {"version": version, "categories": categories}, **switches)
+async def put(
+    api: Api, version: int, categories: list[dict[str, Any]], *, instructions: str = "", **switches: Any
+) -> Any:
+    return await request(api, "PUT", body_of(version, categories, instructions), **switches)
 
 
-def entry(name: str, description: str = "Things that belong here", id_: str | None = None) -> dict[str, Any]:
-    return {"name": name, "description": description, **({"id": id_} if id_ else {})}
+def body_of(version: int, categories: list[dict[str, Any]], instructions: str = "") -> dict[str, Any]:
+    return {"version": version, "categories": categories, "generalInstructions": instructions}
+
+
+def entry(  # noqa: PLR0913  # the fields of one category of the v2 list
+    name: str,
+    description: str = "Things that belong here",
+    id_: str | None = None,
+    *,
+    kind: str = "topic",
+    notify: bool = False,
+    senders: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "description": description,
+        "kind": kind,
+        "notify": notify,
+        "senders": senders or [],
+        **({"id": id_} if id_ else {}),
+    }
+
+
+def sender(text: str, *, subdomains: bool = False) -> dict[str, Any]:
+    return {"entry": text, "subdomains": subdomains}
 
 
 # Criterion 1
@@ -171,9 +235,26 @@ async def test_given_a_list_with_counts_and_labels_when_get_then_the_list_other_
         "version": 1,
         "ready": True,
         "categories": [
-            {"id": invoices, "name": "Invoices", "description": "Bills and receipts", "mailCount": 5},
-            {"id": travel, "name": "Travel", "description": "Tickets and bookings", "mailCount": 0},
+            {
+                "id": invoices,
+                "name": "Invoices",
+                "description": "Bills and receipts",
+                "kind": "topic",
+                "notify": False,
+                "senders": [],
+                "mailCount": 5,
+            },
+            {
+                "id": travel,
+                "name": "Travel",
+                "description": "Tickets and bookings",
+                "kind": "topic",
+                "notify": False,
+                "senders": [],
+                "mailCount": 0,
+            },
         ],
+        "generalInstructions": "",
         "other": {"mailCount": 3},
         "olderCategories": [{"labelName": "Assistant/Old stuff", "mailCount": None}],
     }
@@ -187,6 +268,7 @@ async def test_given_no_seed_yet_when_get_then_version_0_and_not_ready(api: Api)
         "version": 0,
         "ready": False,
         "categories": [],
+        "generalInstructions": "",
         "other": {"mailCount": 0},
         "olderCategories": [],
     }
@@ -288,9 +370,315 @@ async def test_given_an_invalid_rule_when_put_then_422_with_problems_and_nothing
     assert response.headers["content-type"].startswith("application/problem+json")
     body = response.json()
     assert (body["type"], body["title"], body["status"]) == ("about:blank", "Unprocessable content", 422)
-    assert {"rule": rule, "field": field, "index": index} in body["problems"]
-    assert all(set(problem) == {"rule", "field", "index"} for problem in body["problems"])
+    assert {"rule": rule, "field": field, "index": index, "position": None, "otherIndex": None} in body["problems"]
+    assert all(set(problem) == {"rule", "field", "index", "position", "otherIndex"} for problem in body["problems"])
     assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+# Criteria 1 and 3 (U-label-structure-11): the v2 list
+async def test_given_a_v2_list_with_nested_names_kinds_senders_ticks_and_instructions_when_put_then_one_new_version(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    (invoices,) = await seed(owner, [("Invoices", "Bills")], archive_label="Mail/Old archive")
+    categories = [
+        entry("Huis / Energie", "Energy bills", notify=True, senders=[sender("Example.NL", subdomains=True)]),
+        entry("Urgent", "Needs a look", kind="extra", senders=[sender("Boss@Example.com"), sender("example.nl")]),
+        entry("Invoices", "Bills", invoices),
+    ]
+
+    response = await put(api, 1, categories, instructions="  I live in Utrecht.  ")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["version"] == 2
+    assert body["generalInstructions"] == "I live in Utrecht."
+    assert [(c["name"], c["kind"], c["notify"]) for c in body["categories"]] == [
+        ("Huis/Energie", "topic", True),
+        ("Urgent", "extra", False),
+        ("Invoices", "topic", False),
+    ]
+    assert body["categories"][0]["senders"] == [{"entry": "example.nl", "subdomains": True}]
+    assert body["categories"][1]["senders"] == [
+        {"entry": "boss@example.com", "subdomains": False},
+        {"entry": "example.nl", "subdomains": False},
+    ]
+    assert (await get(api)).json() == body
+    rows = await owner.fetch(
+        "select c.name, s.entry, s.is_domain, s.subdomains from categories.category_sender s "
+        "join categories.category c on c.mailbox_id = s.mailbox_id and c.version = s.version and c.id = s.category_id "
+        "where s.version = 2 order by 1, 2"
+    )
+    assert [tuple(row) for row in rows] == [
+        ("Huis/Energie", "example.nl", True, True),
+        ("Urgent", "boss@example.com", False, False),
+        ("Urgent", "example.nl", True, False),
+    ]
+    settings = await owner.fetchrow("select * from categories.list_settings where version = 2")
+    assert settings is not None
+    assert (settings["general_instructions"], settings["archive_label"]) == ("I live in Utrecht.", "Mail/Old archive")
+    audit = await owner.fetch("select version, channel from categories.list_audit order by 1")
+    assert [(row["version"], row["channel"]) for row in audit] == [(1, "operator"), (2, "web")]
+
+
+async def test_given_a_previous_version_without_settings_when_put_then_the_default_archive_label_is_stored(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], settings=False)
+
+    response = await put(api, 1, [entry("Mine")], instructions="x")
+
+    assert response.status_code == 200
+    assert await owner.fetchval("select archive_label from categories.list_settings where version = 2") == ARCHIVE
+
+
+@pytest.mark.parametrize("change", ["kind", "notify", "senders", "subdomains", "instructions"])
+async def test_given_one_v2_field_changed_when_put_then_it_is_a_new_version(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    change: str,
+) -> None:
+    (invoices,) = await seed(
+        owner,
+        [("Invoices", "Bills")],
+        details={0: {"senders": [("example.nl", True, False)]}},
+        instructions="same",
+    )
+    fields: dict[str, Any] = {"kind": "topic", "notify": False, "senders": [sender("example.nl")]}
+    instructions = "same"
+    match change:
+        case "kind":
+            fields["kind"] = "extra"
+        case "notify":
+            fields["notify"] = True
+        case "senders":
+            fields["senders"] = [sender("example.nl"), sender("a@example.nl")]
+        case "subdomains":
+            fields["senders"] = [sender("example.nl", subdomains=True)]
+        case _:
+            instructions = "different"
+
+    response = await put(api, 1, [entry("Invoices", "Bills", invoices, **fields)], instructions=instructions)
+
+    assert response.status_code == 200
+    assert response.json()["version"] == 2
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 2
+
+
+async def test_given_an_unchanged_v2_list_in_another_form_when_put_then_no_version_and_no_audit_record(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    stored_senders = [("example.nl", True, True), ("a@example.nl", False, False)]
+    (invoices,) = await seed(
+        owner,
+        [("Invoices", "Bills")],
+        details={0: {"kind": "extra", "notify": True, "senders": stored_senders}},
+        instructions="Be brief.",
+    )
+    audits = await owner.fetchval("select count(*) from categories.list_audit")
+
+    response = await put(
+        api,
+        1,
+        [
+            entry(
+                "Invoices",
+                "Bills",
+                invoices,
+                kind="extra",
+                notify=True,
+                senders=[sender(" A@EXAMPLE.nl "), sender("EXAMPLE.nl", subdomains=True)],
+            )
+        ],
+        instructions=" Be brief. ",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["version"] == 1
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+    assert await owner.fetchval("select count(*) from categories.list_audit") == audits
+
+
+# Criterion 2 (U-label-structure-11): every rule violation, every problem, nothing stored
+def _problem(rule: str, field: str, index: int | None, position: int | None = None, other: int | None = None) -> Any:
+    return {"rule": rule, "field": field, "index": index, "position": position, "otherIndex": other}
+
+
+async def test_given_sender_and_instruction_violations_when_put_then_422_lists_each_problem_with_its_field(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    categories = [
+        entry("A", senders=[sender("gmail.com"), sender("*.example.nl")]),
+        entry("B", senders=[sender("x.nl"), sender("X.nl", subdomains=True)]),
+        entry("C", kind="extra", senders=[sender("x.nl")]),
+        entry("", senders=[sender("y.nl")]),
+    ]
+
+    response = await put(api, 1, categories, instructions="g" * 4001)
+
+    assert response.status_code == 422
+    assert response.json()["problems"] == [
+        _problem("name_empty", "name", 3),
+        _problem("instructions_too_long", "instructions", None),
+        _problem("sender_refused_domain", "senders", 0, 0),
+        _problem("sender_invalid", "senders", 0, 1),
+        _problem("sender_duplicate", "senders", 1, 1, 1),
+    ]
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_a_duplicate_entry_in_two_topics_when_put_then_422_names_both_categories(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(
+        api, 1, [entry("A", senders=[sender("x.nl")]), entry("B", senders=[sender("X.NL", subdomains=True)])]
+    )
+
+    assert response.status_code == 422
+    assert response.json()["problems"] == [_problem("sender_duplicate", "senders", 1, 0, 0)]
+
+
+async def test_given_more_than_100_senders_in_a_category_when_put_then_422_sender_too_many(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(api, 1, [entry("A", senders=[sender(f"s{n}@example.nl") for n in range(101)])])
+
+    assert response.status_code == 422
+    assert response.json()["problems"] == [_problem("sender_too_many", "senders", 0)]
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+# Criterion 4 (U-label-structure-11): the 409 carries the v2 list
+async def test_given_a_stale_version_with_a_v2_body_when_put_then_409_carries_the_v2_current_list(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], details={0: {"kind": "extra", "notify": True}}, instructions="Hi")
+
+    response = await put(api, 0, [entry("Mine")])
+
+    assert response.status_code == 409
+    current = response.json()["current"]
+    assert current["generalInstructions"] == "Hi"
+    assert (current["categories"][0]["kind"], current["categories"][0]["notify"]) == ("extra", True)
+
+
+# Criterion 5 (U-label-structure-11): the grants of the api role and no canary text
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "update categories.category_sender set subdomains = true",
+        "delete from categories.category_sender",
+        "update categories.list_settings set general_instructions = 'x'",
+        "update categories.list_settings set archive_label = 'x'",
+        "delete from categories.list_settings",
+        "update categories.category set kind = 'extra'",
+        "delete from categories.category",
+        "truncate categories.category_sender",
+    ],
+)
+async def test_given_the_api_role_when_it_changes_or_removes_a_stored_list_then_42501(
+    owner: asyncpg.Connection,  # noqa: F811
+    web_database: Database,  # noqa: F811
+    statement: str,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], details={0: {"senders": [("example.nl", True, False)]}})
+
+    with pytest.raises(DBAPIError) as refused:
+        async with web_database.session() as session, session.begin():
+            await session.execute(text(statement))
+
+    assert getattr(refused.value.orig, "sqlstate", None) == "42501"
+
+
+CANARIES = ("canary-description-71", "canary-sender-71@example.nl", "canary-instructions-71", "canary-name-71")
+
+
+async def test_given_the_database_refuses_the_write_when_put_then_500_and_no_response_or_log_carries_a_canary(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    await owner.execute(
+        "alter table categories.category_sender add constraint ck_canary check (entry <> 'canary-sender-71@example.nl')"
+    )
+    caplog.set_level(logging.DEBUG)
+
+    response = await put(
+        api,
+        1,
+        [entry("canary-name-71", "canary-description-71", senders=[sender("canary-sender-71@example.nl")])],
+        instructions="canary-instructions-71",
+    )
+
+    assert response.status_code == 500
+    assert [c for c in CANARIES if c in response.text or c in caplog.text] == []
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_canary_text_in_refused_input_when_put_then_the_422_and_the_logs_carry_none_of_it(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    caplog.set_level(logging.DEBUG)
+
+    response = await put(
+        api,
+        1,
+        [entry("canary-name-71/", "", senders=[sender("canary-sender-71@@example.nl")])],
+        instructions="canary-instructions-71" + "x" * 4000,
+    )
+
+    assert response.status_code == 422
+    assert [c for c in CANARIES if c in response.text or c in caplog.text] == []
+
+
+# Criterion 7 (U-label-structure-11): the maxima within a fixed time bound
+TIME_BOUND_SECONDS = 20.0
+
+
+async def test_given_100_categories_of_100_senders_when_saved_and_read_then_each_takes_under_the_time_bound(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    categories = [
+        entry(
+            f"Category {n}",
+            "d" * 1500,
+            kind="topic" if n % 2 else "extra",
+            notify=bool(n % 3),
+            senders=[sender(f"s{m}@host{n}.example.nl") for m in range(100)],
+        )
+        for n in range(100)
+    ]
+
+    started = time.monotonic()
+    saved = await put(api, 1, categories, instructions="g" * 4000)
+    saving = time.monotonic() - started
+    started = time.monotonic()
+    read = await get(api)
+    reading = time.monotonic() - started
+
+    assert saved.status_code == 200
+    assert read.status_code == 200
+    assert saved.json() == read.json()
+    assert sum(len(c["senders"]) for c in read.json()["categories"]) == 10_000
+    assert max(saving, reading) < TIME_BOUND_SECONDS
+    assert await owner.fetchval("select count(*) from categories.category_sender where version = 2") == 10_000
 
 
 # Criteria 1 to 3
@@ -325,12 +713,18 @@ async def test_given_a_label_of_225_characters_when_put_then_it_is_accepted(
 
 
 # Criterion 5
+def _item(
+    name: str, description: str, *, kind: str = "topic", senders: list[SenderItem] | None = None
+) -> CategoryInput:
+    return CategoryInput(name=name, description=description, kind=Kind(kind), notify=False, senders=senders or [])
+
+
 def _stored(labels: list[str], adoptable: list[str], existing: list[str]) -> StoredList:
     adopted = {label.casefold() for label in adoptable}
     owned = [label for label in labels if label.casefold() not in adopted and label.startswith("Assistant/")]
     names = [*existing, *(label.removeprefix("Assistant/") for label in owned)]
-    categories = tuple(StoredCategory(uuid.uuid4(), name, "x") for name in names)
-    return StoredList(1, categories, {}, tuple(labels))
+    categories = tuple(StoredCategory(uuid.uuid4(), name, "x", Kind.TOPIC, notify=False, senders=()) for name in names)
+    return StoredList(1, categories, "", ARCHIVE, {}, tuple(labels))
 
 
 def _fill(description: str) -> str:
@@ -350,11 +744,11 @@ def _nested(name: str) -> str:
 
 @pytest.mark.parametrize("case", CASES["category"], ids=[c["id"] for c in CASES["category"]])
 def test_given_a_shared_category_case_when_the_api_checks_the_list_then_the_rules_match(case: dict[str, Any]) -> None:
-    items = [CategoryInput(name=name, description="x") for name in case["existing"]]
-    items.append(CategoryInput(name=_nested(case["name"]), description=_fill(case["description"])))
+    items = [_item(name, "x") for name in case["existing"]]
+    items.append(_item(_nested(case["name"]), _fill(case["description"])))
     stored = _stored(case["labels"], case["adoptable"], [])
 
-    problems = problems_of(items, stored)
+    problems = problems_of(items, "", stored)
 
     assert [p.rule for p in problems if p.index == len(items) - 1] == case["rules"]
 
@@ -362,12 +756,12 @@ def test_given_a_shared_category_case_when_the_api_checks_the_list_then_the_rule
 @pytest.mark.parametrize("case", CASES["list"], ids=[c["id"] for c in CASES["list"]])
 def test_given_a_shared_list_case_when_the_api_checks_the_list_then_the_problems_match(case: dict[str, Any]) -> None:
     if "generate" in case:
-        items = [CategoryInput(name=f"Category {i}", description="x") for i in range(case["generate"])]
+        items = [_item(f"Category {i}", "x") for i in range(case["generate"])]
     else:
-        items = [CategoryInput(name=c["name"], description=c["description"]) for c in case["categories"]]
+        items = [_item(c["name"], c["description"]) for c in case["categories"]]
     stored = _stored(case["labels"], case["adoptable"], [])
 
-    problems = problems_of(items, stored)
+    problems = problems_of(items, "", stored)
 
     assert [[p.index, p.rule] for p in problems] == case["problems"]
 
@@ -379,6 +773,41 @@ def test_given_the_backend_when_read_then_nothing_names_a_removed_rule() -> None
     sources = [*(root / "app").rglob("*.py"), *(root / "tests").rglob("*.py")]
 
     assert [(path.name, rule) for path in sources for rule in removed if rule in path.read_text("utf-8")] == []
+
+
+@pytest.mark.parametrize("case", CASES["instructions"], ids=[c["id"] for c in CASES["instructions"]])
+def test_given_a_shared_instructions_case_when_the_api_checks_the_list_then_the_rules_match(
+    case: dict[str, Any],
+) -> None:
+    problems = problems_of([], "g" * case["length"], _stored([], [], []))
+
+    assert [p.rule for p in problems] == case["rules"]
+    assert all(p.field == "instructions" and p.index is None for p in problems)
+
+
+@pytest.mark.parametrize("case", SENDER_CASES["validate"], ids=[c["id"] for c in SENDER_CASES["validate"]])
+def test_given_a_shared_sender_case_when_the_api_checks_the_list_then_the_problems_match(case: dict[str, Any]) -> None:
+    items = [
+        _item(
+            c["name"],
+            "x",
+            kind=c["kind"],
+            senders=[SenderItem(entry=e["text"], subdomains=e["subdomains"]) for e in c["entries"]],
+        )
+        for c in case["categories"]
+    ]
+    if "generate_entries" in case:
+        items[0] = _item(
+            items[0].name,
+            "x",
+            kind=items[0].kind.value,
+            senders=[SenderItem(entry=f"s{i}@example.nl", subdomains=False) for i in range(case["generate_entries"])],
+        )
+
+    problems = problems_of(items, "", _stored([], [], []))
+
+    assert [[p.rule, p.index, p.position, p.other_index] for p in problems] == case["problems"]
+    assert all(p.field == "senders" for p in problems)
 
 
 async def test_given_a_name_that_is_an_older_category_when_put_then_it_is_adopted_not_refused(
@@ -404,7 +833,7 @@ async def test_given_a_name_whose_label_belongs_to_a_category_still_on_the_list_
     response = await put(api, 1, [entry("Bills", id_=invoices), entry("Invoices")])
 
     assert response.status_code == 422
-    assert {"rule": "name_label_exists", "field": "name", "index": 1} in response.json()["problems"]
+    assert _problem("name_label_exists", "name", 1) in response.json()["problems"]
 
 
 async def test_given_a_duplicate_id_when_put_then_422_id_duplicate(
@@ -416,7 +845,7 @@ async def test_given_a_duplicate_id_when_put_then_422_id_duplicate(
     response = await put(api, 1, [entry("A", id_=invoices), entry("B", id_=invoices)])
 
     assert response.status_code == 422
-    assert {"rule": "id_duplicate", "field": "id", "index": 1} in response.json()["problems"]
+    assert _problem("id_duplicate", "id", 1) in response.json()["problems"]
 
 
 async def test_given_the_empty_list_when_put_then_other_stays_and_cannot_be_deleted_or_renamed(
@@ -427,7 +856,7 @@ async def test_given_the_empty_list_when_put_then_other_stays_and_cannot_be_dele
     await count(owner, NIL, 4)
 
     emptied = await put(api, 1, [])
-    renamed = await request(api, "PUT", {"version": 2, "categories": [], "other": {"name": "Rest"}})
+    renamed = await request(api, "PUT", {**body_of(2, []), "other": {"name": "Rest"}})
 
     assert emptied.status_code == 200
     assert emptied.json()["categories"] == []
@@ -439,13 +868,22 @@ async def test_given_the_empty_list_when_put_then_other_stays_and_cannot_be_dele
 @pytest.mark.parametrize(
     "body",
     [
-        {"version": 1, "categories": [entry("A")], "extra": 1},
-        {"version": 1, "categories": [{"name": "A", "description": "d", "position": 3}]},
-        {"version": -1, "categories": []},
-        {"categories": []},
-        {"version": 1},
-        {"version": 1, "categories": [{"name": 5, "description": "d"}]},
-        {"version": 1, "categories": [{"name": "A", "description": "d", "id": "not-a-uuid"}]},
+        {**body_of(1, [entry("A")]), "extra": 1},
+        body_of(1, [{**entry("A"), "position": 3}]),
+        body_of(-1, []),
+        {"categories": [], "generalInstructions": ""},
+        {"version": 1, "generalInstructions": ""},
+        {"version": 1, "categories": []},
+        {"version": 1, "categories": [], "generalInstructions": None},
+        body_of(1, [{**entry("A"), "name": 5}]),
+        body_of(1, [entry("A", id_="not-a-uuid")]),
+        body_of(1, [{**entry("A"), "kind": "label"}]),
+        body_of(1, [{**entry("A"), "notify": "yes"}]),
+        body_of(1, [{**entry("A"), "senders": [{"entry": "a.nl"}]}]),
+        body_of(1, [{**entry("A"), "senders": [{"entry": "a.nl", "subdomains": False, "x": 1}]}]),
+        body_of(1, [{k: v for k, v in entry("A").items() if k != "kind"}]),
+        body_of(1, [{k: v for k, v in entry("A").items() if k != "notify"}]),
+        body_of(1, [{k: v for k, v in entry("A").items() if k != "senders"}]),
     ],
 )
 async def test_given_a_malformed_body_when_put_then_422_and_nothing_is_stored(
@@ -466,7 +904,7 @@ async def test_given_a_non_json_body_when_put_then_415(api: Api) -> None:
 
     response = await api.http.put(
         "/api/categories",
-        content='{"version": 0, "categories": []}',
+        content='{"version": 0, "categories": [], "generalInstructions": ""}',
         headers={
             "Content-Type": "text/plain",
             "Origin": ORIGIN,
@@ -580,7 +1018,7 @@ async def test_given_no_session_when_called_then_401_and_nothing_is_written(
 ) -> None:
     await seed(owner, [("Invoices", "Bills")])
 
-    response = await request(api, method, {"version": 1, "categories": []} if method == "PUT" else None, cookie=False)
+    response = await request(api, method, body_of(1, []) if method == "PUT" else None, cookie=False)
 
     assert response.status_code == 401
     assert response.json() == GENERIC_401
@@ -626,7 +1064,7 @@ async def test_given_the_web_lock_when_called_then_401_and_nothing_is_written(
     response = await api.http.request(
         method,
         "/api/categories",
-        json={"version": 1, "categories": []} if method == "PUT" else None,
+        json=body_of(1, []) if method == "PUT" else None,
         headers={
             "Origin": ORIGIN,
             "X-CSRF-Token": csrf_token(CSRF_KEY, created.id_hash),
