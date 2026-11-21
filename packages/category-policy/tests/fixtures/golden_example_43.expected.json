@@ -1,0 +1,307 @@
+{
+  "generalInstructions": "Mail from the school and from the general practitioner is always important. Prefer the most specific category. Anything that fits no category stays in Other.",
+  "archiveLabel": "Assistant/Archive",
+  "categories": [
+    {
+      "name": "Huis",
+      "kind": "topic",
+      "notify": false,
+      "senders": 0,
+      "meaningLost": false
+    },
+    {
+      "name": "Huis/Energie",
+      "kind": "topic",
+      "notify": true,
+      "senders": 2,
+      "meaningLost": false
+    },
+    {
+      "name": "Huis/Water",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Huis/Verzekeringen",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Huis/Onderhoud",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": true
+    },
+    {
+      "name": "Huis/Internet en TV",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Huis/Gemeente",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Chalet/Camping",
+      "kind": "topic",
+      "notify": true,
+      "senders": 2,
+      "meaningLost": false
+    },
+    {
+      "name": "Chalet/Verhuur",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": true
+    },
+    {
+      "name": "Chalet/Onderhoud",
+      "kind": "topic",
+      "notify": false,
+      "senders": 0,
+      "meaningLost": false
+    },
+    {
+      "name": "Chalet/Verzekering",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Financien/Bank",
+      "kind": "topic",
+      "notify": true,
+      "senders": 2,
+      "meaningLost": false
+    },
+    {
+      "name": "Financien/Belasting",
+      "kind": "topic",
+      "notify": true,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Financien/Pensioen",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Financien/Beleggen",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Financien/Hypotheek",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Gezondheid/Huisarts",
+      "kind": "topic",
+      "notify": true,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Gezondheid/Tandarts",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Gezondheid/Zorgverzekering",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Gezondheid/Apotheek",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Auto/Onderhoud",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": true
+    },
+    {
+      "name": "Auto/Verzekering",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Auto/Belasting en tol",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Reizen/Vluchten",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Reizen/Hotels",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Reizen/Treinen",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Werk/Salaris",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Werk/Vakbond",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Familie/School",
+      "kind": "topic",
+      "notify": true,
+      "senders": 1,
+      "meaningLost": true
+    },
+    {
+      "name": "Familie/Verjaardagen",
+      "kind": "topic",
+      "notify": false,
+      "senders": 0,
+      "meaningLost": false
+    },
+    {
+      "name": "Familie/Sportclub",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Winkelen/Bestellingen",
+      "kind": "topic",
+      "notify": false,
+      "senders": 2,
+      "meaningLost": false
+    },
+    {
+      "name": "Winkelen/Retouren",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Nieuwsbrieven/Nieuws",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Nieuwsbrieven/Hobby",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Abonnementen/Streaming",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Abonnementen/Software",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Overheid/Berichtenbox",
+      "kind": "topic",
+      "notify": true,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Persoonlijk",
+      "kind": "topic",
+      "notify": false,
+      "senders": 0,
+      "meaningLost": false
+    },
+    {
+      "name": "Hobby/Fotografie",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Vrijwilligerswerk",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Pakketten",
+      "kind": "topic",
+      "notify": false,
+      "senders": 1,
+      "meaningLost": false
+    },
+    {
+      "name": "Facturen",
+      "kind": "extra",
+      "notify": true,
+      "senders": 2,
+      "meaningLost": false
+    }
+  ]
+}

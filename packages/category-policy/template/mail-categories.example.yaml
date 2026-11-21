@@ -1,0 +1,34 @@
+# Mail categories - a small filled-in example of format "schema 1".
+# Upload it as it is to see how the page works, then replace it with your own list.
+# Every field is described in mail-categories.template.yaml; the short version follows.
+
+schema: 1                                  # schema: always 1
+
+# generalInstructions: text for every category (optional).
+generalInstructions: Prefer the most specific category. Mail about money from unknown senders is never urgent.
+
+# archiveLabel: where archived mail goes (optional, default Assistant/Archive).
+archiveLabel: Assistant/Archive
+
+# categories: the list; each has name, description and optionally kind, senders and notify.
+categories:
+  - name: Home/Energy                      # name: nest with "/"
+    kind: topic                            # kind: topic (default) or extra
+    description: Energy contracts, meter readings and yearly statements.   # description: what belongs here
+    senders:                               # senders: always file these here
+      - energy.example.com                 # a domain
+      - billing@gas.example.net            # a full address
+    notify: true                           # notify: true or false; true always notifies
+
+  - name: Travel/Flights
+    description: Flight bookings, check-in and schedule changes.
+    senders:
+      - entry: airline.example.com         # entry: the address or domain in the long form
+        subdomains: true                   # subdomains: true also matches mail.airline.example.com
+
+  - name: Invoices
+    kind: extra                            # an extra label goes next to the topic of the mail
+    description: Any invoice or payment request, whatever the topic.
+
+  - name: Newsletters
+    description: Newsletters and digests that I read when I have time.

@@ -1,0 +1,2 @@
+# Hostile and CRLF fixtures must reach the parser byte for byte.
+* -text

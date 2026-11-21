@@ -358,8 +358,12 @@ filecache = [
 name = "category-policy"
 version = "0.1.0"
 source = { directory = "../../packages/category-policy" }
+dependencies = [
+    { name = "pyyaml" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "pyyaml", specifier = ">=6.0.3" }]
 
 [package.metadata.requires-dev]
 dev = [
@@ -370,6 +374,7 @@ dev = [
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.17.3" },
+    { name = "types-pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]
