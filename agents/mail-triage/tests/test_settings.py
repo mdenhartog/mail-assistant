@@ -129,3 +129,37 @@ def test_given_the_app_source_when_scanned_then_no_model_id_literal_exists() -> 
     ]
 
     assert offenders == []
+
+
+def test_given_no_archive_label_value_when_settings_load_then_it_is_assistant_archive() -> None:
+    assert load_settings(VALID).archive_label == "Assistant/Archive"
+
+
+@pytest.mark.parametrize("value", ["Bewaard", "Mail/Done", "Assistant/Archive", "assistant/archive"])
+def test_given_a_valid_archive_label_when_settings_load_then_it_is_kept(value: str) -> None:
+    assert load_settings({**VALID, "ARCHIVE_LABEL": value}).archive_label == value
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        " Bewaard",
+        "Bewaard ",
+        "Bew\naard",
+        "a..b",
+        "INBOX",
+        "spam",
+        "CATEGORY_PROMOTIONS",
+        "Assistant/Other",
+        "Assistant/Travel",
+        "Assistant/",
+        "a" * 226,
+    ],
+)
+def test_given_an_unusable_archive_label_when_settings_load_then_startup_fails_without_the_value(value: str) -> None:
+    with pytest.raises(SettingsError) as error:
+        load_settings({**VALID, "ARCHIVE_LABEL": value})
+
+    assert "ARCHIVE_LABEL" in str(error.value)
+    assert value.strip() == "" or value not in str(error.value)
