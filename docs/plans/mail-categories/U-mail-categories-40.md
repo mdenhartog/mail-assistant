@@ -16,4 +16,4 @@ feature: mail-categories
 - Criteria:
   1. Given no value, When the settings load, Then the archive label is `Assistant/Archive` (type: happy)
   2. Given `Bewaard` or `Mail/Done`, Then it is accepted (type: happy)
-  3. Given an empty name, a name with a control character, a leading space, `..`, a system label name, `Assistant/Other`, `Assistant/Travel` or more than 225 characters, Then the load fails (type: security)
+  3. Given an empty name, a name with an empty path part, `assistant/archive` in another case, a name with a control character, a leading space, `..`, a system label name, `Assistant/Other`, `Assistant/Travel` or more than 225 characters, Then the load fails (type: security)

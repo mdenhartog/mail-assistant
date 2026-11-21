@@ -30,7 +30,7 @@ _ARCHIVE_LABEL_MAX = 225  # the length Gmail allows for a label name
 _SYSTEM_LABELS = frozenset(
     {"inbox", "spam", "trash", "draft", "sent", "starred", "unread", "important", "chat", "snoozed", "scheduled"}
 )
-_DEFAULT_ARCHIVE_LABEL = "assistant/archive"
+_DEFAULT_ARCHIVE_LABEL = "Assistant/Archive"
 
 
 def _usable_archive_label(name: str) -> bool:
@@ -40,10 +40,11 @@ def _usable_archive_label(name: str) -> bool:
         0 < len(name) <= _ARCHIVE_LABEL_MAX
         and name == name.strip()
         and ".." not in name
+        and all(name.split("/"))  # no empty part: no leading, trailing or double slash
         and not any(unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"} for char in name)
         and key not in _SYSTEM_LABELS
         and not key.startswith("category_")
-        and (not key.startswith("assistant/") or key == _DEFAULT_ARCHIVE_LABEL)
+        and (not key.startswith("assistant/") or name == _DEFAULT_ARCHIVE_LABEL)
     )
 
 
