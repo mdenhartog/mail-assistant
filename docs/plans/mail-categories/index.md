@@ -48,6 +48,9 @@ Units U-01 to U-11 are release R1 (list, Categories page, judging, Archive label
 | [U-mail-categories-34](U-mail-categories-34.md) | Mutation gate for the INT-004 pure modules | backend | U-mail-categories-02, U-mail-categories-05 | no | 9 |
 | [U-mail-categories-35](U-mail-categories-35.md) | Filter and sort the plan items by sender | backend | U-mail-categories-32 | no | 10 |
 | [U-mail-categories-36](U-mail-categories-36.md) | Filter and sort controls on the Review moves page | web | U-mail-categories-35 | no | 10 |
+| [U-mail-categories-37](U-mail-categories-37.md) | A failed step names the Gmail status and reason in the log | backend | U-mail-categories-21 | yes | 11 |
+| [U-mail-categories-38](U-mail-categories-38.md) | A label name that Gmail refuses does not stop the label sync | backend | U-mail-categories-37 | no | 12 |
+| [U-mail-categories-39](U-mail-categories-39.md) | The plan build works in slices so the mail cycle and the heartbeat go on | backend | U-mail-categories-14 | no | 13 |
 
 ## Build order
 
@@ -80,3 +83,6 @@ Unit (policy, state machine, classifier, parsers, formatters), integration on re
 8. Wave 8 (units with Parallel yes run together, each in its own worktree): U-mail-categories-11
 9. Wave 9 (review and verify fixes, one at a time): U-mail-categories-26, U-mail-categories-27, U-mail-categories-28, U-mail-categories-29, U-mail-categories-30, U-mail-categories-31, U-mail-categories-32, U-mail-categories-33, U-mail-categories-34
 10. Wave 10 (sender filter and sort, one at a time): U-mail-categories-35, U-mail-categories-36
+11. Wave 11 (operations fix after the first deploy, in parallel): U-mail-categories-37
+12. Wave 12 (operations fix after the first deploy, one at a time): U-mail-categories-38
+13. Wave 13 (operations fix after the first deploy, one at a time): U-mail-categories-39

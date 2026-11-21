@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from app.adapters.telegram_inbox import Command
 from app.runner import FailureNotice, Runner
 from app.usecases.triage import RunSummary
+from tests.fakes.fake_gmail import http_error
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -22,14 +23,15 @@ NOW = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
 class Steps:
     """Records the order of calls; named steps can be made to fail."""
 
-    def __init__(self, *, failing: set[str] | None = None) -> None:
+    def __init__(self, *, failing: set[str] | None = None, error: Exception | None = None) -> None:
         self.calls: list[str] = []
         self.failing = failing or set()
+        self.error = error
 
     async def step(self, name: str) -> None:
         self.calls.append(name)
         if name in self.failing:
-            raise RuntimeError(f"{name} broke with mail text: very private")
+            raise self.error or RuntimeError(f"{name} broke with mail text: very private")
 
 
 class Pipeline:
@@ -240,6 +242,33 @@ async def test_given_a_failing_web_notice_when_a_cycle_runs_then_the_mail_steps_
     assert steps.calls[2:] == ["release_due", "pipeline", "catchup", "deliver", "overview", "purge"]
     assert "step web_notice failed kind=RuntimeError" in caplog.text
     assert "very private" not in caplog.text
+
+
+async def test_given_a_step_that_fails_on_gmail_when_a_cycle_runs_then_the_log_names_the_status_and_reason_only(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    error = http_error(403, "Label Invoices of very private mail", reason="forbidden")
+    run, _ = runner(Steps(failing={"web_notice"}, error=error), tmp_path)
+
+    await run.mail_cycle()
+
+    assert "step web_notice failed kind=HttpError status=403 reason=forbidden" in caplog.text
+    assert "very private" not in caplog.text
+    assert "Invoices" not in caplog.text
+
+
+async def test_given_a_step_that_fails_on_gmail_without_a_reason_when_a_cycle_runs_then_only_the_status_is_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    run, _ = runner(Steps(failing={"web_notice"}, error=http_error(500, "backend error")), tmp_path)
+
+    await run.mail_cycle()
+
+    assert "step web_notice failed kind=HttpError status=500" in caplog.text
+    assert "reason" not in caplog.text
+    assert "backend error" not in caplog.text
 
 
 async def test_given_a_cycle_when_it_ends_then_the_heartbeat_file_is_touched(tmp_path: Path) -> None:

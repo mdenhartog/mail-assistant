@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import timedelta
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 RETENTION = timedelta(days=30)  # ADR-0020
+_REASON_CODE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")  # a code such as "forbidden", never a sentence
 MAX_COMMAND_ATTEMPTS = 3  # a command that fails this often is given up, so one bad update cannot block the rest
 
 
@@ -172,6 +174,24 @@ class FailureNotice:
         )
 
 
+def _api_failure(error: Exception) -> str:
+    """For a failed Google API call: ``" status=403 reason=forbidden"``, else an empty string.
+
+    Only the HTTP status and the short reason code are logged. The message of the error can hold a label name or mail
+    text, so it never reaches the log. Without the status a broken Gmail call cannot be told from another one.
+    """
+    status: object = getattr(getattr(error, "resp", None), "status", None)
+    if not isinstance(status, int):
+        return ""
+    details: object = getattr(error, "error_details", None)
+    if isinstance(details, list):
+        for item in cast("list[object]", details):
+            reason = cast("dict[str, object]", item).get("reason") if isinstance(item, dict) else None
+            if isinstance(reason, str) and _REASON_CODE.fullmatch(reason):
+                return f" status={status} reason={reason}"
+    return f" status={status}"
+
+
 class Runner:
     """Runs the cycles."""
 
@@ -292,7 +312,7 @@ class Runner:
         try:
             await step
         except Exception as error:
-            logger.warning("step %s failed kind=%s", name, type(error).__name__)
+            logger.warning("step %s failed kind=%s%s", name, type(error).__name__, _api_failure(error))
 
     async def telegram_cycle(self) -> None:
         """Wait for Marco's commands and route each one, in order.

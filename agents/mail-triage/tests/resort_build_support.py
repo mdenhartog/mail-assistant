@@ -191,7 +191,8 @@ class ScriptedJudge:
 class Rig:
     """Everything a build test needs, wired the way the agent will wire it."""
 
-    def __init__(self, *, daily_total: int = DAILY_TOTAL) -> None:
+    def __init__(self, *, daily_total: int = DAILY_TOTAL, per_run: int = 100_000) -> None:
+        """``per_run`` is large unless a test is about the slices of one run."""
         self.clock = FakeClock(START)
         self.gmail = FakeGmail()
         self.mailbox = GmailBuildMailbox(self.gmail)
@@ -210,6 +211,7 @@ class Rig:
             now=self.clock,
             pinned=PINNED,
             debounce=timedelta(minutes=10),
+            per_run=per_run,
         )
 
     def remaining(self) -> int:

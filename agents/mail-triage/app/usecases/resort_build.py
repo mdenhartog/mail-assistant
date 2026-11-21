@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from app.core.pinned import PinnedSenders
 
 __all__ = [
+    "BUILD_SLICE",
     "PAGE_SIZE",
     "PLAN_CAP",
     "BuildList",
@@ -55,6 +56,9 @@ logger = logging.getLogger(__name__)
 
 PLAN_CAP = 5000  # mails a plan looks at, newest first (D15)
 PAGE_SIZE = 100
+# Mails one run looks at before it gives the cycle back (ADR-0051). At about 2 to 3 seconds per judged mail this is
+# under a minute, so alerts, the overview and the heartbeat (180 seconds) are never kept waiting by a long build.
+BUILD_SLICE = 20
 SUBJECT_MAX = 120
 NAME_MAX = 120
 ADDRESS_MAX = 320
@@ -246,6 +250,7 @@ class ResortBuild:
         pinned: PinnedSenders,
         debounce: timedelta,  # how long the list must stay unchanged before a build starts (D14); from the settings
         cap: int = PLAN_CAP,
+        per_run: int = BUILD_SLICE,  # how many mails one run looks at before it pauses (ADR-0051)
     ) -> None:
         """Wire the ports, the clock and the allow-list of pinned sender domains."""
         self._mail = mailbox
@@ -257,6 +262,7 @@ class ResortBuild:
         self._pinned = pinned
         self._debounce = debounce
         self._cap = cap
+        self._per_run = per_run
 
     async def run_once(self) -> BuildResult:
         """Replace a plan that a newer list outdated, start a build when due, and work on the plan being built."""
@@ -306,11 +312,15 @@ class ResortBuild:
         return BuildResult(BuildStatus.READY, numbers)
 
     async def _scan(self, plan: PlanRecord, current: BuildList) -> tuple[int, int, int, str | None]:
-        """Look at the listed mail until the cap or the end; return (checked, unclear, items, cursor)."""
+        """Look at the listed mail until the cap, the end or the slice; return (checked, unclear, items, cursor).
+
+        After ``per_run`` mails the run pauses (the progress of each mail is already stored) and the next run goes on.
+        """
         names = await asyncio.to_thread(self._mail.label_names)
         rejected = await self._store.rejected_ids(plan.list_version)
         by_label = {f"{LABEL_PREFIX}{c.name.strip()}": c.category_id for c in current.categories}
         checked, unclear, items, cursor = plan.checked, plan.unclear, plan.items, plan.cursor
+        looked = 0
         while checked < plan.cap:
             page = await asyncio.to_thread(self._mail.candidates, cursor, PAGE_SIZE)
             if not page:
@@ -318,8 +328,11 @@ class ResortBuild:
             for candidate in page:
                 if checked >= plan.cap:
                     break
+                if looked >= self._per_run:
+                    raise _Pause
                 await self._still_current(plan)
                 result = await self._look(plan, candidate, current, names, rejected, by_label)
+                looked += 1
                 cursor = candidate.resume_after
                 checked, unclear, items = checked + result[0], unclear + result[1], items + result[2]
         return checked, unclear, items, cursor
