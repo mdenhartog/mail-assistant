@@ -6,7 +6,7 @@ spec: docs/specs/label-structure.md
 
 # My own label structure, sender rules and always-notify
 
-The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 31 units in two releases: R1 (units 01 to 17 and 28 to 31) and R2 (units 18 to 27). Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
+The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 32 units in two releases: R1 (units 01 to 17, 28 to 32) and R2 (units 18 to 27). Not yet planned: the per-entry counts of skipped (not authenticated) sender-rule mail on the Categories page (K11 of the round table), which needs a derived table kept by the agent, a field in the api and a column in the web app; they become units after unit 11, before the R1 release. Unit 32 was split out of unit 08. Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
 
 ## Units
 
@@ -23,7 +23,8 @@ The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/de
 | [U-label-structure-05](U-label-structure-05.md) | Migration for contract v2 (R1) | backend | U-label-structure-02 | yes | 2 |
 | [U-label-structure-07](U-label-structure-07.md) | One authenticated-sender verifier (R1) | backend | U-label-structure-01 | yes | 2 |
 | [U-label-structure-04](U-label-structure-04.md) | category-policy v2: the YAML schema, the template and the fixtures | backend | U-label-structure-02, U-label-structure-03 | yes | 3 |
-| [U-label-structure-08](U-label-structure-08.md) | Sender-rule filing (R1) | backend | U-label-structure-01, U-label-structure-02, U-label-structure-03, U-label-structure-05, U-label-structure-07 | no | 3 |
+| [U-label-structure-32](U-label-structure-32.md) | The filing code uses topic, extra label and source | backend | U-label-structure-05 | no | 3 |
+| [U-label-structure-08](U-label-structure-08.md) | Sender-rule filing (R1) | backend | U-label-structure-01, U-label-structure-02, U-label-structure-03, U-label-structure-05, U-label-structure-07, U-label-structure-32 | no | 4 |
 | [U-label-structure-09](U-label-structure-09.md) | Judging v2 and the urgency-only call (R1) | backend | U-label-structure-01, U-label-structure-02, U-label-structure-05 | no | 3 |
 | [U-label-structure-11](U-label-structure-11.md) | Api: the category list v2 (R1) | backend | U-label-structure-02, U-label-structure-03, U-label-structure-05 | yes | 3 |
 | [U-label-structure-10](U-label-structure-10.md) | The always-notify alert (R1) | backend | U-label-structure-08, U-label-structure-09 | yes | 4 |
