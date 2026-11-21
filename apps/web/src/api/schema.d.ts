@@ -549,8 +549,13 @@ export interface components {
             description: string;
             /** Id */
             id?: string | null;
+            kind: components["schemas"]["Kind"];
             /** Name */
             name: string;
+            /** Notify */
+            notify: boolean;
+            /** Senders */
+            senders: components["schemas"]["SenderItem"][];
         };
         /**
          * CategoryItem
@@ -564,10 +569,15 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            kind: components["schemas"]["Kind"];
             /** Mailcount */
             mailCount: number;
             /** Name */
             name: string;
+            /** Notify */
+            notify: boolean;
+            /** Senders */
+            senders: components["schemas"]["SenderItem"][];
         };
         /**
          * CategoryList
@@ -576,6 +586,8 @@ export interface components {
         CategoryList: {
             /** Categories */
             categories: components["schemas"]["CategoryItem"][];
+            /** Generalinstructions */
+            generalInstructions: string;
             /** Oldercategories */
             olderCategories: components["schemas"]["OlderCategory"][];
             other: components["schemas"]["OtherItem"];
@@ -591,21 +603,30 @@ export interface components {
         CategoryListUpdate: {
             /** Categories */
             categories: components["schemas"]["CategoryInput"][];
+            /** Generalinstructions */
+            generalInstructions: string;
             /** Version */
             version: number;
         };
         /**
          * CategoryProblem
-         * @description One refusal: the rule, the field and the position of the category (None for the whole list). No value.
+         * @description One refusal: the rule, the field, the category (None for the whole list) and for a sender entry its position.
+         *
+         *     ``other_index`` names the category that already has the entry of a ``sender_duplicate`` (the same category when it
+         *     repeats the entry itself). No value is ever carried.
          */
         CategoryProblem: {
             /**
              * Field
              * @enum {string}
              */
-            field: "name" | "description" | "id" | "list";
+            field: "name" | "description" | "id" | "list" | "senders" | "instructions";
             /** Index */
             index: number | null;
+            /** Otherindex */
+            otherIndex: number | null;
+            /** Position */
+            position: number | null;
             /** Rule */
             rule: string;
         };
@@ -755,6 +776,14 @@ export interface components {
             /** To */
             to?: string | null;
         };
+        /**
+         * Kind
+         * @description What a category is for.
+         *
+         *     A mail has exactly one ``topic`` (or the built-in "Other") and at most one ``extra`` label next to it.
+         * @enum {string}
+         */
+        Kind: "topic" | "extra";
         /**
          * LastPlan
          * @description The plan that ended most recently; "Move back" is offered for it only when it was applied.
@@ -1035,6 +1064,18 @@ export interface components {
             maskedAddress: string;
             /** Resendafterseconds */
             resendAfterSeconds: number;
+        };
+        /**
+         * SenderItem
+         * @description A sender entry of a category: a full address or a domain, with the opt-in for subdomains.
+         *
+         *     On a save it is the text as typed; on a read it is the stored form (lower-case A-labels).
+         */
+        SenderItem: {
+            /** Entry */
+            entry: string;
+            /** Subdomains */
+            subdomains: boolean;
         };
         /**
          * SessionInfo

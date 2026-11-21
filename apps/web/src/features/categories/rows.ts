@@ -1,4 +1,4 @@
-import type { CategoryList } from "@/api/categories/categories.types";
+import type { CategoryItem, CategoryList } from "@/api/categories/categories.types";
 import { LABEL_PREFIX, normaliseName } from "@/features/categories/policy";
 
 /** One category card as the user is editing it. `key` is local; `id` is null until the api has stored it. */
@@ -8,6 +8,10 @@ export interface Row {
   name: string;
   description: string;
   mailCount: number | null;
+  /** Carried untouched from the api until the screens that edit them exist; a new card is a topic without tick or senders. */
+  kind: CategoryItem["kind"];
+  notify: boolean;
+  senders: CategoryItem["senders"];
 }
 
 export type RowField = "name" | "description";
@@ -19,6 +23,9 @@ export function rowsOf(list: CategoryList): Row[] {
     name: category.name,
     description: category.description,
     mailCount: category.mailCount,
+    kind: category.kind,
+    notify: category.notify,
+    senders: category.senders,
   }));
 }
 

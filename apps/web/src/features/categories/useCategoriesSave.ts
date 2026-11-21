@@ -31,15 +31,14 @@ export interface CategoriesSave {
 }
 
 function bodyOf(rows: readonly Row[]): CategoryInput[] {
-  return rows.map((row) =>
-    row.id === null
-      ? { name: row.name, description: row.description }
-      : { id: row.id, name: row.name, description: row.description },
-  );
+  return rows.map((row) => {
+    const fields = { name: row.name, description: row.description, kind: row.kind, notify: row.notify, senders: row.senders };
+    return row.id === null ? fields : { id: row.id, ...fields };
+  });
 }
 
 /** Maps problems with a card position and a text field to messages; the first problem of a field wins. */
-function errorsOf(problems: readonly CategoryProblem[], rows: readonly Row[]): RowErrors {
+function errorsOf(problems: readonly Pick<CategoryProblem, "rule" | "field" | "index">[], rows: readonly Row[]): RowErrors {
   const errors: RowErrors = {};
   for (const problem of problems) {
     const row = problem.index === null ? undefined : rows[problem.index];
@@ -123,7 +122,7 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[]): Cat
     setResult(null);
     feedback.clearAll();
     save.mutate(
-      { version: list.version, categories: bodyOf(rows) },
+      { version: list.version, generalInstructions: list.generalInstructions, categories: bodyOf(rows) },
       {
         onSuccess: () => {
           setResult("saved");

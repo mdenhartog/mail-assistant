@@ -104,6 +104,9 @@ describe("Categories page: the limit", () => {
       name: `Category ${String(index)}`,
       description: "Something",
       mailCount: 0,
+      kind: "topic" as const,
+      notify: false,
+      senders: [],
     }));
     wire({ get: () => json({ ...LIST, categories: many, olderCategories: [] }) });
     renderPage();
