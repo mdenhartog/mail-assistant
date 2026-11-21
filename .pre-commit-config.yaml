@@ -11,7 +11,8 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
         args: [--allow-multiple-documents]
-        exclude: ^deploy/charts/.*/templates/
+        # The Helm templates are not plain YAML; the hostile fixtures are invalid YAML on purpose (U-label-structure-04).
+        exclude: ^(deploy/charts/.*/templates/|packages/category-policy/tests/fixtures/hostile/)
       - id: check-json
       - id: end-of-file-fixer
       - id: trailing-whitespace

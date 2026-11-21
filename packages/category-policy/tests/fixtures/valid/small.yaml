@@ -1,0 +1,19 @@
+schema: 1
+generalInstructions: Mail from the school is always important.
+archiveLabel: Assistant/Archive
+categories:
+  - name: Huis/Energie
+    kind: topic
+    description: Energy contracts, meter readings and yearly statements.
+    senders:
+      - energie.example.com
+      - entry: example.org
+        subdomains: true
+      - billing@example.net
+    notify: true
+  - name: Facturen
+    kind: extra
+    description: Any invoice or payment request, whatever the topic.
+  - name: "no"
+    description: A name that must stay a string.
+    senders: [on.example.com]

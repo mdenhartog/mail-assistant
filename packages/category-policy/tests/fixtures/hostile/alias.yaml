@@ -1,0 +1,6 @@
+schema: 1
+categories:
+  - name: Huis
+    description: &d Text
+  - name: Auto
+    description: *d

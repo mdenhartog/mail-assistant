@@ -1,0 +1,4 @@
+schema: 1
+categories:
+  - name: !!str Huis
+    description: A

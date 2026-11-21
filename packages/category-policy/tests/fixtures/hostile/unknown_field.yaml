@@ -1,0 +1,6 @@
+schema: 1
+colour: red
+categories:
+  - name: Huis
+    description: A
+    priority: high
