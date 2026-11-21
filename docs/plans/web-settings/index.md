@@ -89,6 +89,7 @@ Overview of the plan: what is built, in which order and what can run in parallel
 | [U-web-settings-76](U-web-settings-76.md) | The Gmail consent runs in the agent container for the local stack (R1; test environment; D-23) | infra, tooling, agent | U-web-settings-73, U-web-settings-75 | yes | 10 |
 | [U-web-settings-77](U-web-settings-77.md) | The sign-in username ignores surrounding spaces and letter case (R1; backend; D-24) | backend | U-web-settings-17, U-web-settings-18, U-web-settings-50 | yes | 10 |
 | [U-web-settings-78](U-web-settings-78.md) | The login page says it wants the username, not the e-mail address (R1; D-22) | web | U-web-settings-31 | yes | 11 |
+| [U-web-settings-79](U-web-settings-79.md) | The log check counts a code only as a whole number (R1; CI fix) | ci | U-web-settings-42 | yes | 12 |
 
 ## Build order
 
@@ -103,7 +104,7 @@ Overview of the plan: what is built, in which order and what can run in parallel
 9. Wave 9 (after wave 8) — in parallel: U-web-settings-30, U-web-settings-44, U-web-settings-51, U-web-settings-74, U-web-settings-75; one at a time: U-web-settings-22, U-web-settings-50
 10. Wave 10 (after wave 9) — in parallel: U-web-settings-32, U-web-settings-45, U-web-settings-76, U-web-settings-77; one at a time: U-web-settings-25, U-web-settings-31, U-web-settings-53
 11. Wave 11 (after wave 10) — in parallel: U-web-settings-35, U-web-settings-47, U-web-settings-64, U-web-settings-78; one at a time: U-web-settings-33, U-web-settings-42, U-web-settings-46, U-web-settings-54, U-web-settings-62
-12. Wave 12 (after wave 11) — in parallel: U-web-settings-34, U-web-settings-61, U-web-settings-63, U-web-settings-65; one at a time: U-web-settings-55, U-web-settings-60
+12. Wave 12 (after wave 11) — in parallel: U-web-settings-34, U-web-settings-61, U-web-settings-63, U-web-settings-65, U-web-settings-79; one at a time: U-web-settings-55, U-web-settings-60
 13. Wave 13 (after wave 12) — in parallel: U-web-settings-71; one at a time: U-web-settings-36, U-web-settings-67
 14. Wave 14 (after wave 13) — one at a time: U-web-settings-43, U-web-settings-68
 15. Wave 15 (after wave 14) — one at a time: U-web-settings-69
