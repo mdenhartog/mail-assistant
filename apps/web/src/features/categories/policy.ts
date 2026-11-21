@@ -1,12 +1,14 @@
 /**
  * The name, description and list rules of a category, as the api and the agent apply them
- * (`packages/category-policy`, INT-004, AC-2, AC-8). The cases both runtimes must pass live in
+ * (`packages/category-policy` v2, INT-004, INT-008). The cases both runtimes must pass live in
  * `category_cases.json`; this file adds no rule of its own. The api stays the authority: it checks again.
  */
 
-const NAME_MAX = 40;
-const DESCRIPTION_MAX = 500;
-export const MAX_CATEGORIES = 50;
+const SEGMENT_MAX = 40;
+const LABEL_MAX = 225;
+const DESCRIPTION_MAX = 1500;
+export const MAX_CATEGORIES = 100;
+const SEPARATOR = "/";
 export const LABEL_PREFIX = "Assistant/";
 const RESERVED_NAMES: readonly string[] = ["other", "archive"];
 const FORBIDDEN = /[\p{Cc}\p{Cf}]/u;
@@ -28,8 +30,21 @@ export interface CategoryText {
   description: string;
 }
 
+// Look-alikes of "/" that NFKC leaves alone (division slash; the full-width solidus NFKC folds itself).
+const SLASH_LOOK_ALIKES = /[∕／]/g;
+
+/** The segments of a name: look-alikes of "/" folded, NFKC, every segment trimmed (letter case kept). */
+function segmentsOf(raw: string): string[] {
+  const folded = raw.replace(SLASH_LOOK_ALIKES, SEPARATOR).normalize("NFKC").replace(SLASH_LOOK_ALIKES, SEPARATOR);
+  return folded
+    .trim()
+    .split(SEPARATOR)
+    .map((segment) => segment.trim());
+}
+
+/** The stored form of a name: every segment trimmed and joined with "/". */
 function canonical(raw: string): string {
-  return raw.trim().normalize("NFKC").trim();
+  return segmentsOf(raw).join(SEPARATOR);
 }
 
 function length(text: string): number {
@@ -41,12 +56,12 @@ function length(text: string): number {
  * Python's `casefold`, so "Straße" and "STRASSE" meet).
  */
 export function normaliseName(raw: string): string {
-  return canonical(raw).toUpperCase().toLowerCase().normalize("NFKC").trim();
+  return canonical(canonical(raw).toUpperCase().toLowerCase().normalize("NFKC").toUpperCase().toLowerCase());
 }
 
 /** The Gmail label of a category name. */
 function labelFor(name: string): string {
-  return `${LABEL_PREFIX}${name.trim()}`;
+  return `${LABEL_PREFIX}${canonical(name)}`;
 }
 
 /** Whether the label of the name exists and is not an older category's label (which the name adopts). */
@@ -56,30 +71,31 @@ function labelClashes(name: string, labels: readonly string[], adoptable: readon
   return has(labels) && !has(adoptable);
 }
 
+/** The rules about the shape of a name, in rule order. */
+function shapeProblems(segments: readonly string[], text: string): string[] {
+  const checks: [boolean, string][] = [
+    [segments.some((segment) => segment === ""), "name_segment_empty"],
+    [segments.some((segment) => length(segment) > SEGMENT_MAX), "name_segment_too_long"],
+    [length(LABEL_PREFIX) + length(text) > LABEL_MAX, "name_label_too_long"],
+    [hasForbidden(text), "name_forbidden_char"],
+    [RESERVED_NAMES.includes(normaliseName(segments[0] ?? "")), "name_reserved"],
+  ];
+  return checks.filter(([broken]) => broken).map(([, rule]) => rule);
+}
+
 function nameProblems(
   name: string,
   existing: readonly string[],
   labels: readonly string[],
   adoptable: readonly string[],
 ): string[] {
-  const text = canonical(name);
+  const segments = segmentsOf(name);
+  const text = segments.join(SEPARATOR);
   if (text === "") {
     return ["name_empty"];
   }
-  const rules: string[] = [];
-  if (length(text) > NAME_MAX) {
-    rules.push("name_too_long");
-  }
-  if (text.includes("/")) {
-    rules.push("name_slash");
-  }
-  if (hasForbidden(text)) {
-    rules.push("name_forbidden_char");
-  }
+  const rules = shapeProblems(segments, text);
   const key = normaliseName(name);
-  if (RESERVED_NAMES.includes(key)) {
-    rules.push("name_reserved");
-  }
   if (existing.some((other) => normaliseName(other) === key)) {
     rules.push("name_duplicate");
   } else if (labelClashes(text, labels, adoptable)) {
@@ -119,7 +135,7 @@ export function validateCategory(
 }
 
 /**
- * Checks a whole list: every category (a later duplicate is the one flagged) and the cap of 50.
+ * Checks a whole list: every category (a later duplicate is the one flagged) and the cap of 100.
  *
  * @example
  * validateList([{ name: "Invoices", description: "Bills" }], [], []); // []

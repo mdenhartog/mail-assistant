@@ -94,7 +94,7 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
           Add category
         </Button>
         {flow.canAdd ? null : (
-          <p className="mt-2 text-sm text-text-muted">You have reached the limit of 50 categories. Remove one to add another.</p>
+          <p className="mt-2 text-sm text-text-muted">You have reached the limit of 100 categories. Remove one to add another.</p>
         )}
       </div>
       <OtherCard mailCount={list.other.mailCount} />
