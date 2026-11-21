@@ -403,8 +403,9 @@
         },
         "categoriesBodyLimitBytes": {
           "type": "integer",
-          "minimum": 1,
-          "description": "Outer request body cap of PUT /api/categories only (MC-12)."
+          "minimum": 16384,
+          "maximum": 4194304,
+          "description": "Outer request body cap of PUT /api/categories only (MC-12). Default 2097152 (2 MiB) is the api limit; the operator may lower it, 16384 to 4194304 (4 MiB) is accepted."
         }
       }
     },
