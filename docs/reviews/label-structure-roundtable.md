@@ -3,7 +3,7 @@ feature: label-structure
 intent: INT-008
 phase: 2 (spec and threat model round table)
 date: 2026-11-21
-status: synthesis, waiting for the user's decisions
+status: closed; the user answered the questions and approved the revised spec and threat model on 2026-11-21
 ---
 
 # Round table, phase 2: label structure, sender rules and always-notify

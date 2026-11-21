@@ -1,8 +1,9 @@
 ---
 feature: label-structure
 intent: INT-008
-status: draft
+status: approved
 revision: 2 (after the phase 2 round table, 2026-11-21)
+approved: 2026-11-21 (the user)
 docs: docs/user-guide/label-structure.md
 date: 2026-11-21
 approver: the user

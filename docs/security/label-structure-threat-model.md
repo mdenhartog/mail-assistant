@@ -3,8 +3,9 @@ feature: label-structure
 intent: INT-008
 spec: docs/specs/label-structure.md
 extends: mail-categories-threat-model, mail-triage-threat-model, web-settings-threat-model
-status: draft
+status: approved
 revision: 2 (after the phase 2 round table, 2026-11-21)
+approved: 2026-11-21 (the user)
 date: 2026-11-21
 approver: the user
 asvs: "5.0"
