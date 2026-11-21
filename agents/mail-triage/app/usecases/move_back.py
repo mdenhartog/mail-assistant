@@ -73,13 +73,14 @@ class MoveBackStore(Protocol):
 class MoveBack:
     """Restores the labels of applied plans on request."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         mailbox: ApplyMailbox,
         store: MoveBackStore,
         lock: ApplyLock,
         notifier: ApplyNotifier,
+        archive_label: str,  # the protected label (C-14, ADR-0052)
         batch_size: int = BATCH_SIZE,
     ) -> None:
         """Wire the ports."""
@@ -87,6 +88,7 @@ class MoveBack:
         self._store = store
         self._lock = lock
         self._notifier = notifier
+        self._archive = archive_label
         self._batch = batch_size
 
     async def run_once(self) -> None:
@@ -130,7 +132,10 @@ class MoveBack:
             return held == ({old} if old else set())  # already back (a retry, or the user did it)
         if held - {move.new_label, old}:
             return False  # another label as well: changed meanwhile
-        if old not in held and classify({names[i] for i in mail.labels if i in names}) is not Scope.IN_SCOPE:
+        if (
+            old not in held
+            and classify({names[i] for i in mail.labels if i in names}, self._archive) is not Scope.IN_SCOPE
+        ):
             return False  # archived, trashed or out of the inbox meanwhile
         try:
             if old and old not in held:

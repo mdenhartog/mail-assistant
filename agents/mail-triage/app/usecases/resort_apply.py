@@ -272,6 +272,7 @@ class ResortApply:
         notifier: ApplyNotifier,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
+        archive_label: str,  # the protected label (C-14, ADR-0052)
         batch_size: int = BATCH_SIZE,
     ) -> None:
         """Wire the ports, the clock and the allow-list of pinned sender domains."""
@@ -281,6 +282,7 @@ class ResortApply:
         self._notifier = notifier
         self._now = now
         self._pinned = pinned
+        self._archive = archive_label
         self._batch = batch_size
 
     async def run_once(self) -> None:
@@ -405,7 +407,7 @@ class ResortApply:
     ) -> _Checked | SkipReason:
         """The checks before a move, in the order that cannot leak: scope, pinning, then the old label."""
         label_names = {names[i] for i in mail.labels if i in names}
-        scope = classify(label_names)
+        scope = classify(label_names, self._archive)
         if scope is Scope.OUT:
             return SkipReason.OUT_OF_SCOPE
         if scope is Scope.UNCLEAR:

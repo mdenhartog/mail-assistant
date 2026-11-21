@@ -6,11 +6,11 @@ it. A test holds the allow-list and scans this source.
 
 Rules the adapter enforces itself, whatever the caller asks:
 
-- Mail may only get or lose a label under ``Assistant/``; ``Archive``, system labels and other labels are refused,
-  so the agent never files mail in ``Archive`` (AC-25).
-- A rename needs a category label as its source and a category label name as its target; ``Archive`` and
-  ``Assistant/Other`` never change name.
-- ``Archive`` and names under ``Assistant/`` are the only labels it creates.
+- Mail may only get or lose a label under ``Assistant/``; the archive label, system labels and other labels are
+  refused, so the agent never files mail in the archive label (AC-25, ADR-0052).
+- A rename needs a category label as its source and a category label name as its target; the archive
+  label and ``Assistant/Other`` never change name.
+- The archive label and names under ``Assistant/`` are the only labels it creates.
 
 The guards use label names from the latest listing; call ``list_labels`` at the start of a run.
 """
@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 
 LABEL_PREFIX = "Assistant/"
 OTHER_LABEL = f"{LABEL_PREFIX}Other"
-ARCHIVE = "Archive"
 ME = "me"
 HTTP_CONFLICT = 409
 HTTP_BAD_REQUEST = 400
@@ -76,9 +75,15 @@ def _under_prefix(name: str) -> bool:
 class GmailResort:
     """Label and list operations on one mailbox. ``service`` is the Gmail v1 service; ``sleep`` is injectable."""
 
-    def __init__(self, service: Any, sleep: Callable[[float], None] = time.sleep) -> None:  # noqa: ANN401
-        """Keep the service, the sleep used between retries and the label names of the latest listing."""
+    def __init__(
+        self,
+        service: Any,  # noqa: ANN401
+        archive_label: str,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
+        """Keep the service, the archive label name, the sleep used between retries and the latest label names."""
         self._service = service
+        self._archive = archive_label
         self._sleep = sleep
         self._names: dict[str, str] = {}
 
@@ -130,7 +135,7 @@ class GmailResort:
 
     def _require_category_label(self, label_id: str) -> None:
         name = self._name_of(label_id)
-        if name is None or not _under_prefix(name):
+        if name is None or not _under_prefix(name) or name.casefold() == self._archive.casefold():
             raise LabelRefused("only labels under Assistant/ may be added to or removed from mail")
 
     def add_label(self, message_id: str, label_id: str) -> None:
@@ -146,9 +151,9 @@ class GmailResort:
         self._run(self._service.users().messages().modify(userId=ME, id=message_id, body=body))
 
     def create_label(self, name: str) -> Label:
-        """Create ``Archive`` or a label under ``Assistant/``; when Gmail says it exists, return the existing one."""
-        if name != ARCHIVE and not _under_prefix(name):
-            raise LabelRefused(f"only {ARCHIVE} and labels under {LABEL_PREFIX} may be created")
+        """Create the archive label or one under ``Assistant/``; when Gmail says it exists, return the existing one."""
+        if name != self._archive and not _under_prefix(name):
+            raise LabelRefused(f"only the archive label and labels under {LABEL_PREFIX} may be created")
         body = {"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"}
         try:
             made = self._run(self._service.users().labels().create(userId=ME, body=body))

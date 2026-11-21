@@ -30,10 +30,15 @@ _REFUSED: Final = (HttpError, LabelRefused)
 class GmailApply:
     """The ``ApplyMailbox`` port on a Gmail v1 service. ``sleep`` is injectable so tests do not wait."""
 
-    def __init__(self, service: Any, sleep: Callable[[float], None] = time.sleep) -> None:  # noqa: ANN401
+    def __init__(
+        self,
+        service: Any,  # noqa: ANN401
+        archive_label: str,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         """Build the reader and the narrow label adapter on one service."""
         self._reader = GmailReader(service, sleep)
-        self._resort = GmailResort(service, sleep)
+        self._resort = GmailResort(service, archive_label, sleep)
 
     def label_names(self) -> dict[str, str]:
         """Label id to label name (this also refreshes the names the label guards use)."""

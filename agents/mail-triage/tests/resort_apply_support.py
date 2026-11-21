@@ -309,7 +309,11 @@ class ApplyRig:
 
     def move_back(self) -> MoveBack:
         return MoveBack(
-            mailbox=self.mailbox, store=self.store, lock=self.lock, notifier=self.notifier, archive_label="Archive",
+            mailbox=self.mailbox,
+            store=self.store,
+            lock=self.lock,
+            notifier=self.notifier,
+            archive_label="Archive",
             batch_size=self.batch_size,
         )
 

@@ -1,8 +1,8 @@
 """Which mail a re-sort plan may touch (spec AC-10, AC-52; ADR-0046).
 
 Pure logic over Gmail label *names*. A mail is in scope when it sits in the inbox or carries one ``Assistant/`` label
-and is not spam, trash, in the archive label, a draft or the user's own sent mail. Two ``Assistant/`` labels are unclear: the
-mail is counted but never becomes an item, because the agent cannot tell which label is the current one.
+and is not spam, trash, in the archive label, a draft or the user's own sent mail. Two ``Assistant/`` labels are
+unclear: the mail is counted but never becomes an item, because the agent cannot tell which label is the current one.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ class Scope(StrEnum):
 
 
 def is_archive_label(name: str, archive: str) -> bool:
-    """Whether ``name`` is the configured archive label; case does not matter (C-14, ADR-0052), nested names never match."""
+    """Whether ``name`` is the configured archive label; case does not matter (C-14, ADR-0052)."""
     return name.casefold() == archive.casefold()
 
 
