@@ -1,4 +1,4 @@
-"""U-mail-categories-20: the list save has its own Traefik route, 32 KB buffering (MC-12, ADR-0034, ADR-0040)."""
+"""U-mail-categories-20, U-label-structure-33: the list save has its own Traefik route, 2 MiB buffering (MC-12)."""
 
 from __future__ import annotations
 
@@ -27,7 +27,9 @@ def helm(command: str, *sets: str) -> subprocess.CompletedProcess[str]:
     base += ["-f", str(LOCAL_VALUES)]
     for item in sets:
         base += ["--set", item]
-    return subprocess.run(base, capture_output=True, text=True, timeout=60, check=False)  # noqa: S603
+    return subprocess.run(  # noqa: S603
+        base, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60, check=False
+    )
 
 
 def render(*sets: str) -> list[dict[str, Any]]:
@@ -57,7 +59,7 @@ def the_route(docs: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @needs_helm
-def test_given_the_rendered_chart_when_read_then_put_api_categories_has_its_own_route_with_a_32_kb_limit() -> None:
+def test_given_the_rendered_chart_when_read_then_put_api_categories_has_its_own_route_with_a_2_mib_limit() -> None:
     docs = render()
     route = the_route(docs)
     spec = route["spec"]["routes"][0]
@@ -68,8 +70,8 @@ def test_given_the_rendered_chart_when_read_then_put_api_categories_has_its_own_
     assert spec["services"] == [{"name": "app-api", "port": "http"}]
     assert route["spec"]["entryPoints"] == ["websecure"]
     on_route = [caps[m["name"]] for m in spec["middlewares"] if m["name"] in caps]
-    assert on_route == [32768]  # exactly one limit on this route, the 32 KB one
-    assert sorted(caps.values()) == [8192, 32768]
+    assert on_route == [2097152]  # exactly one limit on this route, the 2 MiB one (the api limit of unit 11)
+    assert sorted(caps.values()) == [8192, 2097152]
 
 
 @needs_helm
@@ -120,9 +122,9 @@ def test_given_the_rendered_route_when_read_then_it_keeps_hsts_the_tls_minimum_a
 
 @needs_helm
 def test_given_body_limit_values_when_rendered_then_the_limits_follow_them() -> None:
-    docs = render("ingress.bodyLimitBytes=4096", "ingress.categoriesBodyLimitBytes=65536")
+    docs = render("ingress.bodyLimitBytes=4096", "ingress.categoriesBodyLimitBytes=16384")
 
-    assert sorted(limit_caps(docs).values()) == [4096, 65536]
+    assert sorted(limit_caps(docs).values()) == [4096, 16384]
 
 
 @needs_helm
@@ -134,6 +136,8 @@ def test_given_body_limit_values_when_rendered_then_the_limits_follow_them() -> 
         "ingress.bodyLimitBytes=-1",
         "ingress.categoriesBodyLimitBytes=-5",
         "ingress.categoriesBodyLimitBytes=big",
+        "ingress.categoriesBodyLimitBytes=8192",  # not above the generic cap: no reason for a route of its own
+        "ingress.categoriesBodyLimitBytes=4194305",  # above 4 MiB the limit would mean nothing
     ],
 )
 def test_given_a_body_cap_below_one_when_linted_then_the_schema_rejects_it(setting: str) -> None:
@@ -162,13 +166,14 @@ def test_given_the_readme_when_read_then_it_names_both_body_limits_and_the_reaso
 
     for needle in (
         "8192",
-        "32768",
+        "2097152",
+        "2 MiB",
         "PUT /api/categories",
         "MC-12",
         "ADR-0034",
         "ingress.bodyLimitBytes",
         "ingress.categoriesBodyLimitBytes",
-        "27 KB",  # the reason: a full list is about 27 KB and does not fit in 8 KB
+        "1.2 MB",  # the reason: a full v2 list with senders is about 1.2 MB and does not fit in 8 KB
     ):
         assert needle in body, needle
 
@@ -177,6 +182,12 @@ def test_given_the_readme_when_read_then_the_refused_api_env_keys_name_the_two_b
     lines = README.read_text(encoding="utf-8").splitlines()
     line = next(item for item in lines if item.startswith("- `api.env` and `web.env` refuse"))
 
-    for needle in ("`APP_CATEGORIES_MAILBOX_ID`", "`APP_ROUTE_BODY_LIMITS`", "`APP_BODY_LIMIT_BYTES`", "8192", "32768"):
+    for needle in (
+        "`APP_CATEGORIES_MAILBOX_ID`",
+        "`APP_ROUTE_BODY_LIMITS`",
+        "`APP_BODY_LIMIT_BYTES`",
+        "8192",
+        "2097152",
+    ):
         assert needle in line, needle
     assert "ingress" in line.lower()

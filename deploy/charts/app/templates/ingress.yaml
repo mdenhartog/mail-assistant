@@ -41,7 +41,7 @@ metadata:
   name: {{ $categoriesLimit }}
   labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
 spec:
-  # The 32 KB cap of the list save only (MC-12): a full list is about 27 KB. Used by the IngressRoute below, nowhere else.
+  # The 2 MiB cap of the list save only (MC-12): a v2 list with senders is about 1.2 MB, the api limit is the same 2 MiB. Used by the IngressRoute below, nowhere else.
   buffering:
     maxRequestBodyBytes: {{ $ingress.categoriesBodyLimitBytes }}
 ---
