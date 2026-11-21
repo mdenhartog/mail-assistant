@@ -7,7 +7,7 @@ feature: label-structure
 
 - Component: mail-triage
 - Layer: backend
-- Contract: one Alembic revision in the agent's chain (ADR-0025): `category.kind` and `category.notify` with defaults; new insert-only `category_sender` and `list_settings` with the deferred version trigger; rebuilt `filing` (`topic_id`, `extra_id`, `source`, `source_ref`); a unique key so an alert is written once per mail; `upload_preview`; grants for the api and agent roles; `purge_expired()` also removes expired previews; the migrate job reads `ARCHIVE_LABEL` once into the migrated `list_settings` rows. A working downgrade.
+- Contract: one Alembic revision in the agent's chain (ADR-0025): `category.kind` and `category.notify` with defaults; new insert-only `category_sender` and `list_settings` with the deferred version trigger; `filing` gets `topic_id`, `extra_id`, `source` and `source_ref` **additively** (`category_id` stays, with a bridge trigger that fills `topic_id`, until unit 08 switches the filing code and drops both; this keeps `main` green); one alert per mail already holds (`alert.mail_item_id` is unique since revision 0001, so only a test is added); `upload_preview`; grants for the api and agent roles; `purge_expired()` also removes expired previews; the migrate job reads `ARCHIVE_LABEL` once into the migrated `list_settings` rows. A working downgrade.
 - Files: `agents/mail-triage/migrations/versions/<new revision>.py`, `agents/mail-triage/app/db/grants.sql`, `agents/mail-triage/app/db/migrate.py`, tests in `agents/mail-triage/tests/db/`
 - Depends on: U-label-structure-02
 - Parallel: yes

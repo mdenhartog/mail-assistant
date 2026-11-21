@@ -7,7 +7,7 @@ feature: label-structure
 
 - Component: api
 - Layer: backend
-- Contract: `POST /api/categories/upload` (the file; returns the preview id and the counts added, changed and removed with the removed categories), `POST /api/categories/upload/{id}/confirm` (one list version, audit, change notice), `POST /api/categories/restore-previous`; parsing by `category-policy` (U-label-structure-04); the preview row is bound to session, file hash, base version and expires after 15 minutes; CSRF and `Origin` checks; the hourly limit of a list save.
+- Contract: `POST /api/categories/upload` (the file; returns the preview id and the counts added, changed and removed with the removed categories), `POST /api/categories/upload/{id}/confirm` (one list version, audit, change notice), `POST /api/categories/restore-previous`; parsing by `category-policy` (U-label-structure-04); the preview row is bound to session, file hash, base version and expires after 15 minutes; CSRF and `Origin` checks; the hourly limit of a list save; the upload route has its own body limit (the 256 KiB file limit plus the multipart overhead) next to the route limit of `PUT /api/categories` in `route_body_limits`, and anything above gets the generic 413 before parsing.
 - Files: `backend/app/routers/category_upload.py`, `backend/app/services/category_upload.py`, `backend/app/schemas/category_upload.py`, `docs/api/openapi.json`, tests
 - Depends on: U-label-structure-04, U-label-structure-11
 - Parallel: no

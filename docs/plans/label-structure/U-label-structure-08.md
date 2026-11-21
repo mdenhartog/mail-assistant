@@ -7,7 +7,7 @@ feature: label-structure
 
 - Component: mail-triage
 - Layer: backend
-- Contract: in the filing flow (ADR-0054): pinned check, then the sender rule (`authenticated_from_domain` then the matcher from `category-policy`) files the mail under the topic and the extra label that list the sender without a category call; the filing record names the source (`sender_rule` with the entry, `model`, or `sender_rule_not_applied`); an unticked category gets one urgency-only call (the call itself is U-label-structure-09; here it is a port with a fake); the matcher is built once per list version.
+- Contract: in the filing flow (ADR-0054): pinned check, then the sender rule (`authenticated_from_domain` then the matcher from `category-policy`) files the mail under the topic and the extra label that list the sender without a category call; the filing record names the source (`sender_rule` with the entry, `model`, or `sender_rule_not_applied`); an unticked category gets one urgency-only call (the call itself is U-label-structure-09; here it is a port with a fake); the matcher is built once per list version; the filing code (`pg_store`, `pg_categories`, `pg_list_sync`, `pg_refile`, `pg_resort`, `judgement`) switches from `filing.category_id` to `topic_id`, `extra_id`, `source` and `source_ref`, and a migration `0025` drops `filing.category_id` and the bridge trigger of unit 05 (a reversible downgrade).
 - Files: `agents/mail-triage/app/usecases/triage.py`, `agents/mail-triage/app/core/sender_rules.py`, `agents/mail-triage/app/db/pg_store.py` (filing), tests
 - Depends on: U-label-structure-01, U-label-structure-02, U-label-structure-03, U-label-structure-05, U-label-structure-07
 - Parallel: no
