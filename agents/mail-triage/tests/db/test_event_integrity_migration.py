@@ -16,7 +16,7 @@ from alembic import command
 from tests.db.conftest import alembic_config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
@@ -85,7 +85,7 @@ async def owner(migrated_url: str) -> AsyncIterator[asyncpg.Connection]:
 
 
 @asynccontextmanager
-async def _as(connection: asyncpg.Connection, role: str) -> AsyncIterator[asyncpg.Connection]:
+async def _as(connection: asyncpg.Connection, role: str) -> AsyncGenerator[asyncpg.Connection]:
     """Act as a runtime role without logging in as it (the role passwords differ between test files)."""
     await connection.execute(f"set role {role}")
     try:
@@ -140,7 +140,7 @@ async def test_given_0012_when_the_functions_are_inspected_then_none_is_public_a
         "where n.nspname = 'web_auth' and p.proconfig is null"
     )
 
-    assert any("search_path" in c for c in config)
+    assert any("search_path" in c for c in config or [])
     assert public == []
     assert unpinned == []
     assert web_can_call
@@ -165,7 +165,7 @@ async def test_given_an_event_when_the_web_role_sets_count_to_anything_but_old_p
     async with _as(owner, WEB_ROLE) as web:
         with pytest.raises(asyncpg.PostgresError) as refused:
             await web.execute(f"update web_auth.security_event set count = {new_count}")
-        assert refused.value.sqlstate == "42501"
+        assert getattr(refused.value, "sqlstate", None) == "42501"
         assert await web.fetchval("select count from web_auth.security_event") == 5
 
 
@@ -189,7 +189,9 @@ async def test_given_an_event_when_any_other_column_changes_then_the_trigger_ref
     with pytest.raises(asyncpg.PostgresError) as refused:
         await owner.execute(f"update web_auth.security_event set {assignment}")
 
-    assert refused.value.sqlstate == ("428C9" if assignment.startswith("id ") else "42501")  # id is GENERATED ALWAYS
+    assert getattr(refused.value, "sqlstate", None) == (
+        "428C9" if assignment.startswith("id ") else "42501"
+    )  # id is GENERATED ALWAYS
 
 
 async def test_given_the_web_role_when_it_changes_another_column_then_the_grant_refuses_it(
@@ -226,7 +228,7 @@ async def test_given_the_agent_role_when_it_selects_the_alert_columns_then_it_wo
     await owner.execute(_ROW.format(count=4))
     async with _as(owner, AGENT_ROLE) as agent:
         assert await agent.fetchval("select sum(count) from web_auth.security_event where kind = 'code_refused'") == 4
-        assert await agent.fetchval("select max(id) from web_auth.security_event where at <= now()") >= 1
+        assert (await agent.fetchval("select max(id) from web_auth.security_event where at <= now()") or 0) >= 1
         assert await agent.fetchval("select count(*) from web_auth.security_event") == 1
 
 
@@ -241,7 +243,7 @@ async def test_given_the_agent_role_when_it_selects_a_private_column_then_42501(
     async with _as(owner, AGENT_ROLE) as agent:
         with pytest.raises(asyncpg.PostgresError) as refused:
             await agent.fetch(f"select {select_list} from web_auth.security_event")
-        assert refused.value.sqlstate == "42501"
+        assert getattr(refused.value, "sqlstate", None) == "42501"
 
 
 async def test_given_the_agent_role_when_privileges_are_read_then_only_four_columns_are_selectable(
@@ -272,9 +274,11 @@ async def test_given_the_alert_query_on_a_large_table_when_explained_then_it_use
 
     plan = json.dumps(
         json.loads(
-            await owner.fetchval(
-                "explain (format json) select coalesce(sum(count), 0) from web_auth.security_event "
-                "where kind = 'code_refused' and at > now() - interval '1 hour' and id > 0"
+            str(
+                await owner.fetchval(
+                    "explain (format json) select coalesce(sum(count), 0) from web_auth.security_event "
+                    "where kind = 'code_refused' and at > now() - interval '1 hour' and id > 0"
+                )
             )
         )
     )

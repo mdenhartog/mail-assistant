@@ -21,7 +21,7 @@ from app.db.purge import PurgeCounts, purge_expired
 from schedule_policy.testing import FakeClock
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
@@ -54,7 +54,7 @@ async def owner(migrated_url: str) -> AsyncIterator[asyncpg.Connection]:
 
 
 @asynccontextmanager
-async def _as(connection: asyncpg.Connection, role: str) -> AsyncIterator[asyncpg.Connection]:
+async def _as(connection: asyncpg.Connection, role: str) -> AsyncGenerator[asyncpg.Connection]:
     """Act as a runtime role without logging in as it (the role passwords differ between test files)."""
     await connection.execute(f"set role {role}")
     try:
@@ -108,7 +108,7 @@ async def _session(connection: asyncpg.Connection, key: str, *, last_seen: datet
 
 
 async def _count(connection: asyncpg.Connection, table: str) -> int:
-    return int(await connection.fetchval(f"select count(*) from {table}"))
+    return int(await connection.fetchval(f"select count(*) from {table}") or 0)
 
 
 async def _labels(connection: asyncpg.Connection) -> list[str]:
@@ -213,7 +213,7 @@ async def test_given_a_runtime_role_when_it_deletes_or_truncates_the_audit_then_
     async with _as(owner, role):
         with pytest.raises(asyncpg.InsufficientPrivilegeError) as refused:
             await owner.execute(statement)
-    assert refused.value.sqlstate == "42501"
+    assert getattr(refused.value, "sqlstate", None) == "42501"
     assert await _count(owner, "settings.settings_change") == 1
     await purge_expired(owner, FakeClock(NOW))  # the owner purge stays the one delete path
     assert await _count(owner, "settings.settings_change") == 0
