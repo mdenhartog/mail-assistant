@@ -27,15 +27,17 @@ MATRIX = [
     pytest.param({"TRASH", "Assistant/A", "Assistant/B"}, Scope.OUT, id="trash-wins-over-two-labels"),
 ]
 
+ARCHIVE = "Archive"
+
 
 @pytest.mark.parametrize(("labels", "expected"), MATRIX)
 def test_only_mail_in_scope_can_become_an_item(labels: set[str], expected: Scope) -> None:
-    assert classify(labels) is expected
+    assert classify(labels, ARCHIVE) is expected
 
 
 def test_the_label_name_is_matched_exactly_not_by_prefix_look_alike() -> None:
-    assert classify({"assistant/Finance"}) is Scope.OUT
-    assert classify({"Assistant"}) is Scope.OUT
+    assert classify({"assistant/Finance"}, ARCHIVE) is Scope.OUT
+    assert classify({"Assistant"}, ARCHIVE) is Scope.OUT
     assert assistant_labels({"INBOX", "Assistant/Finance", "Assistantx/Y"}) == ["Assistant/Finance"]
 
 
@@ -44,4 +46,4 @@ def test_the_label_name_is_matched_exactly_not_by_prefix_look_alike() -> None:
     [("Archive", True), ("archive", True), ("ARCHIVE", True), ("Archive/x", False), ("Old/Archive", False)],
 )
 def test_is_archive_label_is_case_insensitive_and_top_level_only(name: str, expected: bool) -> None:
-    assert is_archive_label(name) is expected
+    assert is_archive_label(name, ARCHIVE) is expected

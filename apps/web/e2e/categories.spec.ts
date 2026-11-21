@@ -103,7 +103,7 @@ test("the page shows the list with name, description and number of mails, and Ot
   await expect(page.getByRole("heading", { name: "Other" })).toBeVisible();
   await expect(page.getByText("3 mails")).toBeVisible();
   await expect(page.getByText(/Mail already filed stays where it is\./).first()).toBeVisible();
-  await expect(page.getByText("Archive is left alone.")).toBeVisible();
+  await expect(page.getByText("Your archive label is left alone.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to my list: Newsletters" })).toBeVisible();
 });
 

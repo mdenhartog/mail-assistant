@@ -210,6 +210,7 @@ class Rig:
             budget=self,
             now=self.clock,
             pinned=PINNED,
+            archive_label="Archive",
             debounce=timedelta(minutes=10),
             per_run=per_run,
         )

@@ -206,7 +206,7 @@ class GmailApplyMailbox(GmailBuildMailbox):
 
     def __init__(self, gmail: FakeGmail) -> None:
         super().__init__(gmail)
-        self.resort = GmailResort(gmail, sleep=lambda _seconds: None)
+        self.resort = GmailResort(gmail, "Archive", sleep=lambda _seconds: None)
         self.on_add: Callable[[str], None] | None = None
         self.on_remove: Callable[[str], None] | None = None
         self.failing_adds: dict[str, int] = {}  # message id -> failures left (-1: always), as Gmail refusing the change
@@ -303,12 +303,18 @@ class ApplyRig:
             notifier=self.notifier,
             now=self.clock,
             pinned=PINNED,
+            archive_label="Archive",
             batch_size=self.batch_size,
         )
 
     def move_back(self) -> MoveBack:
         return MoveBack(
-            mailbox=self.mailbox, store=self.store, lock=self.lock, notifier=self.notifier, batch_size=self.batch_size
+            mailbox=self.mailbox,
+            store=self.store,
+            lock=self.lock,
+            notifier=self.notifier,
+            archive_label="Archive",
+            batch_size=self.batch_size,
         )
 
     def mail(self, labels: tuple[str, ...] = ("INBOX",), **kw: str) -> str:

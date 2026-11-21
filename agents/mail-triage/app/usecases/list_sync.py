@@ -26,7 +26,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.gmail_resort import (
-    ARCHIVE,
     LABEL_PREFIX,
     OTHER_LABEL,
     Label,
@@ -139,10 +138,11 @@ def seed_names(labels: Sequence[Label]) -> tuple[str, ...]:
 class ListSync:
     """One mailbox's label sync. ``gmail`` is blocking and is called through threads."""
 
-    def __init__(self, gmail: LabelGmail, store: ListSyncStore) -> None:
-        """Keep the Gmail adapter and the store."""
+    def __init__(self, gmail: LabelGmail, store: ListSyncStore, archive_label: str) -> None:
+        """Keep the Gmail adapter, the store and the name of the archive label (ADR-0052)."""
         self._gmail = gmail
         self._store = store
+        self._archive = archive_label
 
     async def run(self) -> SyncResult:
         """Do one pass; see the module text for the order."""
@@ -206,15 +206,15 @@ class ListSync:
         return label, created, renamed, failed
 
     async def _ensure_archive(self, by_name: dict[str, Label], by_id: dict[str, Label]) -> None:
-        """Make ``Archive`` when no top-level label of that name exists (case does not matter, C-14)."""
-        if any(is_archive_label(name) for name in by_name):
+        """Make the archive label when no label of that name exists (case does not matter, C-14)."""
+        if any(is_archive_label(name, self._archive) for name in by_name):
             return
         try:
-            label = await asyncio.to_thread(self._gmail.create_label, ARCHIVE)
+            label = await asyncio.to_thread(self._gmail.create_label, self._archive)
         except LabelNameRejected:
             # Archive is the user's own place for mail that must stay where it is; it is made as a courtesy. Without it
             # the sync of the categories goes on, and a missing Archive does not keep the run from being done.
-            logger.warning("list sync: Gmail refused to make the Archive label; the sync goes on without it")
+            logger.warning("list sync: Gmail refused to make the archive label; the sync goes on without it")
             return
         by_name[label.name.casefold()] = label
         by_id[label.id] = label

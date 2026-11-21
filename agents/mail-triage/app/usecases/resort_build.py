@@ -248,6 +248,7 @@ class ResortBuild:
         budget: BudgetView,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
+        archive_label: str,  # the protected label (C-14, ADR-0052)
         debounce: timedelta,  # how long the list must stay unchanged before a build starts (D14); from the settings
         cap: int = PLAN_CAP,
         per_run: int = BUILD_SLICE,  # how many mails one run looks at before it pauses (ADR-0051)
@@ -260,6 +261,7 @@ class ResortBuild:
         self._budget = budget
         self._now = now
         self._pinned = pinned
+        self._archive = archive_label
         self._debounce = debounce
         self._cap = cap
         self._per_run = per_run
@@ -369,7 +371,7 @@ class ResortBuild:
         )
         if mail is not None:
             label_names = {names[i] for i in mail.labels if i in names}
-            scope = classify(label_names)
+            scope = classify(label_names, self._archive)
             if scope is Scope.UNCLEAR:
                 checked = unclear = 1
             elif scope is Scope.IN_SCOPE and pinned_mail_kind(mail, self._pinned) is None:
