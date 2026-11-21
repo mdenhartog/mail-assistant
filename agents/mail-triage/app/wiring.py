@@ -12,7 +12,7 @@ import logging
 import secrets
 import signal
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -258,7 +258,6 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             now=now,
             pinned=settings.pinned_senders,
             archive_label=settings.archive_label,
-            debounce=timedelta(minutes=settings.plan_debounce_minutes),
             cap=settings.plan_cap,
         ),
         resort_apply=ResortApply(
