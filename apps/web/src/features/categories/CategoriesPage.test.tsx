@@ -36,7 +36,7 @@ describe("Categories page: reading the list", () => {
         "The model reads the description. Say what belongs here, for example: Invoices, receipts and payment confirmations.",
       ),
     ).not.toHaveLength(0);
-    expect(screen.getByText("Mail you put in the Gmail label Archive is never re-sorted.")).toBeInTheDocument();
+    expect(screen.getByText("Mail you put in your archive label in Gmail is never re-sorted.")).toBeInTheDocument();
     expect(screen.queryByText("Renaming only changes the label name.")).not.toBeInTheDocument();
     expect(document.title).toBe("Categories - Mail Assistant");
   });
