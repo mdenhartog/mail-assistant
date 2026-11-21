@@ -106,7 +106,7 @@ async def test_given_a_first_start_when_the_sync_runs_on_postgres_then_the_list_
     gmail.add_label("Assistant/Bills")
     gmail.add_mail(labels=(gmail.label_id("Assistant/Bills"),))
 
-    result = await ListSync(GmailResort(gmail, sleep=lambda _s: None), store).run()
+    result = await ListSync(GmailResort(gmail, "Archive", sleep=lambda _s: None), store, "Archive").run()
 
     assert (result.version, result.seeded, await store.cursor()) == (1, True, 1)
     assert gmail.label_names().count("Archive") == 1

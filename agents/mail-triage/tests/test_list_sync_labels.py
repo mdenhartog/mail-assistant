@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 
 def make(gmail: FakeGmail, store: FakeListStore) -> ListSync:
-    return ListSync(GmailResort(gmail, sleep=lambda _s: None), store)
+    return ListSync(GmailResort(gmail, "Archive", sleep=lambda _s: None), store, "Archive")
 
 
 def modifies(gmail: FakeGmail) -> list[str]:
@@ -255,3 +255,30 @@ async def test_given_labelled_mail_when_the_sync_runs_then_counts_are_kept_per_c
     await make(gmail, store).run()
 
     assert store.counts == {ids["Bills"]: 2, ids["Travel"]: 0, OTHER_ID: 1}
+
+
+@pytest.mark.parametrize("archive", ["Assistant/Archive", "Bewaard"])
+async def test_given_a_configured_archive_label_when_the_sync_runs_then_that_label_is_made_once_and_not_a_category(
+    archive: str,
+) -> None:
+    gmail = FakeGmail()
+    store = FakeListStore()
+    sync = ListSync(GmailResort(gmail, archive, sleep=lambda _s: None), store, archive)
+
+    await sync.run()
+    await sync.run()
+
+    assert gmail.label_names().count(archive) == 1
+    assert "Archive" not in gmail.label_names()
+    assert all(c.name.casefold() != "archive" for c in store.categories)
+
+
+async def test_given_the_default_archive_label_exists_when_the_list_is_seeded_then_it_is_not_a_category() -> None:
+    gmail = FakeGmail()
+    gmail.add_label("Assistant/Archive")
+    gmail.add_label("Assistant/Travel")
+    store = FakeListStore()
+
+    await ListSync(GmailResort(gmail, "Assistant/Archive", sleep=lambda _s: None), store, "Assistant/Archive").run()
+
+    assert store.seeded == [("Travel",)]

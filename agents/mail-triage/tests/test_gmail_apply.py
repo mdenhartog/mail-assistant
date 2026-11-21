@@ -14,7 +14,7 @@ from tests.fakes.fake_gmail import FakeGmail
 
 
 def _apply(gmail: FakeGmail) -> GmailApply:
-    return GmailApply(gmail, sleep=lambda _seconds: None)
+    return GmailApply(gmail, "Archive", sleep=lambda _seconds: None)
 
 
 def test_ensure_label_returns_the_existing_label_without_creating_one() -> None:
