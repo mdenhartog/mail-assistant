@@ -7,7 +7,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from app.core import pinned
+from app.core import authentication
 from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
 
 SENDERS = PinnedSenders(google_security=frozenset({"google.test"}), sign_in=frozenset({"app.test", "mm.test"}))
@@ -19,37 +19,37 @@ def _kind(header: str, sender: str = "no-reply@google.test") -> PinnedKind | Non
 
 
 def test_given_a_quoted_string_when_skipped_then_the_index_after_its_closing_quote_is_returned() -> None:
-    assert pinned._skip_quoted('x"ab"', 1) == 5
-    assert pinned._skip_quoted('"ab"c', 0) == 4
-    assert pinned._skip_quoted('x"a\\"b"', 1) == 7  # an escaped quote does not close it
+    assert authentication._skip_quoted('x"ab"', 1) == 5
+    assert authentication._skip_quoted('"ab"c', 0) == 4
+    assert authentication._skip_quoted('x"a\\"b"', 1) == 7  # an escaped quote does not close it
 
 
 def test_given_an_unterminated_quoted_string_when_skipped_then_none_is_returned() -> None:
-    assert pinned._skip_quoted('"abc', 0) is None
-    assert pinned._skip_quoted('"abc\\', 0) is None
+    assert authentication._skip_quoted('"abc', 0) is None
+    assert authentication._skip_quoted('"abc\\', 0) is None
 
 
 def test_given_a_nested_comment_when_skipped_then_the_index_after_the_outer_close_is_returned() -> None:
-    assert pinned._skip_comment("x(a(b)c)d", 1) == 8
-    assert pinned._skip_comment("x(ab)", 1) == 5
-    assert pinned._skip_comment("x(a\\)b)", 1) == 7  # an escaped parenthesis does not close it
+    assert authentication._skip_comment("x(a(b)c)d", 1) == 8
+    assert authentication._skip_comment("x(ab)", 1) == 5
+    assert authentication._skip_comment("x(a\\)b)", 1) == 7  # an escaped parenthesis does not close it
 
 
 def test_given_an_unterminated_comment_when_skipped_then_none_is_returned() -> None:
-    assert pinned._skip_comment("(a(b)", 0) is None
-    assert pinned._skip_comment("(ab\\", 0) is None
+    assert authentication._skip_comment("(a(b)", 0) is None
+    assert authentication._skip_comment("(ab\\", 0) is None
 
 
 def test_given_comments_and_quotes_when_split_then_comments_become_spaces_and_quotes_are_opaque() -> None:
-    assert pinned._split_results('a(b)c;d"x;y"e') == ["a c", 'd"_"e']
-    assert pinned._split_results("a; b ;c") == ["a", " b ", "c"]
-    assert pinned._split_results("a(x;y)b") == ["a b"]
-    assert pinned._split_results("") == [""]
+    assert authentication._split_results('a(b)c;d"x;y"e') == ["a c", 'd"_"e']
+    assert authentication._split_results("a; b ;c") == ["a", " b ", "c"]
+    assert authentication._split_results("a(x;y)b") == ["a b"]
+    assert authentication._split_results("") == [""]
 
 
 @pytest.mark.parametrize("header", ["a)b", "a(b", 'a"b', "a(b\\", "(a))"])
 def test_given_an_ambiguous_header_when_split_then_none_is_returned(header: str) -> None:
-    assert pinned._split_results(header) is None
+    assert authentication._split_results(header) is None
 
 
 def test_given_a_vouching_header_when_a_sender_is_on_a_list_then_its_kind_is_returned() -> None:
@@ -110,4 +110,4 @@ def test_given_the_value_objects_when_changed_then_they_are_frozen_and_slotted()
     with pytest.raises(FrozenInstanceError):
         SENDERS.__setattr__("sign_in", frozenset())
     assert (PinnedKind.GOOGLE_SECURITY.value, PinnedKind.SIGN_IN_CODE.value) == ("google_security", "sign_in_code")
-    assert pinned.GMAIL_AUTHSERV_ID == "mx.google.com"
+    assert authentication.GMAIL_AUTHSERV_ID == "mx.google.com"
