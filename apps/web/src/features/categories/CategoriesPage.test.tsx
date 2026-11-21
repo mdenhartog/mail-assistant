@@ -98,8 +98,8 @@ describe("Categories page: reading the list", () => {
 });
 
 describe("Categories page: the limit", () => {
-  it("given 50 categories, then Add category is disabled and the message says what to do", async () => {
-    const many = Array.from({ length: 50 }, (_, index) => ({
+  it("given 100 categories, then Add category is disabled and the message says what to do", async () => {
+    const many = Array.from({ length: 100 }, (_, index) => ({
       id: `7f0c1c2e-1b1e-4c52-9d0e-${String(index).padStart(12, "0")}`,
       name: `Category ${String(index)}`,
       description: "Something",
@@ -109,7 +109,7 @@ describe("Categories page: the limit", () => {
     renderPage();
     await screen.findByDisplayValue("Category 0");
     expect(screen.getByRole("button", { name: "Add category" })).toBeDisabled();
-    expect(screen.getByText("You have reached the limit of 50 categories. Remove one to add another.")).toBeInTheDocument();
+    expect(screen.getByText("You have reached the limit of 100 categories. Remove one to add another.")).toBeInTheDocument();
   });
 });
 
