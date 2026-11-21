@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/mdenhartog/mail-assistant/compare/v0.3.0...v0.4.0) (2026-11-21)
+
+
+### Features
+
+* **agent:** the archive label name is a setting, default Assistant/Archive ([#156](https://github.com/mdenhartog/mail-assistant/issues/156)) ([8416894](https://github.com/mdenhartog/mail-assistant/commit/84168948707b642a430911ea0cb450732d98c7ed))
+* **mail-triage:** agent test fakes for headers, scripted model and kill point (U-label-structure-01) ([#164](https://github.com/mdenhartog/mail-assistant/issues/164)) ([4901df8](https://github.com/mdenhartog/mail-assistant/commit/4901df8dab8c7c93c55ffc38ed7061e3613c1703))
+
+
+### Bug Fixes
+
+* **agent:** first-deploy fixes: Gmail status in logs, refused label names, plan build in slices ([#154](https://github.com/mdenhartog/mail-assistant/issues/154)) ([3bdf8e5](https://github.com/mdenhartog/mail-assistant/commit/3bdf8e568382105febbbd2061beb61dc97d77259))
+* **mail:** never wait on a host name lookup when sending or listening ([#157](https://github.com/mdenhartog/mail-assistant/issues/157)) ([9c787b2](https://github.com/mdenhartog/mail-assistant/commit/9c787b297251ba3ff61631f932a01210cf1e2132))
+
 ## [0.3.0](https://github.com/mdenhartog/mail-assistant/compare/v0.2.0...v0.3.0) (2026-11-20)
 
 
