@@ -1,0 +1,4 @@
+From: First Sender <first@example.com>
+From: Second Sender <second@example.net>
+Authentication-Results: mx.example.test; dkim=pass header.d=example.com
+Message-ID: <test-0007@example.test>
