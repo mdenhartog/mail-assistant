@@ -20,7 +20,7 @@ from alembic import command
 from tests.db.conftest import alembic_config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, AsyncIterator
 
 GRANTS = Path(__file__).resolve().parents[2] / "app" / "db" / "grants.sql"
 WEB_ROLE = "web_settings_runtime"
@@ -92,7 +92,7 @@ async def owner(migrated_url: str) -> AsyncIterator[asyncpg.Connection]:
 
 
 @asynccontextmanager
-async def _as(connection: asyncpg.Connection, role: str) -> AsyncIterator[asyncpg.Connection]:
+async def _as(connection: asyncpg.Connection, role: str) -> AsyncGenerator[asyncpg.Connection]:
     """Act as a runtime role without logging in as it (the role passwords differ between test files)."""
     await connection.execute(f"set role {role}")
     try:
@@ -122,7 +122,7 @@ async def test_given_the_web_role_when_it_inserts_an_explicit_at_or_count_then_i
                     f"'code_refused', 'refused', 'req-1', '{CLIENT}', {_SERVER_WINDOW}, {extra_value}",
                 )
             )
-        assert refused.value.sqlstate == "42501"
+        assert getattr(refused.value, "sqlstate", None) == "42501"
     assert await owner.fetchval("select count(*) from web_auth.security_event") == 0
 
 
@@ -132,7 +132,10 @@ async def test_given_the_web_role_when_it_inserts_an_explicit_id_then_it_is_refu
             await web.execute(
                 _insert(f"id, {_BASE_COLUMNS}", f"9000000000000000000, 'code_refused', 'refused', 'r', '{CLIENT}', 1")
             )
-        assert refused.value.sqlstate in {"42501", "428C9"}  # no column grant; GENERATED ALWAYS refuses a value too
+        assert getattr(refused.value, "sqlstate", None) in {
+            "42501",
+            "428C9",
+        }  # no column grant; GENERATED ALWAYS refuses a value too
     assert await owner.fetchval("select count(*) from web_auth.security_event") == 0
 
 
@@ -188,7 +191,7 @@ async def test_given_a_window_far_from_the_servers_minute_when_the_web_role_inse
     async with _as(owner, WEB_ROLE) as web:
         with pytest.raises(asyncpg.PostgresError) as refused:
             await web.execute(_normal(window=window))
-        assert refused.value.sqlstate == "42501"
+        assert getattr(refused.value, "sqlstate", None) == "42501"
 
 
 async def test_given_the_web_role_when_privileges_are_read_then_only_six_columns_are_insertable(
@@ -233,7 +236,7 @@ async def test_given_0013_when_the_id_is_inspected_then_it_is_generated_always(o
     assert await owner.fetchval(_IDENTITY) == "a"
     with pytest.raises(asyncpg.PostgresError) as refused:
         await owner.execute(_insert(f"id, {_BASE_COLUMNS}", "5, 'code_refused', 'refused', 'r', 'k', 7"))
-    assert refused.value.sqlstate == "428C9"
+    assert getattr(refused.value, "sqlstate", None) == "428C9"
 
 
 # Criterion 3
