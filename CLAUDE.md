@@ -31,7 +31,7 @@ Load a guardrail only when you touch code of that type. New language/framework/s
 2. Contract or behaviour changes ⇒ `rebuild-not-patch`, no flags or bolted-on parameters.
 3. A choice without an ADR ⇒ `decision-gate`; never choose silently.
 4. Secure by design; no secrets in code, logs or URLs.
-5. Never commit on `main`; one worktree per unit (`git-workflow`). Branch `feat/INT-nnn/<feature>/<nn>`; every commit has `Refs: INT-nnn` and `Unit: U-<feature>-<nn>` trailers, so `docs/STATUS.md` shows what is being built.
+5. Never commit on `main`. One feature branch and one pull request per feature (`node scripts/feature.mjs start <feature>`); each unit in its own local worktree (`feature.mjs unit U-<feature>-<nn>`, branch `unit/INT-nnn/<feature>/<nn>`) that lands in the feature branch (`feature.mjs land`): no pull request, push or CI per unit; a red CI run becomes repair rounds per unit (`node scripts/ci-triage.mjs`) pushed together (`git-workflow`). Every commit has `Refs: INT-nnn` and `Unit: U-<feature>-<nn>` trailers, so `docs/STATUS.md` shows what is being built.
 
 ## Commands
 

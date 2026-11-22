@@ -1,5 +1,5 @@
 {
-  "kitVersion": "0.6.0",
+  "kitVersion": "0.7.0",
   "files": {
     ".claude/rules/backend.md": "c402952f8bde6ffa6003aa11299750f1e8bfb8752543160565bfd0866955330e",
     ".claude/rules/infra.md": "a9bb514990dcdde68e53ce94b5f20a3af9e0237f9b4985467ce8dcd038af616d",
@@ -14,13 +14,16 @@
     "scripts/architecture.mjs": "07fcb2cc5e46f9e93267b735ef147c91d36fd65cb64cc57436a3cac9360f3691",
     "scripts/audit.mjs": "07347d93d28df1d08064e99eb3c02fac7712d2e479683c190f818fa53a61825c",
     "scripts/check-mobile-bundle.mjs": "293d8f8a9cce1ef179944608e0560ee731934ebd5d23c0f68bbb6f335617040f",
-    "scripts/check.mjs": "d93f9750663c249a0ef97725abce8d96f47621a3987b9e2292697147a4381616",
+    "scripts/check.mjs": "11bfef969b33ed2f7a945b38f1aceb235b57c914caad0262eb4e53c414d1f077",
     "scripts/ci-changes.mjs": "fb51e7ddf9dc6db932c9ee3cc799f73b9c4dadd3446924bf3efca68ee8f06525",
+    "scripts/ci-triage.mjs": "fb0aa3a32357f4fee5857b00109ff05156eb56ac4a90912308b036ae191bc850",
     "scripts/components.mjs": "b5c44d6f874f4d18171acd85b6ad28c06777337de4df4afc3a6b2317a8740a4f",
     "scripts/docs.mjs": "a5c3ad22ec2967ed57326448fc21a97baa1fbf7d1a0d6766bc58a4ed8d7fe31a",
+    "scripts/feature.mjs": "29ec516c1ee2a640bcab50815af142b49316aa00889e931cf732e2dc97e4356c",
     "scripts/images.mjs": "aa810a11096a0b4746bcee8cfda1b12c3c72b5b53615ec2573ccd8f80c6916ab",
-    "scripts/integrate.mjs": "87b411f4d9904f036c333192ee782df8212e9f4f9c261d6d2b696d892acd357c",
+    "scripts/integrate.mjs": "ee564a50ca798ec12fcaf248329714d11aab09e5b71ed3f111213c2beb635d16",
+    "scripts/lib/branches.mjs": "2b12ed903e499082aa67a864fb127671b71b6384840adff9eb42b92ac68f404a",
     "scripts/lib/run-pnpm.mjs": "2049b5f62dabf175faa95ad6c8ff6f0852ac01e317fee3e37781a8fe4a453f62",
-    "scripts/status.mjs": "bc7181e30f18b16a850bd2157e8716a97634d223be4aa98a9a8f7068c1ea3728"
+    "scripts/status.mjs": "1cae1c10e6b641652156f01cb7b57ac89dc27ee41115c31e37e96c63341ff9ec"
   }
 }

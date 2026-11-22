@@ -19,7 +19,9 @@
     "integrate": "node scripts/integrate.mjs status",
     "architecture": "node scripts/architecture.mjs check",
     "architecture:render": "node scripts/architecture.mjs render",
-    "images": "node scripts/images.mjs sync"
+    "images": "node scripts/images.mjs sync",
+    "feature": "node scripts/feature.mjs",
+    "ci:triage": "node scripts/ci-triage.mjs"
   },
   "devDependencies": {
     "knip": "^6.44.2"
