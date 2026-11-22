@@ -257,3 +257,8 @@ class GmailReader:
         """Add one category label and take the mail out of the inbox; nothing else about the mail changes."""
         body = {"addLabelIds": [label_id], "removeLabelIds": [INBOX]}
         self._run(self._service.users().messages().modify(userId=ME, id=message_id, body=body))
+
+    def add_label(self, message_id: str, label_id: str) -> None:
+        """Add one more label (a sender rule's extra label); the inbox label and everything else stay as they are."""
+        body = {"addLabelIds": [label_id]}
+        self._run(self._service.users().messages().modify(userId=ME, id=message_id, body=body))

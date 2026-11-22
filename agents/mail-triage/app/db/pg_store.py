@@ -112,7 +112,11 @@ class PgStore:
         async with self._sessions() as session:
             current = await pg_categories.current_list(session, self._mailbox_id)
         return JudgingList(
-            current.version, tuple(ListedCategory(str(c.id), c.name, c.description) for c in current.categories)
+            current.version,
+            tuple(
+                ListedCategory(str(c.id), c.name, c.description, c.kind, c.notify, c.senders)
+                for c in current.categories
+            ),
         )
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:
@@ -165,6 +169,9 @@ class PgStore:
                     message_id,
                     outcome.filing.list_version,
                     uuid.UUID(outcome.filing.category_id),
+                    uuid.UUID(outcome.filing.extra_id) if outcome.filing.extra_id else None,
+                    outcome.filing.source.value,
+                    outcome.filing.source_ref,
                 )
 
     # ---- one-time catch-up of old unread mail (INT-003) -------------------------------------------------------

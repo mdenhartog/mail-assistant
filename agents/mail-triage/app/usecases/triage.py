@@ -19,8 +19,18 @@ from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.alert_state import AlertState, initial_state
 from app.core.alert_text import AuthResults
 from app.core.auth_results import parse_auth_results
-from app.core.judgement import OTHER_ID, OTHER_LABEL, Filing, Judgement, JudgingList, NeedsAttention, resolve
+from app.core.judgement import (
+    OTHER_ID,
+    OTHER_LABEL,
+    Filing,
+    Judgement,
+    JudgingList,
+    NeedsAttention,
+    category_label,
+    resolve,
+)
 from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
+from app.core.sender_rules import FilingSource, RuleFiling, RuleSkipped, SenderRulesCache
 from app.core.time_policy import in_quiet_hours, next_quiet_end
 
 if TYPE_CHECKING:
@@ -30,6 +40,7 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import ListedCategory
+    from app.core.sender_rules import UrgencyJudge, UrgencyVerdict
     from app.usecases.policy_notice import PolicySource
     from schedule_policy.policy import TimePolicy
 
@@ -53,10 +64,16 @@ class MailContent:
 
 @dataclass(frozen=True, slots=True)
 class FilingEntry:
-    """The ``filing`` row of a labelled mail: its category and the list version used. No sender, no subject (AC-39)."""
+    """The ``filing`` row of a labelled mail: its topic, extra label, source and the list version used.
 
-    category_id: str
+    ``source_ref`` is the matched sender entry, never anything of the mail itself. No sender, no subject (AC-39).
+    """
+
+    category_id: str  # the topic
     list_version: int
+    extra_id: str | None = None
+    source: FilingSource = FilingSource.MODEL
+    source_ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +92,7 @@ class Outcome:
     content: MailContent
     release_at: datetime | None = None  # a held alert: the next quiet end under the policy valid when it was held
     filing: FilingEntry | None = None
+    extra_label: str | None = None  # a sender rule's extra label, added next to ``label``
 
 
 class Claim(StrEnum):
@@ -102,6 +120,10 @@ class Mailbox(Protocol):
 
     def file(self, message_id: str, label_id: str) -> None:
         """Add the category label and remove the inbox label."""
+        ...
+
+    def add_label(self, message_id: str, label_id: str) -> None:
+        """Add one more label (the extra label) and change nothing else."""
         ...
 
 
@@ -249,6 +271,46 @@ def decide_outcome(
     )
 
 
+def rule_outcome(  # noqa: PLR0913, PLR0917 - the snapshot of one decision
+    ruled: RuleFiling,
+    verdict: UrgencyVerdict | None,
+    mail: FetchedMail,
+    current: JudgingList,
+    now: datetime,
+    policy: TimePolicy,
+) -> Outcome:
+    """Label, filing and urgency of a mail a sender rule filed (D11): ``verdict`` is ``None`` in a ticked category."""
+    urgent = verdict is not None and verdict.needs_attention
+    reason = f"Needs attention: {verdict.reason}" if urgent and verdict else f"Sender rule: {ruled.entry}"
+    alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy)) if urgent else None
+    extra = ruled.extra
+    return Outcome(
+        label=category_label(ruled.topic),
+        urgent=urgent,
+        confidence=1.0,
+        alert=alert,
+        note="sender_rule",
+        content=_content(mail, reason, ""),
+        release_at=next_quiet_end(now, policy) if alert is AlertState.HELD else None,
+        filing=FilingEntry(
+            ruled.topic.category_id,
+            current.version,
+            extra.category_id if extra else None,
+            FilingSource.SENDER_RULE,
+            ruled.entry,
+        ),
+        extra_label=category_label(extra) if extra else None,
+    )
+
+
+def mark_not_applied(outcome: Outcome, skipped: RuleSkipped | None) -> Outcome:
+    """Record on the filing that a listed sender was not authenticated, so its rule was not applied (D16)."""
+    if skipped is None or outcome.filing is None:
+        return outcome
+    filing = replace(outcome.filing, source=FilingSource.SENDER_RULE_NOT_APPLIED, source_ref=skipped.entry)
+    return replace(outcome, filing=filing)
+
+
 class TriagePipeline:
     """One run of the poll loop."""
 
@@ -261,8 +323,11 @@ class TriagePipeline:
         now: Callable[[], datetime],
         policy: PolicySource,
         pinned: PinnedSenders,
+        urgency: UrgencyJudge,
     ) -> None:
-        """Wire the ports, the clock, the policy source and the pinned sender domains."""
+        """Wire the ports, the clock, the policy source, the pinned sender domains and the urgency-only judge."""
+        self._urgency = urgency
+        self._rules = SenderRulesCache()
         self._pinned = pinned
         self._mail = mailbox
         self._judge = judge
@@ -334,16 +399,44 @@ class TriagePipeline:
             summary.alerts += outcome.alert is not None
             return
         current = await self._store.current_list()  # one snapshot for this mail: the judgement and the filing agree
-        verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)
-        policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
-        outcome = decide_outcome(verdict, mail, current, self._now(), policy)
-        try:
-            label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
-        except ValueError:  # the mailbox refuses this label name: file under Other, never lose the mail or its alert
-            logger.warning("label refused; filing under Other id=%s", mail.message_id)
-            outcome = replace(outcome, label=OTHER_LABEL)
-            label_id = await asyncio.to_thread(self._mail.ensure_label, OTHER_LABEL)
-        await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
-        await self._store.complete(mail.message_id, outcome)
+        ruled = self._rules.for_list(current).apply(mail.auth_results, mail.sender)
+        outcome = await self._decide(mail, current, ruled)
+        await self._file(mail, outcome)
         summary.filed += 1
         summary.alerts += outcome.alert is not None
+
+    async def _decide(self, mail: FetchedMail, current: JudgingList, ruled: RuleFiling | RuleSkipped | None) -> Outcome:
+        """A sender rule files the mail without a category call; otherwise the model judges it."""
+        trimmed = trim_mail(mail.subject, mail.sender, mail.text)
+        if isinstance(ruled, RuleFiling):
+            verdict = None if ruled.ticked else await self._urgency.needs_attention(trimmed)
+            policy = await self._policy.current()
+            return rule_outcome(ruled, verdict, mail, current, self._now(), policy)
+        judged = await self._judge.judge(trimmed, current.categories)
+        policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
+        return mark_not_applied(decide_outcome(judged, mail, current, self._now(), policy), ruled)
+
+    async def _file(self, mail: FetchedMail, outcome: Outcome) -> None:
+        outcome, label_id = await self._topic_label(mail, outcome)
+        outcome = await self._add_extra(mail, outcome)
+        await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
+        await self._store.complete(mail.message_id, outcome)
+
+    async def _topic_label(self, mail: FetchedMail, outcome: Outcome) -> tuple[Outcome, str]:
+        try:
+            return outcome, await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
+        except ValueError:  # the mailbox refuses this label name: file under Other, never lose the mail or its alert
+            logger.warning("label refused; filing under Other id=%s", mail.message_id)
+            return replace(outcome, label=OTHER_LABEL), await asyncio.to_thread(self._mail.ensure_label, OTHER_LABEL)
+
+    async def _add_extra(self, mail: FetchedMail, outcome: Outcome) -> Outcome:
+        """Add the extra label before the mail leaves the inbox; a refused name drops the extra, never the mail."""
+        if outcome.extra_label is None or outcome.filing is None:
+            return outcome
+        try:
+            label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.extra_label)
+        except ValueError:
+            logger.warning("extra label refused id=%s", mail.message_id)
+            return replace(outcome, extra_label=None, filing=replace(outcome.filing, extra_id=None))
+        await asyncio.to_thread(self._mail.add_label, mail.message_id, label_id)
+        return outcome

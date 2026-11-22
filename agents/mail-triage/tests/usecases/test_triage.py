@@ -10,6 +10,7 @@ import pytest
 
 from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
+from app.adapters.urgency_default import AlwaysNeedsAttention
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
 from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
@@ -20,6 +21,9 @@ from tests.usecases.fakes_policy import FakePolicySource
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from app.core.sender_rules import UrgencyJudge
+    from app.usecases.triage import Judge
 
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
@@ -54,6 +58,7 @@ class FakeMailbox:
         self.mails = {i: fetched(i) for i in ids}
         self.fetch_errors: dict[str, Exception] = {}
         self.filed: list[tuple[str, str]] = []
+        self.extra: list[tuple[str, str]] = []
         self.calls: list[str] = []
 
     def list_new(self, history_id: str | None) -> tuple[list[str], str]:
@@ -79,6 +84,10 @@ class FakeMailbox:
     def file(self, message_id: str, label_id: str) -> None:
         self.calls.append("file")
         self.filed.append((message_id, label_id))
+
+    def add_label(self, message_id: str, label_id: str) -> None:
+        self.calls.append("add_label")
+        self.extra.append((message_id, label_id))
 
 
 class FakeJudge:
@@ -154,11 +163,12 @@ class FakeNotifier:
 
 def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
     mailbox: FakeMailbox,
-    judge: FakeJudge,
+    judge: Judge,
     store: FakeStore,
     notifier: FakeNotifier | None = None,
     now: datetime = DAYTIME,
     source: FakePolicySource | None = None,
+    urgency: UrgencyJudge | None = None,
 ) -> TriagePipeline:
     return TriagePipeline(
         mailbox,
@@ -168,6 +178,7 @@ def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
         now=lambda: now,
         policy=source or FakePolicySource(),
         pinned=PINNED,
+        urgency=urgency or AlwaysNeedsAttention(),
     )
 
 

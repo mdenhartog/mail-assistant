@@ -13,15 +13,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.db.models import Category, CategoryCount, Filing, ListVersion
+from app.db.models import Category, CategoryCount, CategorySender, Filing, ListVersion
+from category_policy.kinds import Kind
+from category_policy.senders import SenderEntry
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-FILING_SOURCE_MODEL = "model"  # ``filing.source`` of a mail the model filed (ADR-0053)
-
 __all__ = [
-    "FILING_SOURCE_MODEL",
     "CategoryRow",
     "CurrentList",
     "category_counts",
@@ -39,6 +38,9 @@ class CategoryRow:
     name: str
     description: str
     position: int
+    kind: Kind = Kind.TOPIC
+    notify: bool = False
+    senders: tuple[SenderEntry, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -59,11 +61,31 @@ async def current_list(session: AsyncSession, mailbox_id: str) -> CurrentList:
     if version == 0:
         return CurrentList(version=0, categories=())
     rows = await session.execute(
-        select(Category.id, Category.name, Category.description, Category.position)
+        select(Category.id, Category.name, Category.description, Category.position, Category.kind, Category.notify)
         .where(Category.mailbox_id == mailbox_id, Category.version == version)
         .order_by(Category.position)
     )
-    return CurrentList(version=version, categories=tuple(CategoryRow(*row) for row in rows))
+    senders = await _senders(session, mailbox_id, version)
+    return CurrentList(
+        version=version,
+        categories=tuple(
+            CategoryRow(r.id, r.name, r.description, r.position, Kind(r.kind), r.notify, senders.get(r.id, ()))
+            for r in rows
+        ),
+    )
+
+
+async def _senders(session: AsyncSession, mailbox_id: str, version: int) -> dict[uuid.UUID, tuple[SenderEntry, ...]]:
+    """The sender entries of one list version per category, in entry order."""
+    rows = await session.execute(
+        select(CategorySender.category_id, CategorySender.entry, CategorySender.subdomains)
+        .where(CategorySender.mailbox_id == mailbox_id, CategorySender.version == version)
+        .order_by(CategorySender.category_id, CategorySender.entry)
+    )
+    found: dict[uuid.UUID, list[SenderEntry]] = {}
+    for row in rows:
+        found.setdefault(row.category_id, []).append(SenderEntry(row.entry, row.subdomains))
+    return {category_id: tuple(entries) for category_id, entries in found.items()}
 
 
 async def category_counts(session: AsyncSession, mailbox_id: str) -> dict[uuid.UUID, int]:
@@ -74,13 +96,20 @@ async def category_counts(session: AsyncSession, mailbox_id: str) -> dict[uuid.U
     return {row.category_id: row.mail_count for row in rows}
 
 
-async def record_filing(
-    session: AsyncSession, mailbox_id: str, message_id: str, list_version: int, topic_id: uuid.UUID
+async def record_filing(  # noqa: PLR0913, PLR0917 - one column each
+    session: AsyncSession,
+    mailbox_id: str,
+    message_id: str,
+    list_version: int,
+    topic_id: uuid.UUID,
+    extra_id: uuid.UUID | None,
+    source: str,
+    source_ref: str | None,
 ) -> None:
-    """Write the ``filing`` row of one labelled mail: ids and version only, never sender or subject (AC-39).
+    """Write the ``filing`` row of one labelled mail: ids, version, source and the matched entry (AC-39).
 
+    Never sender or subject: ``source_ref`` is the sender entry of the list that matched, nothing of the mail.
     A retry of the same mail under the same list version changes nothing; the time of filing is the database's.
-    The model filed it (``source``), under a topic and no extra label, and no sender entry matched (``source_ref``).
     """
     statement = (
         insert(Filing)
@@ -89,9 +118,9 @@ async def record_filing(
             message_id=message_id,
             list_version=list_version,
             topic_id=topic_id,
-            extra_id=None,
-            source=FILING_SOURCE_MODEL,
-            source_ref=None,
+            extra_id=extra_id,
+            source=source,
+            source_ref=source_ref,
         )
         .on_conflict_do_nothing(index_elements=["mailbox_id", "message_id", "list_version"])
     )
