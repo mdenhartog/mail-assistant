@@ -11,6 +11,7 @@ import pytest
 from app.adapters.gmail_read import FetchedMail
 from app.core.judgement import OTHER_ID
 from app.usecases.refile_report import Filed, RefileReport, RefileReportService
+from app.usecases.report import SuccessCounts
 
 NOW = datetime(2026, 12, 1, 6, 0, tzinfo=UTC)
 CAP = 1000
@@ -19,6 +20,7 @@ TRAVEL_ID = "22222222-2222-2222-2222-222222222222"
 CANARY_SENDER = "canary-sender@example.invalid"
 CANARY_SUBJECT = "canary-subject-4711"
 NAMES = {"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel", "L_OTH": "Assistant/Other", "INBOX": "INBOX"}
+COUNTS = SuccessCounts(days=14, filed=40, by_rule=10, by_model=28, in_other=4, always_notify_alerts=14)
 LABEL_OF = {FINANCE_ID: "L_FIN", TRAVEL_ID: "L_TRV", OTHER_ID: "L_OTH"}
 
 
@@ -41,6 +43,11 @@ class FakeStore:
     filed: list[Filed] = field(default_factory=list)
     reports: list[RefileReport] = field(default_factory=list)
     asked_since: list[datetime] = field(default_factory=list)
+    counts: SuccessCounts = COUNTS
+
+    async def success_counts(self, since: datetime) -> SuccessCounts:
+        assert since == NOW - timedelta(days=14)
+        return self.counts
 
     async def filings_since(self, since: datetime) -> list[Filed]:
         self.asked_since.append(since)
@@ -196,3 +203,15 @@ async def test_the_log_says_how_many_were_checked(caplog: pytest.LogCaptureFixtu
 
     assert "checked=12" in caplog.text
     assert "filed=50" in caplog.text
+
+
+async def test_the_log_carries_the_success_numbers_of_the_period(caplog: pytest.LogCaptureFixture) -> None:
+    service, _ = _rig(kept=1, moved=0)
+
+    with caplog.at_level(logging.INFO):
+        await service.run_once()
+
+    assert "Filed by a sender rule: 25.0% of 40 new mails" in caplog.text
+    assert "Model calls per day: 2.0" in caplog.text
+    assert "Always-notify alerts per day: 1.0" in caplog.text
+    assert "Filed under Other: 10.0% of 40 new mails" in caplog.text

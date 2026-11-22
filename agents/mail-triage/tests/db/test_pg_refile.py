@@ -17,6 +17,7 @@ import pytest
 from app.adapters.gmail_read import FetchedMail
 from app.db.pg_refile import PgRefileStore
 from app.usecases.refile_report import Filed, RefileReport, RefileReportService
+from app.usecases.report import SuccessCounts
 from tests.db.resort_support import MAILBOX, OTHER_ID, agent_sessions, seed_list
 
 if TYPE_CHECKING:
@@ -203,3 +204,50 @@ async def test_given_canary_strings_when_the_report_runs_then_no_sender_or_subje
     assert CANARY_SENDER not in seen
     assert CANARY_SUBJECT not in seen
     assert "canary-msg" not in seen  # no message id either
+
+
+async def _source(owner: asyncpg.Connection, message_id: str, category: str, source: str, age_days: float) -> None:
+    await owner.execute(
+        "insert into categories.filing (mailbox_id, message_id, list_version, topic_id, source, filed_at) "
+        "values ($1, $2, 1, $3::uuid, $4, now() - $5 * interval '1 day')",
+        MAILBOX,
+        message_id,
+        category,
+        source,
+        age_days,
+    )
+
+
+async def _alert(owner: asyncpg.Connection, key: str, causes: str | None, age_days: float) -> None:
+    await owner.execute(
+        "insert into mail_item (gmail_message_id, thread_id, urgent, created_at) values ($1, 't', true, now())", key
+    )
+    await owner.execute(
+        "insert into alert (mail_item_id, state, causes, created_at, updated_at) "
+        "select id, 'open', $2::jsonb, now() - $3 * interval '1 day', now() from mail_item where gmail_message_id = $1",
+        key,
+        causes,
+        age_days,
+    )
+
+
+async def test_given_filings_and_alerts_when_success_counts_are_asked_then_the_period_is_counted_by_source_and_cause(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    finance = (await seed_list(cat_owner, ["Finance"]))[0]
+    await _source(cat_owner, "r1", finance, "sender_rule", 1)
+    await _source(cat_owner, "r2", finance, "sender_rule", 2)
+    await _source(cat_owner, "m1", finance, "model", 1)
+    await _source(cat_owner, "o1", OTHER_ID, "model", 1)
+    await _source(cat_owner, "n1", finance, "sender_rule_not_applied", 1)  # the rule was skipped: the model filed it
+    await _source(cat_owner, "old", finance, "sender_rule", 20)  # outside the period
+    await _alert(cat_owner, "a1", '["urgent"]', 1)
+    await _alert(cat_owner, "a2", '["urgent", "always_notify:Bills"]', 1)
+    await _alert(cat_owner, "a3", '["always_notify:Bills"]', 2)
+    await _alert(cat_owner, "a4", None, 1)  # from before the causes existed
+    await _alert(cat_owner, "a5", '["always_notify:Bills"]', 30)  # outside the period
+    store = PgRefileStore(agent_sessions, MAILBOX)
+
+    counts = await store.success_counts(datetime.now(UTC) - timedelta(days=14))
+
+    assert counts == SuccessCounts(days=14, filed=5, by_rule=2, by_model=3, in_other=1, always_notify_alerts=2)

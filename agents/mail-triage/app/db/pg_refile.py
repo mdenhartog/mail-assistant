@@ -7,13 +7,16 @@ and writes the report only through ``categories.record_refile_report``; it has n
 
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.dialects.postgresql import distinct_on
 
-from app.db.models import CategoryLabel, Filing
-from app.usecases.refile_report import Filed
+from app.core.judgement import OTHER_ID
+from app.db.models import Alert, CategoryLabel, Filing
+from app.usecases.refile_report import PERIOD, Filed
+from app.usecases.report import SuccessCounts
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -68,3 +71,40 @@ class PgRefileStore:
                     )
                 )
             )
+
+    async def success_counts(self, since: datetime) -> SuccessCounts:
+        """The counts behind the success numbers (D22): the newest filing of each mail, and the always-notify alerts.
+
+        A mail whose rule was skipped (``sender_rule_not_applied``) was filed by the model, so it counts as such.
+        """
+        newest = (
+            select(Filing.source, Filing.topic_id)
+            .ext(distinct_on(Filing.message_id))
+            .where(Filing.mailbox_id == self._mailbox, Filing.filed_at >= since)
+            .order_by(Filing.message_id, desc(Filing.filed_at), desc(Filing.list_version))
+            .subquery()
+        )
+        by_rule = func.count().filter(newest.c.source == "sender_rule")
+        in_other = func.count().filter(newest.c.topic_id == uuid.UUID(OTHER_ID))
+        always_notify = (
+            select(func.count())
+            .select_from(Alert)
+            .where(
+                Alert.created_at >= since,
+                text("exists (select 1 from jsonb_array_elements_text(alert.causes) c where c like 'always_notify:%')"),
+            )
+            .scalar_subquery()
+        )
+        async with self._sessions() as session:
+            row = (
+                await session.execute(select(func.count(), by_rule, in_other, always_notify).select_from(newest))
+            ).one()
+        filed, ruled, other, alerts = row
+        return SuccessCounts(
+            days=PERIOD.days,
+            filed=filed,
+            by_rule=ruled,
+            by_model=filed - ruled,
+            in_other=other,
+            always_notify_alerts=alerts,
+        )
