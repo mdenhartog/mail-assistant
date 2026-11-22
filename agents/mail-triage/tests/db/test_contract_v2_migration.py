@@ -92,7 +92,10 @@ async def _list_state(connection: asyncpg.Connection) -> tuple[list[asyncpg.Reco
             "select mailbox_id, version, id, name, description, position from categories.category order by 1, 2, 3"
         ),
         await connection.fetch("select * from categories.list_version order by 1, 2"),
-        await connection.fetch("select * from categories.list_audit order by 1, 2"),
+        await connection.fetch(  # the columns of revision 0014 (0028 adds the instructions)
+            "select mailbox_id, version, old_list, new_list, channel, actor_digest, at "
+            "from categories.list_audit order by 1, 2"
+        ),
         await connection.fetch("select * from categories.category_label order by 1, 2"),
     )
 
