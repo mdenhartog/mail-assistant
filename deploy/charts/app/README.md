@@ -72,14 +72,15 @@ The database host name must be in the server certificate. The CA that signed it 
 
 ## Request body limits
 
-Two outer limits, both `buffering` Middlewares of Traefik (ADR-0040); a larger body gets 413 before it reaches the api.
+Three outer limits, all `buffering` Middlewares of Traefik (ADR-0040); a larger body gets 413 before it reaches the api.
 
 | Limit | Value | Applies to | Chart value |
 | --- | --- | --- | --- |
 | default | 8192 bytes (8 KB) | every route (`/api`, `/auth`, `/`), set on the Ingress (ADR-0034, W-9) | `ingress.bodyLimitBytes` |
 | list save | 2097152 bytes (2 MiB) | `PUT /api/categories` only (MC-12) | `ingress.categoriesBodyLimitBytes` |
+| category upload | 393216 bytes (384 KiB) | `POST /api/categories/upload` only | `ingress.uploadBodyLimitBytes` |
 
-Reason: a full v2 category list with senders is about 1.2 MB (the api limit is 2 MiB, 2097152 bytes) and does not fit in 8 KB, but a higher global cap would give every other route a larger body to buffer. The list save therefore has its own `IngressRoute` (`<release>-categories`) that matches the exact method and path (``Host(...) && Method(`PUT`) && Path(`/api/categories`)``, priority 1000). `POST /api/categories`, `/api/categories/` and any other `/api` path do not match it and keep 8192. The route uses the same HSTS Middleware, TLS option and certificate secret as the Ingress; plain HTTP is redirected by the redirect Ingress for every path. The api enforces the same two limits itself (U-04). `ingress.bodyLimitBytes` must be at least 1; `ingress.categoriesBodyLimitBytes` must be between 16384 and 4194304 (4 MiB, schema). The operator may lower the list save value below the api limit of 2 MiB, but then a large list is refused with a 413 at the edge.
+Reason: a full v2 category list with senders is about 1.2 MB (the api limit is 2 MiB, 2097152 bytes) and does not fit in 8 KB, but a higher global cap would give every other route a larger body to buffer. The list save therefore has its own `IngressRoute` (`<release>-categories`) that matches the exact method and path (``Host(...) && Method(`PUT`) && Path(`/api/categories`)``, priority 1000). `POST /api/categories`, `/api/categories/` and any other `/api` path do not match it and keep 8192. The route uses the same HSTS Middleware, TLS option and certificate secret as the Ingress; plain HTTP is redirected by the redirect Ingress for every path. The category file upload has the same pattern: its own `IngressRoute` (`<release>-upload`) with an exact match (``Host(...) && Method(`POST`) && Path(`/api/categories/upload`)``, priority 1000, so it never shadows or is shadowed by the list save, which differs in method and path). The api limit of the upload is 320 KiB (the 256 KiB file plus overhead); the edge default 393216 is a margin above it. `POST /api/categories/upload/{preview_id}/confirm` and `POST /api/categories/restore-previous` have no dedicated route and keep 8192. The api enforces the same limits itself (U-04). `ingress.uploadBodyLimitBytes` must be between 16384 and 1048576 (1 MiB, schema); a value below the api limit refuses large uploads with a 413 at the edge. `ingress.bodyLimitBytes` must be at least 1; `ingress.categoriesBodyLimitBytes` must be between 16384 and 4194304 (4 MiB, schema). The operator may lower the list save value below the api limit of 2 MiB, but then a large list is refused with a 413 at the edge.
 
 ## Checks
 

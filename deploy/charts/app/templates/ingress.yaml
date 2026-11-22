@@ -12,6 +12,7 @@ values.schema.json enforces: controller traefik, tls and hsts on, host under the
 {{- $headers := printf "%s-security-headers" .Release.Name }}
 {{- $limit := printf "%s-body-limit" .Release.Name }}
 {{- $categoriesLimit := printf "%s-body-limit-categories" .Release.Name }}
+{{- $uploadLimit := printf "%s-body-limit-upload" .Release.Name }}
 {{- $redirect := printf "%s-redirect-https" .Release.Name }}
 {{- $tlsOption := printf "%s-tls12" .Release.Name }}
 apiVersion: traefik.io/v1alpha1
@@ -44,6 +45,16 @@ spec:
   # The 2 MiB cap of the list save only (MC-12): a v2 list with senders is about 1.2 MB, the api limit is the same 2 MiB. Used by the IngressRoute below, nowhere else.
   buffering:
     maxRequestBodyBytes: {{ $ingress.categoriesBodyLimitBytes }}
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ $uploadLimit }}
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  # The cap of the category file upload only (unit 35): the api limit is 320 KiB (256 KiB file plus overhead), the default here is 384 KiB. Used by the upload IngressRoute below, nowhere else.
+  buffering:
+    maxRequestBodyBytes: {{ $ingress.uploadBodyLimitBytes }}
 ---
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -114,6 +125,31 @@ spec:
       priority: 1000
       middlewares:
         - name: {{ $categoriesLimit }}
+        - name: {{ $headers }}
+      services:
+        - name: {{ .Release.Name }}-api
+          port: http
+  tls:
+    secretName: {{ .Release.Name }}-tls
+    options:
+      name: {{ $tlsOption }}
+---
+# The category file upload: exact method and path, so the confirm and restore-previous routes (and every other /api path)
+# stay on the Ingress with the 8 KB cap. Same explicit priority as the list save: the two rules differ in method and path
+# and can never match the same request, so neither shadows the other; both win over the /api prefix router.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ .Release.Name }}-upload
+  labels: {{- include "app.labels" (dict "name" "ingress" "root" .) | nindent 4 }}
+spec:
+  entryPoints: [websecure]
+  routes:
+    - kind: Rule
+      match: {{ printf "Host(`%s`) && Method(`POST`) && Path(`/api/categories/upload`)" $ingress.host | quote }}
+      priority: 1000
+      middlewares:
+        - name: {{ $uploadLimit }}
         - name: {{ $headers }}
       services:
         - name: {{ .Release.Name }}-api

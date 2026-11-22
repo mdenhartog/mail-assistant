@@ -176,7 +176,7 @@ def test_given_the_local_values_when_rendered_then_the_body_cap_and_tls_minimum_
     limits = [d for d in of_kind(docs, "Middleware") if "buffering" in d["spec"]]
     options = of_kind(docs, "TLSOption")
 
-    assert sorted(d["spec"]["buffering"]["maxRequestBodyBytes"] for d in limits) == [8192, 2097152]
+    assert sorted(d["spec"]["buffering"]["maxRequestBodyBytes"] for d in limits) == [8192, 393216, 2097152]
     assert [d["spec"]["minVersion"] for d in options] == ["VersionTLS12"]
     assert not [d for d in options if d["spec"].get("maxVersion")]
 
