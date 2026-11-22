@@ -197,7 +197,7 @@
           },
           "senders": {
             "items": {
-              "$ref": "#/components/schemas/SenderItem"
+              "$ref": "#/components/schemas/SenderView"
             },
             "title": "Senders",
             "type": "array"
@@ -1387,6 +1387,32 @@
           "subdomains"
         ],
         "title": "SenderItem",
+        "type": "object"
+      },
+      "SenderView": {
+        "additionalProperties": false,
+        "description": "A sender entry as ``GET /api/categories`` shows it: the stored form and how many mails it skipped (read-only).\n\nThe count is not a field of ``SenderItem``: a save refuses it (``extra=\"forbid\"``).",
+        "properties": {
+          "entry": {
+            "title": "Entry",
+            "type": "string"
+          },
+          "skippedCount": {
+            "minimum": 0.0,
+            "title": "Skippedcount",
+            "type": "integer"
+          },
+          "subdomains": {
+            "title": "Subdomains",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entry",
+          "subdomains",
+          "skippedCount"
+        ],
+        "title": "SenderView",
         "type": "object"
       },
       "SessionInfo": {

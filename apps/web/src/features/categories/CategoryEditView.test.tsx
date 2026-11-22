@@ -16,7 +16,7 @@ const HOME = {
   ...NEWS,
   id: "7f0c1c2e-1b1e-4c52-9d0e-0a6a1b1c0003",
   name: "Huis/Energie",
-  senders: [{ entry: "x.nl", subdomains: true }],
+  senders: [{ entry: "x.nl", subdomains: true, skippedCount: 0 }],
 };
 
 async function openEdit(name: string): Promise<View> {
@@ -59,7 +59,7 @@ describe("the sender textarea (criterion 3, AC-65)", () => {
   });
 
   it("does not call it a conflict when the other category is of the other kind", async () => {
-    const view = await open("Invoices", [INVOICES, { ...HOME, kind: "topic", senders: [{ entry: "billing@example.com", subdomains: false }] }]);
+    const view = await open("Invoices", [INVOICES, { ...HOME, kind: "topic", senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 0 }] }]);
     expect(view.getByLabelText("Senders")).not.toBeInvalid();
   });
 

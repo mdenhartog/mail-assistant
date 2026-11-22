@@ -20,7 +20,7 @@ def stored(*, labels: tuple[str, ...] = ()) -> StoredList:
         StoredCategory(INVOICES, "Invoices", "Bills", Kind.TOPIC, notify=False, senders=()),
         StoredCategory(OLD, "Old", "Gone soon", Kind.TOPIC, notify=False, senders=()),
     )
-    return StoredList(1, categories, "", "Assistant/Archive", {}, labels)
+    return StoredList(1, categories, "", "Assistant/Archive", {}, {}, labels)
 
 
 def file_of(*categories: tuple[str, str]) -> bytes:

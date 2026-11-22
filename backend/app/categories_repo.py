@@ -39,6 +39,12 @@ _SENDERS = text(
     "SELECT category_id, entry, subdomains FROM categories.category_sender "
     "WHERE mailbox_id = :mailbox AND version = :version"
 )
+# Only the entries of the version asked for: a count whose entry left the list is not read (a join, not a scan).
+_SKIPPED = text(
+    "SELECT s.entry, k.skipped FROM categories.sender_skip k "
+    "JOIN categories.category_sender s ON s.mailbox_id = k.mailbox_id AND s.entry = k.entry "
+    "WHERE k.mailbox_id = :mailbox AND s.version = :version"
+)
 _SETTINGS = text(
     "SELECT general_instructions, archive_label FROM categories.list_settings "
     "WHERE mailbox_id = :mailbox AND version = :version"
@@ -98,6 +104,7 @@ class StoredList:
     general_instructions: str
     archive_label: str
     counts: dict[uuid.UUID, int]
+    skipped: dict[str, int]  # per list entry as stored; an entry without a row has no key (its count is 0)
     labels: tuple[str, ...]
 
 
@@ -172,7 +179,7 @@ async def _load(session: AsyncSession, mailbox: str, version: int) -> StoredList
     instructions, archive = (
         (settings.general_instructions, settings.archive_label) if settings else ("", ARCHIVE_LABEL_DEFAULT)
     )
-    return StoredList(version, categories, instructions, archive, {}, ())
+    return StoredList(version, categories, instructions, archive, {}, {}, ())
 
 
 class CategoriesRepository:
@@ -194,8 +201,13 @@ class CategoriesRepository:
             version: int = (await session.execute(_VERSION, params)).scalar_one()
             stored = await _load(session, self._mailbox, version)
             counts = {row.category_id: row.mail_count for row in (await session.execute(_COUNTS, params))}
+            skipped = (
+                {row.entry: row.skipped for row in await session.execute(_SKIPPED, {**params, "version": version})}
+                if version
+                else {}
+            )
             labels = tuple(row.name for row in (await session.execute(_LABELS, params)))
-        return replace(stored, counts=counts, labels=labels)
+        return replace(stored, counts=counts, skipped=skipped, labels=labels)
 
     async def read_version(self, version: int) -> StoredList | None:
         """Return one stored version of the list without the counts and labels (they belong to the latest).

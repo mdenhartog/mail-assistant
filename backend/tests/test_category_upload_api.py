@@ -423,7 +423,7 @@ async def test_given_a_confirmed_upload_when_restore_previous_then_a_new_version
     assert restored["version"] == 3
     assert [c["id"] for c in restored["categories"]] == [invoices, old]
     assert restored["generalInstructions"] == "First"
-    assert restored["categories"][1]["senders"] == [{"entry": "old.example.nl", "subdomains": True}]
+    assert restored["categories"][1]["senders"] == [{"entry": "old.example.nl", "subdomains": True, "skippedCount": 0}]
     assert restored["categories"][1]["notify"] is True
     assert await owner.fetchval(VERSIONS, MAILBOX) == 3
 

@@ -715,7 +715,7 @@ export interface components {
             /** Notify */
             notify: boolean;
             /** Senders */
-            senders: components["schemas"]["SenderItem"][];
+            senders: components["schemas"]["SenderView"][];
         };
         /**
          * CategoryList
@@ -1220,6 +1220,20 @@ export interface components {
         SenderItem: {
             /** Entry */
             entry: string;
+            /** Subdomains */
+            subdomains: boolean;
+        };
+        /**
+         * SenderView
+         * @description A sender entry as ``GET /api/categories`` shows it: the stored form and how many mails it skipped (read-only).
+         *
+         *     The count is not a field of ``SenderItem``: a save refuses it (``extra="forbid"``).
+         */
+        SenderView: {
+            /** Entry */
+            entry: string;
+            /** Skippedcount */
+            skippedCount: number;
             /** Subdomains */
             subdomains: boolean;
         };

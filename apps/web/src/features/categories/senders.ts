@@ -1,4 +1,7 @@
-import type { CategoryItem } from "@/api/categories/categories.types";
+import type { CategoryInput, CategoryItem } from "@/api/categories/categories.types";
+
+/** A sender entry as a save carries it: the read-only `skippedCount` of a read is not part of it. */
+type SenderEntries = CategoryInput["senders"];
 
 /** The most senders one category may list (C-4 of the spec); the api checks again. */
 export const MAX_SENDERS = 100;
@@ -10,18 +13,18 @@ const MARKED = /^(.*\S)\s+\+subdomains$/i;
 
 /** The sender entries of a text, and for each the 1-based line it was written on (blank lines are skipped). */
 export interface ParsedSenders {
-  entries: CategoryItem["senders"];
+  entries: SenderEntries;
   lines: number[];
 }
 
 /** The text the user edits: one entry per line, `+subdomains` after an entry that includes its subdomains. */
-export function textOfSenders(senders: CategoryItem["senders"]): string {
+export function textOfSenders(senders: SenderEntries): string {
   return senders.map((sender) => (sender.subdomains ? `${sender.entry} ${SUBDOMAINS_MARKER}` : sender.entry)).join("\n");
 }
 
 /** Reads the text back into the api's `{entry, subdomains}` list. */
 export function parseSenders(text: string): ParsedSenders {
-  const entries: CategoryItem["senders"] = [];
+  const entries: SenderEntries = [];
   const lines: number[] = [];
   text.split("\n").forEach((raw, index) => {
     const line = raw.trim();
