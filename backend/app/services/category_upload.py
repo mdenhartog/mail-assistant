@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from app.ids import IdSource
 
 PREVIEW_TTL = timedelta(minutes=15)
-_PLACEHOLDER_ID = uuid.UUID(int=1)  # a preview stores no new category, so the ids it builds are never used
 _POLICY_TEXT = "this breaks a rule of the list"
 
 
@@ -192,7 +191,7 @@ class CategoryUpload:
         """
         stored = await self._ready_list()
         parsed = parse_file(data)
-        plan = plan_of(parsed, stored, lambda: _PLACEHOLDER_ID)
+        plan = plan_of(parsed, stored, self._ids.category_id)  # the ids are only counted, never stored
         preview_id = self._ids.category_id()
         file_hash = hashlib.sha256(data).hexdigest()
         expires_at = self._clock.now() + PREVIEW_TTL
