@@ -13,6 +13,9 @@ from googleapiclient.errors import HttpError
 
 from app.adapters import gmail_auth, gmail_read
 from app.adapters.gmail_read import GmailReader, HistoryExpiredError
+from app.core.authentication import authenticated_from_domain
+from category_policy import SenderCategory, SenderEntry, build_matcher
+from category_policy.kinds import Kind
 
 SOURCE = Path(gmail_read.__file__).read_text(encoding="utf-8")
 
@@ -228,6 +231,50 @@ def test_given_two_authentication_results_headers_when_fetched_then_all_are_kept
         "mx.google.com; dmarc=pass header.from=real.example",
         "mx.google.com; dmarc=pass header.from=forged.example",
     )
+
+
+def test_given_two_from_headers_when_fetched_then_the_sender_is_empty_and_nothing_is_verified(
+    gmail: FakeGmail,
+) -> None:
+    """RED-003: the dict kept one From; with several, no rule and no verification may rest on either of them."""
+    gmail.messages["m4"] = {
+        "id": "m4",
+        "threadId": "t4",
+        "labelIds": ["INBOX"],
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [
+                {"name": "Authentication-Results", "value": "mx.google.com; dmarc=pass header.from=bank.nl"},
+                {"name": "From", "value": "evil@evil.com"},
+                {"name": "from", "value": "info@bank.nl"},
+            ],
+            "body": {"data": b64("hi")},
+        },
+    }
+
+    mail = reader(gmail).fetch("m4")
+    matcher = build_matcher([SenderCategory("Bank", Kind.TOPIC, (SenderEntry("bank.nl"),))])
+
+    assert mail.sender == ""
+    assert matcher(mail.sender) is None
+    assert (
+        authenticated_from_domain(tuple(("Authentication-Results", v) for v in mail.auth_results), mail.sender) is None
+    )
+
+
+def test_given_one_from_header_when_fetched_then_the_sender_is_its_address(gmail: FakeGmail) -> None:
+    gmail.messages["m5"] = {
+        "id": "m5",
+        "threadId": "t5",
+        "labelIds": ["INBOX"],
+        "payload": {
+            "mimeType": "text/plain",
+            "headers": [{"name": "FROM", "value": "Bank <info@bank.nl>"}],
+            "body": {"data": b64("hi")},
+        },
+    }
+
+    assert reader(gmail).fetch("m5").sender == "info@bank.nl"
 
 
 def test_given_a_mail_with_only_html_when_fetched_then_the_text_is_extracted_without_scripts(gmail: FakeGmail) -> None:
