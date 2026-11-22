@@ -30,6 +30,7 @@ interface Call {
   method: string;
   path: string;
   body: string | null;
+  bytes: Uint8Array | null;
   contentType: string | null;
 }
 
@@ -53,19 +54,34 @@ function answerFor(path: string, answers: Answers): Response {
   return (own[path] ?? (() => json(LIST)))();
 }
 
+/** The bytes a request body would put on the wire, or null when there is no binary body. */
+async function bytesOf(body: BodyInit | null | undefined): Promise<Uint8Array | null> {
+  if (body instanceof Blob) {
+    return new Uint8Array(await body.arrayBuffer());
+  }
+  if (body instanceof ArrayBuffer) {
+    return new Uint8Array(body);
+  }
+  if (ArrayBuffer.isView(body)) {
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  }
+  return null;
+}
+
 /** A stubbed `fetch` for the categories page and the file routes; every call is recorded. */
 function wire(answers: Answers = {}): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn((input: string, init: RequestInit = {}) => {
+    vi.fn(async (input: string, init: RequestInit = {}) => {
       calls.push({
         method: (init.method ?? "GET").toUpperCase(),
         path: input,
         body: typeof init.body === "string" ? init.body : null,
+        bytes: await bytesOf(init.body),
         contentType: new Headers(init.headers).get("Content-Type"),
       });
-      return Promise.resolve(answerFor(input, answers));
+      return answerFor(input, answers);
     }),
   );
   return calls;
@@ -99,7 +115,8 @@ describe("Upload: the preview (criterion 1, 2, 6)", () => {
     expect(removed).toHaveTextContent("Removed categories disappear from the app. Their Gmail labels and mail stay as they are.");
     expect(within(removed).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Travel", "Huis/Energie"]);
     const sent = calls.find((call) => call.path === "/api/categories/upload");
-    expect(sent).toMatchObject({ method: "POST", contentType: "application/yaml", body: "schema: 1\ncategories: []\n" });
+    expect(sent).toMatchObject({ method: "POST", contentType: "application/yaml" });
+    expect(new TextDecoder().decode(sent?.bytes ?? new Uint8Array())).toBe("schema: 1\ncategories: []\n");
     expect(calls.some((call) => call.method === "PUT")).toBe(false);
   });
 
@@ -171,6 +188,26 @@ describe("Upload: a refused file (criterion 3)", () => {
     expect(await screen.findByText("Copied.")).toBeInTheDocument();
     expect(calls.filter((call) => call.method !== "GET" && call.path !== "/api/categories/upload")).toEqual([]);
     await expectNoAxeViolations(container);
+  });
+
+  it.each([
+    ["a BOM", [0xef, 0xbb, 0xbf, ...new TextEncoder().encode("schema: 1\n")], "bom", "The file starts with a byte order mark."],
+    ["a Windows-1252 byte", [...new TextEncoder().encode("name: caf"), 0xe9, 0x0a], "not_utf8", "The file is not UTF-8."],
+  ])("given a file with %s, then its bytes reach the API unchanged and the API's problem is shown", async (_label, raw, rule, message) => {
+    const bytes = Uint8Array.from(raw);
+    const problems = { ...PROBLEMS, problems: [{ rule, line: 1, field: "file", message }] };
+    const calls = wire({ upload: () => json(problems, 422, { "Content-Type": "application/problem+json" }) });
+    const user = userEvent.setup();
+    container = renderPage();
+    await screen.findByRole("button", { name: `Edit ${INVOICES.name}` });
+
+    await user.upload(screen.getByLabelText("Choose a YAML file"), new File([bytes], "list.yaml", { type: "application/yaml" }));
+
+    const errors = await screen.findByRole("region", { name: "Your file was not accepted" });
+    expect(errors).toHaveTextContent(`Line 1, file: ${message}`);
+    const sent = calls.find((call) => call.path === "/api/categories/upload");
+    expect(sent?.contentType).toBe("application/yaml");
+    expect(Array.from(sent?.bytes ?? [])).toEqual(Array.from(bytes));
   });
 
   it.each([
