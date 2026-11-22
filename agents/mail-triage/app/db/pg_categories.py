@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.db.models import Category, CategoryCount, CategorySender, Filing, ListVersion
+from app.db.models import Category, CategoryCount, CategorySender, Filing, ListSettings, ListVersion
 from category_policy.kinds import Kind
 from category_policy.senders import SenderEntry
 
@@ -49,6 +49,7 @@ class CurrentList:
 
     version: int
     categories: tuple[CategoryRow, ...]
+    general_instructions: str = ""
 
 
 async def current_list(session: AsyncSession, mailbox_id: str) -> CurrentList:
@@ -66,8 +67,16 @@ async def current_list(session: AsyncSession, mailbox_id: str) -> CurrentList:
         .order_by(Category.position)
     )
     senders = await _senders(session, mailbox_id, version)
+    instructions = (
+        await session.execute(
+            select(ListSettings.general_instructions).where(
+                ListSettings.mailbox_id == mailbox_id, ListSettings.version == version
+            )
+        )
+    ).scalar_one_or_none()
     return CurrentList(
         version=version,
+        general_instructions=instructions or "",
         categories=tuple(
             CategoryRow(r.id, r.name, r.description, r.position, Kind(r.kind), r.notify, senders.get(r.id, ()))
             for r in rows

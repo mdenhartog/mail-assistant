@@ -22,7 +22,7 @@ from app.db.pg_store import PgStore
 from app.usecases.overview import SecurityMail
 from app.usecases.triage import FilingEntry, MailContent, Outcome
 from category_policy.senders import SenderEntry
-from tests.db.conftest import write_list
+from tests.db.conftest import insert_list, write_list
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -76,6 +76,31 @@ async def test_given_two_list_versions_when_the_current_list_is_read_then_it_is_
 
     assert current.version == 2
     assert [(c.category_id, c.name) for c in current.categories] == [(ids["Bills"], "Bills"), (ids["Travel"], "Travel")]
+
+
+async def test_given_general_instructions_in_the_list_settings_when_the_list_is_read_then_they_come_with_it(
+    store: PgStore, cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection
+) -> None:
+    await write_list(cat_api, MAILBOX, 1, ["Bills"])
+    async with cat_api.transaction():  # the settings row is written in the transaction that creates the version
+        await insert_list(cat_api, MAILBOX, 2, ["Bills"])
+        await cat_api.execute(
+            "insert into categories.list_settings (mailbox_id, version, general_instructions, archive_label) "
+            "values ($1, 2, 'Invoices are never urgent.', 'Assistant/Archive')",
+            MAILBOX,
+        )
+    del cat_owner
+
+    assert (await store.current_list()).general_instructions == "Invoices are never urgent."
+
+
+async def test_given_no_list_settings_row_when_the_list_is_read_then_the_instructions_are_empty(
+    store: PgStore, cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection
+) -> None:
+    del cat_owner
+    await write_list(cat_api, MAILBOX, 1, ["Bills"])
+
+    assert (await store.current_list()).general_instructions == ""
 
 
 async def test_given_no_list_yet_when_the_current_list_is_read_then_it_is_version_zero_and_empty(
