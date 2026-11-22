@@ -225,12 +225,15 @@ class GmailReader:
         headers = {
             h["name"].title(): h["value"] for h in payload.get("headers", []) if h["name"].title() in KEPT_HEADERS
         }
+        # Several From headers are ambiguous (the dict above keeps one of them): fail closed, no sender at all.
+        from_count = sum(1 for h in payload.get("headers", []) if h["name"].title() == "From")
+        sender = parseaddr(headers.get("From", ""))[1] if from_count <= 1 else ""
         parts = _parts(payload)
         has_attachment = any(p.get("filename") or p.get("body", {}).get("attachmentId") for p in parts)
         return FetchedMail(
             message_id=raw["id"],
             thread_id=raw["threadId"],
-            sender=parseaddr(headers.get("From", ""))[1],
+            sender=sender,
             reply_to=parseaddr(headers["Reply-To"])[1] if "Reply-To" in headers else None,
             subject=headers.get("Subject", ""),
             text=_text_of(parts),

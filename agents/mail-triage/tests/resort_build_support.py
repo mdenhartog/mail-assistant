@@ -65,7 +65,8 @@ class FakeBuildStore:
     async def latest_plan(self) -> PlanRecord | None:
         return self.plans[-1] if self.plans else None
 
-    async def create_plan(self, list_version: int, cap: int) -> PlanRecord | None:
+    async def seed_plan(self, list_version: int, cap: int) -> PlanRecord | None:
+        """Test only: the api creates plans, the agent port cannot."""
         if any(p.state in (PlanState.BUILDING, PlanState.READY) for p in self.plans):
             return None
         plan = PlanRecord(uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap)
@@ -218,7 +219,7 @@ class Rig:
 
     async def start_plan(self) -> None:
         """A ``building`` plan for the current list, as a request will create it (U-label-structure-22)."""
-        await self.store.create_plan(self.store.list.version, PLAN_CAP)
+        await self.store.seed_plan(self.store.list.version, PLAN_CAP)
 
     def remaining(self) -> int:
         """The budget view the use case reads: what the day still allows, the reserve included."""

@@ -48,7 +48,7 @@ class AlertBasis:
     """Why the alert exists and what is known of the sender (ADR-0057).
 
     ``verified_domain`` is the From domain Gmail vouches for (``authenticated_from_domain``), ``None`` when it does not.
-    ``by_rule`` marks a mail a sender rule filed, so the model never read it.
+    ``by_rule`` marks a mail a sender rule filed: the model chose no category and wrote no summary.
     """
 
     causes: tuple[AlertCause, ...]
@@ -118,14 +118,15 @@ def _alert_text(meta: MailMeta, judgement: Judgement, basis: AlertBasis, scale: 
     subject = _safe(meta.subject, cap(SUBJECT_CHARS))
     reason = _safe(judgement.reason, cap(REASON_CHARS))
     if basis.by_rule:
-        # Filed by a sender rule: the model never read it. Code spans are never made clickable by Telegram.
+        # Filed by a sender rule: the model chose no category. Code spans are never made clickable by Telegram, and
+        # the reason is model output, so it goes in one too.
         lines = [
             *_causes(basis, cap(CATEGORY_CHARS)),
             f"<b>Verified sender domain:</b> <code>{_safe(basis.verified_domain or '', cap(SENDER_CHARS))}</code>",
-            "Content not checked by the model.",
+            "Category not chosen by the model; urgency read by the model.",
             f"<b>From:</b> <code>{sender}</code>",
             f"<b>Subject:</b> <code>{subject}</code>",
-            f"<b>Why it matters:</b> {reason}",
+            f"<b>Why it matters:</b> <code>{reason}</code>",
         ]
     else:
         lines = [

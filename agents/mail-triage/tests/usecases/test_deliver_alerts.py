@@ -284,6 +284,22 @@ async def test_given_mixed_alerts_above_the_hourly_cap_when_delivered_then_the_s
     assert outbox.messages[-1].buttons == ()
 
 
+async def test_given_only_always_notify_alerts_above_the_hourly_cap_when_delivered_then_the_excess_is_one_digest() -> (
+    None
+):
+    """AC-25: the cap holds for always-notify alerts too, not only for urgent ones."""
+    store, outbox = FakeStore([pending(str(n), basis=TICKED) for n in range(8)]), FakeOutbox()
+
+    await delivery(store, outbox, cap=3).deliver_open_alerts()
+
+    assert len(outbox.messages) == 4  # three alerts and one digest of the other five
+    assert outbox.messages[-1].buttons == ()
+    assert len(store.sent) == 8  # all are marked sent, so the next run repeats nothing
+
+    await delivery(store, outbox, cap=3).deliver_open_alerts()
+    assert len(outbox.messages) == 4
+
+
 async def test_given_always_notify_alerts_held_in_quiet_hours_when_they_end_then_they_go_out_together() -> None:
     held = [pending("1", AlertState.HELD, TICKED), pending("2", AlertState.HELD, URGENT)]
     store, outbox = FakeStore(held), FakeOutbox()

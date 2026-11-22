@@ -38,6 +38,5 @@ export function skippedText(count: number): string {
 /** Said once under the Senders field when any entry has a skipped count. */
 export const SKIPPED_NOTE = "The AI judged those mails instead.";
 
-/** The fixed block of the Categories page (Screens). */
-export const FIXED_BLOCK =
-  "Changing the list never moves mail you already have. Only new mail follows it. To re-sort the inbox, press Sort everything again.";
+/** The fixed block of the Categories page (Screens). R2 unit 25 adds the sentence about the Sort everything again button. */
+export const FIXED_BLOCK = "Changing the list never moves mail you already have. Only new mail follows it.";

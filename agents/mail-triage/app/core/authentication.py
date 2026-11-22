@@ -7,6 +7,9 @@ the domain of the one ``From`` address. Anything else, including a header this m
 "not authenticated". ``ARC-Authentication-Results`` and ``X-Original-Authentication-Results`` are other headers and
 never count, and the caller passes the headers of the mail itself, never those of an attached ``message/rfc822``.
 
+Domains are compared as exact A-labels (``category_policy.normalise_domain``); a Unicode domain that the IDNA
+mapping would fold (``ß``, ``ς``, ligatures, ``İ``) matches nothing.
+
 The header is tokenised as RFC 8601 says (nested comments, quoted strings, escapes).
 """
 
@@ -15,6 +18,8 @@ from __future__ import annotations
 import re
 from email.utils import getaddresses
 from typing import TYPE_CHECKING
+
+from category_policy import normalise_domain
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -31,14 +36,15 @@ _QUOTED = '"_"'  # what a quoted string becomes: its content can never look like
 
 
 def authenticated_from_domain(headers: Sequence[tuple[str, str]], from_header: str | None) -> str | None:
-    """The lower-case domain of the one ``From`` address when Gmail vouches for it (DMARC pass), else ``None``.
+    """The lower-case A-label domain of the one ``From`` address when Gmail vouches for it (DMARC pass), else ``None``.
 
     Args:
         headers: The ``(name, value)`` header pairs of the mail in message order, topmost first, duplicates kept.
         from_header: The value of its ``From`` header.
 
     Returns:
-        The ``From`` domain, or ``None`` for anything that is not an unambiguous Gmail verdict for that domain.
+        The ``From`` domain as an A-label (never Unicode-folded), or ``None`` for
+        anything that is not an unambiguous Gmail verdict for that domain.
     """
     if from_header is None or sum(1 for name, _ in headers if name.casefold() == _FROM) > 1:
         return None
@@ -57,8 +63,8 @@ def _from_domain(from_header: str) -> str | None:
     if len(addresses) != 1:
         return None
     local, separator, domain = addresses[0].rpartition("@")
-    domain = domain.strip().casefold()
-    return domain if separator and local and domain else None
+    a_label = normalise_domain(domain.strip())
+    return a_label if separator and local and a_label else None
 
 
 def _skip_quoted(text: str, start: int) -> int | None:
@@ -138,5 +144,9 @@ def _gmail_vouches(header: str, from_domain: str) -> bool:
         if match is None:
             continue
         domains = _HEADER_FROM.findall(match.group("rest"))
-        return match.group("result").casefold() == "pass" and len(domains) == 1 and domains[0].casefold() == from_domain
+        return (
+            match.group("result").casefold() == "pass"
+            and len(domains) == 1
+            and normalise_domain(domains[0]) == from_domain
+        )
     return False

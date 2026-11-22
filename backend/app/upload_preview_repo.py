@@ -5,9 +5,13 @@ The web role may insert a preview and set ``used_at``; nothing else. Every query
 
 from __future__ import annotations
 
+import math
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
+
+from app.categories_repo import RecentSaves
 
 if TYPE_CHECKING:
     import uuid
@@ -26,6 +30,14 @@ _CLAIM = text(
     "WHERE mailbox_id = :mailbox AND id = :id AND session_digest = :session AND file_hash = :hash "
     "AND base_version = :base AND used_at IS NULL AND expires_at > :now RETURNING content"
 )
+# A preview lives PREVIEW_TTL, so its upload time is ``expires_at - ttl`` on the application's clock (the one the
+# service stamped it with), which keeps the count consistent with the fake clock of the tests.
+_RECENT = text(
+    "SELECT count(*) AS previews, min(expires_at) AS oldest FROM categories.upload_preview "
+    "WHERE mailbox_id = :mailbox AND session_digest = :session AND expires_at > :since"
+)
+_WINDOW = timedelta(hours=1)
+_HOUR = int(_WINDOW.total_seconds())
 
 
 class UploadPreviewRepository:
@@ -67,6 +79,25 @@ class UploadPreviewRepository:
         }
         async with self._database.session() as session, session.begin():
             await session.execute(_INSERT, params)
+
+    async def recent(self, session_digest: str, now: datetime, ttl: timedelta) -> RecentSaves:
+        """Count the previews a session stored in the hour before ``now``, used or not.
+
+        Args:
+            session_digest: The digest of the uploading session.
+            now: The time of the request, from the application's clock.
+            ttl: How long a preview lives; the upload time of a preview is its expiry minus this.
+
+        Returns:
+            The count and the wait until the oldest of them is an hour old (at least one second).
+        """
+        params = {"mailbox": self._mailbox, "session": session_digest, "since": now - _WINDOW + ttl}
+        async with self._database.session() as session, session.begin():
+            row = (await session.execute(_RECENT, params)).one()
+        if row.oldest is None:
+            return RecentSaves(0, 1)
+        wait = math.ceil((row.oldest - ttl + _WINDOW - now).total_seconds())
+        return RecentSaves(row.previews, max(1, min(_HOUR, wait)))
 
     async def claim(  # every binding of the preview is one argument
         self,

@@ -46,7 +46,7 @@ def success_text(counts: SuccessCounts) -> str:
         (
             f"Success numbers (last {counts.days} days):",
             f"Filed by a sender rule: {_share(counts.by_rule, counts.filed)}",
-            f"Model calls per day: {counts.by_model / counts.days:.1f}",
+            f"At least {counts.by_model / counts.days:.1f} model calls per day (filing calls only)",
             f"Always-notify alerts per day: {counts.always_notify_alerts / counts.days:.1f}",
             f"Filed under Other: {_share(counts.in_other, counts.filed)}",
         )

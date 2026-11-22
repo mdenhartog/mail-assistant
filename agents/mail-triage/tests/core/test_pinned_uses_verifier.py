@@ -51,6 +51,14 @@ def test_given_a_real_gmail_header_for_a_listed_domain_when_checked_then_the_mai
     assert pinned_kind(values, "sender@example.com", ALLOW) is PinnedKind.SIGN_IN_CODE
 
 
+def test_given_a_look_alike_of_a_listed_domain_when_checked_then_the_mail_is_not_pinned() -> None:
+    allow = PinnedSenders(google_security=frozenset(), sign_in=frozenset({"strasse-bank.de"}))
+    sender = "billing@straße-bank.de"
+    auth = "mx.google.com; dmarc=pass header.from=straße-bank.de"
+
+    assert pinned_kind((auth,), sender, allow) is None
+
+
 def test_pinned_has_no_header_parser_of_its_own() -> None:
     assert not hasattr(pinned, "_gmail_vouches")
     assert not hasattr(pinned, "_split_results")

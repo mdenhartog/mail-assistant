@@ -144,9 +144,7 @@ test("the page shows one row per category, Other, the fixed block and the older 
   await expect(page.getByRole("heading", { name: "Other" })).toBeVisible();
   await expect(page.getByText("3 mails")).toBeVisible();
   await expect(
-    page.getByText(
-      "Changing the list never moves mail you already have. Only new mail follows it. To re-sort the inbox, press Sort everything again.",
-    ),
+    page.getByText("Changing the list never moves mail you already have. Only new mail follows it."),
   ).toBeVisible();
   await expect(page.getByText("Your archive label is left alone.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to my list: Newsletters" })).toBeVisible();

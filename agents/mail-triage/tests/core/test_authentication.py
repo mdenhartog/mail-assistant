@@ -37,6 +37,35 @@ def test_given_a_mixed_case_from_domain_when_verified_then_the_domain_is_lower_c
 
 
 @pytest.mark.parametrize(
+    ("from_domain", "header_from", "expected"),
+    [
+        pytest.param("straße-bank.de", "straße-bank.de", None, id="sharp-s-vs-ss"),
+        pytest.param("strasse-bank.de", "straße-bank.de", None, id="ss-from-sharp-s-header"),
+        pytest.param("straße-bank.de", "strasse-bank.de", None, id="sharp-s-from-ss-header"),
+        pytest.param("ςigma.example", "ςigma.example", None, id="final-sigma"),
+        pytest.param("\u03c3igma.example", "ςigma.example", None, id="sigma-vs-final-sigma"),
+        pytest.param("ﬀ-bank.example", "ﬀ-bank.example", None, id="ligature-ff"),
+        pytest.param("ff-bank.example", "ﬀ-bank.example", None, id="ff-vs-ligature"),
+        pytest.param("İbank.example", "İbank.example", "xn--ibank-7fd.example", id="dotted-capital-i-stays-distinct"),
+        pytest.param("ibank.example", "İbank.example", None, id="i-vs-dotted-capital-i"),
+        pytest.param("example.com", "example.com", "example.com", id="plain-ascii"),
+        pytest.param("EXAMPLE.Com", "example.COM", "example.com", id="uppercase-ascii"),
+        pytest.param("xn--bcher-kva.example", "xn--bcher-kva.example", "xn--bcher-kva.example", id="a-label"),
+        pytest.param("bücher.example", "xn--bcher-kva.example", "xn--bcher-kva.example", id="u-label-vs-a-label"),
+        pytest.param("xn--bcher-kva.example", "bücher.example", "xn--bcher-kva.example", id="a-label-vs-u-label"),
+        pytest.param("exa mple.com", "exa mple.com", None, id="unconvertible"),
+    ],
+)
+def test_given_a_unicode_from_domain_when_verified_then_only_the_exact_a_label_matches_and_is_returned(
+    from_domain: str, header_from: str, expected: str | None
+) -> None:
+    sender = f"A <billing@{from_domain}>"
+    headers = _headers(_gmail("dmarc=pass", domain=header_from), sender=sender)
+
+    assert authenticated_from_domain(headers, sender) == expected
+
+
+@pytest.mark.parametrize(
     "auth",
     [
         pytest.param(("spamfilter.example; dmarc=pass header.from=example.com",), id="not-gmail"),

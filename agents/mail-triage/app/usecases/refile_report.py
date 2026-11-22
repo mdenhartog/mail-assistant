@@ -34,10 +34,11 @@ PERIOD = timedelta(days=14)  # the AC-46 horizon: two weeks after R1
 
 @dataclass(frozen=True, slots=True)
 class Filed:
-    """The newest ``filing`` row of one mail: its id and the category it was filed under."""
+    """The newest ``filing`` row of one mail: its id, the topic it was filed under and its extra label, if any."""
 
     message_id: str
     category_id: str
+    extra_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,8 +125,11 @@ class RefileReportService:
                 continue
             held = {label_id for label_id in mail.labels if names.get(label_id, "").startswith(LABEL_PREFIX)}
             in_other += bool(held & other_ids)
-            was = recorded.get(entry.category_id)
-            refiled += was is not None and held != {was}  # a category without a label cannot be compared
+            # The mail carries one label per kind it was filed with: the topic and at most one extra (spec C-13).
+            expected = {recorded.get(entry.category_id)}
+            if entry.extra_id is not None:
+                expected.add(recorded.get(entry.extra_id))
+            refiled += None not in expected and held != expected  # a category without a label cannot be compared
         report = RefileReport(filed=len(filings), checked=len(checked), refiled=refiled, in_other=in_other, gone=gone)
         await self._store.record_report(report)
         success = await self._store.success_counts(since)

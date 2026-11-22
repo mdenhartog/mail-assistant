@@ -52,6 +52,8 @@ export function rowText(category: GoldenCategory): RegExp {
 
 /** Opens every group of the list, children included, until no "Expand" button is left. */
 export async function expandAll(page: Page): Promise<void> {
+  // After a reload the heading is there before the list is: wait for a row, or the loop sees no group and stops.
+  await expect(page.locator("button[data-edit]").first()).toBeVisible();
   const expanders = page.getByRole("button", { name: /^Expand / });
   for (let guard = 0; guard < 60 && (await expanders.count()) > 0; guard += 1) {
     await expanders.first().click();
