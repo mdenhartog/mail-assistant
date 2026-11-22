@@ -14,6 +14,7 @@ from app.categories_models import (
     OlderCategory,
     OtherItem,
     SenderItem,
+    SenderView,
 )
 from app.categories_repo import OTHER_ID, StoredCategory, StoredList, StoredSender
 from category_policy import (
@@ -94,7 +95,14 @@ def to_response(stored: StoredList) -> CategoryList:
                 description=category.description,
                 kind=category.kind,
                 notify=category.notify,
-                senders=[SenderItem(entry=sender.entry, subdomains=sender.subdomains) for sender in category.senders],
+                senders=[
+                    SenderView(
+                        entry=sender.entry,
+                        subdomains=sender.subdomains,
+                        skipped_count=stored.skipped.get(sender.entry, 0),
+                    )
+                    for sender in category.senders
+                ],
                 mail_count=stored.counts.get(category.id, 0),
             )
             for category in stored.categories

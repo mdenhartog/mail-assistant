@@ -26,6 +26,19 @@ class SenderItem(BaseModel):
     subdomains: StrictBool
 
 
+class SenderView(BaseModel):
+    """A sender entry as ``GET /api/categories`` shows it: the stored form and how many mails it skipped (read-only).
+
+    The count is not a field of ``SenderItem``: a save refuses it (``extra="forbid"``).
+    """
+
+    model_config = _CONFIG
+
+    entry: str
+    subdomains: bool
+    skipped_count: Annotated[int, Field(ge=0)]
+
+
 class CategoryItem(BaseModel):
     """One category of the stored list with the number of mails filed under it."""
 
@@ -36,7 +49,7 @@ class CategoryItem(BaseModel):
     description: str
     kind: Kind
     notify: bool
-    senders: list[SenderItem]
+    senders: list[SenderView]
     mail_count: Annotated[int, Field(ge=0)]
 
 
