@@ -17,6 +17,7 @@ const UI_STATES = /ui-states\.spec\.ts/;
 const JOURNEY = /journey\.spec\.ts/;
 const CATEGORIES = /categories\.spec\.ts/;
 const REVIEW = /review\.spec\.ts/;
+const LABEL_STRUCTURE = /label-structure\.spec\.ts/;
 
 // `ui-states` renders every login and settings state against a stubbed API (route.fulfill, no backend, no setup)
 // on a local preview of the built app. The web job runs it with `--project=ui-states`; the prod-like job sets
@@ -50,11 +51,11 @@ export default defineConfig({
       dependencies: ["smoke-375"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, storageState: STORAGE_STATE },
     },
-    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
-    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
+    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
+    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
     {
       name: "desktop",
-      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW],
+      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE],
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
@@ -83,6 +84,14 @@ export default defineConfig({
             testMatch: REVIEW,
             fullyParallel: false,
             dependencies: ["setup", "categories"],
+            use: { ...devices["Desktop Chrome"] },
+          },
+          // `label-structure` (U-label-structure-17) uploads the golden file and resets the same tables, so it runs last.
+          {
+            name: "label-structure",
+            testMatch: LABEL_STRUCTURE,
+            fullyParallel: false,
+            dependencies: ["setup", "review"],
             use: { ...devices["Desktop Chrome"] },
           },
         ]),
