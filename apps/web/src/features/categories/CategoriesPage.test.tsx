@@ -32,18 +32,27 @@ function nested(): CategoryItem[] {
   }));
 }
 
+/** The list row (name button, kind, sender count and tick) that holds the button of this name. */
+function rowOf(buttonName: string): HTMLElement {
+  const row = screen.getByRole("button", { name: buttonName }).closest("[data-row-key]");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error("no row");
+  }
+  return row;
+}
+
 const withNested = (): void => {
   wire({ get: () => json({ ...LIST, categories: nested(), olderCategories: [] }) });
 };
 
 describe("Categories page: the row button (AC-22)", () => {
-  it("given a row, then its kind and sender count are the description of the button, not part of its visible label", async () => {
+  it("given a row, then the button holds only the visible name and the kind and sender count are its description", async () => {
     withNested();
     renderPage();
     const edit = await screen.findByRole("button", { name: "Edit Loose" });
 
     expect(edit).toHaveAccessibleDescription(/(Topic|Extra label).*(No senders|\d+ senders?)/);
-    expect(edit.querySelectorAll("[aria-hidden='true']")).toHaveLength(1);
+    expect(edit).toHaveTextContent(/^Loose$/);
   });
 });
 
@@ -79,11 +88,11 @@ describe("Categories page: the collapsed list (criterion 1, AC-64)", () => {
   it("given a row, then it shows the name, the kind as a word, the sender count and no sender text", async () => {
     wire();
     await loaded();
-    const row = within(screen.getByRole("button", { name: "Edit Invoices" }));
+    const row = within(rowOf("Edit Invoices"));
     expect(row.getByText("Invoices")).toBeInTheDocument();
     expect(row.getByText("Extra label")).toBeInTheDocument();
     expect(row.getByText("1 sender")).toBeInTheDocument();
-    const news = within(screen.getByRole("button", { name: "Edit Newsletters" }));
+    const news = within(rowOf("Edit Newsletters"));
     expect(news.getByText("Topic")).toBeInTheDocument();
     expect(news.getByText("No senders")).toBeInTheDocument();
     expect(screen.queryByText("billing@example.com")).not.toBeInTheDocument();

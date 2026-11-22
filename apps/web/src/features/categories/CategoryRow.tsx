@@ -45,30 +45,32 @@ export function CategoryRow({ node, open, onToggle, onEdit, onNotify }: Category
   const { row } = node;
   const descriptionId = useId();
   return (
-    <div className="flex items-center gap-1 border-b border-divider py-1">
+    <div className="flex items-center gap-2 border-b border-divider py-1">
       <Expander node={node} onToggle={onToggle} open={open} />
       {row === null ? (
         <span className="min-w-0 flex-1 py-2 font-semibold text-text wrap-anywhere">{node.label}</span>
       ) : (
         <>
-          <button
-            aria-describedby={descriptionId}
-            aria-label={`Edit ${row.name}`}
-            className="flex min-h-11 min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-x-2 rounded-control py-2 text-left text-text"
-            data-edit=""
-            onClick={() => {
-              onEdit(row.key);
-            }}
-            type="button"
-          >
-            <span className="font-semibold wrap-anywhere">{node.label === "" ? "Unnamed category" : node.label}</span>
-            {/* Kept out of the visible label so the name "Edit <name>" holds the visible name (WCAG 2.5.3); the
-                description still tells a screen reader the kind and the sender count. */}
-            <span aria-hidden="true" className="contents" id={descriptionId}>
+          <div className="flex min-w-0 flex-1 flex-col">
+            {/* The button holds only the visible name, so its name "Edit <name>" contains its visible text (WCAG
+                2.5.3); the kind and the sender count are the line under it and its description. */}
+            <button
+              aria-describedby={descriptionId}
+              aria-label={`Edit ${row.name}`}
+              className="flex min-h-11 w-full cursor-pointer items-center rounded-control text-left font-semibold text-text wrap-anywhere"
+              data-edit=""
+              onClick={() => {
+                onEdit(row.key);
+              }}
+              type="button"
+            >
+              {node.label === "" ? "Unnamed category" : node.label}
+            </button>
+            <div className="flex flex-wrap items-center gap-x-2 pb-1" id={descriptionId}>
               <span className="rounded-pill border border-border px-2 text-sm text-text-muted">{KIND_WORD[row.kind]}</span>
               <span className="text-sm text-text-muted">{sendersCountText(parseSenders(row.sendersText).entries.length)}</span>
-            </span>
-          </button>
+            </div>
+          </div>
           <label className="inline-grid min-h-11 min-w-11 flex-none cursor-pointer place-items-center">
             <input
               aria-label={`Always notify, ${row.name}`}
