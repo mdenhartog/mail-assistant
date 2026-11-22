@@ -6,6 +6,7 @@ repository, whose database triggers derive the actor, the audit record and the d
 Nothing of the file (a name, a description, a sender) is ever put in an exception message or a log line.
 """
 
+import asyncio
 import hashlib
 import uuid
 from collections.abc import Callable
@@ -190,7 +191,11 @@ class CategoryUpload:
             FileRefused: The file breaks a rule; nothing is stored.
         """
         stored = await self._ready_list()
-        parsed = parse_file(data)
+        # A session may keep only so many previews an hour: they are stored rows too (ADR-0058 decision 4).
+        held = await self._previews.recent(session_digest, self._clock.now(), PREVIEW_TTL)
+        if held.saves >= self._saves_per_hour:
+            raise RateLimited(held.retry_after_seconds)
+        parsed = await asyncio.to_thread(parse_file, data)  # CPU-bound: not on the event loop
         plan = plan_of(parsed, stored, self._ids.category_id)  # the ids are only counted, never stored
         preview_id = self._ids.category_id()
         file_hash = hashlib.sha256(data).hexdigest()
@@ -241,7 +246,7 @@ class CategoryUpload:
         if content is None:
             raise Unconfirmable
         try:
-            plan = plan_of(parse_file(content.encode()), stored, self._ids.category_id)
+            plan = plan_of(await asyncio.to_thread(parse_file, content.encode()), stored, self._ids.category_id)
         except FileRefused:
             raise Unconfirmable from None
         if is_unchanged(plan.rows, plan.instructions, stored):
