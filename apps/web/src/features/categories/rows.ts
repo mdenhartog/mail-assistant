@@ -1,5 +1,6 @@
 import type { CategoryItem, CategoryList } from "@/api/categories/categories.types";
 import { LABEL_PREFIX, normaliseName } from "@/features/categories/policy";
+import { parseSenders, textOfSenders } from "@/features/categories/senders";
 
 /** One category card as the user is editing it. `key` is local; `id` is null until the api has stored it. */
 export interface Row {
@@ -8,13 +9,19 @@ export interface Row {
   name: string;
   description: string;
   mailCount: number | null;
-  /** Carried untouched from the api until the screens that edit them exist; a new card is a topic without tick or senders. */
   kind: CategoryItem["kind"];
   notify: boolean;
-  senders: CategoryItem["senders"];
+  /** The senders as the user edits them: one entry per line, see `senders.ts`. */
+  sendersText: string;
 }
 
-export type RowField = "name" | "description";
+/** What the edit view can change on a row. */
+export type RowPatch = Partial<Pick<Row, "name" | "description" | "kind" | "notify" | "sendersText">>;
+
+/** A new category: a topic without tick or senders. */
+export function blankRow(key: string, name: string): Row {
+  return { key, id: null, name, description: "", mailCount: null, kind: "topic", notify: false, sendersText: "" };
+}
 
 export function rowsOf(list: CategoryList): Row[] {
   return list.categories.map((category) => ({
@@ -25,7 +32,7 @@ export function rowsOf(list: CategoryList): Row[] {
     mailCount: category.mailCount,
     kind: category.kind,
     notify: category.notify,
-    senders: category.senders,
+    sendersText: textOfSenders(category.senders),
   }));
 }
 
@@ -40,14 +47,29 @@ export function openOlder(list: CategoryList, rows: readonly Row[]): CategoryLis
   return list.olderCategories.filter((older) => !taken.has(normaliseName(nameOfLabel(older.labelName))));
 }
 
-/** Whether the draft differs from the stored list in order, name or description. */
-export function isDirty(rows: readonly Row[], list: CategoryList): boolean {
+/** The senders as one comparable text, so blank lines and spaces are not a change. */
+function sendersKey(text: string): string {
+  return textOfSenders(parseSenders(text).entries);
+}
+
+function differs(row: Row, stored: CategoryItem | undefined): boolean {
   return (
+    stored === undefined ||
+    row.id !== stored.id ||
+    row.name !== stored.name ||
+    row.description !== stored.description ||
+    row.kind !== stored.kind ||
+    row.notify !== stored.notify ||
+    sendersKey(row.sendersText) !== textOfSenders(stored.senders)
+  );
+}
+
+/** Whether the draft differs from the stored list in order or in any field of a category. */
+export function isDirty(rows: readonly Row[], list: CategoryList, instructions: string): boolean {
+  return (
+    instructions !== list.generalInstructions ||
     rows.length !== list.categories.length ||
-    rows.some((row, index) => {
-      const stored = list.categories[index];
-      return stored === undefined || row.id !== stored.id || row.name !== stored.name || row.description !== stored.description;
-    })
+    rows.some((row, index) => differs(row, list.categories[index]))
   );
 }
 
@@ -55,20 +77,43 @@ export function isDirty(rows: readonly Row[], list: CategoryList): boolean {
 export type Change =
   | { kind: "rename"; from: string; to: string }
   | { kind: "describe"; name: string }
+  | { kind: "retype"; name: string }
+  | { kind: "notify"; name: string; on: boolean }
+  | { kind: "senders"; name: string }
+  | { kind: "instructions" }
   | { kind: "remove"; name: string }
   | { kind: "add"; name: string };
 
-/** What a save will do against the stored list: renames, description changes, removals, then additions. */
-export function changesOf(rows: readonly Row[], list: CategoryList): Change[] {
+function fieldChanges(row: Row, before: CategoryItem): Change[] {
+  const changes: Change[] = [];
+  if (before.name !== row.name) {
+    changes.push({ kind: "rename", from: before.name, to: row.name });
+  }
+  if (before.description !== row.description) {
+    changes.push({ kind: "describe", name: row.name });
+  }
+  if (before.kind !== row.kind) {
+    changes.push({ kind: "retype", name: row.name });
+  }
+  if (before.notify !== row.notify) {
+    changes.push({ kind: "notify", name: row.name, on: row.notify });
+  }
+  if (sendersKey(row.sendersText) !== textOfSenders(before.senders)) {
+    changes.push({ kind: "senders", name: row.name });
+  }
+  return changes;
+}
+
+/** What a save will do against the stored list: the list's instructions, each category's changes, removals, then additions. */
+export function changesOf(rows: readonly Row[], list: CategoryList, instructions: string): Change[] {
   const stored = new Map(list.categories.map((category) => [category.id, category]));
   const kept = new Set(rows.map((row) => row.id));
-  const pairs = rows.flatMap((row) => {
-    const before = row.id === null ? undefined : stored.get(row.id);
-    return before === undefined ? [] : [{ row, before }];
-  });
   return [
-    ...pairs.filter(({ row, before }) => before.name !== row.name).map(({ row, before }): Change => ({ kind: "rename", from: before.name, to: row.name })),
-    ...pairs.filter(({ row, before }) => before.description !== row.description).map(({ row }): Change => ({ kind: "describe", name: row.name })),
+    ...(instructions === list.generalInstructions ? [] : [{ kind: "instructions" } as const]),
+    ...rows.flatMap((row) => {
+      const before = row.id === null ? undefined : stored.get(row.id);
+      return before === undefined ? [] : fieldChanges(row, before);
+    }),
     ...list.categories.filter((category) => !kept.has(category.id)).map((category): Change => ({ kind: "remove", name: category.name })),
     ...rows.filter((row) => row.id === null).map((row): Change => ({ kind: "add", name: row.name })),
   ];

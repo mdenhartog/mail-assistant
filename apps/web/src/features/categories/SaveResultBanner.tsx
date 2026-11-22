@@ -1,7 +1,7 @@
 import type { ReactElement } from "react";
 
 import { Banner } from "@/components/Banner";
-import type { SaveResult } from "@/features/categories/useCategoriesSave";
+import type { SaveResult } from "@/features/categories/useSaveFeedback";
 
 /** The banner for what the last save left behind; blocking ones take focus so a keyboard user hears them. */
 export function SaveResultBanner({ result, onRetry }: { result: SaveResult; onRetry: () => void }): ReactElement | null {

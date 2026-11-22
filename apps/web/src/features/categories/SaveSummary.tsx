@@ -15,6 +15,19 @@ export function changesText(count: number): string {
   return `${String(count)} ${count === 1 ? "change" : "changes"}`;
 }
 
+function fieldLine(change: Exclude<Change, { kind: "rename" | "describe" | "remove" | "add" }>): string {
+  switch (change.kind) {
+    case "retype":
+      return `Change the kind of "${change.name}"`;
+    case "notify":
+      return `Turn always notify ${change.on ? "on" : "off"} for "${change.name}"`;
+    case "senders":
+      return `Change the senders of "${change.name}"`;
+    case "instructions":
+      return "Change the general instructions";
+  }
+}
+
 function lineOf(change: Change): string {
   switch (change.kind) {
     case "rename":
@@ -25,6 +38,8 @@ function lineOf(change: Change): string {
       return `Remove "${change.name}"`;
     case "add":
       return `Add "${change.name}"`;
+    default:
+      return fieldLine(change);
   }
 }
 
