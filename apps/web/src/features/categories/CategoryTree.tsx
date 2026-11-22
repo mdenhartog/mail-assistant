@@ -21,7 +21,7 @@ export interface CategoryTreeProps {
  */
 export function CategoryTree({ nodes, openAll, expanded, onToggle, onEdit, onNotify, label, nested = false }: CategoryTreeProps): ReactElement {
   return (
-    <ul aria-label={label} className={nested ? "ml-4 border-l border-divider pl-2" : ""}>
+    <ul aria-label={label} className={nested ? "ml-2 border-l border-divider pl-1" : ""}>
       {nodes.map((node) => {
         const open = openAll || expanded.has(node.path);
         return (

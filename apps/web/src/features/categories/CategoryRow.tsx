@@ -18,7 +18,7 @@ const KIND_WORD = { topic: "Topic", extra: "Extra label" } as const;
 
 function Expander({ node, open, onToggle }: Pick<CategoryRowProps, "node" | "open" | "onToggle">): ReactElement {
   if (node.children.length === 0) {
-    return <span aria-hidden="true" className="w-11 min-w-0 shrink" />;
+    return <span aria-hidden="true" className="w-11 min-w-0 shrink-20" />;
   }
   const name = node.row?.name ?? node.label;
   return (
@@ -51,7 +51,7 @@ export function CategoryRow({ node, open, onToggle, onEdit, onNotify }: Category
         <span className="min-w-0 flex-1 py-2 font-semibold text-text wrap-anywhere">{node.label}</span>
       ) : (
         <>
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-w-0 flex-1 basis-full flex-col">
             {/* The button holds only the visible name, so its name "Edit <name>" contains its visible text (WCAG
                 2.5.3); the kind and the sender count are the line under it and its description. */}
             <button
