@@ -406,6 +406,12 @@
           "minimum": 16384,
           "maximum": 4194304,
           "description": "Outer request body cap of PUT /api/categories only (MC-12). Default 2097152 (2 MiB) is the api limit; the operator may lower it, 16384 to 4194304 (4 MiB) is accepted."
+        },
+        "uploadBodyLimitBytes": {
+          "type": "integer",
+          "minimum": 16384,
+          "maximum": 1048576,
+          "description": "Outer request body cap of POST /api/categories/upload only. Default 393216 (384 KiB) is a margin above the api limit of 320 KiB; 16384 to 1048576 (1 MiB) is accepted."
         }
       }
     },

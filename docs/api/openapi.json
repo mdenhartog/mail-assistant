@@ -1353,6 +1353,22 @@
         "title": "RequestCodeResponse",
         "type": "object"
       },
+      "RestoreRequest": {
+        "additionalProperties": false,
+        "description": "The body of a restore: the version the user sees as the current one.",
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "RestoreRequest",
+        "type": "object"
+      },
       "SenderItem": {
         "additionalProperties": false,
         "description": "A sender entry of a category: a full address or a domain, with the opt-in for subdomains.\n\nOn a save it is the text as typed; on a read it is the stored form (lower-case A-labels).",
@@ -1535,6 +1551,152 @@
         "title": "SettingsValues",
         "type": "object"
       },
+      "UploadConfirm": {
+        "additionalProperties": false,
+        "description": "The body of a confirm: the hash of the file the preview was made from.",
+        "properties": {
+          "fileHash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Filehash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileHash"
+        ],
+        "title": "UploadConfirm",
+        "type": "object"
+      },
+      "UploadPreview": {
+        "additionalProperties": false,
+        "description": "What an upload returns: the preview id, the hash to confirm with and what a confirm would change.",
+        "properties": {
+          "added": {
+            "minimum": 0.0,
+            "title": "Added",
+            "type": "integer"
+          },
+          "baseVersion": {
+            "minimum": 1.0,
+            "title": "Baseversion",
+            "type": "integer"
+          },
+          "changed": {
+            "minimum": 0.0,
+            "title": "Changed",
+            "type": "integer"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "fileHash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Filehash",
+            "type": "string"
+          },
+          "instructionsChanged": {
+            "title": "Instructionschanged",
+            "type": "boolean"
+          },
+          "previewId": {
+            "format": "uuid",
+            "title": "Previewid",
+            "type": "string"
+          },
+          "removed": {
+            "minimum": 0.0,
+            "title": "Removed",
+            "type": "integer"
+          },
+          "removedCategories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removedcategories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "previewId",
+          "fileHash",
+          "baseVersion",
+          "expiresAt",
+          "added",
+          "changed",
+          "removed",
+          "removedCategories",
+          "instructionsChanged"
+        ],
+        "title": "UploadPreview",
+        "type": "object"
+      },
+      "UploadProblem": {
+        "additionalProperties": false,
+        "description": "One problem of a refused file: the rule, the line and field in the file and a fixed text, never a value.",
+        "properties": {
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "line": {
+            "minimum": 1.0,
+            "title": "Line",
+            "type": "integer"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "line",
+          "field",
+          "message"
+        ],
+        "title": "UploadProblem",
+        "type": "object"
+      },
+      "UploadProblems422": {
+        "additionalProperties": false,
+        "description": "The 422 body of an upload: every problem of the file.",
+        "properties": {
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/UploadProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "const": 422,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "problems"
+        ],
+        "title": "UploadProblems422",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1681,6 +1843,207 @@
           }
         },
         "summary": "Write Categories",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/categories/restore-previous": {
+      "post": {
+        "description": "Store a new list version equal to the one before the current version.\n\nArgs:\n    body: The version the user sees as the current one.\n    request: The request, whose app holds the database access and the settings.\n\nReturns:\n    The stored list, or a 409 and nothing stored.",
+        "operationId": "restore_previous_api_categories_restore_previous_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "Nothing was stored: another session or file, an expired or used preview, a changed list"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many list saves in an hour for the account; see Retry-After"
+          },
+          "500": {
+            "description": "The change could not be stored"
+          }
+        },
+        "summary": "Restore Previous",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/categories/upload": {
+      "post": {
+        "description": "Check a category file and return what confirming it would change; only the preview is stored.\n\nThe body is the file itself (``application/yaml``). Nothing of the file is returned except the names of the\ncategories that the stored list has and the file lacks.\n\nArgs:\n    request: The request, with the file as its body.\n    current: The live session the preview is bound to.\n\nReturns:\n    The preview, or a 422 with every problem of the file.",
+        "operationId": "upload_categories_api_categories_upload_post",
+        "requestBody": {
+          "content": {
+            "application/yaml": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "Nothing was stored: another session or file, an expired or used preview, a changed list"
+          },
+          "413": {
+            "description": "The file is larger than the upload limit"
+          },
+          "415": {
+            "description": "The body is not declared as YAML"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadProblems422"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadProblems422"
+                }
+              }
+            },
+            "description": "The file breaks a rule; every problem with its line and field"
+          },
+          "429": {
+            "description": "Too many list saves in an hour for the account; see Retry-After"
+          },
+          "500": {
+            "description": "The change could not be stored"
+          }
+        },
+        "summary": "Upload Categories",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/categories/upload/{preview_id}/confirm": {
+      "post": {
+        "description": "Replace the list with the previewed file as one new version, when every binding of the preview holds.\n\nArgs:\n    preview_id: The id the upload returned.\n    body: The hash of the file the preview was made from.\n    request: The request, whose app holds the database access and the settings.\n    current: The live session; it must be the one that uploaded the file.\n\nReturns:\n    The stored list, or a 409 and nothing stored.",
+        "operationId": "confirm_upload_api_categories_upload__preview_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preview_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Preview Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "Nothing was stored: another session or file, an expired or used preview, a changed list"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many list saves in an hour for the account; see Retry-After"
+          },
+          "500": {
+            "description": "The change could not be stored"
+          }
+        },
+        "summary": "Confirm Upload",
         "tags": [
           "categories"
         ]

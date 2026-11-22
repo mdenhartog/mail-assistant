@@ -23,6 +23,9 @@ DESIGN_PATHS = {
     "/api/settings/reset",
     "/api/places",
     "/api/categories",
+    "/api/categories/upload",
+    "/api/categories/upload/{preview_id}/confirm",
+    "/api/categories/restore-previous",
     "/api/plan",
     "/api/plan/items",
     "/api/plan/items/search",
@@ -246,6 +249,9 @@ def test_given_the_mounted_write_routes_when_read_then_each_has_the_session_and_
 
     assert sorted(p for p, _ in writes) == [
         "/api/categories",
+        "/api/categories/restore-previous",
+        "/api/categories/upload",
+        "/api/categories/upload/{preview_id}/confirm",
         "/api/plan/approve",
         "/api/plan/decisions",
         "/api/plan/items/search",

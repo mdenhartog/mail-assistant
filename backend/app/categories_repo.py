@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta  # datetime is used as the type of a parameter at run time
 from typing import TYPE_CHECKING, Any
 
@@ -43,6 +43,7 @@ _SETTINGS = text(
     "SELECT general_instructions, archive_label FROM categories.list_settings "
     "WHERE mailbox_id = :mailbox AND version = :version"
 )
+_HAS_VERSION = text("SELECT 1 FROM categories.list_version WHERE mailbox_id = :mailbox AND version = :version")
 _COUNTS = text("SELECT category_id, mail_count FROM categories.category_count WHERE mailbox_id = :mailbox")
 _LABELS = text("SELECT name FROM categories.gmail_label WHERE mailbox_id = :mailbox ORDER BY name")
 _RECENT_SAVES = text(
@@ -146,6 +147,34 @@ async def _insert_rows(session: AsyncSession, params: dict[str, Any], categories
         await session.execute(_INSERT_SENDER, sender_rows)
 
 
+async def _load(session: AsyncSession, mailbox: str, version: int) -> StoredList:
+    """Read the categories, senders and settings of one version (version 0 is the empty list)."""
+    versioned = {"mailbox": mailbox, "version": version}
+    rows: Sequence[Row[Any]] = (await session.execute(_CATEGORIES, versioned)).all() if version else []
+    sender_rows: Sequence[Row[Any]] = (await session.execute(_SENDERS, versioned)).all() if version else []
+    settings = (await session.execute(_SETTINGS, versioned)).one_or_none() if version else None
+    senders: dict[uuid.UUID, list[StoredSender]] = {}
+    for sender in sender_rows:
+        senders.setdefault(sender.category_id, []).append(
+            StoredSender(sender.entry, is_domain="@" not in sender.entry, subdomains=sender.subdomains)
+        )
+    categories = tuple(
+        StoredCategory(
+            row.id,
+            row.name,
+            row.description,
+            Kind(row.kind),
+            notify=row.notify,
+            senders=tuple(sorted(senders.get(row.id, []), key=lambda sender: sender.entry)),
+        )
+        for row in rows
+    )
+    instructions, archive = (
+        (settings.general_instructions, settings.archive_label) if settings else ("", ARCHIVE_LABEL_DEFAULT)
+    )
+    return StoredList(version, categories, instructions, archive, {}, ())
+
+
 class CategoriesRepository:
     """Reads the list of one mailbox and adds new versions of it."""
 
@@ -163,32 +192,25 @@ class CategoriesRepository:
         params = {"mailbox": self._mailbox}
         async with self._database.session() as session, session.begin():
             version: int = (await session.execute(_VERSION, params)).scalar_one()
-            versioned = {**params, "version": version}
-            rows: Sequence[Row[Any]] = (await session.execute(_CATEGORIES, versioned)).all() if version else []
-            sender_rows: Sequence[Row[Any]] = (await session.execute(_SENDERS, versioned)).all() if version else []
-            settings = (await session.execute(_SETTINGS, versioned)).one_or_none() if version else None
+            stored = await _load(session, self._mailbox, version)
             counts = {row.category_id: row.mail_count for row in (await session.execute(_COUNTS, params))}
             labels = tuple(row.name for row in (await session.execute(_LABELS, params)))
-        senders: dict[uuid.UUID, list[StoredSender]] = {}
-        for sender in sender_rows:
-            senders.setdefault(sender.category_id, []).append(
-                StoredSender(sender.entry, is_domain="@" not in sender.entry, subdomains=sender.subdomains)
-            )
-        categories = tuple(
-            StoredCategory(
-                row.id,
-                row.name,
-                row.description,
-                Kind(row.kind),
-                notify=row.notify,
-                senders=tuple(sorted(senders.get(row.id, []), key=lambda sender: sender.entry)),
-            )
-            for row in rows
-        )
-        instructions, archive = (
-            (settings.general_instructions, settings.archive_label) if settings else ("", ARCHIVE_LABEL_DEFAULT)
-        )
-        return StoredList(version, categories, instructions, archive, counts, labels)
+        return replace(stored, counts=counts, labels=labels)
+
+    async def read_version(self, version: int) -> StoredList | None:
+        """Return one stored version of the list without the counts and labels (they belong to the latest).
+
+        Args:
+            version: The version to read.
+
+        Returns:
+            The version, or None when it does not exist (never written, or already purged).
+        """
+        async with self._database.session() as session, session.begin():
+            exists = (
+                await session.execute(_HAS_VERSION, {"mailbox": self._mailbox, "version": version})
+            ).scalar_one_or_none()
+            return await _load(session, self._mailbox, version) if exists else None
 
     async def recent_saves(self, now: datetime) -> RecentSaves:
         """Count the versions the web saved for this mailbox in the hour before ``now`` (the limit of AC-33).

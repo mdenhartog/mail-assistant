@@ -18,6 +18,7 @@ _TITLES: dict[int, str] = {
     401: "Unauthorized",
     403: "Forbidden",
     404: "Not found",
+    409: "Conflict",
     405: "Method not allowed",
     413: "Payload too large",
     415: "Unsupported media type",

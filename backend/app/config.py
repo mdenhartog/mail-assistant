@@ -73,7 +73,11 @@ class Settings(BaseSettings):
     # 100 x 100 = 10 000 sender entries x (45 bytes of keys and punctuation + the entry). Real entries are 15 to 60
     # characters, so a full list is about 1.24 MB; 2 MiB leaves room for entries of about 145 characters on average in
     # all 10 000 places. Above it the generic 413 answers; the edge (Traefik) cap must not be lower.
-    route_body_limits: dict[str, int] = Field(default_factory=lambda: {"PUT /api/categories": 2 * 1024 * 1024})
+    # The category file upload is 320 KiB: the 256 KiB file limit of ADR-0058 and room for a multipart envelope
+    # (U-label-structure-12); the edge cap of this route must not be lower either.
+    route_body_limits: dict[str, int] = Field(
+        default_factory=lambda: {"PUT /api/categories": 2 * 1024 * 1024, "POST /api/categories/upload": 320 * 1024}
+    )
     code_ttl_seconds: int = 600
     resend_cooldown_seconds: int = 60
     codes_per_hour: int = 5
