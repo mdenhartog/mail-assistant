@@ -18,7 +18,7 @@ const KIND_WORD = { topic: "Topic", extra: "Extra label" } as const;
 
 function Expander({ node, open, onToggle }: Pick<CategoryRowProps, "node" | "open" | "onToggle">): ReactElement {
   if (node.children.length === 0) {
-    return <span aria-hidden="true" className="min-w-11" />;
+    return <span aria-hidden="true" className="w-11 min-w-0 shrink" />;
   }
   const name = node.row?.name ?? node.label;
   return (
