@@ -39,7 +39,7 @@ class PgRefileStore:
     async def filings_since(self, since: datetime) -> list[Filed]:
         """The newest ``filing`` row of each mail filed since ``since``, the most recently filed first."""
         newest = (
-            select(Filing.message_id, Filing.topic_id, Filing.filed_at)
+            select(Filing.message_id, Filing.topic_id, Filing.extra_id, Filing.filed_at)
             .ext(distinct_on(Filing.message_id))
             .where(Filing.mailbox_id == self._mailbox, Filing.filed_at >= since)
             .order_by(Filing.message_id, desc(Filing.filed_at), desc(Filing.list_version))
@@ -47,9 +47,14 @@ class PgRefileStore:
         )
         async with self._sessions() as session:
             rows = await session.execute(
-                select(newest.c.message_id, newest.c.topic_id).order_by(desc(newest.c.filed_at), newest.c.message_id)
+                select(newest.c.message_id, newest.c.topic_id, newest.c.extra_id).order_by(
+                    desc(newest.c.filed_at), newest.c.message_id
+                )
             )
-            return [Filed(row.message_id, str(row.topic_id)) for row in rows]
+            return [
+                Filed(row.message_id, str(row.topic_id), None if row.extra_id is None else str(row.extra_id))
+                for row in rows
+            ]
 
     async def category_labels(self) -> dict[str, str]:
         """Category id to the Gmail label id recorded for it; the nil id of "Other" is in the map."""
