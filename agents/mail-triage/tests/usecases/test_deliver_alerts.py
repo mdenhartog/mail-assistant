@@ -7,8 +7,9 @@ from datetime import UTC, datetime, time, timedelta
 
 import pytest
 
+from app.core.alert_decision import AlertCause, CauseKind
 from app.core.alert_state import AlertState
-from app.core.alert_text import AlertMessage, AuthResults, MailMeta
+from app.core.alert_text import AlertBasis, AlertMessage, MailMeta
 from app.core.judgement import Judgement
 from app.usecases.deliver_alerts import AlertDelivery, PendingAlert
 from schedule_policy.policy import DEFAULT_POLICY
@@ -21,9 +22,13 @@ JUDGEMENT = Judgement(
 )
 
 
-def pending(alert_id: str, state: AlertState = AlertState.OPEN) -> PendingAlert:
+URGENT = AlertBasis((AlertCause(CauseKind.URGENT),), verified_domain="example.com", by_rule=False)
+TICKED = AlertBasis((AlertCause(CauseKind.ALWAYS_NOTIFY, "Huis"),), verified_domain="example.com", by_rule=False)
+
+
+def pending(alert_id: str, state: AlertState = AlertState.OPEN, basis: AlertBasis = URGENT) -> PendingAlert:
     meta = MailMeta(f"s{alert_id}@example.com", f"Subject {alert_id}", reply_to=None, has_attachment=False)
-    return PendingAlert(alert_id, state, meta, JUDGEMENT, AuthResults("pass", "pass", "pass"))
+    return PendingAlert(alert_id, state, meta, JUDGEMENT, basis)
 
 
 @dataclass
@@ -40,7 +45,7 @@ class FakeStore:
     async def release(self, alert_id: str) -> None:
         self.released.append(alert_id)
         self.alerts = [
-            PendingAlert(a.alert_id, AlertState.OPEN, a.meta, a.judgement, a.auth) if a.alert_id == alert_id else a
+            PendingAlert(a.alert_id, AlertState.OPEN, a.meta, a.judgement, a.basis) if a.alert_id == alert_id else a
             for a in self.alerts
         ]
 
@@ -259,3 +264,32 @@ async def test_given_a_policy_source_that_changes_on_its_second_call_when_one_ru
     assert source.calls == 1
     assert store.released == []  # the whole run used the first snapshot
     assert set(store.sent) == {"2"}
+
+
+async def test_given_always_notify_alerts_when_delivered_then_the_text_starts_with_the_label() -> None:
+    store, outbox = FakeStore([pending("1", basis=TICKED)]), FakeOutbox()
+
+    await delivery(store, outbox).deliver_open_alerts()
+
+    assert outbox.messages[0].text.startswith("<b>Always notify: Huis</b>")
+
+
+async def test_given_mixed_alerts_above_the_hourly_cap_when_delivered_then_the_sixth_is_batched() -> None:
+    alerts = [pending(str(n), basis=TICKED if n % 2 else URGENT) for n in range(6)]
+    store, outbox = FakeStore(alerts), FakeOutbox()
+
+    await delivery(store, outbox).deliver_open_alerts()
+
+    assert len(outbox.messages) == 6  # five alerts and one digest
+    assert outbox.messages[-1].buttons == ()
+
+
+async def test_given_always_notify_alerts_held_in_quiet_hours_when_they_end_then_they_go_out_together() -> None:
+    held = [pending("1", AlertState.HELD, TICKED), pending("2", AlertState.HELD, URGENT)]
+    store, outbox = FakeStore(held), FakeOutbox()
+
+    await delivery(store, outbox, now=NIGHT).deliver_open_alerts()
+    assert outbox.messages == []
+
+    await delivery(store, outbox, now=DAYTIME + timedelta(days=1)).deliver_open_alerts()
+    assert "held while you were away" in outbox.messages[0].text

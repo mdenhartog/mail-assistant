@@ -16,9 +16,9 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.gmail_read import HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
+from app.core.alert_decision import AlertCause, decide_alert
 from app.core.alert_state import AlertState, initial_state
-from app.core.alert_text import AuthResults
-from app.core.auth_results import parse_auth_results
+from app.core.authentication import authenticated_from_domain
 from app.core.judgement import (
     OTHER_ID,
     OTHER_LABEL,
@@ -67,7 +67,7 @@ class MailContent:
     has_attachment: bool
     reason: str
     summary: str
-    auth: AuthResults
+    verified_domain: str | None  # the From domain Gmail vouches for; ``None`` when it does not (ADR-0054)
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +101,7 @@ class Outcome:
     release_at: datetime | None = None  # a held alert: the next quiet end under the policy valid when it was held
     filing: FilingEntry | None = None
     extra_label: str | None = None  # a sender rule's extra label, added next to ``label``
+    causes: tuple[AlertCause, ...] = ()  # why the alert exists; empty when there is none (ADR-0057)
 
 
 class Claim(StrEnum):
@@ -197,6 +198,12 @@ class RunSummary:
     listing_failed: bool = False
 
 
+def _verified_domain(mail: FetchedMail) -> str | None:
+    """The From domain when Gmail vouches for it (the one verdict on the sender), else ``None``."""
+    headers = tuple(("Authentication-Results", value) for value in mail.auth_results)
+    return authenticated_from_domain(headers, mail.sender)
+
+
 def _content(mail: FetchedMail, reason: str, summary: str) -> MailContent:
     return MailContent(
         sender=mail.sender,
@@ -205,7 +212,7 @@ def _content(mail: FetchedMail, reason: str, summary: str) -> MailContent:
         has_attachment=mail.has_attachment,
         reason=reason,
         summary=summary,
-        auth=parse_auth_results(mail.auth_results[0] if mail.auth_results else None),
+        verified_domain=_verified_domain(mail),
     )
 
 
@@ -221,9 +228,7 @@ def pinned_outcome(kind: PinnedKind, mail: FetchedMail, now: datetime, policy: T
     the alert text. Sign-in code mail raises no alert and keeps no sender or subject: its text never reaches Telegram.
     """
     if kind is PinnedKind.SIGN_IN_CODE:
-        content = MailContent(
-            "", "", None, has_attachment=False, reason="", summary="", auth=AuthResults(None, None, None)
-        )
+        content = MailContent("", "", None, has_attachment=False, reason="", summary="", verified_domain=None)
         return Outcome(None, urgent=False, confidence=None, alert=None, note=f"pinned:{kind.value}", content=content)
     alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy))
     return Outcome(
@@ -234,6 +239,7 @@ def pinned_outcome(kind: PinnedKind, mail: FetchedMail, now: datetime, policy: T
         note=f"pinned:{kind.value}",
         content=_content(mail, "Google security mail", ""),
         release_at=next_quiet_end(now, policy) if alert is AlertState.HELD else None,
+        causes=_urgent_causes(urgent=True),
     )
 
 
@@ -282,6 +288,7 @@ def decide_outcome(
         if current.version > 0
         else None,
         extra_label=category_label(extra) if extra else None,
+        causes=_urgent_causes(urgent=urgent),
     )
 
 
@@ -325,7 +332,36 @@ def rule_outcome(  # noqa: PLR0913, PLR0917 - the snapshot of one decision
             ruled.entry,
         ),
         extra_label=category_label(extra) if extra else None,
+        causes=_urgent_causes(urgent=urgent),
     )
+
+
+def _urgent_causes(*, urgent: bool) -> tuple[AlertCause, ...]:
+    decision = decide_alert(urgent=urgent, ticked=())
+    return decision.causes if decision else ()
+
+
+def with_always_notify(outcome: Outcome, current: JudgingList, now: datetime, policy: TimePolicy) -> Outcome:
+    """Add the always-notify causes of a NEW mail: its topic and extra label are ticked in the list it was filed by.
+
+    One decision for the mail: an urgent alert gets the tick causes added, a non-urgent one is created (held inside
+    quiet hours, like any other). Only the pipeline calls this; the catch-up and the re-sort never do (ADR-0057).
+    """
+    filing = outcome.filing
+    if filing is None:
+        return outcome
+    filed_under = {filing.category_id, filing.extra_id}
+    ticked = [
+        category.name for category in current.categories if category.notify and category.category_id in filed_under
+    ]
+    decision = decide_alert(urgent=outcome.urgent, ticked=ticked)
+    if decision is None:
+        return outcome
+    if outcome.alert is not None:
+        return replace(outcome, causes=decision.causes)
+    alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy))
+    release_at = next_quiet_end(now, policy) if alert is AlertState.HELD else None
+    return replace(outcome, causes=decision.causes, alert=alert, release_at=release_at)
 
 
 def with_rule_extra(outcome: Outcome, rule: ExtraRule) -> Outcome:
@@ -448,14 +484,17 @@ class TriagePipeline:
         trimmed = trim_mail(mail.subject, mail.sender, mail.text)
         if isinstance(ruled, RuleFiling):
             verdict = None if ruled.ticked else await self._urgency.needs_attention(trimmed)
-            policy = await self._policy.current()
-            return rule_outcome(ruled, verdict, mail, current, self._now(), policy)
+            policy, now = await self._policy.current(), self._now()
+            return with_always_notify(rule_outcome(ruled, verdict, mail, current, now, policy), current, now, policy)
         judged = await self._judge.judge(trimmed, current.categories, current.general_instructions)
         policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
-        outcome = decide_outcome(judged, mail, current, self._now(), policy)
+        now = self._now()
+        outcome = decide_outcome(judged, mail, current, now, policy)
         if isinstance(ruled, ExtraRule):  # the topic is the model's; the rule's extra label is added to it
-            return with_rule_extra(outcome, ruled)
-        return mark_not_applied(outcome, ruled if isinstance(ruled, RuleSkipped) else None)
+            outcome = with_rule_extra(outcome, ruled)
+        else:
+            outcome = mark_not_applied(outcome, ruled if isinstance(ruled, RuleSkipped) else None)
+        return with_always_notify(outcome, current, now, policy)
 
     async def _file(self, mail: FetchedMail, outcome: Outcome) -> None:
         outcome, label_id = await self._topic_label(mail, outcome)

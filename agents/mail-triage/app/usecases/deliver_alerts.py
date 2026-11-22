@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol
 
-from app.core.alert_text import AlertMessage, AuthResults, DigestEntry, MailMeta, build_alert, build_digest
+from app.core.alert_text import AlertBasis, AlertMessage, DigestEntry, MailMeta, build_alert, build_digest
 from app.core.time_policy import in_quiet_hours
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ class PendingAlert:
     state: AlertState
     meta: MailMeta
     judgement: Judgement
-    auth: AuthResults
+    basis: AlertBasis
     release_at: datetime | None = None  # held alerts: the quiet end valid when held (None: held before it existed)
 
 
@@ -129,7 +129,7 @@ class AlertDelivery:
             await self._outbox.send(build_digest(_entries(held), held=True))
 
     async def _send(self, alert: PendingAlert, now: datetime) -> None:
-        message = build_alert(alert.alert_id, alert.meta, alert.judgement, alert.auth)
+        message = build_alert(alert.alert_id, alert.meta, alert.judgement, alert.basis)
         message_id = await self._outbox.send(message)
         await self._store.mark_sent(alert.alert_id, message_id, at=now)
         await self._store.record_audit("alert_sent", alert.alert_id)

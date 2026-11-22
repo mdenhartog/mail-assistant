@@ -153,7 +153,8 @@ async def test_given_pinned_google_security_mail_when_processed_then_it_stays_an
     assert (outcome.label, outcome.filing, outcome.urgent, outcome.alert) == (None, None, True, AlertState.OPEN)
     assert outcome.note == "pinned:google_security"
     assert outcome.content.sender == "no-reply@accounts.google.com"
-    assert outcome.content.auth.dmarc == "pass"
+    assert outcome.content.verified_domain == "accounts.google.com"
+    assert [cause.kind.value for cause in outcome.causes] == ["urgent"]
     assert "m1" in store.done  # settled, so it is not read again
     assert (summary.filed, summary.alerts) == (0, 1)
 
@@ -175,8 +176,7 @@ async def test_given_pinned_security_mail_with_a_forged_lower_header_when_proces
 
     await pipeline(mailbox, FakeJudge(None), store).run_once()  # type: ignore[arg-type]
 
-    auth = store.outcomes["m1"].content.auth
-    assert (auth.spf, auth.dmarc) == ("pass", "pass")
+    assert store.outcomes["m1"].content.verified_domain == "accounts.google.com"
 
 
 async def test_given_pinned_sign_in_code_mail_when_processed_then_it_stays_with_no_alert_and_no_text_kept() -> None:

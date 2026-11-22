@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.core.alert_decision import AlertCause, CauseKind
 from app.core.alert_state import AlertState
-from app.core.alert_text import AuthResults
+from app.core.alert_text import AlertBasis
 from app.core.judgement import OTHER_ID
 from app.core.sender_rules import FilingSource
 from app.db import pg_categories
@@ -54,7 +55,7 @@ def outcome(label: str | None, filing: FilingEntry | None) -> Outcome:
         has_attachment=False,
         reason="r",
         summary="s",
-        auth=AuthResults(None, None, None),
+        verified_domain=None,
     )
     return Outcome(label=label, urgent=False, confidence=0.9, alert=None, note="", content=content, filing=filing)
 
@@ -262,3 +263,27 @@ async def test_given_a_sender_rule_filing_then_the_refile_report_store_and_the_f
     assert [(f.message_id, f.category_id) for f in filed] == [("m1", str(house))]
     async with sessions() as session:
         assert await pg_categories.filed_category(session, MAILBOX, "m1") == house
+
+
+async def test_given_a_sender_rule_filing_with_an_alert_when_completed_then_the_alert_is_marked_by_rule(
+    store: PgStore, cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection
+) -> None:
+    await write_list(cat_api, MAILBOX, 1, ["Bills"])
+    bills = await cat_owner.fetchval("select id from categories.category where mailbox_id = $1", MAILBOX)
+    causes = (AlertCause(CauseKind.ALWAYS_NOTIFY, "Bills"),)
+    ruled = FilingEntry(str(bills), 1, None, FilingSource.SENDER_RULE, "example.com")
+    plain = FilingEntry(str(bills), 1)
+    await store.claim("m1", "t1")
+    await store.claim("m2", "t2")
+    base = outcome(None, None).content
+
+    for message_id, filing in (("m1", ruled), ("m2", plain)):
+        content = replace(base, sender=f"{message_id}@example.com", verified_domain="example.com")
+        result = replace(outcome("Assistant/Bills", filing), content=content, alert=AlertState.OPEN, causes=causes)
+        await store.complete(message_id, result)
+
+    bases = {p.meta.sender: p.basis for p in await store.unsent()}
+    assert bases == {
+        "m1@example.com": AlertBasis(causes, "example.com", by_rule=True),
+        "m2@example.com": AlertBasis(causes, "example.com", by_rule=False),
+    }
