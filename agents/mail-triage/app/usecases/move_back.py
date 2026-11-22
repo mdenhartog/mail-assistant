@@ -23,6 +23,7 @@ from app.core.scope import Scope, classify
 from app.usecases.resort_apply import AuditMove, MailFailed, MailGone, held_label_ids
 
 if TYPE_CHECKING:
+    from app.core.scope import ArchiveLabel
     from app.usecases.resort_apply import ApplyLock, ApplyMailbox, ApplyNotifier
 
 __all__ = ["BATCH_SIZE", "MoveBack", "MoveBackJob", "MoveBackStore"]
@@ -80,7 +81,7 @@ class MoveBack:
         store: MoveBackStore,
         lock: ApplyLock,
         notifier: ApplyNotifier,
-        archive_label: str,  # the protected label (C-14, ADR-0052)
+        archive: ArchiveLabel,  # the protected label (C-14, ADR-0059)
         batch_size: int = BATCH_SIZE,
     ) -> None:
         """Wire the ports."""
@@ -88,7 +89,7 @@ class MoveBack:
         self._store = store
         self._lock = lock
         self._notifier = notifier
-        self._archive = archive_label
+        self._archive = archive
         self._batch = batch_size
 
     async def run_once(self) -> None:
@@ -134,7 +135,7 @@ class MoveBack:
             return False  # another label as well: changed meanwhile
         if (
             old not in held
-            and classify({names[i] for i in mail.labels if i in names}, self._archive) is not Scope.IN_SCOPE
+            and classify({names[i] for i in mail.labels if i in names}, self._archive.name) is not Scope.IN_SCOPE
         ):
             return False  # archived, trashed or out of the inbox meanwhile
         try:

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.models import (
@@ -20,10 +20,13 @@ from app.db.models import (
     CategoryMailbox,
     GmailLabel,
     ListCursor,
+    ListSettings,
     ListVersion,
+    Plan,
 )
 from app.db.pg_categories import CurrentList, current_list
-from app.usecases.list_sync import StoredLabel
+from app.usecases.list_sync import ArchiveNames, StoredLabel
+from category_policy import ARCHIVE_LABEL_DEFAULT
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -51,6 +54,39 @@ class PgListSyncStore:
                 await session.execute(select(ListCursor.last_version).where(ListCursor.mailbox_id == self._mailbox))
             ).scalar_one_or_none()
         return found or 0
+
+    async def archive_names(self) -> ArchiveNames:
+        """The archive label name of the latest list version and of the cursor version (``None``: none done yet).
+
+        A version without a settings row (the agent's own first list) holds the default name.
+        """
+        async with self._sessions() as session:
+            latest = select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == self._mailbox)
+            wanted = await self._archive_at(session, latest.scalar_subquery())
+            cursor = (
+                await session.execute(select(ListCursor.last_version).where(ListCursor.mailbox_id == self._mailbox))
+            ).scalar_one_or_none()
+            applied = await self._archive_at(session, cursor) if cursor else None
+        return ArchiveNames(wanted or ARCHIVE_LABEL_DEFAULT, (applied or ARCHIVE_LABEL_DEFAULT) if cursor else None)
+
+    async def _archive_at(self, session: AsyncSession, version: object) -> str | None:
+        return (
+            await session.execute(
+                select(ListSettings.archive_label).where(
+                    ListSettings.mailbox_id == self._mailbox, ListSettings.version == version
+                )
+            )
+        ).scalar_one_or_none()
+
+    async def plan_in_flight(self) -> bool:
+        """True while a plan of this mailbox is ``scheduled`` or ``applying``."""
+        async with self._sessions() as session:
+            found = await session.execute(
+                select(Plan.id)
+                .where(Plan.mailbox_id == self._mailbox, Plan.state.in_(("scheduled", "applying")))
+                .limit(1)
+            )
+            return found.first() is not None
 
     async def stored_labels(self) -> dict[uuid.UUID, StoredLabel]:
         """The label of each category by category id."""

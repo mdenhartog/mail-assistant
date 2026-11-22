@@ -11,22 +11,30 @@ import unicodedata
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from category_policy import ARCHIVE_LABEL_DEFAULT
+
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
 __all__ = [
     "LABEL_PREFIX",
+    "ArchiveLabel",
     "Scope",
     "assistant_labels",
     "classify",
     "clean_display",
     "is_archive_label",
+    "usable_archive_name",
 ]
 
 LABEL_PREFIX = "Assistant/"
 _INBOX = "INBOX"
 _SPACED_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})  # controls, U+2028 and U+2029
 _EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT"})
+_ARCHIVE_NAME_MAX = 225  # the length Gmail allows for a label name
+_SYSTEM_LABELS = frozenset(
+    {"inbox", "spam", "trash", "draft", "sent", "starred", "unread", "important", "chat", "snoozed", "scheduled"}
+)
 
 
 class Scope(StrEnum):
@@ -35,6 +43,36 @@ class Scope(StrEnum):
     IN_SCOPE = "in_scope"
     UNCLEAR = "unclear"
     OUT = "out"
+
+
+class ArchiveLabel:
+    """The protected archive label as the agent knows it now (ADR-0059): the name it has in Gmail and its id.
+
+    One object is shared by every component, so a rename done by the label sync is seen by the plan build, the apply
+    and the move back at once. The name stays the old one until Gmail has the new one.
+    """
+
+    __slots__ = ("label_id", "name")
+
+    def __init__(self, name: str, label_id: str | None = None) -> None:
+        """Start with the name the database holds; the sync fills the id."""
+        self.name = name
+        self.label_id = label_id
+
+
+def usable_archive_name(name: str) -> bool:
+    """The rules of ADR-0059 point 2: outside ``Assistant/`` or exactly ``Assistant/Archive``; never a system label."""
+    key = name.casefold()
+    return (
+        0 < len(name) <= _ARCHIVE_NAME_MAX
+        and name == name.strip()
+        and ".." not in name
+        and all(name.split("/"))  # no empty part: no leading, trailing or double slash
+        and not any(unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"} for char in name)
+        and key not in _SYSTEM_LABELS
+        and not key.startswith("category_")
+        and (not key.startswith("assistant/") or name == ARCHIVE_LABEL_DEFAULT)
+    )
 
 
 def is_archive_label(name: str, archive: str) -> bool:
