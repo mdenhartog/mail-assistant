@@ -2,7 +2,8 @@
 // Checks scaled to the change (skills sdlc-flow phases 5 and 7, verify):
 //
 //   node scripts/check.mjs unit [--base <ref>] [--files a,b] [--static] [--dry-run]
-//       Everything a change can break, nothing else: lint, types and security on the changed files
+//       Everything a change can break, nothing else: lint, types and security on the files changed
+//       since the branch left its base (a unit branch: its feature branch; otherwise main)
 //       and the tests that run them (pytest-testmon, vitest related, jest --findRelatedTests). A change
 //       to a shared package or a contract also checks the components that depend on it (model.json).
 //   node scripts/check.mjs full [--reuse] [--dry-run]
@@ -16,6 +17,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { ownerOf, readModel } from "./architecture.mjs";
+import { baseRef } from "./lib/branches.mjs";
 import { runPnpm } from "./lib/run-pnpm.mjs";
 
 const PY = /\.py$/;
@@ -32,12 +34,15 @@ function git(root, args) {
   return result.status === 0 ? result.stdout : "";
 }
 
-/** Files changed since the branch left `base` (committed, uncommitted and untracked). */
+/**
+ * Files changed since the branch left `base` (committed, uncommitted and untracked). Without `base`
+ * a unit branch is compared with its feature branch and any other branch with main (lib/branches.mjs).
+ */
 export function changedFiles(root, base) {
   const branch = git(root, ["rev-parse", "--abbrev-ref", "HEAD"]).trim();
-  const baseRef = base ?? ["main", "origin/main"].find((ref) => git(root, ["rev-parse", "--verify", "-q", ref]).trim());
+  const against = base ?? baseRef(root, branch);
   let from = "HEAD";
-  if (baseRef && branch !== baseRef) from = git(root, ["merge-base", "HEAD", baseRef]).trim() || "HEAD";
+  if (against && branch !== against) from = git(root, ["merge-base", "HEAD", against]).trim() || "HEAD";
   const lines = [
     ...git(root, ["diff", "--name-only", "--diff-filter=ACMR", from]).split("\n"),
     ...git(root, ["ls-files", "--others", "--exclude-standard"]).split("\n"),

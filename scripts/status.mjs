@@ -9,20 +9,21 @@
 //   node scripts/status.mjs --no-prs        do not ask the Git host for pull requests
 //   node scripts/status.mjs --quiet         print nothing (used by the plugin hook)
 //   node scripts/status.mjs --root <dir>    project root (default: the current directory)
-// Conventions: branch `feat|fix/<INT-nnn>/<feature>/<nn>` is unit `U-<feature>-<nn>` of the plan
+// Conventions (scripts/lib/branches.mjs): branch `unit/<INT-nnn>/<feature>/<nn>` is unit `U-<feature>-<nn>` of the plan
 // docs/plans/<feature>/U-<feature>-<nn>.md (index: docs/plans/<feature>/index.md; the older single file
-// docs/plans/<feature>.md is still read); every commit carries trailers `Refs: INT-nnn` and `Unit: U-<feature>-<nn>`
-// and the squash-merge message keeps them (that is how a merged unit is recognised as done).
+// docs/plans/<feature>.md is still read). Units land in the feature branch `feat/<INT-nnn>/<feature>`, whose pull
+// request is the only one. Every commit carries trailers `Refs: INT-nnn` and `Unit: U-<feature>-<nn>`; a `Unit:`
+// trailer on main or on a feature branch is how a landed unit is recognised as done.
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { existingRef, featureCandidates, parseFeatureBranch, parseUnitBranch, stripRemote } from "./lib/branches.mjs";
 
-const BRANCH = /^(?:origin\/)?(?:feat|fix)\/(INT-\d+)\/([a-z0-9][a-z0-9-]*)\/(\d+)$/;
-
+/** A unit branch (unit/<INT-nnn>/<feature>/<nn>, or the older feat|fix/<INT-nnn>/<feature>/<nn>). */
 export function parseBranch(name) {
-  const m = BRANCH.exec(name);
-  return m ? { intent: m[1], feature: m[2], unit: `U-${m[2]}-${m[3]}` } : null;
+  const info = parseUnitBranch(name);
+  return info ? { intent: info.intent, feature: info.feature, unit: info.unit } : null;
 }
 
 function frontMatter(text) {
@@ -104,8 +105,6 @@ export function unitStage(subjects) {
   return stage;
 }
 
-const stripRemote = (name) => name.replace(/^origin\//, "");
-
 function aggregate(statuses) {
   if (statuses.length === 0) return "no-plan";
   if (statuses.every((s) => s === "done")) return "done";
@@ -148,7 +147,10 @@ export function buildModel({ intents = [], plans = [], branches = [], doneUnits 
       return waitingOn.length ? { ...base, status: "waiting", waitingOn } : { ...base, status: "todo" };
     });
     const doneCount = units.filter((u) => u.status === "done").length;
-    return { feature: plan.feature, title: plan.title, units, progress: { done: doneCount, total: units.length }, status: aggregate(units.map((u) => u.status)) };
+    // The feature's own pull request (feature branch → main): the one that waits for you.
+    const featurePr = prs.find((p) => p.state === "OPEN" && parseFeatureBranch(p.head)?.feature === plan.feature);
+    if (featurePr && !featurePr.isDraft) waitingForYou.push({ id: "all units", name: plan.title, feature: plan.feature, intent: plan.intent, url: featurePr.url ?? "" });
+    return { feature: plan.feature, title: plan.title, units, progress: { done: doneCount, total: units.length }, status: aggregate(units.map((u) => u.status)), ...(featurePr ? { pr: featurePr.url ?? "" } : {}) };
   };
 
   const known = new Map(intents.map((i) => [i.id, { ...i, features: [] }]));
@@ -183,7 +185,7 @@ export function renderStatus(model, { escape = false } = {}) {
   const c = escape ? hostSafe : plain;
   const worktree = (u) => (u.worktree ? `\`${String(u.worktree).replace(/`/g, "")}\`` : "—");
   const out = ["# Build status", "", "Generated from git and `docs/plans` by `node scripts/status.mjs`; do not edit.", ""];
-  if (model.integration) out.push(`Integration (full suite on the merged state of main): ${c(model.integration)}`, "");
+  if (model.integration) out.push(`Integration (full suite on the newest landed state): ${c(model.integration)}`, "");
   out.push("## Building now", "");
   if (model.nowBuilding.length === 0) out.push("Nothing is being built right now.", "");
   else {
@@ -262,12 +264,12 @@ function readPullRequests(cwd) {
 export function integrationLine(main) {
   try {
     const state = JSON.parse(readFileSync(path.join(main, ".sdlc", "run", "integrate.json"), "utf8"));
-    const short = (sha) => String(sha ?? "").slice(0, 7);
+    const on = (run) => `${String(run.sha ?? run.ref ?? "").slice(0, 7)}${run.branch ? ` (${run.branch})` : ""}`;
     if (state.running) {
-      try { process.kill(state.running.pid, 0); return `running on ${short(state.running.sha)}`; } catch { /* the runner is gone */ }
+      try { process.kill(state.running.pid, 0); return `running on ${on(state.running)}`; } catch { /* the runner is gone */ }
     }
     if (!state.last) return "";
-    return state.last.ok ? `green on ${short(state.last.ref)}` : `RED on ${short(state.last.ref)}: ${(state.last.failures ?? []).map((f) => f.name).join(", ")}`;
+    return state.last.ok ? `green on ${on(state.last)}` : `RED on ${on(state.last)}: ${(state.last.failures ?? []).map((f) => f.name).join(", ")}`;
   } catch {
     return "";
   }
@@ -278,12 +280,19 @@ export function collect(root, { prs = true } = {}) {
   const main = worktrees[0]?.path ?? path.resolve(root);
   const trunk = ["main", "master"].find((b) => git(["rev-parse", "--verify", "-q", b], main).trim()) ?? "HEAD";
   const refs = git(["for-each-ref", "--format=%(refname:short)", "refs/heads", "refs/remotes/origin"], main).split("\n").filter(Boolean);
-  const branches = refs.filter((r) => parseBranch(r)).map((name) => ({
-    name,
-    worktree: worktrees.find((w) => w.branch === stripRemote(name)) ? path.relative(main, worktrees.find((w) => w.branch === stripRemote(name)).path).split(path.sep).join("/") : "",
-    subjects: git(["log", "--reverse", "--format=%s", `${trunk}..${name}`], main).split("\n").filter(Boolean),
-  }));
-  const doneUnits = new Set([...git(["log", trunk, "--format=%B"], main).matchAll(/^Unit:\s*(U-[a-z0-9-]+-\d+)\s*$/gm)].map((m) => m[1]));
+  const branches = refs.filter((r) => parseBranch(r)).map((name) => {
+    const unit = parseUnitBranch(name);
+    const base = (!unit.legacy && existingRef(main, featureCandidates(unit))) || trunk; // only this unit's commits
+    const wt = worktrees.find((w) => w.branch === stripRemote(name));
+    return {
+      name,
+      worktree: wt ? path.relative(main, wt.path).split(path.sep).join("/") : "",
+      subjects: git(["log", "--reverse", "--format=%s", `${base}..${name}`], main).split("\n").filter(Boolean),
+    };
+  });
+  // Done: a Unit trailer on main, or on a feature branch the unit has landed in (before the feature merges).
+  const landedIn = [trunk, ...refs.filter((r) => parseFeatureBranch(r))];
+  const doneUnits = new Set(landedIn.flatMap((ref) => [...git(["log", ref, "--format=%B"], main).matchAll(/^Unit:\s*(U-[a-z0-9-]+-\d+)\s*$/gm)].map((m) => m[1])));
   const intents = readDir(path.join(main, "docs", "intent"), /^INT-\d+.*\.md$/).map(([f, text]) => parseIntent(text, f));
   const plans = readPlans(path.join(main, "docs", "plans"));
   const model = buildModel({ intents, plans, branches, doneUnits, prs: prs ? readPullRequests(main) : [] });

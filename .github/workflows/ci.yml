@@ -2,9 +2,14 @@
 # A pull request runs only the jobs its files need (job `changes`, scripts/ci-changes.mjs); a skipped job
 # counts as passed for the required checks. A merge to main is not tested again (the pull request was
 # up to date with main when it merged); instead the whole suite runs every night on main, and by hand.
+# CI runs once per feature, not once per unit: units land locally in the feature branch (scripts/feature.mjs) and
+# only the feature's pull request to main is tested. A draft pull request runs nothing; marking it "ready for
+# review" starts the run. A red run is split into repair rounds per unit (scripts/ci-triage.mjs), pushed together.
 name: ci
 on:
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
   schedule:
     - cron: "17 2 * * *"
@@ -19,6 +24,8 @@ concurrency:
 
 jobs:
   changes:
+    # Every other job needs this one (docs repeats the condition), so a draft pull request runs nothing.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     permissions: { contents: read, pull-requests: read }
     outputs:
@@ -62,6 +69,7 @@ jobs:
   docs:
     # Always runs (seconds). Markdown lint (specs, ADRs, plans, READMEs, CLAUDE.md), the documentation check (README, API reference, user guide, links)
     # and the architecture check (model, overview and imports agree: docs/architecture/model.json).
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
