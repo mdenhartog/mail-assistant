@@ -13,7 +13,7 @@ export const INVOICES = {
   mailCount: 12,
   kind: "extra" as const,
   notify: true,
-  senders: [{ entry: "billing@example.com", subdomains: false }],
+  senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 0 }],
 };
 export const NEWS = {
   id: "7f0c1c2e-1b1e-4c52-9d0e-0a6a1b1c0002",
@@ -22,7 +22,7 @@ export const NEWS = {
   mailCount: 1,
   kind: "topic" as const,
   notify: false,
-  senders: [] as { entry: string; subdomains: boolean }[],
+  senders: [] as { entry: string; subdomains: boolean; skippedCount: number }[],
 };
 
 export const LIST = {

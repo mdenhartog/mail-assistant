@@ -46,8 +46,9 @@ async function rename(from: string, to: string): Promise<void> {
 }
 
 /** A stored category as the PUT carries it: everything the api returned except the mail count. */
-function V2(item: typeof INVOICES | typeof NEWS): Omit<typeof INVOICES, "mailCount" | "kind"> & { kind: "topic" | "extra" } {
-  return { id: item.id, name: item.name, description: item.description, kind: item.kind, notify: item.notify, senders: item.senders };
+function V2(item: typeof INVOICES | typeof NEWS): Omit<typeof INVOICES, "mailCount" | "kind" | "senders"> & { kind: "topic" | "extra"; senders: { entry: string; subdomains: boolean }[] } {
+  const senders = item.senders.map(({ entry, subdomains }) => ({ entry, subdomains }));
+  return { id: item.id, name: item.name, description: item.description, kind: item.kind, notify: item.notify, senders };
 }
 
 const saveButton = (): HTMLElement => screen.getByRole("button", { name: "Save changes" });

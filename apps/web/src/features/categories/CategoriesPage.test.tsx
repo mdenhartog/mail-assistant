@@ -28,7 +28,7 @@ function nested(): CategoryItem[] {
     mailCount: index,
     kind: index % 2 === 0 ? ("topic" as const) : ("extra" as const),
     notify: index === 3,
-    senders: index === 3 ? [{ entry: "a@x.nl", subdomains: false }] : [],
+    senders: index === 3 ? [{ entry: "a@x.nl", subdomains: false, skippedCount: 0 }] : [],
   }));
 }
 

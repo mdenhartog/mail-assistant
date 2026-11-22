@@ -398,10 +398,10 @@ async def test_given_a_v2_list_with_nested_names_kinds_senders_ticks_and_instruc
         ("Urgent", "extra", False),
         ("Invoices", "topic", False),
     ]
-    assert body["categories"][0]["senders"] == [{"entry": "example.nl", "subdomains": True}]
+    assert body["categories"][0]["senders"] == [{"entry": "example.nl", "subdomains": True, "skippedCount": 0}]
     assert body["categories"][1]["senders"] == [
-        {"entry": "boss@example.com", "subdomains": False},
-        {"entry": "example.nl", "subdomains": False},
+        {"entry": "boss@example.com", "subdomains": False, "skippedCount": 0},
+        {"entry": "example.nl", "subdomains": False, "skippedCount": 0},
     ]
     assert (await get(api)).json() == body
     rows = await owner.fetch(
@@ -724,7 +724,7 @@ def _stored(labels: list[str], adoptable: list[str], existing: list[str]) -> Sto
     owned = [label for label in labels if label.casefold() not in adopted and label.startswith("Assistant/")]
     names = [*existing, *(label.removeprefix("Assistant/") for label in owned)]
     categories = tuple(StoredCategory(uuid.uuid4(), name, "x", Kind.TOPIC, notify=False, senders=()) for name in names)
-    return StoredList(1, categories, "", ARCHIVE, {}, tuple(labels))
+    return StoredList(1, categories, "", ARCHIVE, {}, {}, tuple(labels))
 
 
 def _fill(description: str) -> str:
