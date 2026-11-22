@@ -7,6 +7,8 @@
 const SEGMENT_MAX = 40;
 const LABEL_MAX = 225;
 const DESCRIPTION_MAX = 1500;
+/** The most characters the general instructions of the list may have (C-3). */
+export const MAX_INSTRUCTIONS = 4000;
 export const MAX_CATEGORIES = 100;
 const SEPARATOR = "/";
 export const LABEL_PREFIX = "Assistant/";

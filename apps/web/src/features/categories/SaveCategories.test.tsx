@@ -18,22 +18,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+type View = BoundFunctions<typeof queries>;
+
 async function loaded(): Promise<HTMLElement> {
   const container = renderPage();
-  await screen.findByDisplayValue(INVOICES.name);
+  await screen.findByRole("button", { name: `Edit ${INVOICES.name}` });
   return container;
 }
 
-function card(position: number): BoundFunctions<typeof queries> {
-  return within(screen.getByRole("group", { name: `Category ${String(position)}` }));
+async function edit(name: string): Promise<View> {
+  await userEvent.click(await screen.findByRole("button", { name: `Edit ${name}` }));
+  return within(screen.getByRole("region", { name: "Edit category" }));
 }
 
-async function rename(position: number, name: string): Promise<void> {
-  const field = card(position).getByLabelText("Name");
+async function replace(field: HTMLElement, text: string): Promise<void> {
   await userEvent.clear(field);
-  if (name !== "") {
-    await userEvent.type(field, name);
+  if (text !== "") {
+    await userEvent.type(field, text);
   }
+}
+
+/** Opens a category, gives it a new name and keeps the edit with Save, so the page has an unsaved change. */
+async function rename(from: string, to: string): Promise<void> {
+  const view = await edit(from);
+  await replace(view.getByLabelText("Name"), to);
+  await userEvent.click(view.getByRole("button", { name: "Save" }));
 }
 
 /** A stored category as the PUT carries it: everything the api returned except the mail count. */
@@ -43,8 +52,13 @@ function V2(item: typeof INVOICES | typeof NEWS): Omit<typeof INVOICES, "mailCou
 
 const saveButton = (): HTMLElement => screen.getByRole("button", { name: "Save changes" });
 
+async function confirm(): Promise<void> {
+  await userEvent.click(saveButton());
+  await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+}
+
 describe("Categories page: saving", () => {
-  it("given nothing changed, then Save is disabled", async () => {
+  it("given nothing changed, then Save changes is disabled", async () => {
     wire();
     await loaded();
     expect(saveButton()).toBeDisabled();
@@ -57,16 +71,18 @@ describe("Categories page: saving", () => {
     expect(bar).toHaveClass("data-sticky:sticky", "bottom-0");
     expect(within(bar as HTMLElement).queryByText(/not saved/)).not.toBeInTheDocument();
 
-    await rename(1, "Bills");
-    expect(within(bar as HTMLElement).getByText("1 change not saved")).toBeInTheDocument();
-    await userEvent.type(card(2).getByLabelText("Description"), " More");
-    expect(within(bar as HTMLElement).getByText("2 changes not saved")).toBeInTheDocument();
+    await rename("Invoices", "Bills");
+    expect(screen.getByText("1 change not saved")).toBeInTheDocument();
+    const view = await edit("Newsletters");
+    await userEvent.type(view.getByLabelText("Description"), " More");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    expect(screen.getByText("2 changes not saved")).toBeInTheDocument();
   });
 
-  it("given a rename, when Save is pressed, then a summary asks first and Keep editing returns focus to Save", async () => {
+  it("given a rename, when Save changes is pressed, then a summary asks first and Keep editing returns focus to it", async () => {
     const seen = wire();
     await loaded();
-    await rename(1, "Bills");
+    await rename("Invoices", "Bills");
 
     await userEvent.click(saveButton());
 
@@ -79,33 +95,51 @@ describe("Categories page: saving", () => {
     expect(seen.puts).toHaveLength(0);
   });
 
-  it("given several changes, then the summary lists each one by name and says the filing rule once, only with a rename", async () => {
+  it("given several changes, then the summary lists each one by name and says the renaming note only with a rename", async () => {
     wire();
     await loaded();
-    await rename(1, "Bills");
-    await userEvent.type(card(2).getByLabelText("Description"), " More");
+    await rename("Invoices", "Bills");
+    const news = await edit("Newsletters");
+    await userEvent.type(news.getByLabelText("Description"), " More");
+    await userEvent.click(news.getByRole("button", { name: "Save" }));
     await userEvent.click(screen.getByRole("button", { name: "Add category" }));
-    await userEvent.type(card(3).getByLabelText("Name"), "Travel");
-    await userEvent.type(card(3).getByLabelText("Description"), "Flights");
+    const added = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(added.getByLabelText("Name"), "Travel");
+    await userEvent.type(added.getByLabelText("Description"), "Flights");
+    await userEvent.click(added.getByRole("button", { name: "Save" }));
     await userEvent.click(saveButton());
 
     const dialog = await screen.findByRole("alertdialog", { name: "Save 3 changes?" });
     const items = within(dialog).getAllByRole("listitem").map((item) => item.textContent);
-    expect(items).toEqual([
-      'Rename "Invoices" to "Bills"',
-      'Change the description of "Newsletters"',
-      'Add "Travel"',
-    ]);
+    expect(items).toEqual(['Rename "Invoices" to "Bills"', 'Change the description of "Newsletters"', 'Add "Travel"']);
     expect(within(dialog).getByText("Renaming only changes the label name.")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
-    expect(screen.getAllByText(/new mail is filed using this list\. Mail already filed stays where it is\./)).toHaveLength(1);
-    expect(within(dialog).queryByText(/new mail is filed/)).not.toBeInTheDocument();
+  });
+
+  it("given a kind, a tick, senders and instructions changed, then the summary names each of them", async () => {
+    wire();
+    await loaded();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Always notify, Newsletters" }));
+    const view = await edit("Newsletters");
+    await userEvent.click(view.getByRole("radio", { name: "Extra label" }));
+    await userEvent.type(view.getByLabelText("Senders"), "news@y.nl");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await userEvent.type(screen.getByLabelText("General instructions"), " More.");
+    await userEvent.click(saveButton());
+
+    const dialog = await screen.findByRole("alertdialog", { name: "Save 4 changes?" });
+    expect(within(dialog).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "Change the general instructions",
+      'Change the kind of "Newsletters"',
+      'Turn always notify on for "Newsletters"',
+      'Change the senders of "Newsletters"',
+    ]);
+    expect(within(dialog).queryByText(/Renaming only/)).not.toBeInTheDocument();
   });
 
   it("given a removal and no rename, then the summary names it and has no renaming sentence", async () => {
     wire();
     await loaded();
-    await userEvent.click(screen.getByRole("button", { name: "Delete Newsletters" }));
+    await userEvent.click((await edit("Newsletters")).getByRole("button", { name: "Delete Newsletters" }));
     await userEvent.click(saveButton());
 
     const dialog = await screen.findByRole("alertdialog", { name: "Save 1 change?" });
@@ -114,40 +148,50 @@ describe("Categories page: saving", () => {
   });
 
   it("given a confirmed save, then the whole list goes on the stored version with the token and the page says Saved", async () => {
-    const seen = wire({
-      put: () => json({ ...LIST, version: 4, categories: [{ ...INVOICES, name: "Bills" }, NEWS] }),
-    });
+    const seen = wire({ put: () => json({ ...LIST, version: 4, categories: [{ ...INVOICES, name: "Bills" }, NEWS] }) });
     await loaded();
-    await rename(1, "Bills");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+    await rename("Invoices", "Bills");
+    await confirm();
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(seen.puts).toEqual([
       {
         token: TOKEN,
-        body: {
-          version: 3,
-          generalInstructions: LIST.generalInstructions,
-          categories: [
-            { ...V2(INVOICES), name: "Bills" },
-            V2(NEWS),
-          ],
-        },
+        body: { version: 3, generalInstructions: LIST.generalInstructions, categories: [{ ...V2(INVOICES), name: "Bills" }, V2(NEWS)] },
       },
     ]);
-    expect(card(1).getByLabelText("Name")).toHaveValue("Bills");
+    expect(screen.getByRole("button", { name: "Edit Bills" })).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
   });
 
-  it("given a deleted card and an older category added, then the body leaves out the deleted id and sends the new card without one", async () => {
+  it("given senders written with a trailing marker, then the body carries them as entry and subdomains", async () => {
     const seen = wire();
     await loaded();
-    await userEvent.click(screen.getByRole("button", { name: "Delete Newsletters" }));
+    const view = await edit("Newsletters");
+    await userEvent.type(view.getByLabelText("Senders"), "News@Example.nl +subdomains{Enter}{Enter}a@y.nl");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await userEvent.type(screen.getByLabelText("General instructions"), "!");
+    await confirm();
+
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(seen.puts[0]?.body.generalInstructions).toBe("Keep receipts for the tax year.!");
+    expect(seen.puts[0]?.body.categories[1]?.senders).toEqual([
+      { entry: "News@Example.nl", subdomains: true },
+      { entry: "a@y.nl", subdomains: false },
+    ]);
+  });
+
+  it("given a deleted category and an older one added, then the body leaves out the deleted id and sends the new one without an id", async () => {
+    const seen = wire();
+    await loaded();
+    await userEvent.click((await edit("Newsletters")).getByRole("button", { name: "Delete Newsletters" }));
     await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
-    await userEvent.type(card(2).getByLabelText("Description"), "Flights and hotels");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+    const added = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(added.getByLabelText("Description"), "Flights and hotels");
+    await userEvent.click(added.getByRole("button", { name: "Save" }));
+    await confirm();
 
     await waitFor(() => {
       expect(seen.puts).toHaveLength(1);
@@ -158,40 +202,33 @@ describe("Categories page: saving", () => {
     ]);
   });
 
-  it("given a deleted card, then the removed notice stands where the card was and says what saving does", async () => {
+  it("given a deleted category, then a notice with Undo says what saving does with it", async () => {
     wire();
     await loaded();
-    await userEvent.click(screen.getByRole("button", { name: "Delete Invoices" }));
+    await userEvent.click((await edit("Invoices")).getByRole("button", { name: "Delete Invoices" }));
 
-    const items = screen.getAllByRole("listitem");
-    const notice = within(items[0] as HTMLElement);
-    expect(notice.getByRole("status")).toHaveTextContent("Removed Invoices.");
-    expect(notice.getByText(/It is removed when you save\. Mail already filed under it stays where it is\./)).toBeInTheDocument();
-    expect(notice.getByRole("button", { name: "Undo" })).toBeInTheDocument();
-    expect(within(items[1] as HTMLElement).getByLabelText("Name")).toHaveValue("Newsletters");
+    expect(screen.getByText("Removed Invoices.")).toBeInTheDocument();
+    expect(screen.getByText(/It is removed when you save\. Mail already filed under it stays where it is\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Invoices" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Newsletters" })).toBeInTheDocument();
   });
 
-  it("given a deleted card, when Undo is pressed, then it is back where it was", async () => {
+  it("given a deleted category, when Undo is pressed, then it is back and nothing is unsaved", async () => {
     wire();
     await loaded();
-    await userEvent.click(screen.getByRole("button", { name: "Delete Invoices" }));
-    expect(screen.queryByDisplayValue("Invoices")).not.toBeInTheDocument();
+    await userEvent.click((await edit("Invoices")).getByRole("button", { name: "Delete Invoices" }));
     await userEvent.click(screen.getByRole("button", { name: "Undo" }));
-    expect(card(1).getByLabelText("Name")).toHaveValue("Invoices");
+    expect(screen.getByRole("button", { name: "Edit Invoices" })).toHaveFocus();
     expect(saveButton()).toBeDisabled();
   });
 });
 
-describe("Categories page: leaving with unsaved changes", () => {
-  function setUp(): ReturnType<typeof renderPageInRouter> {
-    return renderPageInRouter();
-  }
-
+describe("Categories page: leaving with unsaved changes (criterion 5)", () => {
   it("given unsaved edits, when the user navigates away, then a dialog asks and Keep editing stays on the page", async () => {
     wire();
-    const { router } = setUp();
-    await screen.findByDisplayValue(INVOICES.name);
-    await rename(1, "Bills");
+    const { router } = renderPageInRouter();
+    await screen.findByRole("button", { name: "Edit Invoices" });
+    await rename("Invoices", "Bills");
 
     await act(async () => {
       await router.navigate("/elsewhere");
@@ -201,15 +238,28 @@ describe("Categories page: leaving with unsaved changes", () => {
     expect(within(dialog).getByRole("button", { name: "Keep editing" })).toHaveFocus();
     await userEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(card(1).getByLabelText("Name")).toHaveValue("Bills");
+    expect(screen.getByRole("button", { name: "Edit Bills" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/categories");
+  });
+
+  it("given unsaved edits in the edit view, when the user navigates away, then the dialog asks too", async () => {
+    wire();
+    const { router } = renderPageInRouter();
+    const view = await edit("Invoices");
+    await userEvent.type(view.getByLabelText("Name"), "x");
+
+    await act(async () => {
+      await router.navigate("/elsewhere");
+    });
+
+    expect(await screen.findByRole("alertdialog", { name: /Leave without saving/ })).toBeInTheDocument();
   });
 
   it("given the dialog, when Leave is pressed, then the navigation goes through", async () => {
     wire();
-    const { router } = setUp();
-    await screen.findByDisplayValue(INVOICES.name);
-    await rename(1, "Bills");
+    const { router } = renderPageInRouter();
+    await screen.findByRole("button", { name: "Edit Invoices" });
+    await rename("Invoices", "Bills");
     await act(async () => {
       await router.navigate("/elsewhere");
     });
@@ -219,8 +269,8 @@ describe("Categories page: leaving with unsaved changes", () => {
 
   it("given no edits, then navigating away is not asked about", async () => {
     wire();
-    const { router } = setUp();
-    await screen.findByDisplayValue(INVOICES.name);
+    const { router } = renderPageInRouter();
+    await screen.findByRole("button", { name: "Edit Invoices" });
     await act(async () => {
       await router.navigate("/elsewhere");
     });
@@ -230,53 +280,57 @@ describe("Categories page: leaving with unsaved changes", () => {
 
   it("given unsaved edits, then closing the tab asks the browser to confirm; without edits it does not", async () => {
     wire();
-    setUp();
-    await screen.findByDisplayValue(INVOICES.name);
+    renderPageInRouter();
+    await screen.findByRole("button", { name: "Edit Invoices" });
     const clean = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(clean);
     expect(clean.defaultPrevented).toBe(false);
 
-    await rename(1, "Bills");
+    await userEvent.click(screen.getByRole("checkbox", { name: "Always notify, Newsletters" }));
     const dirty = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(dirty);
     expect(dirty.defaultPrevented).toBe(true);
   });
 });
 
+function problem422(problems: unknown[]): Response {
+  return json({ type: "about:blank", title: "Unprocessable", status: 422, problems }, 422);
+}
+
 describe("Categories page: invalid fields (AC-2)", () => {
-  it("given an adopted card without a description, when saving, then the error with the mark shows by the field, focus moves to it and nothing is sent", async () => {
+  it("given an adopted category without a description, when Save is pressed, then the error shows by the field, focus moves to it and the view stays", async () => {
     const seen = wire();
     await loaded();
     await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
-    await rename(1, "");
+    const view = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
 
-    await userEvent.click(saveButton());
-
-    const name = card(1).getByLabelText("Name");
-    expect(name).toBeInvalid();
-    expect(name).toHaveFocus();
-    expect(card(1).getByText("Give the category a name.")).toBeInTheDocument();
-    expect(card(3).getByLabelText("Description")).toBeInvalid();
-    expect(card(3).getByText("Say what belongs in this category.")).toBeInTheDocument();
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    const description = view.getByLabelText("Description");
+    expect(description).toBeInvalid();
+    expect(description).toHaveFocus();
+    expect(description).toHaveAccessibleDescription(expect.stringContaining("Say what belongs in this category."));
+    expect(view.getByText("Say what belongs in this category.")).toBeInTheDocument();
     expect(seen.puts).toHaveLength(0);
   });
 
-  it("given a name that is already used, then the error names the rule", async () => {
+  it("given a name that is already used, then the error names the rule and the view stays open", async () => {
     wire();
     await loaded();
-    await rename(2, "invoices");
-    await userEvent.click(saveButton());
-    expect(card(2).getByText("Another category already has this name.")).toBeInTheDocument();
-    expect(card(2).getByLabelText("Name")).toHaveFocus();
+    const view = await edit("Newsletters");
+    await replace(view.getByLabelText("Name"), "invoices");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    expect(view.getByText("Another category already has this name.")).toBeInTheDocument();
+    expect(view.getByLabelText("Name")).toHaveFocus();
   });
 
   it("given a typed name that is an older category, when saving, then the page does not refuse it and the save is asked for", async () => {
     const seen = wire();
     await loaded();
     await userEvent.click(screen.getByRole("button", { name: "Add category" }));
-    await userEvent.type(card(3).getByLabelText("Name"), "travel");
-    await userEvent.type(card(3).getByLabelText("Description"), "Flights and hotels");
+    const view = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(view.getByLabelText("Name"), "travel");
+    await userEvent.type(view.getByLabelText("Description"), "Flights and hotels");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
 
     await userEvent.click(saveButton());
 
@@ -285,39 +339,52 @@ describe("Categories page: invalid fields (AC-2)", () => {
     expect(seen.puts).toHaveLength(0);
   });
 
-  it("given the api refuses a field (422), then the error shows next to that field and focus moves there", async () => {
-    wire({
-      put: () =>
-        json(
-          {
-            type: "about:blank",
-            title: "Unprocessable",
-            status: 422,
-            problems: [{ rule: "name_label_exists", field: "name", index: 1, position: null, otherIndex: null }],
-          },
-          422,
-        ),
-    });
+  it("given the api refuses a name (422), then the edit view of that category opens with the error and focus on the field", async () => {
+    wire({ put: () => problem422([{ rule: "name_label_exists", field: "name", index: 1, position: null, otherIndex: null }]) });
     await loaded();
-    await rename(2, "Trips");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+    await rename("Newsletters", "Trips");
+    await confirm();
 
-    expect(await screen.findByText("A Gmail label with this name already exists.")).toBeInTheDocument();
+    const view = within(await screen.findByRole("region", { name: "Edit category" }));
+    expect(view.getByText("A Gmail label with this name already exists.")).toBeInTheDocument();
     await waitFor(() => {
-      expect(card(2).getByLabelText("Name")).toHaveFocus();
+      expect(view.getByLabelText("Name")).toHaveFocus();
     });
-    expect(card(2).getByLabelText("Name")).toBeInvalid();
+    expect(view.getByLabelText("Name")).toBeInvalid();
+  });
+
+  it("given the api refuses a sender entry, then its line shows the reason and the senders field has focus", async () => {
+    wire({ put: () => problem422([{ rule: "sender_invalid", field: "senders", index: 0, position: 0, otherIndex: null }]) });
+    await loaded();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Always notify, Newsletters" }));
+    await confirm();
+
+    const view = within(await screen.findByRole("region", { name: "Edit category" }));
+    expect(view.getByText("Line 1: This is not a valid address or domain.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(view.getByLabelText("Senders")).toHaveFocus();
+    });
+  });
+
+  it("given the api names another category for an entry (422), then the conflict message names it", async () => {
+    wire({ put: () => problem422([{ rule: "sender_duplicate", field: "senders", index: 1, position: 0, otherIndex: 0 }]) });
+    await loaded();
+    const view = await edit("Newsletters");
+    await userEvent.type(view.getByLabelText("Senders"), "dup@x.nl");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await confirm();
+
+    const again = within(await screen.findByRole("region", { name: "Edit category" }));
+    expect(again.getByText("Line 1: dup@x.nl is already in Invoices. Remove it there first.")).toBeInTheDocument();
   });
 
   it("given a description edit, then the body carries kind, notify, senders and the general instructions unchanged", async () => {
     const seen = wire();
     await loaded();
-    const field = card(1).getByLabelText("Description");
-    await userEvent.clear(field);
-    await userEvent.type(field, "Bills only");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+    const view = await edit("Invoices");
+    await replace(view.getByLabelText("Description"), "Bills only");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await confirm();
 
     await waitFor(() => {
       expect(seen.puts).toHaveLength(1);
@@ -330,57 +397,33 @@ describe("Categories page: invalid fields (AC-2)", () => {
     });
   });
 
-  it("given a 422 with the v2 problem shape, then a known field still shows its text and a senders problem shows the generic sentence", async () => {
-    wire({
-      put: () =>
-        json(
-          {
-            type: "about:blank",
-            title: "Unprocessable",
-            status: 422,
-            problems: [
-              { rule: "name_duplicate", field: "name", index: 1, position: 2, otherIndex: 0 },
-              { rule: "sender_invalid", field: "senders", index: 0, position: 1, otherIndex: null },
-            ],
-          },
-          422,
-        ),
-    });
+  it("given a 422 that names the instructions, then the field shows the reason, is invalid and has focus", async () => {
+    wire({ put: () => problem422([{ rule: "instructions_too_long", field: "instructions", index: null, position: null, otherIndex: null }]) });
     await loaded();
-    await rename(2, "Trips");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+    await userEvent.type(screen.getByLabelText("General instructions"), "x");
+    await confirm();
 
-    expect(await screen.findByText("Another category already has this name.")).toBeInTheDocument();
+    const field = await screen.findByLabelText("General instructions");
+    expect(await screen.findByText("Use at most 4000 characters for the general instructions.")).toBeInTheDocument();
+    expect(field).toBeInvalid();
+    await waitFor(() => {
+      expect(field).toHaveFocus();
+    });
   });
 
-  it("given a 422 that only names senders or instructions, then the page shows the refused banner", async () => {
-    wire({
-      put: () =>
-        json(
-          {
-            type: "about:blank",
-            title: "Unprocessable",
-            status: 422,
-            problems: [{ rule: "instructions_too_long", field: "instructions", index: null, position: null, otherIndex: null }],
-          },
-          422,
-        ),
-    });
+  it("given a 422 that names no field, then the page shows the refused banner", async () => {
+    wire({ put: () => problem422([{ rule: "list_too_many", field: "list", index: null, position: null, otherIndex: null }]) });
     await loaded();
-    await rename(1, "Bills");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
-
-    expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByText("Another category already has this name.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Always notify, Newsletters" }));
+    await confirm();
+    expect(await screen.findByText("Some values were not accepted.")).toBeInTheDocument();
   });
 
   it("has no axe violations with errors shown", async () => {
     wire();
     const container = await loaded();
     await userEvent.click(screen.getByRole("button", { name: "Add category" }));
-    await userEvent.click(saveButton());
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findAllByRole("alert");
     await expectNoAxeViolations(container);
   });
@@ -388,9 +431,8 @@ describe("Categories page: invalid fields (AC-2)", () => {
 
 describe("Categories page: a save that does not store", () => {
   async function save(): Promise<void> {
-    await rename(1, "Bills");
-    await userEvent.click(saveButton());
-    await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
+    await rename("Invoices", "Bills");
+    await confirm();
   }
 
   it("given a conflict (409), then the banner has the focus and the newest list is shown (AC-3)", async () => {
@@ -404,7 +446,7 @@ describe("Categories page: a save that does not store", () => {
     await waitFor(() => {
       expect(banner).toHaveFocus();
     });
-    expect(card(1).getByLabelText("Name")).toHaveValue("Receipts");
+    expect(screen.getByRole("button", { name: "Edit Receipts" })).toBeInTheDocument();
   });
 
   it("given a 409 not-ready, then the page shows the not-ready state", async () => {
@@ -415,13 +457,13 @@ describe("Categories page: a save that does not store", () => {
     expect(await screen.findByText("Your categories are still being set up.")).toBeInTheDocument();
   });
 
-  it("given a 429, then it says too many saves", async () => {
+  it("given a 429, then it says too many saves and the draft stays", async () => {
     wire({ put: () => json({}, 429, { "Retry-After": "60" }) });
     await loaded();
     await save();
     expect(await screen.findByText("Too many saves.")).toBeInTheDocument();
     expect(screen.getByText("Wait a minute and try again.")).toBeInTheDocument();
-    expect(card(1).getByLabelText("Name")).toHaveValue("Bills");
+    expect(screen.getByRole("button", { name: "Edit Bills" })).toBeInTheDocument();
   });
 
   it("given a failed save, then it says nothing was changed and Try again saves again", async () => {
@@ -435,28 +477,38 @@ describe("Categories page: a save that does not store", () => {
     expect(seen.puts).toHaveLength(2);
   });
 
-  it("given a save in flight, then Save says Saving and the fields are read-only", async () => {
+  it("given a save in flight, then Save says Saving and the list cannot be changed", async () => {
     wire({ put: () => new Promise<Response>(() => undefined) });
     await loaded();
     await save();
     expect(await screen.findByRole("button", { name: "Saving..." })).toHaveAttribute("aria-busy", "true");
-    expect(card(1).getByLabelText("Name")).toHaveAttribute("readonly");
+    expect(screen.getByLabelText("General instructions")).toHaveAttribute("readonly");
+    expect(screen.getByRole("checkbox", { name: "Always notify, Bills" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Edit Bills" })).toBeDisabled();
   });
 });
 
 describe("Categories page: keyboard only (AC-23)", () => {
-  it("lets a rename be typed, confirmed and saved without a pointer, and focus ends on the result", async () => {
+  async function tabTo(user: ReturnType<typeof userEvent.setup>, element: () => HTMLElement): Promise<void> {
+    await user.tab();
+    while (document.activeElement !== element()) {
+      await user.tab();
+    }
+  }
+
+  it("lets a category be opened, changed, kept and saved without a pointer, and focus ends on the result", async () => {
     const seen = wire({ put: (body) => json({ ...LIST, version: body.version + 1, categories: [{ ...INVOICES, name: "Bills" }, NEWS] }) });
     await loaded();
     const user = userEvent.setup();
-    await user.tab();
-    while (document.activeElement !== card(1).getByLabelText("Name")) {
-      await user.tab();
-    }
-    await user.keyboard("{Control>}a{/Control}Bills");
-    while (document.activeElement !== saveButton()) {
-      await user.tab();
-    }
+    await tabTo(user, () => screen.getByRole("button", { name: "Edit Invoices" }));
+    await user.keyboard("{Enter}");
+    const view = within(await screen.findByRole("region", { name: "Edit category" }));
+    await tabTo(user, () => view.getByLabelText("Name"));
+    await user.keyboard("{Control>}a{/Control}Bills{Enter}");
+    expect(screen.queryByRole("region", { name: "Edit category" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Bills" })).toHaveFocus();
+
+    await tabTo(user, saveButton);
     await user.keyboard("{Enter}");
     const dialog = await screen.findByRole("alertdialog");
     await user.tab();
@@ -465,16 +517,15 @@ describe("Categories page: keyboard only (AC-23)", () => {
 
     expect(await screen.findByText("Saved.")).toBeInTheDocument();
     expect(seen.puts).toHaveLength(1);
-    // Save is disabled again (nothing to save), so focus moves to the result, which is announced.
     await waitFor(() => {
       expect(screen.getByText("Saved.").closest('[role="status"]')).toHaveFocus();
     });
   });
 
-  it("closes the summary with Escape and puts focus back on Save", async () => {
+  it("closes the summary with Escape and puts focus back on Save changes", async () => {
     wire();
     await loaded();
-    await rename(1, "Bills");
+    await rename("Invoices", "Bills");
     await userEvent.click(saveButton());
     await screen.findByRole("alertdialog");
     await userEvent.keyboard("{Escape}");

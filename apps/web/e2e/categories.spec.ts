@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import {
   auditChannel,
@@ -8,6 +8,7 @@ import {
   planCount,
   resetCategories,
   seedList,
+  seedNestedList,
   stackLogs,
   storedList,
   TRAVEL_ID,
@@ -17,10 +18,10 @@ import { axeProblems, overflowProblem, settle, useDoubleText, VIEWPORTS } from "
 import { lockWeb, resetState } from "./support/db";
 import { signInThroughPage } from "./support/signin";
 
-// The `categories` project (U-mail-categories-11, the R1 gate of INT-004): the Categories page through a real browser
-// over the prod-like stack (edge, web, api, database over TLS). One worker, in file order, after every other project:
-// the stack has one mailbox and one list. Owner SQL (support/categoriesDb.ts) puts the list back before each test; each
-// test signs in for itself because the reset removes the sessions.
+// The `categories` project (U-mail-categories-11, the R1 gate of INT-004; the page rebuilt by U-label-structure-15): the
+// Categories page through a real browser over the prod-like stack (edge, web, api, database over TLS). One worker, in
+// file order, after every other project: the stack has one mailbox and one list. Owner SQL (support/categoriesDb.ts)
+// puts the list back before each test; each test signs in for itself because the reset removes the sessions.
 //
 // What this project cannot show is everything the agent does with the stored list: the stack has no agent, no fake Gmail
 // and no fake Telegram (the agent's Google and Telegram addresses are fixed in its code). The agent's half (new mail
@@ -48,7 +49,46 @@ async function openSeeded(page: Page): Promise<void> {
   seedList();
   await signInThroughPage(page);
   await openCategories(page);
-  await expect(page.getByLabel("Name").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: `Edit ${INVOICES}`, exact: true })).toBeVisible();
+}
+
+// The edit view (U-label-structure-15): a category is opened from its row, edited there and kept with Save; the page's
+// "Save changes" then asks and stores the whole list. "Save" and "Save changes" are told apart with `exact`.
+function editView(page: Page): Locator {
+  return page.getByRole("region", { name: /^(Edit|New) category$/ });
+}
+
+async function openEdit(page: Page, name: string): Promise<void> {
+  await page.getByRole("button", { name: `Edit ${name}`, exact: true }).click();
+  await expect(editView(page)).toBeVisible();
+}
+
+async function keepEdit(page: Page): Promise<void> {
+  await editView(page).getByRole("button", { name: "Save", exact: true }).click();
+}
+
+/** Opens a category, runs the edits in its view and keeps them. */
+async function editCategory(page: Page, name: string, edits: (view: Locator) => Promise<void>): Promise<void> {
+  await openEdit(page, name);
+  await edits(editView(page));
+  await keepEdit(page);
+  await expect(editView(page)).toBeHidden();
+}
+
+/** Adds a category through its view and keeps it. */
+async function addCategory(page: Page, name: string, description: string): Promise<void> {
+  await page.getByRole("button", { name: "Add category" }).click();
+  const view = editView(page);
+  await view.getByLabel("Name").fill(name);
+  await view.getByLabel("Description").fill(description);
+  await keepEdit(page);
+  await expect(view).toBeHidden();
+}
+
+async function changeInvoicesDescription(page: Page): Promise<void> {
+  await editCategory(page, INVOICES, async (view) => {
+    await view.getByLabel("Description").fill("Invoices and receipts");
+  });
 }
 
 async function pressSave(page: Page): Promise<void> {
@@ -87,24 +127,33 @@ test("before the agent has written version 1 the page says the categories are no
   await openCategories(page);
 
   await expect(page.getByText("Your categories are still being set up.")).toBeVisible();
-  await expect(page.getByLabel("Name")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Edit / })).toHaveCount(0);
   expect(versions()).toEqual([]);
 });
 
-// 3 (AC-1, C-12)
-test("the page shows the list with name, description and number of mails, and Other", async ({ page }) => {
+// 3 (AC-1, C-12, AC-68): one row per category (name, kind, senders), Other, the fixed block and the older category
+test("the page shows one row per category, Other, the fixed block and the older category", async ({ page }) => {
   await openSeeded(page);
 
-  await expect(page.getByLabel("Name").nth(0)).toHaveValue(INVOICES);
-  await expect(page.getByLabel("Description").nth(0)).toHaveValue("Invoices, receipts and payment confirmations");
-  await expect(page.getByText("12 mails")).toBeVisible();
-  await expect(page.getByLabel("Name").nth(1)).toHaveValue(TRAVEL);
-  await expect(page.getByText("1 mail", { exact: true })).toBeVisible();
+  const invoices = page.getByRole("button", { name: `Edit ${INVOICES}`, exact: true });
+  const invoicesRow = page.locator("[data-row-key]").filter({ has: invoices });
+  await expect(invoicesRow).toContainText("Topic");
+  await expect(invoicesRow).toContainText("No senders");
+  await expect(page.getByRole("button", { name: `Edit ${TRAVEL}`, exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: `Always notify, ${INVOICES}` })).not.toBeChecked();
   await expect(page.getByRole("heading", { name: "Other" })).toBeVisible();
   await expect(page.getByText("3 mails")).toBeVisible();
-  await expect(page.getByText(/Mail already filed stays where it is\./).first()).toBeVisible();
+  await expect(
+    page.getByText(
+      "Changing the list never moves mail you already have. Only new mail follows it. To re-sort the inbox, press Sort everything again.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Your archive label is left alone.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add to my list: Newsletters" })).toBeVisible();
+
+  await openEdit(page, INVOICES);
+  await expect(editView(page).getByLabel("Description")).toHaveValue("Invoices, receipts and payment confirmations");
+  await expect(editView(page).getByText("Every mail gets exactly one. If nothing fits, it goes to Other.")).toBeVisible();
 });
 
 // 4 (AC-2, AC-31 web half, AC-55)
@@ -113,10 +162,10 @@ test("edit and save: the summary says what happens, the list is stored whole as 
 }) => {
   await openSeeded(page);
 
-  await page.getByLabel("Description").nth(1).fill("Bookings, tickets, hotels and itineraries");
-  await page.getByRole("button", { name: "Add category" }).click();
-  await page.getByLabel("Name").last().fill("Bills");
-  await page.getByLabel("Description").last().fill("Utility and phone bills");
+  await editCategory(page, TRAVEL, async (view) => {
+    await view.getByLabel("Description").fill("Bookings, tickets, hotels and itineraries");
+  });
+  await addCategory(page, "Bills", "Utility and phone bills");
   await pressSave(page);
 
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
@@ -143,7 +192,7 @@ test("edit and save: the summary says what happens, the list is stored whole as 
 
   await page.getByRole("link", { name: "Settings" }).click();
   await openCategories(page);
-  await expect(page.getByLabel("Name")).toHaveCount(3);
+  await expect(page.getByRole("button", { name: /^Edit / })).toHaveCount(3);
 });
 
 // 5 (AC-2)
@@ -152,9 +201,13 @@ test("a save without a change makes no new version", async ({ page }) => {
 
   const save = page.getByRole("button", { name: "Save changes" });
   await expect(save).toBeDisabled();
-  await page.getByLabel("Name").nth(1).fill("Trips");
+  await editCategory(page, TRAVEL, async (view) => {
+    await view.getByLabel("Name").fill("Trips");
+  });
   await expect(save).toBeEnabled();
-  await page.getByLabel("Name").nth(1).fill(TRAVEL);
+  await editCategory(page, "Trips", async (view) => {
+    await view.getByLabel("Name").fill(TRAVEL);
+  });
   await expect(save).toBeDisabled();
   expect(versions()).toEqual(["1|operator"]);
 });
@@ -186,15 +239,11 @@ for (const row of REFUSED) {
   test(`a refused value shows its reason in the field and stores nothing: ${row.rule}`, async ({ page }) => {
     await openSeeded(page);
     await page.getByRole("button", { name: "Add category" }).click();
-    await page.getByLabel("Name").last().fill(row.name);
-    await page.getByLabel("Description").last().fill(row.description ?? "Bills of any kind");
-    await pressSave(page);
-    const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
-    if (await dialog.isVisible()) {
-      await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
-    }
+    await editView(page).getByLabel("Name").fill(row.name);
+    await editView(page).getByLabel("Description").fill(row.description ?? "Bills of any kind");
+    await keepEdit(page);
 
-    await expect(page.getByText(row.text)).toBeVisible();
+    await expect(editView(page).getByText(row.text)).toBeVisible();
     expect(versions()).toEqual(["1|operator"]);
   });
 }
@@ -203,17 +252,15 @@ for (const row of REFUSED) {
 test("a new name that equals an existing Gmail label is refused and nothing is stored", async ({ page }) => {
   await openSeeded(page);
 
-  await page.getByLabel("Name").nth(1).fill("Trips");
-  await page.getByRole("button", { name: "Add category" }).click();
-  await page.getByLabel("Name").last().fill(TRAVEL);
-  await page.getByLabel("Description").last().fill("A second category with the name of the old label");
+  await editCategory(page, TRAVEL, async (view) => {
+    await view.getByLabel("Name").fill("Trips");
+  });
+  await addCategory(page, TRAVEL, "A second category with the name of the old label");
   await pressSave(page);
-  const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
-  if (await dialog.isVisible()) {
-    await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
-  }
+  await confirmSave(page);
 
-  await expect(page.getByText("A Gmail label with this name already exists.")).toBeVisible();
+  // The api refuses the name; the page opens the view of that category with the reason.
+  await expect(editView(page).getByText("A Gmail label with this name already exists.")).toBeVisible();
   expect(versions()).toEqual(["1|operator"]);
 });
 
@@ -222,13 +269,13 @@ test("a list that changed elsewhere is refused with a conflict and the page show
   await openSeeded(page);
   changeListElsewhere();
 
-  await page.getByLabel("Description").nth(0).fill("Invoices and receipts");
+  await changeInvoicesDescription(page);
   await pressSave(page);
   await confirmSave(page);
 
   await expect(page.getByText("The list changed somewhere else.")).toBeVisible();
-  await expect(page.getByLabel("Name")).toHaveCount(3);
-  await expect(page.getByLabel("Name").nth(2)).toHaveValue("Bills from elsewhere");
+  await expect(page.getByRole("button", { name: /^Edit / })).toHaveCount(3);
+  await expect(page.getByRole("button", { name: "Edit Bills from elsewhere", exact: true })).toBeVisible();
   expect(versions(), "the stale save stored nothing").toEqual(["1|operator", "2|operator"]);
   expect(storedList(2).map((row) => row.name)).toEqual([INVOICES, TRAVEL, "Bills from elsewhere"]);
 });
@@ -237,7 +284,9 @@ test("a list that changed elsewhere is refused with a conflict and the page show
 test("a rename keeps the category id, makes no review and the summary says only the label name changes", async ({ page }) => {
   await openSeeded(page);
 
-  await page.getByLabel("Name").nth(1).fill("Trips");
+  await editCategory(page, TRAVEL, async (view) => {
+    await view.getByLabel("Name").fill("Trips");
+  });
   await pressSave(page);
   const dialog = page.getByRole("alertdialog", { name: SUMMARY_TITLE });
   await expect(dialog.getByText(`Rename "${TRAVEL}" to "Trips"`)).toBeVisible();
@@ -256,8 +305,9 @@ test("an older category is added to the list with its own button", async ({ page
   await openSeeded(page);
 
   await page.getByRole("button", { name: "Add to my list: Newsletters" }).click();
-  await expect(page.getByLabel("Name").last()).toHaveValue("Newsletters");
-  await page.getByLabel("Description").last().fill("Newsletters and mailing lists");
+  await expect(editView(page).getByLabel("Name")).toHaveValue("Newsletters");
+  await editView(page).getByLabel("Description").fill("Newsletters and mailing lists");
+  await keepEdit(page);
   await pressSave(page);
   await confirmSave(page);
   await expect(page.getByText("Saved.")).toBeVisible();
@@ -269,11 +319,13 @@ test("an older category is added to the list with its own button", async ({ page
 test("a removed category can be put back before saving, and is gone from the next version once saved", async ({ page }) => {
   await openSeeded(page);
 
+  await openEdit(page, TRAVEL);
   await page.getByRole("button", { name: `Delete ${TRAVEL}` }).click();
   await expect(page.getByText(`Removed ${TRAVEL}.`)).toBeVisible();
   await page.getByRole("button", { name: "Undo" }).click();
-  await expect(page.getByLabel("Name").nth(1)).toHaveValue(TRAVEL);
+  await expect(page.getByRole("button", { name: `Edit ${TRAVEL}`, exact: true })).toBeVisible();
 
+  await openEdit(page, TRAVEL);
   await page.getByRole("button", { name: `Delete ${TRAVEL}` }).click();
   await pressSave(page);
   await expect(page.getByRole("alertdialog", { name: SUMMARY_TITLE }).getByText(/^Remove "/)).toBeVisible();
@@ -288,9 +340,16 @@ test("a removed category can be put back before saving, and is gone from the nex
 test("the whole save flow works with the keyboard alone", async ({ page }) => {
   await openSeeded(page);
 
-  await page.getByLabel("Description").nth(1).focus();
+  await page.getByRole("button", { name: `Edit ${TRAVEL}`, exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(editView(page)).toBeVisible();
+  await editView(page).getByLabel("Description").focus();
   await page.keyboard.press("ControlOrMeta+a");
   await page.keyboard.type("Bookings and tickets");
+  await editView(page).getByRole("button", { name: "Save", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: `Edit ${TRAVEL}`, exact: true })).toBeFocused();
+
   await page.getByRole("button", { name: "Save changes" }).focus();
   await page.keyboard.press("Enter");
 
@@ -308,7 +367,7 @@ test("the whole save flow works with the keyboard alone", async ({ page }) => {
 // 12 (AC-32 list part)
 test("a locked web refuses the list calls and the page falls back to sign-in; nothing is stored", async ({ page }) => {
   await openSeeded(page);
-  await page.getByLabel("Description").nth(0).fill("Changed after the lock");
+  await page.getByRole("checkbox", { name: `Always notify, ${INVOICES}` }).check();
   lockWeb();
 
   expect((await page.request.get("/api/categories")).status()).toBe(401);
@@ -320,23 +379,34 @@ test("a locked web refuses the list calls and the page falls back to sign-in; no
 });
 
 // 13 (AC-23): the states the real stack can reach, at the four viewports of the spec and at 200 % text
-const STATES = ["loaded", "validation error", "save summary", "saved", "conflict"] as const;
+const STATES = ["loaded", "edit view", "validation error", "sender error", "save summary", "saved", "conflict"] as const;
 
 async function reach(page: Page, state: (typeof STATES)[number]): Promise<void> {
-  await expect(page.getByLabel("Name").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: `Edit ${INVOICES}`, exact: true })).toBeVisible();
   if (state === "loaded") {
+    return;
+  }
+  if (state === "edit view") {
+    await openEdit(page, INVOICES);
     return;
   }
   if (state === "validation error") {
     await page.getByRole("button", { name: "Add category" }).click();
-    await pressSave(page);
+    await keepEdit(page);
     await expect(page.getByText("Give the category a name.")).toBeVisible();
+    return;
+  }
+  if (state === "sender error") {
+    await openEdit(page, INVOICES);
+    const lines = Array.from({ length: 101 }, (_, index) => `s${String(index)}@example.nl`);
+    await editView(page).getByLabel("Senders").fill(lines.join("\n"));
+    await expect(page.getByText("A category can list at most 100 senders.")).toBeVisible();
     return;
   }
   if (state === "conflict") {
     changeListElsewhere();
   }
-  await page.getByLabel("Description").nth(0).fill("Invoices and receipts");
+  await changeInvoicesDescription(page);
   await pressSave(page);
   if (state === "save summary") {
     await expect(page.getByRole("alertdialog", { name: SUMMARY_TITLE })).toBeVisible();
@@ -374,12 +444,51 @@ for (const viewport of VIEWPORTS) {
     await settle(page);
     expect.soft(await overflowProblem(page), "loaded: horizontal scroll").toBeNull();
     expect.soft(await axeProblems(page), "loaded: axe").toEqual([]);
-    await page.getByLabel("Description").nth(0).fill("Invoices and receipts");
+    await openEdit(page, INVOICES);
+    await settle(page);
+    expect.soft(await overflowProblem(page), "edit view: horizontal scroll").toBeNull();
+    expect.soft(await axeProblems(page), "edit view: axe").toEqual([]);
+    await keepEdit(page);
+    await changeInvoicesDescription(page);
     await pressSave(page);
     await expect(page.getByRole("alertdialog", { name: SUMMARY_TITLE })).toBeVisible();
     await settle(page);
     expect.soft(await overflowProblem(page), "summary: horizontal scroll").toBeNull();
     expect.soft(await axeProblems(page), "summary: axe").toEqual([]);
+  });
+
+  // AC-64, AC-65 (new): 43 nested categories, collapsed, with 44 px targets, at 200 % text
+  test(`${String(viewport.width)} px: 43 nested categories are a collapsed list with 44 px targets and the sender editor only in the edit view`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await useDoubleText(page);
+    seedNestedList();
+    await signInThroughPage(page);
+    await openCategories(page);
+    await expect(page.getByRole("button", { name: "Edit Loose", exact: true })).toBeVisible();
+    await expect(page.getByRole("searchbox", { name: "Search categories" })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: "Always notify only" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit Group0/Topic0", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Senders" })).toHaveCount(0);
+    await settle(page);
+
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll("[data-row-key] button, [data-row-key] label")]
+        .map((element) => ({ name: element.getAttribute("aria-label") ?? element.textContent, box: element.getBoundingClientRect() }))
+        .filter(({ box }) => box.height < 43.5 || box.width < 43.5)
+        .map(({ name, box }) => `${name} ${box.width.toFixed(1)}x${box.height.toFixed(1)}`),
+    );
+    expect.soft(small, "targets below 44 px").toEqual([]);
+    expect.soft(await overflowProblem(page), "list: horizontal scroll").toBeNull();
+    expect.soft(await axeProblems(page), "list: axe").toEqual([]);
+
+    await page.getByRole("button", { name: "Expand Group0", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Edit Group0/Topic0", exact: true })).toBeVisible();
+    expect.soft(await axeProblems(page), "expanded: axe").toEqual([]);
+    await openEdit(page, "Group0/Topic0");
+    await expect(editView(page).getByLabel("Senders")).toBeVisible();
+    expect.soft(await overflowProblem(page), "edit view: horizontal scroll").toBeNull();
   });
 }
 
@@ -390,15 +499,16 @@ test("canary strings typed into names and descriptions are in no log of the stac
   await openSeeded(page);
 
   await page.getByRole("button", { name: "Add category" }).click();
-  await page.getByLabel("Name").last().fill(`${canary}//refused`);
-  await page.getByLabel("Description").last().fill(`${canary} refused description`);
-  await pressSave(page);
+  await editView(page).getByLabel("Name").fill(`${canary}//refused`);
+  await editView(page).getByLabel("Description").fill(`${canary} refused description`);
+  await keepEdit(page);
   await expect(
-    page.getByText("Every part of a name needs text. Remove the extra slash or fill the empty part."),
+    editView(page).getByText("Every part of a name needs text. Remove the extra slash or fill the empty part."),
   ).toBeVisible();
 
-  await page.getByLabel("Name").last().fill(`${canary}-ok`);
-  await page.getByLabel("Description").last().fill(`${canary} saved description`);
+  await editView(page).getByLabel("Name").fill(`${canary}-ok`);
+  await editView(page).getByLabel("Description").fill(`${canary} saved description`);
+  await keepEdit(page);
   await pressSave(page);
   await confirmSave(page);
   await expect(page.getByText("Saved.")).toBeVisible();

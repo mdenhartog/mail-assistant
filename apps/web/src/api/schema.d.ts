@@ -46,6 +46,92 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/categories/restore-previous": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Previous
+         * @description Store a new list version equal to the one before the current version.
+         *
+         *     Args:
+         *         body: The version the user sees as the current one.
+         *         request: The request, whose app holds the database access and the settings.
+         *
+         *     Returns:
+         *         The stored list, or a 409 and nothing stored.
+         */
+        post: operations["restore_previous_api_categories_restore_previous_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/categories/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Categories
+         * @description Check a category file and return what confirming it would change; only the preview is stored.
+         *
+         *     The body is the file itself (``application/yaml``). Nothing of the file is returned except the names of the
+         *     categories that the stored list has and the file lacks.
+         *
+         *     Args:
+         *         request: The request, with the file as its body.
+         *         current: The live session the preview is bound to.
+         *
+         *     Returns:
+         *         The preview, or a 422 with every problem of the file.
+         */
+        post: operations["upload_categories_api_categories_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/categories/upload/{preview_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Upload
+         * @description Replace the list with the previewed file as one new version, when every binding of the preview holds.
+         *
+         *     Args:
+         *         preview_id: The id the upload returned.
+         *         body: The hash of the file the preview was made from.
+         *         request: The request, whose app holds the database access and the settings.
+         *         current: The live session; it must be the one that uploaded the file.
+         *
+         *     Returns:
+         *         The stored list, or a 409 and nothing stored.
+         */
+        post: operations["confirm_upload_api_categories_upload__preview_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places": {
         parameters: {
             query?: never;
@@ -1066,6 +1152,14 @@ export interface components {
             resendAfterSeconds: number;
         };
         /**
+         * RestoreRequest
+         * @description The body of a restore: the version the user sees as the current one.
+         */
+        RestoreRequest: {
+            /** Version */
+            version: number;
+        };
+        /**
          * SenderItem
          * @description A sender entry of a category: a full address or a domain, with the opt-in for subdomains.
          *
@@ -1144,6 +1238,75 @@ export interface components {
             remindAt: string;
             /** Timezone */
             timeZone: string;
+        };
+        /**
+         * UploadConfirm
+         * @description The body of a confirm: the hash of the file the preview was made from.
+         */
+        UploadConfirm: {
+            /** Filehash */
+            fileHash: string;
+        };
+        /**
+         * UploadPreview
+         * @description What an upload returns: the preview id, the hash to confirm with and what a confirm would change.
+         */
+        UploadPreview: {
+            /** Added */
+            added: number;
+            /** Baseversion */
+            baseVersion: number;
+            /** Changed */
+            changed: number;
+            /**
+             * Expiresat
+             * Format: date-time
+             */
+            expiresAt: string;
+            /** Filehash */
+            fileHash: string;
+            /** Instructionschanged */
+            instructionsChanged: boolean;
+            /**
+             * Previewid
+             * Format: uuid
+             */
+            previewId: string;
+            /** Removed */
+            removed: number;
+            /** Removedcategories */
+            removedCategories: string[];
+        };
+        /**
+         * UploadProblem
+         * @description One problem of a refused file: the rule, the line and field in the file and a fixed text, never a value.
+         */
+        UploadProblem: {
+            /** Field */
+            field: string;
+            /** Line */
+            line: number;
+            /** Message */
+            message: string;
+            /** Rule */
+            rule: string;
+        };
+        /**
+         * UploadProblems422
+         * @description The 422 body of an upload: every problem of the file.
+         */
+        UploadProblems422: {
+            /** Problems */
+            problems: components["schemas"]["UploadProblem"][];
+            /**
+             * Status
+             * @constant
+             */
+            status: 422;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1265,6 +1428,241 @@ export interface operations {
                 };
             };
             /** @description Too many saves in an hour for the account; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The change could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restore_previous_api_categories_restore_previous_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryList"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing was stored: another session or file, an expired or used preview, a changed list */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Too many list saves in an hour for the account; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The change could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    upload_categories_api_categories_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/yaml": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadPreview"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing was stored: another session or file, an expired or used preview, a changed list */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file is larger than the upload limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not declared as YAML */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The file breaks a rule; every problem with its line and field */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadProblems422"];
+                    "application/problem+json": components["schemas"]["UploadProblems422"];
+                };
+            };
+            /** @description Too many list saves in an hour for the account; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The change could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    confirm_upload_api_categories_upload__preview_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                preview_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CategoryList"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Nothing was stored: another session or file, an expired or used preview, a changed list */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Too many list saves in an hour for the account; see Retry-After */
             429: {
                 headers: {
                     [name: string]: unknown;

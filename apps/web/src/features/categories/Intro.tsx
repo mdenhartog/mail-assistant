@@ -2,13 +2,13 @@ import type { ReactElement } from "react";
 
 import { Banner } from "@/components/Banner";
 import { Card } from "@/components/Card";
-import { countText } from "@/features/categories/copy";
+import { countText, FIXED_BLOCK } from "@/features/categories/copy";
 
-/** What a save does to mail (new mail only) and that the archive label is left alone. */
+/** What changing the list does to mail (the spec's fixed block) and that the archive label is left alone. */
 export function Intro(): ReactElement {
   return (
     <>
-      <p className="text-text">When you save, new mail is filed using this list. Mail already filed stays where it is.</p>
+      <p className="text-text">{FIXED_BLOCK}</p>
       <Banner kind="info" title="Your archive label is left alone.">
         Mail you put in your archive label in Gmail is never re-sorted.
       </Banner>

@@ -10,6 +10,10 @@ const TEXT: Record<string, string> = {
   name_label_exists: "A Gmail label with this name already exists.",
   description_empty: "Say what belongs in this category.",
   description_too_long: "Use at most 1500 characters for the description.",
+  instructions_too_long: "Use at most 4000 characters for the general instructions.",
+  sender_invalid: "This is not a valid address or domain.",
+  sender_refused_domain: "A whole domain like this cannot be listed. Use full addresses instead.",
+  sender_too_many: "A category can list at most 100 senders.",
 };
 
 /** A rule this page does not know gets a generic sentence, so a new rule on the server is never a bare code. */
