@@ -23,6 +23,8 @@ DESIGN_PATHS = {
     "/api/settings/reset",
     "/api/places",
     "/api/categories",
+    "/api/categories/export",
+    "/api/categories/template",
     "/api/categories/upload",
     "/api/categories/upload/{preview_id}/confirm",
     "/api/categories/restore-previous",

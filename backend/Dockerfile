@@ -8,6 +8,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 WORKDIR /srv/backend
 COPY packages/category-policy/pyproject.toml /srv/packages/category-policy/pyproject.toml
 COPY packages/category-policy/category_policy /srv/packages/category-policy/category_policy
+COPY packages/category-policy/template /srv/packages/category-policy/template
 COPY packages/schedule-policy/pyproject.toml /srv/packages/schedule-policy/pyproject.toml
 COPY packages/schedule-policy/schedule_policy /srv/packages/schedule-policy/schedule_policy
 COPY backend/pyproject.toml backend/uv.lock ./
@@ -25,6 +26,8 @@ RUN python -m pip uninstall --yes pip \
 WORKDIR /srv/backend
 # Only the backend directory: schedule_policy is installed into its virtual environment, its sources stay behind.
 COPY --from=build --chown=app:app /srv/backend /srv/backend
+# The template and example files that GET /api/categories/template sends (read next to the repository layout).
+COPY --from=build --chown=app:app /srv/packages/category-policy/template /srv/packages/category-policy/template
 USER 10001:10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status == 200 else 1)"]

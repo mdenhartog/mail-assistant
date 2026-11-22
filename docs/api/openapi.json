@@ -1874,6 +1874,43 @@
         ]
       }
     },
+    "/api/categories/export": {
+      "get": {
+        "description": "Send the current list as ``mail-categories.yaml`` (schema 1), the same format the upload reads.\n\nArgs:\n    request: The request, whose app holds the database access and the settings.\n\nReturns:\n    The file as an attachment, or a 409 while there is no list.",
+        "operationId": "export_categories_api_categories_export_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Export Categories Api Categories Export Get",
+                  "type": "string"
+                }
+              },
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "409": {
+            "description": "There is no list yet"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Export Categories",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
     "/api/categories/restore-previous": {
       "post": {
         "description": "Store a new list version equal to the one before the current version.\n\nArgs:\n    body: The version the user sees as the current one.\n    request: The request, whose app holds the database access and the settings.\n\nReturns:\n    The stored list, or a 409 and nothing stored.",
@@ -1929,6 +1966,66 @@
           }
         },
         "summary": "Restore Previous",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/categories/template": {
+      "get": {
+        "description": "Send the commented template file, or the example file with a worked list.\n\nArgs:\n    file: ``template`` (every field explained) or ``example``.\n\nReturns:\n    The file as an attachment.",
+        "operationId": "category_template_api_categories_template_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "file",
+            "required": false,
+            "schema": {
+              "default": "template",
+              "enum": [
+                "template",
+                "example"
+              ],
+              "title": "File",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Category Template Api Categories Template Get",
+                  "type": "string"
+                }
+              },
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The file"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Category Template",
         "tags": [
           "categories"
         ]
