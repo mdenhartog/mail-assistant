@@ -6,6 +6,7 @@ import { CategoryEditView } from "@/features/categories/CategoryEditView";
 import { LeaveGuard } from "@/features/categories/LeaveGuard";
 import { changesOf } from "@/features/categories/rows";
 import { SaveSummary } from "@/features/categories/SaveSummary";
+import { UploadSection } from "@/features/categories/upload/UploadSection";
 import { useCategoriesFlow } from "@/features/categories/useCategoriesFlow";
 import { useCategoriesSave } from "@/features/categories/useCategoriesSave";
 import { useEditing } from "@/features/categories/useEditing";
@@ -41,6 +42,7 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
       ) : (
         <CategoriesListScreen changes={changes} edit={edit} flow={flow} list={list} save={save} view={view} />
       )}
+      {edit.editing === null ? <UploadSection list={list} /> : null}
       <SaveSummary changes={changes} onCancel={save.cancel} onConfirm={save.confirm} open={save.asking} />
       <LeaveGuard dirty={flow.dirty} />
       <p className="sr-only" role="status">
