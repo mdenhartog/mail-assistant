@@ -419,6 +419,8 @@ class ListAudit(Base):
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     old_list: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
     new_list: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    old_instructions: Mapped[str] = mapped_column(Text, server_default="")  # migration 0028
+    new_instructions: Mapped[str] = mapped_column(Text, server_default="")  # migration 0028
     channel: Mapped[str] = mapped_column(String(16))
     actor_digest: Mapped[str] = mapped_column(CHAR(64))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))

@@ -16,12 +16,14 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.core.judgement import OTHER_LABEL
 from app.core.scope import LABEL_PREFIX
+from app.usecases.report import success_text
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
     from app.adapters.gmail_read import FetchedMail
+    from app.usecases.report import SuccessCounts
 
 __all__ = ["PERIOD", "Filed", "RefileMailbox", "RefileReport", "RefileReportService", "RefileStore"]
 
@@ -77,6 +79,10 @@ class RefileStore(Protocol):
         """Append the counts to the audit table."""
         ...
 
+    async def success_counts(self, since: datetime) -> SuccessCounts:
+        """The counts of the success numbers (D22) for the mail filed since ``since``."""
+        ...
+
 
 class RefileMailbox(Protocol):
     """Gmail through the narrow adapter. Blocking calls; run in a thread."""
@@ -104,7 +110,8 @@ class RefileReportService:
 
     async def run_once(self) -> RefileReport:
         """Compare every filing of the period with the mail's current label and record the counts."""
-        filings = await self._store.filings_since(self._now() - PERIOD)
+        since = self._now() - PERIOD
+        filings = await self._store.filings_since(since)
         recorded = await self._store.category_labels()
         names = await asyncio.to_thread(self._mailbox.label_names)
         other_ids = {label_id for label_id, name in names.items() if name == OTHER_LABEL}
@@ -121,6 +128,7 @@ class RefileReportService:
             refiled += was is not None and held != {was}  # a category without a label cannot be compared
         report = RefileReport(filed=len(filings), checked=len(checked), refiled=refiled, in_other=in_other, gone=gone)
         await self._store.record_report(report)
+        success = await self._store.success_counts(since)
         logger.info(
             "refile report filed=%d checked=%d refiled=%d (%.1f%%) in_other=%d (%.1f%%) gone=%d",
             report.filed,
@@ -131,4 +139,5 @@ class RefileReportService:
             report.other_percent,
             report.gone,
         )
+        logger.info("%s", success_text(success))
         return report
