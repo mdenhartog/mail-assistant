@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_resort import GmailResort
+from app.core.scope import ArchiveLabel
 from app.runner import Runner
 from app.settings import load_settings
 from app.usecases.list_sync import ListSync, SyncResult
@@ -101,7 +102,8 @@ def make_runner(tmp_path: Path, clock: Clock, sync: object, pipeline: object | N
 
 
 def real_sync(gmail: FakeGmail, store: FakeListStore) -> ListSync:
-    return ListSync(GmailResort(gmail, "Archive", sleep=lambda _s: None), store, "Archive")
+    ref = ArchiveLabel("Archive")
+    return ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref)
 
 
 async def test_given_a_first_start_without_a_list_when_the_first_cycle_runs_then_version_one_exists_before_judging(

@@ -12,6 +12,7 @@ from googleapiclient.errors import HttpError
 from app.adapters.gmail_resort import GmailResort
 from app.core.judgement import OTHER_ID
 from app.core.resort_plan import ItemState, PlanState
+from app.core.scope import ArchiveLabel
 from app.usecases.move_back import MoveBack, MoveBackJob
 from app.usecases.resort_apply import (
     ApplyItem,
@@ -32,6 +33,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.adapters.gmail_read import FetchedMail
+
+ARCHIVE = ArchiveLabel("Archive")
+
 
 LEASE = timedelta(minutes=5)
 GOOGLE_AUTH = "mx.google.com; dmarc=pass header.from=accounts.google.com"
@@ -206,7 +210,7 @@ class GmailApplyMailbox(GmailBuildMailbox):
 
     def __init__(self, gmail: FakeGmail) -> None:
         super().__init__(gmail)
-        self.resort = GmailResort(gmail, "Archive", sleep=lambda _seconds: None)
+        self.resort = GmailResort(gmail, ARCHIVE, sleep=lambda _seconds: None)
         self.on_add: Callable[[str], None] | None = None
         self.on_remove: Callable[[str], None] | None = None
         self.failing_adds: dict[str, int] = {}  # message id -> failures left (-1: always), as Gmail refusing the change
@@ -303,7 +307,7 @@ class ApplyRig:
             notifier=self.notifier,
             now=self.clock,
             pinned=PINNED,
-            archive_label="Archive",
+            archive=ARCHIVE,
             batch_size=self.batch_size,
         )
 
@@ -313,7 +317,7 @@ class ApplyRig:
             store=self.store,
             lock=self.lock,
             notifier=self.notifier,
-            archive_label="Archive",
+            archive=ARCHIVE,
             batch_size=self.batch_size,
         )
 

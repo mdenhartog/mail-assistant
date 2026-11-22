@@ -14,6 +14,7 @@ import pytest
 
 from app.adapters import gmail_resort
 from app.adapters.gmail_resort import GmailResort, LabelNameTaken, LabelRefused
+from app.core.scope import ArchiveLabel
 from tests.fakes.fake_gmail import FakeGmail
 
 # Spec AC-28: list, read, add label, remove label, create label, rename label by id.
@@ -26,12 +27,14 @@ ALLOWED = {
     "remove_label": "remove label",
     "create_label": "create label",
     "rename_label": "rename label",
+    "create_archive_label": "create the archive label",
+    "rename_archive_label": "rename the archive label by id",
 }
 SOURCE = Path(inspect.getsourcefile(gmail_resort) or "").read_text(encoding="utf-8")
 
 
 def resort(gmail: FakeGmail) -> GmailResort:
-    return GmailResort(gmail, "Archive", sleep=lambda _seconds: None)
+    return GmailResort(gmail, ArchiveLabel("Archive"), sleep=lambda _seconds: None)
 
 
 def test_given_the_adapter_when_its_public_operations_are_listed_then_they_equal_the_allow_list() -> None:
@@ -57,7 +60,7 @@ def test_given_the_adapter_when_used_then_the_gmail_service_only_sees_allowed_ca
     adapter.read_mail(mail)
     adapter.add_label(mail, label)
     adapter.remove_label(mail, label)
-    adapter.create_label("Archive")
+    adapter.create_archive_label("Archive")
     adapter.rename_label(label, "Assistant/Invoices")
 
     allowed = {"labels.list", "labels.get", "labels.create", "labels.patch", "messages.list", "messages.get"}
@@ -178,7 +181,7 @@ def test_given_a_label_of_225_characters_when_renamed_to_then_it_is_taken() -> N
 
 
 @pytest.mark.parametrize(
-    "name", ["Work", "INBOX", "Assistant/", "assistant/x", "Foo/Archive", "Archived", "../Assistant/x"]
+    "name", ["Work", "INBOX", "Assistant/", "assistant/x", "Foo/Archive", "Archived", "../Assistant/x", "Archive"]
 )
 def test_given_a_name_the_adapter_may_not_create_when_created_then_it_is_refused(name: str) -> None:
     gmail = FakeGmail()
@@ -189,7 +192,7 @@ def test_given_a_name_the_adapter_may_not_create_when_created_then_it_is_refused
     assert "labels.create" not in gmail.calls
 
 
-@pytest.mark.parametrize("name", ["Archive", "Assistant/Bills", "Assistant/Other"])
+@pytest.mark.parametrize("name", ["Assistant/Bills", "Assistant/Other"])
 def test_given_a_name_the_adapter_may_create_when_created_then_the_label_exists(name: str) -> None:
     gmail = FakeGmail()
 
@@ -202,7 +205,7 @@ def test_given_an_overlapping_run_made_the_label_first_when_created_then_the_exi
     gmail = FakeGmail()
     gmail.race_on_create("Archive")
 
-    label = resort(gmail).create_label("Archive")
+    label = resort(gmail).create_archive_label("Archive")
 
     assert gmail.label_names().count("Archive") == 1
     assert gmail.label_table[label.id] == "Archive"
@@ -276,7 +279,7 @@ def test_given_the_default_archive_label_when_mail_is_filed_or_unfiled_there_the
     gmail = FakeGmail()
     archive = gmail.add_label("Assistant/Archive")
     mail = gmail.add_mail(("INBOX",))
-    adapter = GmailResort(gmail, "Assistant/Archive", sleep=lambda _seconds: None)
+    adapter = GmailResort(gmail, ArchiveLabel("Assistant/Archive"), sleep=lambda _seconds: None)
 
     with pytest.raises(LabelRefused):
         adapter.add_label(mail, archive)
@@ -285,14 +288,100 @@ def test_given_the_default_archive_label_when_mail_is_filed_or_unfiled_there_the
 
 
 @pytest.mark.parametrize("archive", ["Assistant/Archive", "Bewaard", "Mail/Done"])
-def test_given_a_configured_archive_label_when_it_is_created_then_it_is_allowed_and_other_names_still_are_not(
+def test_given_a_usable_archive_name_when_the_archive_label_is_created_then_it_is_allowed_and_other_names_are_not(
     archive: str,
 ) -> None:
     gmail = FakeGmail()
-    adapter = GmailResort(gmail, archive, sleep=lambda _seconds: None)
+    adapter = GmailResort(gmail, ArchiveLabel(archive), sleep=lambda _seconds: None)
 
-    adapter.create_label(archive)
+    adapter.create_archive_label(archive)
 
     assert archive in gmail.label_names()
     with pytest.raises(LabelRefused):
-        adapter.create_label("Archive" if archive != "Archive" else "Other")
+        adapter.create_label("Archive")
+
+
+UNUSABLE = ["", " Bewaard", "a..b", "INBOX", "spam", "CATEGORY_X", "Assistant/Other", "Assistant/Travel", "Mail//x"]
+
+
+@pytest.mark.parametrize("name", UNUSABLE)
+def test_given_an_unusable_archive_name_when_the_archive_label_is_created_then_it_is_refused_before_the_call(
+    name: str,
+) -> None:
+    gmail = FakeGmail()
+
+    with pytest.raises(LabelRefused):
+        resort(gmail).create_archive_label(name)
+
+    assert gmail.calls == []
+
+
+def archive_adapter(gmail: FakeGmail) -> tuple[GmailResort, str]:
+    archive_id = gmail.add_label("Archive")
+    adapter = GmailResort(gmail, ArchiveLabel("Archive", archive_id), sleep=lambda _seconds: None)
+    return adapter, archive_id
+
+
+def test_given_the_archive_label_id_when_renamed_to_a_usable_name_then_it_keeps_its_id_and_its_mail() -> None:
+    gmail = FakeGmail()
+    adapter, archive_id = archive_adapter(gmail)
+    mail = gmail.add_mail(labels=(archive_id,))
+
+    adapter.rename_archive_label(archive_id, "Bewaard")
+
+    assert gmail.label_table[archive_id] == "Bewaard"
+    assert archive_id in gmail.mail_table[mail].labels
+
+
+@pytest.mark.parametrize("target", ["Assistant/Bills", "Work", "INBOX", "UNKNOWN_ID"])
+def test_given_a_label_that_is_not_the_archive_label_when_renamed_as_the_archive_then_it_is_refused(
+    target: str,
+) -> None:
+    gmail = FakeGmail()
+    adapter, _ = archive_adapter(gmail)
+    gmail.add_label("Work")
+    gmail.add_label("Assistant/Bills")
+    label = gmail.label_id(target) if target in gmail.label_names() else target
+    before = dict(gmail.label_table)
+
+    with pytest.raises(LabelRefused):
+        adapter.rename_archive_label(label, "Bewaard")
+
+    assert gmail.label_table == before
+    assert "labels.patch" not in gmail.calls
+
+
+@pytest.mark.parametrize("name", UNUSABLE)
+def test_given_the_archive_label_when_renamed_to_an_unusable_name_then_it_is_refused_before_the_call(
+    name: str,
+) -> None:
+    gmail = FakeGmail()
+    adapter, archive_id = archive_adapter(gmail)
+
+    with pytest.raises(LabelRefused):
+        adapter.rename_archive_label(archive_id, name)
+
+    assert gmail.label_table[archive_id] == "Archive"
+    assert "labels.patch" not in gmail.calls
+
+
+def test_given_the_archive_label_id_when_renamed_through_the_category_rename_then_it_is_refused() -> None:
+    gmail = FakeGmail()
+    adapter, archive_id = archive_adapter(gmail)
+
+    with pytest.raises(LabelRefused):
+        adapter.rename_label(archive_id, "Assistant/Renamed")
+
+    assert "labels.patch" not in gmail.calls
+
+
+def test_given_a_renamed_archive_label_when_mail_is_filed_or_unfiled_there_then_the_adapter_still_refuses() -> None:
+    gmail = FakeGmail()
+    adapter, archive_id = archive_adapter(gmail)
+    mail = gmail.add_mail(("INBOX",))
+    adapter.rename_archive_label(archive_id, "Assistant/Archive")  # allowed: exactly the default name
+
+    with pytest.raises(LabelRefused):
+        adapter.add_label(mail, archive_id)
+    with pytest.raises(LabelRefused):
+        adapter.remove_label(mail, archive_id)
