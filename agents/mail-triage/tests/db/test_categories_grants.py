@@ -33,6 +33,7 @@ TABLES = (
     "category_sender",
     "list_settings",
     "upload_preview",
+    "sender_skip",
 )
 OPERATIONS = ("select", "insert", "update", "delete", "truncate")
 
@@ -109,6 +110,8 @@ MATRIX: dict[str, Row] = {
             update=frozenset({"used_at"}),
         )
     ),
+    # INT-008 (U-label-structure-36): the agent counts, the api reads (the count of an entry on the lists page).
+    "sender_skip": Row(api=Rights(select=ALL), agent=_REPLACED),
 }
 ROLES = {"api": API_ROLE, "agent": AGENT_ROLE}
 
