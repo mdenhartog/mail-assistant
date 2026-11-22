@@ -46,6 +46,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/categories/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Categories
+         * @description Send the current list as ``mail-categories.yaml`` (schema 1), the same format the upload reads.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access and the settings.
+         *
+         *     Returns:
+         *         The file as an attachment, or a 409 while there is no list.
+         */
+        get: operations["export_categories_api_categories_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/categories/restore-previous": {
         parameters: {
             query?: never;
@@ -67,6 +93,32 @@ export interface paths {
          *         The stored list, or a 409 and nothing stored.
          */
         post: operations["restore_previous_api_categories_restore_previous_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/categories/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Category Template
+         * @description Send the commented template file, or the example file with a worked list.
+         *
+         *     Args:
+         *         file: ``template`` (every field explained) or ``example``.
+         *
+         *     Returns:
+         *         The file as an attachment.
+         */
+        get: operations["category_template_api_categories_template_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1443,6 +1495,48 @@ export interface operations {
             };
         };
     };
+    export_categories_api_categories_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                    "application/yaml": string;
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description There is no list yet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     restore_previous_api_categories_restore_previous_post: {
         parameters: {
             query?: never;
@@ -1511,6 +1605,52 @@ export interface operations {
             };
             /** @description The change could not be stored */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    category_template_api_categories_template_get: {
+        parameters: {
+            query?: {
+                file?: "template" | "example";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                    "application/yaml": string;
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };
