@@ -4,7 +4,6 @@
 
 import asyncio
 import hashlib
-import json
 import logging
 import uuid
 from datetime import timedelta
@@ -458,10 +457,15 @@ async def test_given_canary_strings_in_the_file_then_no_log_response_or_audit_ro
     confirmed = await client.confirm(preview.json())
 
     assert (refused.status_code, preview.status_code, confirmed.status_code) == (422, 200, 200)
-    audit = await owner.fetch("select * from categories.list_audit")
-    texts = [refused.text, preview.text, caplog.text, json.dumps([dict(r) for r in audit], default=str)]
-    assert [c for c in CANARIES if any(c in t for t in texts)] == []
+    texts = [refused.text, preview.text, caplog.text]
+    assert [(c, i) for c in CANARIES for i, t in enumerate(texts) if c in t] == []
     assert [c["name"] for c in confirmed.json()["categories"]] == ["canary-name-12"]  # the list itself holds it
+    # The list audit records the confirmed list by design (ADR-0043), so it holds the name; the sender and the general
+    # instructions are not in it (unit 14 adds them to the audit on purpose).
+    audit = await owner.fetch(
+        "select new_list::text as new_list from categories.list_audit order by version desc limit 1"
+    )
+    assert "canary-name-12" in audit[0]["new_list"]
 
 
 async def test_given_the_database_refuses_the_write_when_confirmed_then_500_without_a_canary(
