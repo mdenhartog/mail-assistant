@@ -115,7 +115,7 @@ GRANT INSERT ON categories.mailbox TO mail_triage_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON categories.category_count, categories.gmail_label, categories.category_label,
     categories.list_cursor TO mail_triage_runtime;
 -- Appended only (retention is the owner's purge_expired()).
-GRANT INSERT (mailbox_id, message_id, list_version, category_id, topic_id, extra_id, source, source_ref)
+GRANT INSERT (mailbox_id, message_id, list_version, topic_id, extra_id, source, source_ref)
     ON categories.filing TO mail_triage_runtime;
 GRANT INSERT (mailbox_id, message_id, list_version) ON categories.rejection TO mail_triage_runtime;
 -- A button is created and consumed once: only used_at ever changes.

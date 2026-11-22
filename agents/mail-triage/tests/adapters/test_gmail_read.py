@@ -403,3 +403,14 @@ def test_given_a_fetched_mail_when_read_then_it_carries_its_gmail_labels(gmail: 
     }
 
     assert reader(gmail).fetch("m1").labels == frozenset({"INBOX", "UNREAD"})
+
+
+def test_given_an_extra_label_when_added_then_only_that_label_is_added_and_the_inbox_is_kept(
+    gmail: FakeGmail,
+) -> None:
+    reader(gmail).add_label("m1", "Label_9")
+
+    name, kw = gmail.calls[-1]
+    assert name == "modify"
+    assert kw["id"] == "m1"
+    assert kw["body"] == {"addLabelIds": ["Label_9"]}

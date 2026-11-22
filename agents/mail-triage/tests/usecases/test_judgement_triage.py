@@ -232,7 +232,7 @@ async def test_given_a_filed_mail_then_the_list_version_is_recorded_without_send
 
     entry = store.outcomes["m1"].filing
     assert entry == FilingEntry(category_id=FINANCE_ID, list_version=CURRENT.version)
-    assert {f.name for f in fields(FilingEntry)} == {"category_id", "list_version"}
+    assert {f.name for f in fields(FilingEntry)} == {"category_id", "list_version", "extra_id", "source", "source_ref"}
 
 
 async def test_given_no_list_version_yet_when_processed_then_the_mail_goes_to_other_without_a_filing_row() -> None:

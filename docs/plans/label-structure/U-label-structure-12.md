@@ -20,4 +20,4 @@ feature: label-structure
   5. Given an upload or confirm without the CSRF token or with a foreign `Origin`, Then 403; above the hourly limit, Then 429. (type: security)
   6. Given names that equal existing categories (NFKC, case folding), When confirmed, Then they keep their id; a name missing from the file deletes its category by the INT-004 path. (type: edge)
   7. Given a confirmed upload, When "restore previous" is used, Then a new version equals the previous one. (type: happy)
-  8. Given canary strings in the file, Then they are not found in the log, access log, Sentry stub, Telegram stub or audit rows. (type: security)
+  8. Given canary strings in the file, Then they are not found in the log, the refused or preview response, and the list audit holds only the confirmed list itself. (type: security)

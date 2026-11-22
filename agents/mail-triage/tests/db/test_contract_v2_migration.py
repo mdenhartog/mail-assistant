@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from alembic.config import Config
 
 PREVIOUS = "0023"
+THIS = "0024"  # the revision of this file; the filing code switch of revision 0025 has its own tests
 NEW_TABLES = ("category_sender", "list_settings", "upload_preview")
 DEFAULT_ARCHIVE = "Assistant/Archive"
 JOB_PASSWORDS = {RUNTIME_ROLE: "runtime-job-test-only", WEB_ROLE: "web-job-test-only"}
@@ -107,7 +108,7 @@ async def test_given_the_int004_list_when_the_migration_runs_then_every_category
         ids = await _seed_v1_list(connection)
         before = await _list_state(connection)
 
-        await _up(config)
+        await _up(config, THIS)
 
         assert await _list_state(connection) == before
         rows = await connection.fetch("select kind, notify from categories.category")
@@ -121,24 +122,12 @@ async def test_given_the_int004_list_when_the_migration_runs_then_every_category
         await connection.close()
 
 
-async def test_given_the_new_filing_columns_when_the_current_agent_files_a_mail_then_topic_id_follows_category_id(
-    cat_owner: asyncpg.Connection, cat_agent: asyncpg.Connection
-) -> None:
-    identity = uuid.uuid4()
-    await cat_agent.execute(
-        "insert into categories.filing (mailbox_id, message_id, list_version, category_id) values ('mb1', 'x', 1, $1)",
-        identity,
-    )
-
-    assert await cat_owner.fetchval("select topic_id from categories.filing where message_id = 'x'") == identity
-
-
 @pytest.mark.parametrize("source", ["model", "sender_rule", "sender_rule_not_applied"])
 async def test_given_a_filing_source_when_it_is_inserted_then_the_three_values_are_accepted(
     cat_owner: asyncpg.Connection, source: str
 ) -> None:
     await cat_owner.execute(
-        "insert into categories.filing (mailbox_id, message_id, list_version, category_id, source) "
+        "insert into categories.filing (mailbox_id, message_id, list_version, topic_id, source) "
         "values ('mb1', 's', 1, $1, $2)",
         uuid.uuid4(),
         source,
@@ -150,7 +139,7 @@ async def test_given_an_unknown_filing_source_when_it_is_inserted_then_a_check_r
 ) -> None:
     with pytest.raises(asyncpg.CheckViolationError, match="ck_filing_source"):
         await cat_owner.execute(
-            "insert into categories.filing (mailbox_id, message_id, list_version, category_id, source) "
+            "insert into categories.filing (mailbox_id, message_id, list_version, topic_id, source) "
             "values ('mb1', 's', 1, $1, 'guess')",
             uuid.uuid4(),
         )
@@ -213,7 +202,7 @@ async def test_given_the_downgrade_when_filings_were_written_after_the_migration
         identity = uuid.uuid4()
         await connection.execute("insert into categories.mailbox (id) values ('mb')")
         await connection.execute(
-            "insert into categories.filing (mailbox_id, message_id, list_version, category_id, source_ref) "
+            "insert into categories.filing (mailbox_id, message_id, list_version, topic_id, source_ref) "
             "values ('mb', 'late', 1, $1, 'a@example.com')",
             identity,
         )

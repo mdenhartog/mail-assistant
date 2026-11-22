@@ -28,6 +28,7 @@ from app.adapters.judge_anthropic import AnthropicJudge, DailyBudget
 from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenDecryptError, TokenStore
+from app.adapters.urgency_default import AlwaysNeedsAttention
 from app.db import repos
 from app.db.engine import make_engine
 from app.db.migrate import (
@@ -135,6 +136,10 @@ class MailPorts:
         """Add the category label and take the mail out of the inbox."""
         self._reader.file(message_id, label_id)
 
+    def add_label(self, message_id: str, label_id: str) -> None:
+        """Add the extra label of a sender rule."""
+        self._reader.add_label(message_id, label_id)
+
     def check_repliable(self, original: FetchedMail) -> None:
         """Refuse automatic, list and no-reply mail."""
         self._sender.check_repliable(original)
@@ -227,6 +232,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             now,
             policy,
             settings.pinned_senders,
+            AlwaysNeedsAttention(),  # the real urgency-only call is a later unit (ADR-0055 fail-safe)
         ),
         catchup=CatchUp(
             mailbox,  # type: ignore[arg-type]

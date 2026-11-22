@@ -1,4 +1,4 @@
-"""U-mail-categories-20, U-label-structure-33: the list save has its own Traefik route, 2 MiB buffering (MC-12)."""
+"""U-mail-categories-20, U-label-structure-33, -35: the list save and the upload have own Traefik routes (MC-12)."""
 
 from __future__ import annotations
 
@@ -51,11 +51,20 @@ def limit_caps(docs: list[dict[str, Any]]) -> dict[str, int]:
     }
 
 
-def the_route(docs: list[dict[str, Any]]) -> dict[str, Any]:
+def route_named(docs: list[dict[str, Any]], suffix: str) -> dict[str, Any]:
     routes = of_kind(docs, "IngressRoute")
-    assert len(routes) == 1, "one IngressRoute: the list save"
-    assert len(routes[0]["spec"]["routes"]) == 1
-    return routes[0]
+    assert sorted(r["metadata"]["name"] for r in routes) == ["app-categories", "app-upload"], "two IngressRoutes"
+    route = next(r for r in routes if r["metadata"]["name"] == f"app-{suffix}")
+    assert len(route["spec"]["routes"]) == 1
+    return route
+
+
+def the_route(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    return route_named(docs, "categories")
+
+
+def upload_route(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    return route_named(docs, "upload")
 
 
 @needs_helm
@@ -71,7 +80,7 @@ def test_given_the_rendered_chart_when_read_then_put_api_categories_has_its_own_
     assert route["spec"]["entryPoints"] == ["websecure"]
     on_route = [caps[m["name"]] for m in spec["middlewares"] if m["name"] in caps]
     assert on_route == [2097152]  # exactly one limit on this route, the 2 MiB one (the api limit of unit 11)
-    assert sorted(caps.values()) == [8192, 2097152]
+    assert sorted(caps.values()) == [8192, 393216, 2097152]
 
 
 @needs_helm
@@ -122,9 +131,11 @@ def test_given_the_rendered_route_when_read_then_it_keeps_hsts_the_tls_minimum_a
 
 @needs_helm
 def test_given_body_limit_values_when_rendered_then_the_limits_follow_them() -> None:
-    docs = render("ingress.bodyLimitBytes=4096", "ingress.categoriesBodyLimitBytes=16384")
+    docs = render(
+        "ingress.bodyLimitBytes=4096", "ingress.categoriesBodyLimitBytes=16384", "ingress.uploadBodyLimitBytes=20000"
+    )
 
-    assert sorted(limit_caps(docs).values()) == [4096, 16384]
+    assert sorted(limit_caps(docs).values()) == [4096, 16384, 20000]
 
 
 @needs_helm
@@ -138,6 +149,11 @@ def test_given_body_limit_values_when_rendered_then_the_limits_follow_them() -> 
         "ingress.categoriesBodyLimitBytes=big",
         "ingress.categoriesBodyLimitBytes=8192",  # not above the generic cap: no reason for a route of its own
         "ingress.categoriesBodyLimitBytes=4194305",  # above 4 MiB the limit would mean nothing
+        "ingress.uploadBodyLimitBytes=0",
+        "ingress.uploadBodyLimitBytes=-1",
+        "ingress.uploadBodyLimitBytes=big",
+        "ingress.uploadBodyLimitBytes=8192",  # not above the generic cap: no reason for a route of its own
+        "ingress.uploadBodyLimitBytes=1048577",  # above 1 MiB the limit would mean nothing
     ],
 )
 def test_given_a_body_cap_below_one_when_linted_then_the_schema_rejects_it(setting: str) -> None:
@@ -145,6 +161,45 @@ def test_given_a_body_cap_below_one_when_linted_then_the_schema_rejects_it(setti
 
     assert result.returncode != 0, setting
     assert setting.split("=", maxsplit=1)[0].split(".")[1] in result.stdout + result.stderr
+
+
+@needs_helm
+def test_given_the_default_values_when_rendered_then_the_upload_has_its_own_exact_post_route_with_393216() -> None:
+    docs = render()
+    route = upload_route(docs)
+    spec = route["spec"]["routes"][0]
+    host = yaml.safe_load(LOCAL_VALUES.read_text(encoding="utf-8"))["ingress"]["host"]
+    caps = limit_caps(docs)
+
+    assert spec["match"] == f"Host(`{host}`) && Method(`POST`) && Path(`/api/categories/upload`)"
+    assert spec["services"] == [{"name": "app-api", "port": "http"}]
+    assert route["spec"]["entryPoints"] == ["websecure"]
+    assert [caps[m["name"]] for m in spec["middlewares"] if m["name"] in caps] == [393216]
+    on_route = {m["name"] for m in spec["middlewares"]}
+    assert any(
+        "stsSeconds" in d["spec"].get("headers", {}) and d["metadata"]["name"] in on_route
+        for d in of_kind(docs, "Middleware")
+    )
+    assert route["spec"]["tls"] == the_route(docs)["spec"]["tls"]
+    # same explicit priority as the list save: the methods and paths are disjoint, neither shadows the other,
+    # and both beat the /api prefix router of the Ingress.
+    assert spec["priority"] >= 1000
+    assert spec["priority"] == the_route(docs)["spec"]["routes"][0]["priority"]
+    assert "PathPrefix" not in spec["match"]
+    assert spec["match"].count("Method(") == 1
+
+
+@needs_helm
+@pytest.mark.parametrize("path", ["/api/categories/upload/{preview_id}/confirm", "/api/categories/restore-previous"])
+def test_given_confirm_and_restore_when_rendered_then_they_have_no_dedicated_route_and_keep_8192(path: str) -> None:
+    docs = render()
+    matches = [r["match"] for ir in of_kind(docs, "IngressRoute") for r in ir["spec"]["routes"]]
+
+    # only the exact PUT list save and the exact POST upload have a route; confirm and restore stay on the 8192 Ingress
+    assert len(matches) == 2
+    assert not any(path in m for m in matches)
+    assert not any("PathPrefix" in m for m in matches)
+    assert 8192 in limit_caps(docs).values()
 
 
 @needs_helm
@@ -173,6 +228,9 @@ def test_given_the_readme_when_read_then_it_names_both_body_limits_and_the_reaso
         "ADR-0034",
         "ingress.bodyLimitBytes",
         "ingress.categoriesBodyLimitBytes",
+        "393216",
+        "POST /api/categories/upload",
+        "ingress.uploadBodyLimitBytes",
         "1.2 MB",  # the reason: a full v2 list with senders is about 1.2 MB and does not fit in 8 KB
     ):
         assert needle in body, needle

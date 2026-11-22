@@ -1,5 +1,6 @@
 """U-mail-categories-04 follow-up: a body limit per route, with the global limit as the default (MC-12)."""
 
+import uuid
 from collections.abc import AsyncIterator
 
 import pytest
@@ -12,6 +13,7 @@ from tests.fakes import make_app, make_settings
 
 LIST_LIMIT = 2 * 1024 * 1024  # 2 MiB, MC-12 raised for the v2 maxima (U-label-structure-11)
 KIB = 1024
+UPLOAD_LIMIT = 320 * KIB  # U-label-structure-12: the 256 KiB file limit and the multipart overhead
 # The worst case of a list at the v2 maxima, counted as the JSON the web sends (ASCII, compact):
 #   100 categories x (1 500 description + 225 name + 90 other keys) = 181 500 bytes
 #   + 4 000 general instructions
@@ -53,7 +55,10 @@ async def test_given_the_default_settings_when_read_then_the_list_route_has_2_mi
     assert LIST_LIMIT == 2097152
 
     assert settings.body_limit_bytes == 8192
-    assert settings.route_body_limits == {"PUT /api/categories": LIST_LIMIT}
+    assert settings.route_body_limits == {
+        "PUT /api/categories": LIST_LIMIT,
+        "POST /api/categories/upload": UPLOAD_LIMIT,
+    }
 
 
 async def test_given_a_full_list_body_when_put_to_the_list_route_then_it_is_not_refused_as_too_large() -> None:
@@ -144,3 +149,21 @@ def test_given_a_wrong_route_limit_when_the_app_starts_then_startup_refuses_it(l
         validate_startup(make_settings(route_body_limits=limits))
 
     assert "route_body_limits" in str(raised.value)
+
+
+async def test_given_the_real_app_when_a_file_above_the_upload_limit_is_posted_then_413_before_any_route_runs() -> None:
+    async with _http(make_app(make_settings())) as http:
+        ok = await http.post("/api/categories/upload", content=b"x" * UPLOAD_LIMIT)
+        big = await http.post("/api/categories/upload", content=b"x" * (UPLOAD_LIMIT + 1))
+
+    assert ok.status_code != 413
+    assert big.status_code == 413
+    assert big.json() == {"type": "about:blank", "title": "Payload too large", "status": 413}
+
+
+async def test_given_the_confirm_and_restore_routes_when_posted_above_8_kb_then_413() -> None:
+    async with _http(make_app(make_settings())) as http:
+        confirm = await http.post(f"/api/categories/upload/{uuid.UUID(int=1)}/confirm", content=b"x" * 8193)
+        restore = await http.post("/api/categories/restore-previous", content=b"x" * 8193)
+
+    assert (confirm.status_code, restore.status_code) == (413, 413)
