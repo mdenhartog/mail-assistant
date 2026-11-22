@@ -16,7 +16,7 @@ export function NotifyField({ checked, onChange }: NotifyFieldProps): ReactEleme
       <input
         aria-describedby={`${id}-help ${id}-cap`}
         checked={checked}
-        className="mt-2.5 size-6 flex-none cursor-pointer"
+        className="size-11 flex-none cursor-pointer"
         id={id}
         onChange={(event) => {
           onChange(event.target.checked);

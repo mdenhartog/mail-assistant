@@ -25,7 +25,7 @@ export function KindField({ value, onChange }: KindFieldProps): ReactElement {
           <input
             aria-describedby={`${id}-${option.kind}`}
             checked={value === option.kind}
-            className="mt-2.5 size-6 flex-none cursor-pointer"
+            className="size-11 flex-none cursor-pointer"
             id={`${id}-radio-${option.kind}`}
             name={`${id}-kind`}
             onChange={() => {

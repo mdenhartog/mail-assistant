@@ -67,7 +67,7 @@ export function CategoryRow({ node, open, onToggle, onEdit, onNotify }: Category
               {node.label === "" ? "Unnamed category" : node.label}
             </button>
             <div className="flex flex-wrap items-center gap-x-2 pb-1" id={descriptionId}>
-              <span className="rounded-pill border border-border px-2 text-sm text-text-muted">{KIND_WORD[row.kind]}</span>
+              <span className="min-w-0 rounded-pill border border-border px-2 text-sm text-text-muted wrap-anywhere">{KIND_WORD[row.kind]}</span>
               <span className="text-sm text-text-muted">{sendersCountText(parseSenders(row.sendersText).entries.length)}</span>
             </div>
           </div>
