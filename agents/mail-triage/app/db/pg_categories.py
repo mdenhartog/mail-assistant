@@ -18,7 +18,17 @@ from app.db.models import Category, CategoryCount, Filing, ListVersion
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-__all__ = ["CategoryRow", "CurrentList", "category_counts", "current_list", "filed_category", "record_filing"]
+FILING_SOURCE_MODEL = "model"  # ``filing.source`` of a mail the model filed (ADR-0053)
+
+__all__ = [
+    "FILING_SOURCE_MODEL",
+    "CategoryRow",
+    "CurrentList",
+    "category_counts",
+    "current_list",
+    "filed_category",
+    "record_filing",
+]
 
 
 @dataclass(frozen=True)
@@ -65,15 +75,24 @@ async def category_counts(session: AsyncSession, mailbox_id: str) -> dict[uuid.U
 
 
 async def record_filing(
-    session: AsyncSession, mailbox_id: str, message_id: str, list_version: int, category_id: uuid.UUID
+    session: AsyncSession, mailbox_id: str, message_id: str, list_version: int, topic_id: uuid.UUID
 ) -> None:
     """Write the ``filing`` row of one labelled mail: ids and version only, never sender or subject (AC-39).
 
     A retry of the same mail under the same list version changes nothing; the time of filing is the database's.
+    The model filed it (``source``), under a topic and no extra label, and no sender entry matched (``source_ref``).
     """
     statement = (
         insert(Filing)
-        .values(mailbox_id=mailbox_id, message_id=message_id, list_version=list_version, category_id=category_id)
+        .values(
+            mailbox_id=mailbox_id,
+            message_id=message_id,
+            list_version=list_version,
+            topic_id=topic_id,
+            extra_id=None,
+            source=FILING_SOURCE_MODEL,
+            source_ref=None,
+        )
         .on_conflict_do_nothing(index_elements=["mailbox_id", "message_id", "list_version"])
     )
     await session.execute(statement)
@@ -83,7 +102,7 @@ async def filed_category(session: AsyncSession, mailbox_id: str, message_id: str
     """The category the newest filing of ``message_id`` put it under, or None when it was never filed."""
     return (
         await session.execute(
-            select(Filing.category_id)
+            select(Filing.topic_id)
             .where(Filing.mailbox_id == mailbox_id, Filing.message_id == message_id)
             .order_by(Filing.list_version.desc())
             .limit(1)
