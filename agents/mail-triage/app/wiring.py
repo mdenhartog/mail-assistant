@@ -28,7 +28,7 @@ from app.adapters.judge_anthropic import AnthropicJudge, DailyBudget
 from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.token_store import TokenCipher, TokenDecryptError, TokenStore
-from app.adapters.urgency_default import AlwaysNeedsAttention
+from app.adapters.urgency_anthropic import AnthropicUrgency
 from app.db import repos
 from app.db.engine import make_engine
 from app.db.migrate import (
@@ -57,7 +57,7 @@ from app.db.pg_web_notice import PgWebNotice
 from app.db.purge import SYSTEM_CLOCK
 from app.runner import FailureNotice, Runner
 from app.usecases.approval_notice import ApprovalNotice, PlanNoticeActions
-from app.usecases.catchup import CatchUp
+from app.usecases.catchup import BUDGET_RESERVE, CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
@@ -180,6 +180,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     )
     budget = DailyBudget(settings.daily_model_budget, today)  # one budget: the catch-up only gets what new mail leaves
     judge = AnthropicJudge(client, settings.anthropic_api_key, settings.model_small, settings.model_large, budget)
+    urgency = AnthropicUrgency(
+        client=client,
+        api_key=settings.anthropic_api_key,
+        model=settings.model_small,
+        budget=budget,
+        reserve=BUDGET_RESERVE,
+    )
     settings_store = PgSettingsStore(sessions)
     policy = PgPolicySource(settings_store, PolicyNotice(outbox))  # one per process: it holds the last good values
     snooze = SnoozeService(store, outbox, now, policy)
@@ -232,7 +239,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             now,
             policy,
             settings.pinned_senders,
-            AlwaysNeedsAttention(),  # the real urgency-only call is a later unit (ADR-0055 fail-safe)
+            urgency,
         ),
         catchup=CatchUp(
             mailbox,  # type: ignore[arg-type]

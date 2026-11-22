@@ -7,8 +7,8 @@ feature: label-structure
 
 - Component: mail-triage
 - Layer: backend
-- Contract: `Judgement` rebuilt (ADR-0055): `topic_id`, `extra_id`, `urgent`, `reason`, `summary`, `confidence`; unknown topic id files under "Other" and drops the extra label, unknown extra id is dropped, urgency kept, invalid answer stays "needs attention"; the prompt gets the general instructions and descriptions as separate data blocks; new port `UrgencyJudge` with a closed answer (a boolean and a reason of at most 200 characters); the budget counts urgency-only calls above the reserve.
-- Files: `agents/mail-triage/app/core/judgement.py`, `agents/mail-triage/app/adapters/judge_anthropic.py`, `agents/mail-triage/app/adapters/urgency_anthropic.py`, `agents/mail-triage/app/usecases/triage.py`, tests
+- Contract: `Judgement` rebuilt (ADR-0055): `topic_id`, `extra_id`, `urgent`, `reason`, `summary`, `confidence`; unknown topic id files under "Other" and drops the extra label, unknown extra id is dropped, urgency kept, invalid answer stays "needs attention"; the prompt gets the general instructions and descriptions as separate data blocks; new port `UrgencyJudge` with a closed answer (a boolean and a reason of at most 200 characters); the budget counts urgency-only calls above the reserve; a sender rule that lists the sender only for an extra label (no topic) is handled here: the model picks the topic as usual and the rule's extra label is added to it, replacing the model's extra label; the default `AlwaysNeedsAttention` adapter is replaced by the real urgency-only call.
+- Files: `agents/mail-triage/app/core/judgement.py`, `agents/mail-triage/app/core/sender_rules.py`, `agents/mail-triage/app/wiring.py`, `agents/mail-triage/app/db/pg_categories.py`, `agents/mail-triage/app/db/pg_store.py`, `agents/mail-triage/app/usecases/catchup.py`, `agents/mail-triage/app/usecases/resort_build.py`, `agents/mail-triage/app/adapters/judge_anthropic.py`, `agents/mail-triage/app/adapters/urgency_anthropic.py`, `agents/mail-triage/app/usecases/triage.py`, tests
 - Depends on: U-label-structure-01, U-label-structure-02, U-label-structure-05
 - Parallel: no
 - Guardrails: guardrail-python, guardrail-llm, guardrail-pytest
@@ -19,3 +19,4 @@ feature: label-structure
   4. Given a sender-rule mail in an unticked category, When processed, Then exactly one urgency-only call is made; in a ticked category none. (type: happy)
   5. Given an urgency-only answer that is not exactly a boolean and a reason of at most 200 characters, or that names a category, When it is read, Then it is "needs attention". (type: security)
   6. Given the daily budget is used up, When a sender-rule mail arrives, Then it is still filed, listed in the daily overview and no urgency-only call is made above the reserve. (type: edge)
+  7. Given a sender that only an extra label lists and whose mail is authenticated, When processed, Then the model picks the topic, the rule's extra label is added (replacing the model's extra label) and no urgency-only call is made. (type: edge)

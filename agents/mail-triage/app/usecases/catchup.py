@@ -78,7 +78,9 @@ class CatchUpMailbox(Protocol):
 class CatchUpJudge(Protocol):
     """The model adapter."""
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         """A valid judgement for this one mail against ``categories``, or needs-attention."""
         ...
 
@@ -221,7 +223,9 @@ class CatchUp:
             await self._complete_capped(mail, outcome, summary)
             return _Step.HANDLED
         current = await self._store.current_list()
-        verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)
+        verdict = await self._judge.judge(
+            trim_mail(mail.subject, mail.sender, mail.text), current.categories, current.general_instructions
+        )
         if isinstance(verdict, NeedsAttention) and verdict.reason == "budget":
             return _Step.STOP  # an old mail is never filed as "needs attention" only because the budget ended
         policy = await self._policy.current()  # one snapshot for this mail

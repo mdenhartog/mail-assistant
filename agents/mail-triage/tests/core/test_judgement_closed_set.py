@@ -18,6 +18,7 @@ from app.core.judgement import (
     parse_judgement,
     resolve,
 )
+from category_policy.kinds import Kind
 from tests.fakes.stub_model import HOSTILE_CORPUS
 
 LIST = tuple(
@@ -26,9 +27,10 @@ LIST = tuple(
 )
 
 
-def answer(category_id: str, **changes: object) -> dict[str, object]:
+def answer(topic_id: str, **changes: object) -> dict[str, object]:
     return {
-        "category_id": category_id,
+        "topic_id": topic_id,
+        "extra_id": None,
         "urgent": False,
         "reason": "r",
         "summary": "s",
@@ -127,7 +129,9 @@ def test_given_low_confidence_when_resolved_then_it_is_needs_attention() -> None
     "raw",
     [
         {**answer("x"), "send_to": "attacker@example.com"},  # extra field
+        {**answer("x"), "category_id": "x"},  # the v1 field is gone
         {**answer("x"), "category": "Finance"},  # the old free name is no longer a field
+        answer("x", extra_id=7),  # wrong type
         answer("x", urgent="yes"),  # wrong type
         answer("x", confidence="0.9"),
         answer("x", confidence=1.5),
@@ -151,3 +155,66 @@ def test_given_the_module_when_read_then_there_is_no_category_cap() -> None:
     import app.core.judgement as module  # noqa: PLC0415
 
     assert not hasattr(module, "MAX_CATEGORIES")
+
+
+IMPORTANT = ListedCategory(str(uuid.UUID(int=900)), "Important", "Needs a reply", kind=Kind.EXTRA)
+OTHER_EXTRA = ListedCategory(str(uuid.UUID(int=901)), "Facturen", "Invoices", kind=Kind.EXTRA)
+WITH_EXTRAS = (*LIST, IMPORTANT, OTHER_EXTRA)
+
+
+def test_given_a_topic_and_an_extra_label_of_the_list_when_resolved_then_the_mail_carries_both() -> None:
+    result = resolve(judgement(LIST[1].category_id, extra_id=IMPORTANT.category_id), WITH_EXTRAS)
+
+    assert isinstance(result, Filing)
+    assert (result.label, result.category_id) == ("Assistant/Topic 02", LIST[1].category_id)
+    assert result.extra == IMPORTANT
+
+
+def test_given_no_extra_id_when_resolved_then_there_is_no_extra_label() -> None:
+    result = resolve(judgement(LIST[1].category_id), WITH_EXTRAS)
+
+    assert isinstance(result, Filing)
+    assert result.extra is None
+
+
+def test_given_two_extra_ids_when_resolved_then_one_extra_label_is_kept() -> None:
+    both = [IMPORTANT.category_id, OTHER_EXTRA.category_id]
+
+    result = resolve(judgement(LIST[1].category_id, extra_id=both), WITH_EXTRAS)
+
+    assert isinstance(result, Filing)
+    assert result.extra == IMPORTANT
+
+
+def test_given_an_unknown_topic_id_when_resolved_then_it_goes_to_other_without_the_extra_and_keeps_urgency() -> None:
+    result = resolve(judgement("nope", extra_id=IMPORTANT.category_id, urgent=True), WITH_EXTRAS)
+
+    assert isinstance(result, Filing)
+    assert (result.label, result.category_id, result.extra) == (OTHER_LABEL, OTHER_ID, None)
+    assert result.judgement.urgent is True
+
+
+def test_given_an_unknown_extra_id_when_resolved_then_the_extra_is_dropped_and_the_topic_and_urgency_stay() -> None:
+    result = resolve(judgement(LIST[1].category_id, extra_id="nope", urgent=True), WITH_EXTRAS)
+
+    assert isinstance(result, Filing)
+    assert result.category_id == LIST[1].category_id
+    assert result.extra is None
+    assert result.judgement.urgent is True
+
+
+def test_given_an_extra_id_in_the_topic_slot_or_a_topic_in_the_extra_slot_when_resolved_then_the_kind_decides() -> None:
+    as_topic = resolve(judgement(IMPORTANT.category_id), WITH_EXTRAS)
+    as_extra = resolve(judgement(LIST[1].category_id, extra_id=LIST[2].category_id), WITH_EXTRAS)
+
+    assert isinstance(as_topic, Filing)
+    assert (as_topic.category_id, as_topic.extra) == (OTHER_ID, None)
+    assert isinstance(as_extra, Filing)
+    assert (as_extra.category_id, as_extra.extra) == (LIST[1].category_id, None)
+
+
+def test_given_the_nil_id_as_the_extra_when_resolved_then_the_extra_is_dropped() -> None:
+    result = resolve(judgement(LIST[1].category_id, extra_id=OTHER_ID), WITH_EXTRAS)
+
+    assert isinstance(result, Filing)
+    assert result.extra is None
