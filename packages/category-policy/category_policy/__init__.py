@@ -40,6 +40,7 @@ from category_policy.senders import (
     SenderEntry,
     SenderProblem,
     build_matcher,
+    normalise_domain,
     parse_entry,
     validate_entries,
 )
@@ -75,6 +76,7 @@ __all__ = [
     "confidence_pct",
     "is_refused_domain",
     "label_for",
+    "normalise_domain",
     "normalise_name",
     "parse_entry",
     "validate_archive_label",
