@@ -23,6 +23,7 @@ from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09
     template_name,
     web_database,
 )
+from tests.fakes import make_settings
 from tests.test_categories_api import (  # noqa: F401  # the app fixture and the seed helpers of the list tests
     CSRF_KEY,
     MAILBOX,
@@ -109,7 +110,7 @@ async def sign_in(api: Api) -> Client:
 
 async def preview_of(client: Client, text: str = FILE) -> dict[str, Any]:
     response = await client.upload(text)
-    assert response.status_code == 200, response.text
+    assert response.status_code == 200, (response.text, dict(response.headers))
     return response.json()
 
 
@@ -381,9 +382,10 @@ async def test_given_ten_saves_in_an_hour_when_upload_confirm_or_restore_then_42
     await seed(owner, [("Invoices", "Bills")])
     client = await sign_in(api)
     preview = await preview_of(client)
-    for number in range(10):
+    for number in range(10):  # one session each: the previews of a session count against the limit too
+        saver = await sign_in(api)
         text = f"schema: 1\ncategories:\n  - name: Name {number}\n    description: d\n"
-        assert (await client.confirm(await preview_of(client, text))).status_code == 200
+        assert (await saver.confirm(await preview_of(saver, text))).status_code == 200
 
     refused = [
         await client.upload(),
@@ -394,6 +396,24 @@ async def test_given_ten_saves_in_an_hour_when_upload_confirm_or_restore_then_42
     assert [r.status_code for r in refused] == [429, 429, 429]
     assert 1 <= int(refused[0].headers["retry-after"]) <= 3600
     assert await owner.fetchval(VERSIONS, MAILBOX) == 11
+
+
+# RED-006 (INT-008 R1): unconfirmed previews count against the hourly limit too
+async def test_given_two_saves_an_hour_when_one_session_uploads_three_files_unconfirmed_then_the_third_is_429(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    api.app.state.settings = make_settings(categories_mailbox_id=MAILBOX, category_saves_per_hour=2)
+    await seed(owner, [("Invoices", "Bills")])
+    client = await sign_in(api)
+
+    statuses = [(await client.upload()).status_code for _ in range(2)]
+    refused = await client.upload()
+
+    assert statuses == [200, 200]
+    assert refused.status_code == 429
+    assert 1 <= int(refused.headers["retry-after"]) <= 3600
+    assert await owner.fetchval("select count(*) from categories.upload_preview") == 2
 
 
 # Criterion 6
