@@ -166,7 +166,7 @@ class PgStore:
                     )
                 )
             if outcome.filing is not None:  # same transaction: a mail is never labelled in the books without its filing
-                await pg_categories.record_filing(
+                written = await pg_categories.record_filing(
                     session,
                     self._mailbox_id,
                     message_id,
@@ -176,6 +176,12 @@ class PgStore:
                     outcome.filing.source.value,
                     outcome.filing.source_ref,
                 )
+                if (
+                    written
+                    and outcome.filing.source is FilingSource.SENDER_RULE_NOT_APPLIED
+                    and outcome.filing.source_ref is not None
+                ):  # counted with the filing row, so a restart that finds the row counts nothing
+                    await pg_categories.count_skip(session, self._mailbox_id, outcome.filing.source_ref)
 
     # ---- one-time catch-up of old unread mail (INT-003) -------------------------------------------------------
 

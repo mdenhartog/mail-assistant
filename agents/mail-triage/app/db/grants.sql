@@ -181,3 +181,8 @@ GRANT SELECT ON categories.upload_preview TO web_settings_runtime;
 GRANT INSERT (mailbox_id, id, session_digest, file_hash, base_version, content, expires_at)
     ON categories.upload_preview TO web_settings_runtime;
 GRANT UPDATE (used_at) ON categories.upload_preview TO web_settings_runtime;
+
+-- Skipped sender rules (INT-008, U-label-structure-36): the agent counts them in the transaction of the filing; the api
+-- only reads them. Rows without a skip for 90 days go with purge_expired().
+GRANT SELECT ON categories.sender_skip TO web_settings_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON categories.sender_skip TO mail_triage_runtime;

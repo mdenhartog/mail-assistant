@@ -436,6 +436,23 @@ class CategoryCount(Base):
     counted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class SenderSkip(Base):
+    """How often a listed sender was skipped because Gmail did not vouch for it, per list entry."""
+
+    __tablename__ = "sender_skip"
+    __table_args__ = (
+        CheckConstraint("skipped >= 1", name="ck_sender_skip_positive"),
+        CheckConstraint("char_length(entry) BETWEEN 1 AND 320", name="ck_sender_skip_entry_length"),
+        Index("ix_sender_skip_last_skipped_at", "last_skipped_at"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    entry: Mapped[str] = mapped_column(Text, primary_key=True)
+    skipped: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    last_skipped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class GmailLabel(Base):
     """The name of an ``Assistant/`` label that exists in Gmail (names only), replaced each cycle."""
 

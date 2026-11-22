@@ -287,3 +287,35 @@ async def test_given_a_sender_rule_filing_with_an_alert_when_completed_then_the_
         "m1@example.com": AlertBasis(causes, "example.com", by_rule=True),
         "m2@example.com": AlertBasis(causes, "example.com", by_rule=False),
     }
+
+
+async def test_given_skipped_and_other_filings_when_completed_then_only_the_skipped_entry_is_counted(
+    store: PgStore, cat_owner: asyncpg.Connection
+) -> None:
+    house, important = await _rule_list(cat_owner)
+    for message_id in ("m1", "m2", "m3", "m4"):
+        await store.claim(message_id, f"t-{message_id}")
+    skipped = FilingEntry(str(house), 1, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
+    ruled = FilingEntry(str(house), 1, str(important), FilingSource.SENDER_RULE, "julianahoeve.nl")
+
+    await store.complete("m1", outcome("Assistant/Huis", skipped))
+    await store.complete("m2", outcome("Assistant/Huis", skipped))
+    await store.complete("m3", outcome("Assistant/Huis", ruled))
+    await store.complete("m4", outcome("Assistant/Huis", FilingEntry(str(house), 1)))
+
+    rows = await cat_owner.fetch("select mailbox_id, entry, skipped, last_skipped_at from categories.sender_skip")
+    assert [(r["mailbox_id"], r["entry"], r["skipped"]) for r in rows] == [(MAILBOX, "julianahoeve.nl", 2)]
+    assert rows[0]["last_skipped_at"] is not None
+
+
+async def test_given_the_same_skipped_mail_completed_twice_when_counted_then_it_counts_once(
+    store: PgStore, cat_owner: asyncpg.Connection
+) -> None:
+    house, _ = await _rule_list(cat_owner)
+    await store.claim("m1", "t1")
+    skipped = FilingEntry(str(house), 1, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
+
+    await store.complete("m1", outcome("Assistant/Huis", skipped))
+    await store.complete("m1", outcome("Assistant/Huis", skipped))  # a restart completes the mail again
+
+    assert await cat_owner.fetchval("select skipped from categories.sender_skip") == 1
