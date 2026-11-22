@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 import pytest
@@ -14,10 +14,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
 from app.core.judgement import OTHER_ID
+from app.core.sender_rules import FilingSource
+from app.db import pg_categories
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_refile import PgRefileStore
 from app.db.pg_store import PgStore
 from app.usecases.overview import SecurityMail
 from app.usecases.triage import FilingEntry, MailContent, Outcome
+from category_policy.senders import SenderEntry
 from tests.db.conftest import write_list
 
 if TYPE_CHECKING:
@@ -158,3 +162,78 @@ async def test_given_the_same_mail_completed_twice_when_retried_then_there_is_st
     await store.complete("m1", outcome("Assistant/Other", entry))
 
     assert await cat_owner.fetchval("select count(*) from categories.filing") == 1
+
+
+async def _rule_list(cat_owner: asyncpg.Connection) -> tuple[uuid.UUID, uuid.UUID]:
+    """A list with a topic that lists a domain and a ticked extra label that lists an address; returns both ids."""
+    house, important = uuid.uuid4(), uuid.uuid4()
+    category = (
+        "insert into categories.category (mailbox_id, version, id, name, description, position, kind, notify) "
+        "values ($1, 1, $2, $3, $4, $5, $6, $7)"
+    )
+    sender = (
+        "insert into categories.category_sender (mailbox_id, version, category_id, entry, is_domain, subdomains) "
+        "values ($1, 1, $2, $3, $4, $5)"
+    )
+    async with cat_owner.transaction():
+        await cat_owner.execute("insert into categories.list_version (mailbox_id, version) values ($1, 1)", MAILBOX)
+        for identity in (house, important):
+            await cat_owner.execute(
+                "insert into categories.category_identity (mailbox_id, id) values ($1, $2)", MAILBOX, identity
+            )
+        await cat_owner.execute(category, MAILBOX, house, "Huis", "about Huis", 0, "topic", False)
+        await cat_owner.execute(category, MAILBOX, important, "Belangrijk", "about Belangrijk", 1, "extra", True)
+        await cat_owner.execute(sender, MAILBOX, house, "julianahoeve.nl", True, True)
+        await cat_owner.execute(sender, MAILBOX, important, "info@julianahoeve.nl", False, False)
+    return house, important
+
+
+async def test_given_kinds_ticks_and_senders_when_the_current_list_is_read_then_the_snapshot_carries_them(
+    store: PgStore, cat_owner: asyncpg.Connection
+) -> None:
+    house, important = await _rule_list(cat_owner)
+
+    current = await store.current_list()
+
+    by_name = {c.name: c for c in current.categories}
+    assert (by_name["Huis"].category_id, by_name["Huis"].kind, by_name["Huis"].notify) == (str(house), "topic", False)
+    assert by_name["Huis"].senders == (SenderEntry("julianahoeve.nl", subdomains=True),)
+    assert (by_name["Belangrijk"].category_id, by_name["Belangrijk"].kind) == (str(important), "extra")
+    assert by_name["Belangrijk"].notify is True
+    assert by_name["Belangrijk"].senders == (SenderEntry("info@julianahoeve.nl"),)
+
+
+async def test_given_a_sender_rule_filing_when_completed_then_the_row_has_extra_source_and_entry_only(
+    store: PgStore, cat_owner: asyncpg.Connection
+) -> None:
+    house, important = await _rule_list(cat_owner)
+    await store.claim("m1", "t1")
+    await store.claim("m2", "t2")
+    ruled = FilingEntry(str(house), 1, str(important), FilingSource.SENDER_RULE, "julianahoeve.nl")
+    skipped = FilingEntry(str(house), 1, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
+
+    await store.complete("m1", outcome("Assistant/Huis", ruled))
+    await store.complete("m2", outcome("Assistant/Huis", skipped))
+
+    rows = await cat_owner.fetch("select * from categories.filing order by message_id")
+    assert [(r["topic_id"], r["extra_id"], r["source"], r["source_ref"]) for r in rows] == [
+        (house, important, "sender_rule", "julianahoeve.nl"),
+        (house, None, "sender_rule_not_applied", "julianahoeve.nl"),
+    ]
+
+
+async def test_given_a_sender_rule_filing_then_the_refile_report_store_and_the_filed_category_see_it_as_any_filing(
+    store: PgStore, engine: AsyncEngine, cat_owner: asyncpg.Connection
+) -> None:
+    """Undo and Move back read ``apply_audit``, not ``filing``; the report reads the topic of the newest filing."""
+    house, important = await _rule_list(cat_owner)
+    await store.claim("m1", "t1")
+    ruled = FilingEntry(str(house), 1, str(important), FilingSource.SENDER_RULE, "julianahoeve.nl")
+    await store.complete("m1", outcome("Assistant/Huis", ruled))
+    sessions = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+    filed = await PgRefileStore(sessions, MAILBOX).filings_since(datetime.now(UTC) - timedelta(days=1))
+
+    assert [(f.message_id, f.category_id) for f in filed] == [("m1", str(house))]
+    async with sessions() as session:
+        assert await pg_categories.filed_category(session, MAILBOX, "m1") == house
