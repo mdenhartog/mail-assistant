@@ -9,7 +9,7 @@ feature: label-structure
 - Layer: web
 - Contract: Playwright journeys in three viewports with axe: upload, preview, confirm, nested page, tick, restore; the R1 documentation page `docs/user-guide/label-structure.md` and the OpenAPI reference are written in phase 8, not here.
 - Files: `apps/web/e2e/label-structure.spec.ts`, `apps/web/e2e/support/`
-- Depends on: U-label-structure-15, U-label-structure-16
+- Depends on: U-label-structure-15, U-label-structure-16, U-label-structure-38
 - Parallel: no
 - Guardrails: guardrail-playwright, guardrail-a11y, guardrail-typescript
 - Criteria:

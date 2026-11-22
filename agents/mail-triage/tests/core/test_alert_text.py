@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from app.core.alert_decision import AlertCause, CauseKind
 from app.core.alert_text import (
     MAX_MESSAGE_CHARS,
-    AuthResults,
+    AlertBasis,
     DigestEntry,
     MailMeta,
     build_alert,
@@ -20,7 +21,10 @@ JUDGEMENT = Judgement(
     confidence=0.9,
 )
 META = MailMeta(sender="Billing <billing@example.com>", subject="Invoice 42", reply_to=None, has_attachment=False)
-PASS = AuthResults(spf="pass", dkim="pass", dmarc="pass")
+URGENT = (AlertCause(CauseKind.URGENT),)
+PASS = AlertBasis(URGENT, verified_domain="example.com", by_rule=False)
+UNVERIFIED = AlertBasis(URGENT, verified_domain=None, by_rule=False)
+TICKED = (AlertCause(CauseKind.ALWAYS_NOTIFY, "Huis/Energie"),)
 
 
 def test_given_a_judgement_when_built_then_the_text_has_the_facts_and_exactly_three_buttons() -> None:
@@ -78,21 +82,9 @@ def test_given_a_reply_to_equal_to_from_when_built_then_there_is_no_warning() ->
     assert "Reply-To" not in build_alert("1", meta, JUDGEMENT, PASS).text
 
 
-def test_given_a_failed_spf_dkim_or_dmarc_when_built_then_a_visible_warning_is_added() -> None:
-    for failing in (
-        AuthResults("fail", "pass", "pass"),
-        AuthResults("pass", "fail", "pass"),
-        AuthResults("pass", "pass", "fail"),
-    ):
-        assert "could not be verified" in build_alert("1", META, JUDGEMENT, failing).text
-
-    assert "could not be verified" not in build_alert("1", META, JUDGEMENT, PASS).text
-
-
-def test_given_missing_authentication_results_when_built_then_there_is_no_false_alarm_or_crash() -> None:
-    text = build_alert("1", META, JUDGEMENT, AuthResults(None, None, None)).text
-
-    assert "could not be verified" not in text
+def test_given_an_unauthenticated_sender_when_built_then_a_visible_warning_is_added() -> None:
+    assert "Sender not verified" in build_alert("1", META, JUDGEMENT, UNVERIFIED).text
+    assert "Sender not verified" not in build_alert("1", META, JUDGEMENT, PASS).text
 
 
 def test_given_an_attachment_when_built_then_it_says_so_and_shows_nothing_of_it() -> None:
@@ -128,7 +120,77 @@ def test_given_fields_that_grow_when_escaped_then_the_alert_still_fits_in_one_me
     meta = MailMeta(sender="&" * 500, subject="&" * 500, reply_to=None, has_attachment=True)
     judgement = JUDGEMENT.model_copy(update={"summary": "&" * 400, "reason": "&" * 200})
 
-    message = build_alert("1", meta, judgement, AuthResults("fail", None, None))
+    message = build_alert("1", meta, judgement, UNVERIFIED)
 
     assert len(message.text) <= MAX_MESSAGE_CHARS
     assert "&amp;" in message.text
+
+
+def _judgement(**changes: object) -> Judgement:
+    return JUDGEMENT.model_copy(update={"urgent": False, **changes})
+
+
+def test_given_a_ticked_category_when_built_then_the_alert_starts_with_the_label_and_keeps_the_facts() -> None:
+    basis = AlertBasis(TICKED, verified_domain="example.com", by_rule=False)
+
+    message = build_alert("9", META, _judgement(), basis)
+
+    assert message.text.startswith("<b>Always notify: Huis/Energie</b>")
+    for fact in ("billing@example.com", "Invoice 42", "Invoice is due on Friday", "The supplier asks for payment"):
+        assert fact in message.text
+    assert [button.data for button in message.buttons] == ["reply:9", "later:9", "stop:9"]
+
+
+def test_given_an_urgent_alert_when_built_then_it_starts_with_the_urgency_label() -> None:
+    assert build_alert("1", META, JUDGEMENT, PASS).text.startswith("<b>Urgent: needs your attention</b>")
+
+
+def test_given_urgent_and_two_ticked_categories_when_built_then_every_cause_is_named() -> None:
+    causes = (*URGENT, AlertCause(CauseKind.ALWAYS_NOTIFY, "A/B"), AlertCause(CauseKind.ALWAYS_NOTIFY, "C"))
+
+    text = build_alert("1", META, JUDGEMENT, AlertBasis(causes, "example.com", by_rule=False)).text
+
+    assert text.startswith("<b>Urgent: needs your attention</b>")
+    assert "Also: Always notify: A/B" in text
+    assert "Also: Always notify: C" in text
+
+
+def test_given_a_sender_rule_when_built_then_it_shows_the_domain_and_no_summary_and_no_link() -> None:
+    meta = MailMeta("billing@energie.example.nl", "Invoice https://evil.example/x", reply_to=None, has_attachment=False)
+    basis = AlertBasis(TICKED, verified_domain="energie.example.nl", by_rule=True)
+
+    text = build_alert("1", meta, _judgement(reason="Sender rule: energie.example.nl"), basis).text
+
+    assert "energie.example.nl" in text
+    assert "content not checked by the model" in text.casefold()
+    assert "Summary" not in text
+    assert "The supplier asks for payment" not in text
+    assert "<a " not in text
+    assert "<code>billing@energie.example.nl</code>" in text  # a code span is never made clickable by Telegram
+    assert "<code>Invoice https://evil.example/x</code>" in text
+
+
+def test_given_a_model_filed_ticked_mail_without_an_authenticated_sender_when_built_then_it_shows_the_address() -> None:
+    meta = MailMeta("CEO <attacker@example.net>", "Pay now", reply_to=None, has_attachment=False)
+    basis = AlertBasis(TICKED, verified_domain=None, by_rule=False)
+
+    text = build_alert("1", meta, _judgement(), basis).text
+
+    assert "Sender not verified" in text
+    assert "attacker@example.net" in text
+
+
+def test_given_a_missing_or_unparsable_from_when_built_then_it_says_sender_not_verified() -> None:
+    meta = MailMeta("", "Pay now", reply_to=None, has_attachment=False)
+
+    text = build_alert("1", meta, _judgement(), AlertBasis(TICKED, None, by_rule=False)).text
+
+    assert "Sender not verified" in text
+    assert "no readable From address" in text
+
+
+def test_given_a_digest_of_always_notify_mail_when_built_then_it_does_not_call_them_urgent() -> None:
+    entries = [DigestEntry("a@example.com", "s")]
+
+    assert "urgent" not in build_digest(entries, held=False).text
+    assert "urgent" not in build_digest(entries, held=True).text

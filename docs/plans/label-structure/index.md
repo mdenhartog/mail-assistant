@@ -6,7 +6,7 @@ spec: docs/specs/label-structure.md
 
 # My own label structure, sender rules and always-notify
 
-The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 35 units in two releases: R1 (units 01 to 17, 28 to 35) and R2 (units 18 to 27). Unit 35 (the ingress body limit of the upload route) was found while building unit 12 and lands in the same pull request as it. Units 33 (the ingress body limit of the Helm chart) and 34 (the web app sends the v2 list fields) were found while building unit 11 and land in the same pull request as it, so that `main` stays green and the edge does not refuse a v2 list. Not yet planned: the per-entry counts of skipped (not authenticated) sender-rule mail on the Categories page (K11 of the round table), which needs a derived table kept by the agent, a field in the api and a column in the web app; they become units after unit 11, before the R1 release. Unit 32 was split out of unit 08. Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
+The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 38 units in two releases: R1 (units 01 to 17, 28 to 38) and R2 (units 18 to 27). Unit 35 (the ingress body limit of the upload route) was found while building unit 12 and lands in the same pull request as it. Units 33 (the ingress body limit of the Helm chart) and 34 (the web app sends the v2 list fields) were found while building unit 11 and land in the same pull request as it, so that `main` stays green and the edge does not refuse a v2 list. Units 36 to 38 carry the per-entry counts of skipped (not authenticated) sender-rule mail on the Categories page (K11 of the round table, AC-16): the agent records them in a derived table (36), the api returns them (37) and the web app shows them (38). Unit 32 was split out of unit 08. Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
 
 ## Units
 
@@ -36,7 +36,10 @@ The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/de
 | [U-label-structure-35](U-label-structure-35.md) | The ingress body limit of the upload route | infra | U-label-structure-12 | yes | 5 |
 | [U-label-structure-14](U-label-structure-14.md) | Audit, success report and cross-cutting tests (R1) | backend | U-label-structure-08, U-label-structure-09, U-label-structure-10 | yes | 5 |
 | [U-label-structure-16](U-label-structure-16.md) | Web: upload, preview, restore and export (R1) | web | U-label-structure-12, U-label-structure-13, U-label-structure-15 | no | 5 |
-| [U-label-structure-17](U-label-structure-17.md) | Web: accessibility and end-to-end journey for R1 | web | U-label-structure-15, U-label-structure-16 | no | 6 |
+| [U-label-structure-17](U-label-structure-17.md) | Web: accessibility and end-to-end journey for R1 | web | U-label-structure-15, U-label-structure-16, U-label-structure-38 | no | 7 |
+| [U-label-structure-36](U-label-structure-36.md) | The agent records skipped sender rules (R1) | backend | U-label-structure-08, U-label-structure-10 | no | 5 |
+| [U-label-structure-37](U-label-structure-37.md) | Api: the per-entry skipped counts (R1) | backend | U-label-structure-11, U-label-structure-36 | no | 6 |
+| [U-label-structure-38](U-label-structure-38.md) | Web: the skipped count beside a sender entry (R1) | web | U-label-structure-15, U-label-structure-37 | no | 7 |
 | [U-label-structure-18](U-label-structure-18.md) | Archive label: the agent adopts, creates and renames it (R2) | backend | U-label-structure-05, U-label-structure-17 | yes | 7 |
 | [U-label-structure-20](U-label-structure-20.md) | The sort-again request, plan columns and the approval functions (R2) | backend | U-label-structure-05, U-label-structure-17 | yes | 7 |
 | [U-label-structure-19](U-label-structure-19.md) | Api: the archive label setting (R2) | backend | U-label-structure-11, U-label-structure-18 | yes | 8 |
@@ -56,8 +59,9 @@ R1:
 2. Wave 2 (after wave 1) — in parallel: U-label-structure-03, U-label-structure-05, U-label-structure-07
 3. Wave 3 (after wave 2) — U-label-structure-04 and U-label-structure-11 in parallel; U-label-structure-08 and U-label-structure-09 one at a time (both in the filing flow)
 4. Wave 4 (after wave 3) — U-label-structure-10 and U-label-structure-15 in parallel; U-label-structure-12 and U-label-structure-13 one at a time (both change the OpenAPI document)
-5. Wave 5 (after wave 4) — U-label-structure-14 and, in parallel, U-label-structure-16
-6. Wave 6 (after wave 5) — one at a time: U-label-structure-17; then the R1 release (phase 8 documentation, phase 9)
+5. Wave 5 (after wave 4) — U-label-structure-14, U-label-structure-16 and U-label-structure-36 (at most two at a time; 14 and 36 both change the agent database, so one at a time)
+6. Wave 6 (after wave 5) — U-label-structure-37 (it changes the OpenAPI document)
+7. Wave 7 (after wave 6) — one at a time: U-label-structure-38, then U-label-structure-17; then the R1 release (phase 8 documentation, phase 9)
 
 R2 (after R1 is released):
 

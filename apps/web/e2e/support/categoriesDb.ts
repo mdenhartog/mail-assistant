@@ -54,6 +54,28 @@ export function seedList(): void {
   `);
 }
 
+/**
+ * Version 1 with 43 nested categories, as the user's own list is: eight parents with five children each, and three
+ * top-level categories. Only the shape counts.
+ */
+export function seedNestedList(): void {
+  sql(`
+    BEGIN;
+    CREATE TEMP TABLE nested_seed ON COMMIT DROP AS
+      SELECT n, ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0')) AS id,
+        CASE WHEN n <= 40 THEN 'Group' || ((n - 1) / 5)::text || '/Topic' || ((n - 1) % 5)::text
+             ELSE (ARRAY['Loose', 'Alone', 'Odd one'])[n - 40] END AS name
+      FROM generate_series(1, 43) AS n;
+    INSERT INTO categories.category_identity (mailbox_id, id) SELECT '${MAILBOX}', id::uuid FROM nested_seed;
+    INSERT INTO categories.list_version (mailbox_id, version) VALUES ('${MAILBOX}', 1);
+    INSERT INTO categories.category (mailbox_id, version, id, name, description, position)
+      SELECT '${MAILBOX}', 1, id::uuid, name, 'Mail about ' || name, n - 1 FROM nested_seed;
+    INSERT INTO categories.category_count (mailbox_id, category_id, mail_count)
+      SELECT '${MAILBOX}', id::uuid, 0 FROM nested_seed;
+    COMMIT;
+  `);
+}
+
 /** Another writer changes the list (as Telegram would): version 2 with Invoices, Travel and Bills. */
 export function changeListElsewhere(): void {
   sql(`

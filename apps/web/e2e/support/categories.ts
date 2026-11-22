@@ -21,12 +21,14 @@ async function toLoaded(page: Page, handlers: Handlers = {}): Promise<void> {
   await stubApi(page, { signedIn: true, ...handlers });
   await page.goto("/categories");
   await expect(page.getByRole("heading", { level: 1, name: "Categories" })).toBeVisible();
-  await expect(page.getByLabel("Name").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit Invoices", exact: true })).toBeVisible();
 }
 
 async function toSummary(page: Page, handlers: Handlers = {}): Promise<void> {
   await toLoaded(page, handlers);
-  await page.getByLabel("Name").first().fill("Bills");
+  await page.getByRole("button", { name: "Edit Invoices", exact: true }).click();
+  await page.getByLabel("Name").fill("Bills");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("alertdialog", { name: /^Save \d+ changes?\?$/ })).toBeVisible();
 }
@@ -68,7 +70,7 @@ export function categoriesStates(): UiState[] {
     state("categories: errors by the fields", async (page) => {
       await toLoaded(page);
       await page.getByRole("button", { name: "Add category" }).click();
-      await page.getByRole("button", { name: "Save changes" }).click();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Give the category a name.")).toBeVisible();
     }),
     state("categories: save summary", (page) => toSummary(page)),

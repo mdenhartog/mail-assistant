@@ -51,7 +51,7 @@ describe("the /categories route", () => {
     stub(() => json(LIST));
     open("/categories");
 
-    expect(await screen.findByDisplayValue(INVOICES.name)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: `Edit ${INVOICES.name}` })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Categories" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByText("Signed in as m***@example.com")).toBeInTheDocument();
@@ -67,14 +67,13 @@ describe("the /categories route", () => {
 
     expect(await screen.findByText("Your session ended.")).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/login");
-    expect(screen.queryByDisplayValue(INVOICES.name)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: `Edit ${INVOICES.name}` })).not.toBeInTheDocument();
   });
 
   it("given unsaved edits and a save answered 401, then the sign-in page shows and no leave question blocks it", async () => {
     stub((request) => (request.method === "GET" ? json(LIST) : new Response(null, { status: 401 })));
     const router = open("/categories");
-    const name = await screen.findByDisplayValue(INVOICES.name);
-    await userEvent.type(name, "x");
+    await userEvent.click(await screen.findByRole("checkbox", { name: `Always notify, ${INVOICES.name}` }));
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
 
@@ -87,14 +86,13 @@ describe("the /categories route", () => {
   it("given the lock (403) on a save, then the refusal page replaces the app and no category stays in the DOM", async () => {
     stub((request) => (request.method === "GET" ? json(LIST) : new Response(null, { status: 403 })));
     open("/categories");
-    const name = await screen.findByDisplayValue(INVOICES.name);
-    await userEvent.type(name, "x");
+    await userEvent.click(await screen.findByRole("checkbox", { name: `Always notify, ${INVOICES.name}` }));
     await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Save changes" }));
 
     expect(await screen.findByRole("heading", { name: "Access refused" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.queryByDisplayValue(`${INVOICES.name}x`)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: `Edit ${INVOICES.name}` })).not.toBeInTheDocument();
     });
   });
 });
