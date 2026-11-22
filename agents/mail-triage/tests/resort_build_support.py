@@ -176,7 +176,9 @@ class ScriptedJudge:
     verdict: NeedsAttention | None = None
     calls: int = 0
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         self.calls += 1
         if self.ledger is not None:
             self.ledger.spend(self.cost)
@@ -185,7 +187,7 @@ class ScriptedJudge:
         if self.verdict is not None:
             return self.verdict
         category_id = self.by_subject.get(mail.subject, self.answer)
-        return Judgement(category_id=category_id, urgent=False, reason="r", summary="s", confidence=0.9)
+        return Judgement(topic_id=category_id, urgent=False, reason="r", summary="s", confidence=0.9)
 
 
 class Rig:

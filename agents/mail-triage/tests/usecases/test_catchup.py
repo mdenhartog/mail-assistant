@@ -46,7 +46,7 @@ def fetched(message_id: str, *, thread: str | None = None, labels: frozenset[str
 
 
 def judgement(*, urgent: bool = False, confidence: float = 0.9) -> Judgement:
-    return Judgement(category_id=FINANCE_ID, urgent=urgent, reason="r", summary="s", confidence=confidence)
+    return Judgement(topic_id=FINANCE_ID, urgent=urgent, reason="r", summary="s", confidence=confidence)
 
 
 class FakeMailbox:
@@ -98,7 +98,9 @@ class FakeJudge:
         self.seen: list[TrimmedMail] = []
         self.order: list[str] = []
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         del categories
         self.seen.append(mail)
         for _ in range(self.cost if self.budget else 0):

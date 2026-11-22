@@ -6,7 +6,6 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_read import FetchedMail
-from app.adapters.urgency_default import AlwaysNeedsAttention
 from app.core.alert_state import AlertState
 from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
 from app.core.sender_rules import FilingSource, UrgencyVerdict
@@ -14,7 +13,7 @@ from app.usecases.triage import FilingEntry
 from category_policy.kinds import Kind
 from category_policy.senders import SenderEntry
 from tests.fakes.scripted_model import ScriptedModel
-from tests.usecases.test_triage import FINANCE_ID, FakeMailbox, FakeStore, pipeline
+from tests.usecases.test_triage import FINANCE_ID, FakeMailbox, FakeStore, NeedsAttentionUrgency, pipeline
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -40,10 +39,12 @@ class ScriptedJudge:
     def __init__(self, model: ScriptedModel) -> None:
         self.model = model
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         del categories
         answer = self.model.judge("category", mail.text)
-        return Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=answer.confidence)
+        return Judgement(topic_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=answer.confidence)
 
 
 class ScriptedUrgency:
@@ -110,12 +111,12 @@ async def test_given_a_ticked_category_then_no_model_call_at_all() -> None:
     assert store.outcomes["m1"].filing == RULE_FILING
 
 
-async def test_given_the_default_urgency_adapter_then_a_rule_mail_needs_attention_and_is_not_dropped() -> None:
+async def test_given_an_always_attention_urgency_judge_then_a_rule_mail_needs_attention_and_is_not_dropped() -> None:
     mailbox, store = FakeMailbox(["m1"]), FakeStore(current=LIST)
     mailbox.mails["m1"] = mail()
     model = ScriptedModel(0.1)
 
-    await pipeline(mailbox, ScriptedJudge(model), store, urgency=AlwaysNeedsAttention()).run_once()
+    await pipeline(mailbox, ScriptedJudge(model), store, urgency=NeedsAttentionUrgency()).run_once()
 
     assert model.calls == []
     assert (store.outcomes["m1"].urgent, store.outcomes["m1"].alert) == (True, AlertState.OPEN)

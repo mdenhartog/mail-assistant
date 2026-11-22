@@ -17,7 +17,7 @@ from tests.usecases.fakes_policy import FakePolicySource
 DAYTIME = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)  # 13:00 in Amsterdam
 NIGHT = datetime(2026, 11, 9, 22, 30, tzinfo=UTC)  # 23:30 in Amsterdam
 JUDGEMENT = Judgement(
-    category_id="00000000-0000-0000-0000-00000000000a", urgent=True, reason="r", summary="s", confidence=0.9
+    topic_id="00000000-0000-0000-0000-00000000000a", urgent=True, reason="r", summary="s", confidence=0.9
 )
 
 

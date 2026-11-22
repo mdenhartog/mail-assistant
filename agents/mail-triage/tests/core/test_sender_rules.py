@@ -6,7 +6,7 @@ import pytest
 
 from app.core import sender_rules
 from app.core.judgement import JudgingList, ListedCategory
-from app.core.sender_rules import RuleFiling, RuleSkipped, SenderRules, SenderRulesCache
+from app.core.sender_rules import ExtraRule, RuleFiling, RuleSkipped, SenderRules, SenderRulesCache
 from category_policy.kinds import Kind
 from category_policy.senders import SenderEntry
 
@@ -46,8 +46,14 @@ def test_given_a_topic_and_an_extra_label_that_list_the_sender_then_both_are_ret
     assert found.entry == "julianahoeve.nl"  # the topic's entry is the one recorded
 
 
-def test_given_only_an_extra_label_lists_the_sender_then_no_rule_files_the_mail() -> None:
-    assert SenderRules((extra(DOMAIN),)).apply(GOOD, "info@julianahoeve.nl") is None
+def test_given_only_an_extra_label_lists_the_sender_then_the_extra_rule_leaves_the_topic_to_the_model() -> None:
+    found = SenderRules((extra(DOMAIN),)).apply(GOOD, "info@julianahoeve.nl")
+
+    assert found == ExtraRule(extra=extra(DOMAIN), entry="julianahoeve.nl")
+
+
+def test_given_only_an_extra_label_lists_the_sender_and_it_is_not_authenticated_then_the_rule_is_not_applied() -> None:
+    assert SenderRules((extra(DOMAIN),)).apply(FORGED, "info@julianahoeve.nl") == RuleSkipped("julianahoeve.nl")
 
 
 def test_given_categories_without_senders_then_nothing_matches() -> None:

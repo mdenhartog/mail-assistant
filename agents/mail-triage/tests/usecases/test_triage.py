@@ -10,11 +10,11 @@ import pytest
 
 from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
-from app.adapters.urgency_default import AlwaysNeedsAttention
 from app.core.alert_state import AlertState
 from app.core.alert_text import AuthResults
 from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
 from app.core.pinned import PinnedSenders
+from app.core.sender_rules import UrgencyVerdict
 from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline, decide_outcome
 from schedule_policy.policy import DEFAULT_POLICY
 from tests.usecases.fakes_policy import FakePolicySource
@@ -48,7 +48,7 @@ def fetched(message_id: str, text: str = "hello") -> FetchedMail:
 
 
 def judgement(category_id: str = FINANCE_ID, *, urgent: bool = False, confidence: float = 0.9) -> Judgement:
-    return Judgement(category_id=category_id, urgent=urgent, reason="r", summary="s", confidence=confidence)
+    return Judgement(topic_id=category_id, urgent=urgent, reason="r", summary="s", confidence=confidence)
 
 
 class FakeMailbox:
@@ -96,7 +96,9 @@ class FakeJudge:
         self.seen: list[TrimmedMail] = []
         self.lists: list[tuple[ListedCategory, ...]] = []
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         self.seen.append(mail)
         self.lists.append(tuple(categories))
         answer = self.answers.pop(0) if len(self.answers) > 1 else self.answers[0]
@@ -161,6 +163,14 @@ class FakeNotifier:
         self.notices.append(message_id)
 
 
+class NeedsAttentionUrgency:
+    """An urgency-only judge that makes no call and says every mail needs attention."""
+
+    async def needs_attention(self, mail: TrimmedMail) -> UrgencyVerdict:
+        del mail
+        return UrgencyVerdict(needs_attention=True, reason="urgency not judged; treated as needing attention")
+
+
 def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
     mailbox: FakeMailbox,
     judge: Judge,
@@ -178,7 +188,7 @@ def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
         now=lambda: now,
         policy=source or FakePolicySource(),
         pinned=PINNED,
-        urgency=urgency or AlwaysNeedsAttention(),
+        urgency=urgency or NeedsAttentionUrgency(),
     )
 
 
@@ -376,7 +386,7 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         headers={},
         auth_results=("mx.google.com; spf=fail; dkim=pass; dmarc=pass",),
     )
-    verdict = Judgement(category_id=FINANCE_ID, urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
+    verdict = Judgement(topic_id=FINANCE_ID, urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
 
     await pipeline(mailbox, FakeJudge(verdict), store).run_once()
 
@@ -405,7 +415,7 @@ async def test_given_a_forged_lower_authentication_results_header_then_the_alert
         headers={"Authentication-Results": "forged; spf=pass; dkim=pass; dmarc=pass"},
         auth_results=("mx.google.com; spf=fail; dkim=fail; dmarc=fail", "forged; spf=pass; dkim=pass; dmarc=pass"),
     )
-    verdict = Judgement(category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)
+    verdict = Judgement(topic_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)
 
     await pipeline(mailbox, FakeJudge(verdict), store).run_once()
 
