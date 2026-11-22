@@ -136,8 +136,9 @@ test("the page shows one row per category, Other, the fixed block and the older 
   await openSeeded(page);
 
   const invoices = page.getByRole("button", { name: `Edit ${INVOICES}`, exact: true });
-  await expect(invoices).toContainText("Topic");
-  await expect(invoices).toContainText("No senders");
+  const invoicesRow = page.locator("[data-row-key]").filter({ has: invoices });
+  await expect(invoicesRow).toContainText("Topic");
+  await expect(invoicesRow).toContainText("No senders");
   await expect(page.getByRole("button", { name: `Edit ${TRAVEL}`, exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: `Always notify, ${INVOICES}` })).not.toBeChecked();
   await expect(page.getByRole("heading", { name: "Other" })).toBeVisible();
