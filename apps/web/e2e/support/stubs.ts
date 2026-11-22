@@ -28,6 +28,10 @@ export interface Handlers {
   places?: Handler;
   getCategories?: Handler;
   putCategories?: Handler;
+  uploadFile?: Handler;
+  confirmUpload?: Handler;
+  restorePrevious?: Handler;
+  exportList?: Handler;
   getPlan?: Handler;
   getPlanItems?: Handler;
   postDecision?: Handler;
@@ -153,6 +157,19 @@ export const CATEGORIES = {
   olderCategories: [{ labelName: "Assistant/Travel", mailCount: null }],
 } as const;
 
+/** What an upload of a valid file returns: 3 added, 5 changed and 2 removed, one of them with a very long name. */
+export const UPLOAD_PREVIEW = {
+  previewId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa",
+  fileHash: "a".repeat(64),
+  baseVersion: 5,
+  expiresAt: "2026-11-22T12:10:00Z",
+  added: 3,
+  changed: 5,
+  removed: 2,
+  removedCategories: ["Travel/Trains", "W".repeat(60)],
+  instructionsChanged: true,
+} as const;
+
 const putCategoriesEcho: Handler = async (route, { state }) => {
   const sent = (route.request().postDataJSON() ?? {}) as { version?: number };
   await reply(200, { ...CATEGORIES, version: (sent.version ?? CATEGORIES.version) + 1 })(route, { n: 0, state });
@@ -206,6 +223,12 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     places: reply(200, PLACES),
     getCategories: reply(200, CATEGORIES),
     putCategories: putCategoriesEcho,
+    uploadFile: reply(200, UPLOAD_PREVIEW),
+    confirmUpload: reply(200, { ...CATEGORIES, version: 6 }),
+    restorePrevious: reply(200, { ...CATEGORIES, version: 7 }),
+    exportList: async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/yaml", body: "schema: 1\n" });
+    },
     getPlan: reply(200, PLAN),
     getPlanItems: async (route, call) => {
       const page = Number(new URL(route.request().url()).searchParams.get("page") ?? "1");
@@ -227,6 +250,10 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     ["places", "/api/places", "GET", own.places],
     ["getCategories", "/api/categories", "GET", own.getCategories],
     ["putCategories", "/api/categories", "PUT", own.putCategories],
+    ["uploadFile", "/api/categories/upload", "POST", own.uploadFile],
+    ["confirmUpload", "/api/categories/upload/:id/confirm", "POST", own.confirmUpload],
+    ["restorePrevious", "/api/categories/restore-previous", "POST", own.restorePrevious],
+    ["exportList", "/api/categories/export", "GET", own.exportList],
     ["getPlan", "/api/plan", "GET", own.getPlan],
     ["getPlanItems", "/api/plan/items", "GET", own.getPlanItems],
     ["postDecision", "/api/plan/decisions", "POST", own.postDecision],
@@ -245,7 +272,7 @@ function samePath(stubPath: string, pathname: string): boolean {
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, getPlan: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),
