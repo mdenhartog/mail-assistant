@@ -6,6 +6,7 @@
 !backend/app
 !packages/category-policy/pyproject.toml
 !packages/category-policy/category_policy
+!packages/category-policy/template
 !packages/schedule-policy/pyproject.toml
 !packages/schedule-policy/schedule_policy
 **/__pycache__

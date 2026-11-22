@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { CATEGORIES, held, reply, stubApi } from "./stubs";
+import { CATEGORIES, held, reply, stubApi, UPLOAD_PREVIEW } from "./stubs";
 import type { Handlers } from "./stubs";
 import type { UiState } from "./states";
 
@@ -45,6 +45,27 @@ const CONFLICT = {
   reason: "version",
   current: { ...CATEGORIES, version: 6 },
 };
+
+const PROBLEMS = {
+  type: "about:blank",
+  title: "Unprocessable content",
+  status: 422,
+  problems: [
+    { rule: "unknown_field", line: 4, field: "categories[0].colour", message: "This field is not part of the format." },
+    { rule: "empty_segment", line: 9, field: "categories[1].name", message: "A name cannot have an empty part." },
+  ],
+};
+
+async function toUploaded(page: Page, handlers: Handlers = {}): Promise<void> {
+  await toLoaded(page, handlers);
+  await page.getByLabel("Choose a YAML file").setInputFiles({ name: "mail-categories.yaml", mimeType: "application/yaml", buffer: Buffer.from("schema: 1\n") });
+}
+
+async function toReplaced(page: Page, handlers: Handlers = {}): Promise<void> {
+  await toUploaded(page, handlers);
+  await page.getByRole("button", { name: "Replace my whole list (2 removed)" }).click();
+  await expect(page.getByText("Your list was replaced.")).toBeVisible();
+}
 
 /** The states of the Categories page (AC-23); the same checks run on them as on the login and settings states. */
 export function categoriesStates(): UiState[] {
@@ -95,6 +116,35 @@ export function categoriesStates(): UiState[] {
     state("categories: save failed", async (page) => {
       await toSaved(page, { putCategories: reply(500) });
       await expect(page.getByText("Could not save. Nothing was changed.")).toBeVisible();
+    }),
+    state("categories: upload preview", async (page) => {
+      await toUploaded(page);
+      await expect(page.getByRole("heading", { name: "Preview of your file" })).toBeFocused();
+    }),
+    state("categories: upload checking", async (page) => {
+      const gate = held(reply(200, UPLOAD_PREVIEW));
+      await toUploaded(page, { uploadFile: gate.handler });
+      await expect(page.getByText("Checking your file.")).toBeVisible();
+      return gate.release;
+    }),
+    state("categories: upload refused", async (page) => {
+      await toUploaded(page, { uploadFile: reply(422, PROBLEMS, { "Content-Type": "application/problem+json" }) });
+      await expect(page.getByRole("heading", { name: "Your file was not accepted" })).toBeVisible();
+    }),
+    state("categories: upload too large", async (page) => {
+      await toUploaded(page, { uploadFile: reply(413) });
+      await expect(page.getByText("The file is too large.")).toBeVisible();
+    }),
+    state("categories: upload replaced", (page) => toReplaced(page)),
+    state("categories: upload restored", async (page) => {
+      await toReplaced(page);
+      await page.getByRole("button", { name: "Restore previous version" }).click();
+      await expect(page.getByText("The previous version is back.")).toBeVisible();
+    }),
+    state("categories: upload list changed", async (page) => {
+      await toUploaded(page, { confirmUpload: reply(409, { type: "about:blank", title: "Conflict", status: 409 }) });
+      await page.getByRole("button", { name: "Replace my whole list (2 removed)" }).click();
+      await expect(page.getByText("The list changed.")).toBeVisible();
     }),
   ];
 }

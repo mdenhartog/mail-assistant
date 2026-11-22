@@ -75,7 +75,7 @@ function problemsOf(body: Record<string, unknown>): CategoryProblem[] {
   return Array.isArray(body["problems"]) ? (body["problems"] as unknown[]).filter(isProblem) : [];
 }
 
-async function readList(response: Response): Promise<CategoryList> {
+export async function readList(response: Response): Promise<CategoryList> {
   const body: unknown = await response.json();
   if (!isList(body)) {
     throw new Error("Unexpected categories answer");

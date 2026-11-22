@@ -105,6 +105,7 @@ def test_given_the_dockerignore_when_read_then_only_the_allow_listed_paths_enter
         "!backend/app",
         "!packages/category-policy/pyproject.toml",
         "!packages/category-policy/category_policy",
+        "!packages/category-policy/template",
         "!packages/schedule-policy/pyproject.toml",
         "!packages/schedule-policy/schedule_policy",
     }
