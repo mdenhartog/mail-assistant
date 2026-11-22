@@ -36,6 +36,17 @@ const withNested = (): void => {
   wire({ get: () => json({ ...LIST, categories: nested(), olderCategories: [] }) });
 };
 
+describe("Categories page: the row button (AC-22)", () => {
+  it("given a row, then its kind and sender count are the description of the button, not part of its visible label", async () => {
+    withNested();
+    renderPage();
+    const edit = await screen.findByRole("button", { name: "Edit Loose" });
+
+    expect(edit).toHaveAccessibleDescription(/(Topic|Extra label).*(No senders|\d+ senders?)/);
+    expect(edit.querySelectorAll("[aria-hidden='true']")).toHaveLength(1);
+  });
+});
+
 describe("Categories page: the collapsed list (criterion 1, AC-64)", () => {
   it("given 43 nested categories, then parents are collapsed, with search and the filter, and every control is at least 44 px", async () => {
     withNested();
