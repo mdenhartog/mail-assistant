@@ -99,6 +99,7 @@ class BuildList:
     version: int  # 0 before the first version exists
     changed_at: datetime
     categories: tuple[ListedCategory, ...]
+    general_instructions: str = ""  # filled by the plan-build reader of a later unit; empty until then
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +162,9 @@ class BuildMailbox(Protocol):
 class BuildJudge(Protocol):
     """The model adapter of the judging code."""
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         """A valid judgement for this one mail, or needs-attention."""
         ...
 
@@ -378,7 +381,9 @@ class ResortBuild:
         if self._budget.remaining() < BUDGET_RESERVE + CALLS_PER_MAIL:
             raise _Pause
         try:
-            verdict = await self._judge.judge(trim_mail(mail.subject, mail.sender, mail.text), current.categories)
+            verdict = await self._judge.judge(
+                trim_mail(mail.subject, mail.sender, mail.text), current.categories, current.general_instructions
+            )
         except ModelUnavailable:
             logger.warning("model unavailable; the plan build continues next run")
             raise _Pause from None

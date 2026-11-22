@@ -78,13 +78,15 @@ class StubModelJudge:
         self._urgent = urgent
         self.calls = 0
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         del categories
         self.calls += 1
         answer = self._model.answer(mail.text)
         try:
             return parse_judgement(
-                {"category_id": answer, "urgent": self._urgent, "reason": "r", "summary": "s", "confidence": 0.9}
+                {"topic_id": answer, "urgent": self._urgent, "reason": "r", "summary": "s", "confidence": 0.9}
             )
         except JudgementError:
             return NeedsAttention("invalid_output")
@@ -130,7 +132,7 @@ async def test_given_a_list_with_other_everything_when_an_urgent_mail_arrives_th
 
     await pipeline(
         FakeMailbox(["m1"]),
-        FakeJudge(Judgement(category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)),
+        FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)),
         store,
     ).run_once()
 
@@ -140,7 +142,7 @@ async def test_given_a_list_with_other_everything_when_an_urgent_mail_arrives_th
 async def test_given_pinned_google_security_mail_when_processed_then_it_stays_and_raises_an_urgent_alert() -> None:
     mailbox, store = RecordingMailbox(["m1"]), FakeStore()
     inbox_mail(mailbox, "m1", sender="no-reply@accounts.google.com", auth=(GOOD_AUTH,))
-    judge = FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9))
+    judge = FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9))
 
     summary = await pipeline(mailbox, judge, store).run_once()
 
@@ -186,7 +188,7 @@ async def test_given_pinned_sign_in_code_mail_when_processed_then_it_stays_with_
         auth=("mx.google.com; dmarc=pass header.from=mail.example.test",),
     )
     mailbox.mails["m1"] = replace(mailbox.mails["m1"], subject="Your code is 123456", text="123456")
-    judge = FakeJudge(Judgement(category_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9))
+    judge = FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9))
 
     summary = await pipeline(mailbox, judge, store).run_once()
 
@@ -212,7 +214,7 @@ async def test_given_mail_that_is_not_proven_when_processed_then_it_is_judged_an
 ) -> None:
     mailbox, store = RecordingMailbox(["m1"]), FakeStore()
     inbox_mail(mailbox, "m1", sender=sender, auth=auth)
-    judge = FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9))
+    judge = FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9))
 
     await pipeline(mailbox, judge, store).run_once()
 
@@ -224,7 +226,7 @@ async def test_given_mail_that_is_not_proven_when_processed_then_it_is_judged_an
 async def test_given_a_filed_mail_then_the_list_version_is_recorded_without_sender_or_subject() -> None:
     store, judge, mailbox = (
         FakeStore(),
-        FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)),
+        FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)),
         FakeMailbox(["m1"]),
     )
 
@@ -240,7 +242,7 @@ async def test_given_no_list_version_yet_when_processed_then_the_mail_goes_to_ot
 
     await pipeline(
         FakeMailbox(["m1"]),
-        FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)),
+        FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9)),
         store,
     ).run_once()
 
@@ -250,7 +252,7 @@ async def test_given_no_list_version_yet_when_processed_then_the_mail_goes_to_ot
 
 async def test_given_several_mails_when_processed_then_each_gets_its_own_call_with_the_same_list_snapshot() -> None:
     mailbox, store = FakeMailbox(["m1", "m2", "m3"]), FakeStore()
-    judge = FakeJudge(Judgement(category_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9))
+    judge = FakeJudge(Judgement(topic_id=FINANCE_ID, urgent=False, reason="r", summary="s", confidence=0.9))
 
     await pipeline(mailbox, judge, store).run_once()
 
