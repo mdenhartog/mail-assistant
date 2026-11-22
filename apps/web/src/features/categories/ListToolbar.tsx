@@ -26,7 +26,7 @@ export function ListToolbar({ view, shown }: { view: ListView; shown: number | n
       <label className="flex min-h-11 cursor-pointer items-center gap-3 text-text">
         <input
           checked={view.filter.notifyOnly}
-          className="size-6 cursor-pointer"
+          className="size-11 cursor-pointer"
           onChange={(event) => {
             view.setNotifyOnly(event.target.checked);
           }}

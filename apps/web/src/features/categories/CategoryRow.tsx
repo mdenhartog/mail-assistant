@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { ReactElement } from "react";
 
 import { sendersCountText } from "@/features/categories/copy";
@@ -42,14 +43,16 @@ function Expander({ node, open, onToggle }: Pick<CategoryRowProps, "node" | "ope
  */
 export function CategoryRow({ node, open, onToggle, onEdit, onNotify }: CategoryRowProps): ReactElement {
   const { row } = node;
+  const descriptionId = useId();
   return (
-    <div className="flex items-center gap-1 border-b border-divider">
+    <div className="flex items-center gap-1 border-b border-divider py-1">
       <Expander node={node} onToggle={onToggle} open={open} />
       {row === null ? (
         <span className="min-w-0 flex-1 py-2 font-semibold text-text wrap-anywhere">{node.label}</span>
       ) : (
         <>
           <button
+            aria-describedby={descriptionId}
             aria-label={`Edit ${row.name}`}
             className="flex min-h-11 min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-x-2 rounded-control py-2 text-left text-text"
             data-edit=""
@@ -59,14 +62,18 @@ export function CategoryRow({ node, open, onToggle, onEdit, onNotify }: Category
             type="button"
           >
             <span className="font-semibold wrap-anywhere">{node.label === "" ? "Unnamed category" : node.label}</span>
-            <span className="rounded-pill border border-border px-2 text-sm text-text-muted">{KIND_WORD[row.kind]}</span>
-            <span className="text-sm text-text-muted">{sendersCountText(parseSenders(row.sendersText).entries.length)}</span>
+            {/* Kept out of the visible label so the name "Edit <name>" holds the visible name (WCAG 2.5.3); the
+                description still tells a screen reader the kind and the sender count. */}
+            <span aria-hidden="true" className="contents" id={descriptionId}>
+              <span className="rounded-pill border border-border px-2 text-sm text-text-muted">{KIND_WORD[row.kind]}</span>
+              <span className="text-sm text-text-muted">{sendersCountText(parseSenders(row.sendersText).entries.length)}</span>
+            </span>
           </button>
           <label className="inline-grid min-h-11 min-w-11 flex-none cursor-pointer place-items-center">
             <input
               aria-label={`Always notify, ${row.name}`}
               checked={row.notify}
-              className="size-6 cursor-pointer"
+              className="size-11 cursor-pointer"
               onChange={(event) => {
                 onNotify(row.key, event.target.checked);
               }}
