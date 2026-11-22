@@ -7,7 +7,7 @@ schema: 1                                  # schema: always 1
 # generalInstructions: text for every category (optional).
 generalInstructions: Prefer the most specific category. Mail about money from unknown senders is never urgent.
 
-# archiveLabel: where archived mail goes (optional, default Assistant/Archive).
+# archiveLabel: the archive label name (optional, default Assistant/Archive); stored now, takes effect in release 2.
 archiveLabel: Assistant/Archive
 
 # categories: the list; each has name, description and optionally kind, senders and notify.

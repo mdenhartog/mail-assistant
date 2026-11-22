@@ -24,7 +24,7 @@ A category may list senders (D4); a matched sender files the mail without the mo
 ## Consequences
 
 - A forged `From` cannot place a mail or raise an always-notify alert as if it came from the real sender.
-- Accepted risk AR-1: a legitimate or abused sender that passes DMARC (and platforms that relay text of anyone) is filed by its rule. The alert for such a mail says "content not checked by the model" and shows the verified domain.
+- Accepted risk AR-1: a legitimate or abused sender that passes DMARC (and platforms that relay text of anyone) is filed by its rule. The alert for such a mail says "Category not chosen by the model; urgency read by the model" (the model only reads the mail for urgency, so the earlier wording "content not checked by the model" was untrue and was replaced after the R1 challenge), shows the verified domain, and shows the sender, subject and the model's reason inside code spans, which Telegram never turns into links; a reason that could become a link is refused.
 - Small senders that fail DMARC never match their rule; the per-entry skip count makes this visible.
 - Records accepted risks AR-1 and AR-3 of the threat model `label-structure-threat-model.md`.
 
