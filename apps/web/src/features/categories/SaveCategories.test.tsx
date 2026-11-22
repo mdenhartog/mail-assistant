@@ -398,6 +398,22 @@ describe("Categories page: invalid fields (AC-2)", () => {
     });
   });
 
+  it("given entries with a skipped count, then the body carries no skippedCount", async () => {
+    const skipped = { ...INVOICES, senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 4 }] };
+    const seen = wire({ get: () => json({ ...LIST, categories: [skipped, NEWS] }) });
+    await loaded();
+    const view = await edit("Invoices");
+    await replace(view.getByLabelText("Description"), "Bills only");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await confirm();
+
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(JSON.stringify(seen.puts[0]?.body)).not.toContain("skippedCount");
+    expect(seen.puts[0]?.body.categories[0]?.senders).toEqual([{ entry: "billing@example.com", subdomains: false }]);
+  });
+
   it("given a 422 that names the instructions, then the field shows the reason, is invalid and has focus", async () => {
     wire({ put: () => problem422([{ rule: "instructions_too_long", field: "instructions", index: null, position: null, otherIndex: null }]) });
     await loaded();

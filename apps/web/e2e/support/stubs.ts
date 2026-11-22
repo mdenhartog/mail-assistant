@@ -149,7 +149,7 @@ export const CATEGORIES = {
   ready: true,
   generalInstructions: "Keep receipts for the tax year.",
   categories: [
-    { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120, kind: "extra", notify: true, senders: [{ entry: "billing@example.com", subdomains: false }] },
+    { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120, kind: "extra", notify: true, senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 0 }] },
     { id: "00000000-0000-4000-8000-000000000002", name: "Newsletters", description: "Weekly digests and product news I read on Sunday.", mailCount: 1, kind: "topic", notify: false, senders: [] },
     { id: "00000000-0000-4000-8000-000000000003", name: "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", description: "https://example.com/a/very/long/address/that/has/no/spaces/at/all/and/keeps/going/and/going", mailCount: 0, kind: "topic", notify: false, senders: [] },
   ],

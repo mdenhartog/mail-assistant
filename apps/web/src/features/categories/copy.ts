@@ -30,6 +30,14 @@ export const HELP = {
     "Tell the AI anything that applies to the whole list, for example how to treat mail in another language. It reads this text together with the descriptions; it cannot change the rules of the app.",
 } as const;
 
+/** "Not applied 3 times: Gmail could not confirm the sender"; a count and a fixed text, never mail content. */
+export function skippedText(count: number): string {
+  return `Not applied ${String(count)} ${count === 1 ? "time" : "times"}: Gmail could not confirm the sender`;
+}
+
+/** Said once under the Senders field when any entry has a skipped count. */
+export const SKIPPED_NOTE = "The AI judged those mails instead.";
+
 /** The fixed block of the Categories page (Screens). */
 export const FIXED_BLOCK =
   "Changing the list never moves mail you already have. Only new mail follows it. To re-sort the inbox, press Sort everything again.";

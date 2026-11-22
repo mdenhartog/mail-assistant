@@ -52,7 +52,9 @@ export interface SenderScope {
   sendersText: string;
 }
 
-const keyOf = (entry: string): string => entry.trim().toLowerCase();
+/** The comparable form of an entry: trimmed and lower case. */
+export const entryKey = (entry: string): string => entry.trim().toLowerCase();
+const keyOf = entryKey;
 
 function conflictText(entry: string, otherName: string): string {
   return `${entry} is already in ${otherName}. Remove it there first.`;

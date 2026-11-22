@@ -123,3 +123,56 @@ describe("the other fields of the edit view", () => {
     expect(await screen.findByRole("button", { name: "Edit Newsletters" })).toHaveFocus();
   });
 });
+
+describe("the skipped count beside a sender entry (U-label-structure-38)", () => {
+  const SKIPPED = [
+    { entry: "a@x.nl", subdomains: false, skippedCount: 3 },
+    { entry: "b.nl", subdomains: true, skippedCount: 1 },
+    { entry: "c@x.nl", subdomains: false, skippedCount: 0 },
+  ];
+
+  it("shows the count of an entry as text that the field's description carries, and the note", async () => {
+    const view = await open("Newsletters", [INVOICES, { ...NEWS, senders: SKIPPED }]);
+    const field = view.getByLabelText("Senders");
+
+    expect(view.getByText("Not applied 3 times: Gmail could not confirm the sender")).toBeInTheDocument();
+    expect(view.getByText("Not applied 1 time: Gmail could not confirm the sender")).toBeInTheDocument();
+    expect(view.getAllByText(/Not applied/)).toHaveLength(2);
+    expect(view.getByText("The AI judged those mails instead.")).toBeInTheDocument();
+    expect(field).toHaveAccessibleDescription(expect.stringContaining("Not applied 3 times: Gmail could not confirm the sender"));
+    expect(field).toHaveAccessibleDescription(expect.stringContaining("The AI judged those mails instead."));
+    await expectNoAxeViolations(screen.getByRole("region", { name: "Edit category" }));
+  });
+
+  it("names the entry the count belongs to", async () => {
+    const view = await open("Newsletters", [INVOICES, { ...NEWS, senders: SKIPPED }]);
+    const item = view.getByText("Not applied 3 times: Gmail could not confirm the sender").closest("li");
+    expect(item).toHaveTextContent("a@x.nl");
+  });
+
+  it("shows no line and no note when every count is 0", async () => {
+    const view = await open("Invoices");
+    expect(view.queryByText(/Not applied/)).not.toBeInTheDocument();
+    expect(view.queryByText("The AI judged those mails instead.")).not.toBeInTheDocument();
+  });
+
+  it("shows no line for an entry the user edited or added", async () => {
+    const view = await open("Newsletters", [INVOICES, { ...NEWS, senders: SKIPPED }]);
+    const field = view.getByLabelText("Senders");
+    await userEvent.clear(field);
+    await userEvent.type(field, "new@x.nl{Enter}B.NL +subdomains");
+
+    expect(view.getAllByText(/Not applied/)).toHaveLength(1);
+    expect(view.getByText("Not applied 1 time: Gmail could not confirm the sender")).toBeInTheDocument();
+    await userEvent.clear(field);
+    await userEvent.type(field, "other@x.nl");
+    expect(view.queryByText(/Not applied/)).not.toBeInTheDocument();
+    expect(view.queryByText("The AI judged those mails instead.")).not.toBeInTheDocument();
+  });
+
+  it("renders an entry that looks like markup as inert text", async () => {
+    const view = await open("Newsletters", [INVOICES, { ...NEWS, senders: [{ entry: "<b>x</b>@x.nl", subdomains: false, skippedCount: 2 }] }]);
+    expect(view.getByText("<b>x</b>@x.nl", { selector: "span" })).toBeInTheDocument();
+    expect(view.queryByRole("strong")).not.toBeInTheDocument();
+  });
+});

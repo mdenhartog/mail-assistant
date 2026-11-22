@@ -1,6 +1,6 @@
 import type { CategoryItem, CategoryList } from "@/api/categories/categories.types";
 import { LABEL_PREFIX, normaliseName } from "@/features/categories/policy";
-import { parseSenders, textOfSenders } from "@/features/categories/senders";
+import { entryKey, parseSenders, textOfSenders } from "@/features/categories/senders";
 
 /** One category card as the user is editing it. `key` is local; `id` is null until the api has stored it. */
 export interface Row {
@@ -13,6 +13,8 @@ export interface Row {
   notify: boolean;
   /** The senders as the user edits them: one entry per line, see `senders.ts`. */
   sendersText: string;
+  /** How often Gmail could not confirm each stored entry (only counts above 0), keyed by `entryKey`. Read-only: a save never sends it. */
+  skipped: ReadonlyMap<string, number>;
 }
 
 /** What the edit view can change on a row. */
@@ -20,7 +22,7 @@ export type RowPatch = Partial<Pick<Row, "name" | "description" | "kind" | "noti
 
 /** A new category: a topic without tick or senders. */
 export function blankRow(key: string, name: string): Row {
-  return { key, id: null, name, description: "", mailCount: null, kind: "topic", notify: false, sendersText: "" };
+  return { key, id: null, name, description: "", mailCount: null, kind: "topic", notify: false, sendersText: "", skipped: new Map() };
 }
 
 export function rowsOf(list: CategoryList): Row[] {
@@ -33,6 +35,7 @@ export function rowsOf(list: CategoryList): Row[] {
     kind: category.kind,
     notify: category.notify,
     sendersText: textOfSenders(category.senders),
+    skipped: new Map(category.senders.filter((sender) => sender.skippedCount > 0).map((sender) => [entryKey(sender.entry), sender.skippedCount])),
   }));
 }
 
