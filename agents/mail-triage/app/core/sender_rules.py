@@ -22,12 +22,14 @@ if TYPE_CHECKING:
     from app.core.judgement import JudgingList, ListedCategory
 
 __all__ = [
+    "ExtraRule",
     "FilingSource",
     "RuleFiling",
     "RuleSkipped",
     "SenderRules",
     "SenderRulesCache",
     "UrgencyJudge",
+    "UrgencyNotJudged",
     "UrgencyVerdict",
 ]
 
@@ -48,11 +50,18 @@ class UrgencyVerdict:
     reason: str
 
 
+@dataclass(frozen=True, slots=True)
+class UrgencyNotJudged:
+    """No urgency call was made (the daily budget above the reserve is used up): the mail is still filed (C-18)."""
+
+    reason: str
+
+
 class UrgencyJudge(Protocol):
     """The small urgency-only model call for a mail a sender rule has filed in an unticked category (D11)."""
 
-    async def needs_attention(self, mail: TrimmedMail) -> UrgencyVerdict:
-        """Whether this one mail needs Marco's attention now."""
+    async def needs_attention(self, mail: TrimmedMail) -> UrgencyVerdict | UrgencyNotJudged:
+        """Whether this one mail needs Marco's attention now, or that it was not judged."""
         ...
 
 
@@ -71,6 +80,14 @@ class RuleFiling:
 
 
 @dataclass(frozen=True, slots=True)
+class ExtraRule:
+    """A sender rule that lists the sender only for an extra label: the model still picks the topic (ADR-0055)."""
+
+    extra: ListedCategory
+    entry: str
+
+
+@dataclass(frozen=True, slots=True)
 class RuleSkipped:
     """The From matches a listed entry but Gmail does not vouch for the sender: no rule applies."""
 
@@ -85,7 +102,7 @@ class SenderRules:
         self._by_name = {category.name: category for category in categories}
         self._matcher = build_matcher([SenderCategory(c.name, c.kind, c.senders) for c in categories])
 
-    def apply(self, auth_results: Sequence[str], sender: str) -> RuleFiling | RuleSkipped | None:
+    def apply(self, auth_results: Sequence[str], sender: str) -> RuleFiling | ExtraRule | RuleSkipped | None:
         """The rule for a mail, or ``None`` when the list does not file it.
 
         Args:
@@ -93,8 +110,9 @@ class SenderRules:
             sender: The parsed From address (never the display name).
 
         Returns:
-            ``RuleFiling`` for an authenticated sender a topic lists; ``RuleSkipped`` for a listed sender that is not
-            authenticated; ``None`` otherwise (a sender only an extra label lists leaves the topic to the model).
+            ``RuleFiling`` for an authenticated sender a topic lists; ``ExtraRule`` for one that only an extra label
+            lists (the model picks the topic, the rule adds the extra label); ``RuleSkipped`` for a listed sender
+            that is not authenticated; ``None`` otherwise.
         """
         headers = tuple(("Authentication-Results", value) for value in auth_results)
         domain = authenticated_from_domain(headers, sender)
@@ -103,9 +121,11 @@ class SenderRules:
         local = sender.rpartition("@")[0]
         return self._filing(self._matcher(f"{local}@{domain}"))  # the vouched domain, nothing else
 
-    def _filing(self, found: Match | None) -> RuleFiling | None:
-        if found is None or found.topic is None:
+    def _filing(self, found: Match | None) -> RuleFiling | ExtraRule | None:
+        if found is None:
             return None
+        if found.topic is None:
+            return ExtraRule(self._by_name[found.extra.category], found.extra.entry) if found.extra else None
         extra = self._by_name[found.extra.category] if found.extra else None
         return RuleFiling(self._by_name[found.topic.category], extra, found.topic.entry)
 

@@ -42,7 +42,7 @@ def _id(alert_id: str) -> int | None:
 
 def _pending(alert: Alert, item: MailItem) -> PendingAlert:
     judgement = Judgement(
-        category_id=OTHER_ID,  # an alert only needs the text of the judgement; the category is not read from it
+        topic_id=OTHER_ID,  # an alert only needs the text of the judgement; the category is not read from it
         urgent=True,
         reason=item.reason or "",
         summary=item.summary or "",
@@ -117,6 +117,7 @@ class PgStore:
                 ListedCategory(str(c.id), c.name, c.description, c.kind, c.notify, c.senders)
                 for c in current.categories
             ),
+            current.general_instructions,
         )
 
     async def complete(self, message_id: str, outcome: Outcome) -> None:

@@ -30,7 +30,15 @@ from app.core.judgement import (
     resolve,
 )
 from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
-from app.core.sender_rules import FilingSource, RuleFiling, RuleSkipped, SenderRulesCache
+from app.core.sender_rules import (
+    ExtraRule,
+    FilingSource,
+    RuleFiling,
+    RuleSkipped,
+    SenderRulesCache,
+    UrgencyNotJudged,
+    UrgencyVerdict,
+)
 from app.core.time_policy import in_quiet_hours, next_quiet_end
 
 if TYPE_CHECKING:
@@ -40,7 +48,7 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import ListedCategory
-    from app.core.sender_rules import UrgencyJudge, UrgencyVerdict
+    from app.core.sender_rules import UrgencyJudge
     from app.usecases.policy_notice import PolicySource
     from schedule_policy.policy import TimePolicy
 
@@ -130,7 +138,9 @@ class Mailbox(Protocol):
 class Judge(Protocol):
     """The model adapter."""
 
-    async def judge(self, mail: TrimmedMail, categories: Sequence[ListedCategory]) -> Judgement | NeedsAttention:
+    async def judge(
+        self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
+    ) -> Judgement | NeedsAttention:
         """A valid judgement for this one mail against ``categories``, or needs-attention."""
         ...
 
@@ -241,8 +251,9 @@ def decide_outcome(
     ``current`` is the list snapshot the mail was judged against; its version goes into the filing.
     """
     decision = resolve(verdict, current.categories) if isinstance(verdict, Judgement) else verdict
-    category_id = OTHER_ID
+    category_id, extra = OTHER_ID, None
     if isinstance(decision, Filing):
+        extra = decision.extra
         label, category_id, urgent, confidence, note = (
             decision.label,
             decision.category_id,
@@ -267,21 +278,35 @@ def decide_outcome(
         note=note,
         content=content,
         release_at=release_at,
-        filing=FilingEntry(category_id, current.version) if current.version > 0 else None,
+        filing=FilingEntry(category_id, current.version, extra.category_id if extra else None)
+        if current.version > 0
+        else None,
+        extra_label=category_label(extra) if extra else None,
     )
 
 
 def rule_outcome(  # noqa: PLR0913, PLR0917 - the snapshot of one decision
     ruled: RuleFiling,
-    verdict: UrgencyVerdict | None,
+    verdict: UrgencyVerdict | UrgencyNotJudged | None,
     mail: FetchedMail,
     current: JudgingList,
     now: datetime,
     policy: TimePolicy,
 ) -> Outcome:
-    """Label, filing and urgency of a mail a sender rule filed (D11): ``verdict`` is ``None`` in a ticked category."""
-    urgent = verdict is not None and verdict.needs_attention
-    reason = f"Needs attention: {verdict.reason}" if urgent and verdict else f"Sender rule: {ruled.entry}"
+    """Label, filing and urgency of a mail a sender rule filed (D11).
+
+    ``verdict`` is ``None`` in a ticked category and ``UrgencyNotJudged`` when the budget above the reserve was used
+    up: the mail is then filed, not urgent, and left for the daily overview (C-18).
+    """
+    judged = verdict if isinstance(verdict, UrgencyVerdict) else None
+    urgent = judged is not None and judged.needs_attention
+    reason = f"Needs attention: {judged.reason}" if urgent and judged else f"Sender rule: {ruled.entry}"
+    note = "sender_rule"
+    if isinstance(verdict, UrgencyNotJudged):
+        reason, note = (
+            f"Sender rule: {ruled.entry}; urgency not judged ({verdict.reason})",
+            "sender_rule:urgency_not_judged",
+        )
     alert = initial_state(in_quiet_hours=in_quiet_hours(now, policy)) if urgent else None
     extra = ruled.extra
     return Outcome(
@@ -289,7 +314,7 @@ def rule_outcome(  # noqa: PLR0913, PLR0917 - the snapshot of one decision
         urgent=urgent,
         confidence=1.0,
         alert=alert,
-        note="sender_rule",
+        note=note,
         content=_content(mail, reason, ""),
         release_at=next_quiet_end(now, policy) if alert is AlertState.HELD else None,
         filing=FilingEntry(
@@ -300,6 +325,17 @@ def rule_outcome(  # noqa: PLR0913, PLR0917 - the snapshot of one decision
             ruled.entry,
         ),
         extra_label=category_label(extra) if extra else None,
+    )
+
+
+def with_rule_extra(outcome: Outcome, rule: ExtraRule) -> Outcome:
+    """Add the extra label a sender rule lists next to the model's topic; the rule's label replaces the model's."""
+    if outcome.filing is None:
+        return outcome
+    return replace(
+        outcome,
+        extra_label=category_label(rule.extra),
+        filing=replace(outcome.filing, extra_id=rule.extra.category_id),
     )
 
 
@@ -405,16 +441,21 @@ class TriagePipeline:
         summary.filed += 1
         summary.alerts += outcome.alert is not None
 
-    async def _decide(self, mail: FetchedMail, current: JudgingList, ruled: RuleFiling | RuleSkipped | None) -> Outcome:
+    async def _decide(
+        self, mail: FetchedMail, current: JudgingList, ruled: RuleFiling | ExtraRule | RuleSkipped | None
+    ) -> Outcome:
         """A sender rule files the mail without a category call; otherwise the model judges it."""
         trimmed = trim_mail(mail.subject, mail.sender, mail.text)
         if isinstance(ruled, RuleFiling):
             verdict = None if ruled.ticked else await self._urgency.needs_attention(trimmed)
             policy = await self._policy.current()
             return rule_outcome(ruled, verdict, mail, current, self._now(), policy)
-        judged = await self._judge.judge(trimmed, current.categories)
+        judged = await self._judge.judge(trimmed, current.categories, current.general_instructions)
         policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
-        return mark_not_applied(decide_outcome(judged, mail, current, self._now(), policy), ruled)
+        outcome = decide_outcome(judged, mail, current, self._now(), policy)
+        if isinstance(ruled, ExtraRule):  # the topic is the model's; the rule's extra label is added to it
+            return with_rule_extra(outcome, ruled)
+        return mark_not_applied(outcome, ruled if isinstance(ruled, RuleSkipped) else None)
 
     async def _file(self, mail: FetchedMail, outcome: Outcome) -> None:
         outcome, label_id = await self._topic_label(mail, outcome)
