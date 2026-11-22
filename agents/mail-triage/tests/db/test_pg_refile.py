@@ -105,7 +105,22 @@ async def test_given_filings_when_asked_then_the_newest_row_of_each_mail_in_the_
 
     found = await store.filings_since(datetime.now(UTC) - timedelta(days=14))
 
-    assert found == [Filed("b", finance), Filed("a", travel)]
+    assert found == [Filed("b", finance, None), Filed("a", travel, None)]
+
+
+async def test_given_a_filing_with_an_extra_label_when_asked_then_the_extra_id_is_carried(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    finance, travel = await seed_list(cat_owner, ["Finance", "Travel"])
+    await _file(cat_owner, "a", finance, 1, 1)
+    await cat_owner.execute(
+        "update categories.filing set extra_id = $1::uuid where mailbox_id = $2 and message_id = 'a'", travel, MAILBOX
+    )
+    store = PgRefileStore(agent_sessions, MAILBOX)
+
+    found = await store.filings_since(datetime.now(UTC) - timedelta(days=14))
+
+    assert found == [Filed("a", finance, travel)]
 
 
 async def test_given_labels_when_asked_then_the_map_holds_every_category_and_other_for_this_mailbox_only(

@@ -123,18 +123,6 @@ class PgBuildStore:
             row = (await session.execute(statement)).first()
         return None if row is None else _record(row[0], row[1])
 
-    async def create_plan(self, list_version: int, cap: int) -> PlanRecord | None:
-        """A new ``building`` plan, or ``None`` when the mailbox already has a non-terminal one (the unique index)."""
-        statement = (
-            insert(Plan)
-            .values(mailbox_id=self._mailbox, list_version=list_version, cap=cap)
-            .on_conflict_do_nothing()
-            .returning(Plan.id)
-        )
-        async with self._sessions.begin() as session:
-            created = (await session.execute(statement)).scalar_one_or_none()
-        return None if created is None else PlanRecord(created, list_version, PlanState.BUILDING, None, 0, 0, 0, cap)
-
     async def replace_plan(self, plan_id: uuid.UUID) -> bool:
         """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items (one database function)."""
         statement = select(func.categories.replace_plan(self._mailbox, plan_id))

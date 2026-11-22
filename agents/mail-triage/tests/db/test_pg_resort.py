@@ -33,9 +33,14 @@ def _draft(message_id: str, new_category: str) -> ItemDraft:
 
 async def _building_plan(store: PgBuildStore, owner: asyncpg.Connection) -> tuple[uuid.UUID, str]:
     category = (await seed_list(owner, ["Finance"]))[0]
-    plan = await store.create_plan(1, CAP)
-    assert plan is not None
-    return plan.plan_id, category
+    plan_id = uuid.uuid4()  # the api creates a plan; the agent only builds it
+    await owner.execute(
+        "insert into categories.plan (mailbox_id, id, list_version, state, cap) values ($1, $2, 1, 'building', $3)",
+        MAILBOX,
+        plan_id,
+        CAP,
+    )
+    return plan_id, category
 
 
 async def test_given_no_list_when_it_is_read_then_version_0_and_given_a_list_then_its_latest_version_in_order(
@@ -112,24 +117,6 @@ async def test_given_a_replaced_plan_when_progress_is_written_then_it_is_refused
     assert not await store.replace_plan(plan_id)  # a second replace changes nothing
     assert (await store.latest_plan()) is not None
     assert (await store.latest_plan()).state is PlanState.REPLACED  # type: ignore[union-attr]
-
-
-async def test_given_an_open_plan_when_another_is_created_then_none_and_after_it_ended_a_new_one_comes(
-    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
-) -> None:
-    store = PgBuildStore(agent_sessions, MAILBOX)
-    plan_id, _category = await _building_plan(store, cat_owner)
-
-    assert await store.create_plan(1, CAP) is None
-
-    await store.replace_plan(plan_id)
-    newer = await store.create_plan(1, CAP)
-
-    assert newer is not None
-    assert newer.plan_id != plan_id
-    latest = await store.latest_plan()
-    assert latest is not None
-    assert latest.plan_id == newer.plan_id
 
 
 async def test_given_two_agent_processes_when_both_complete_the_same_plan_then_exactly_one_wins(

@@ -84,7 +84,7 @@ def _rig(*, kept: int, moved: int, other: int = 0, gone: int = 0) -> tuple[Refil
     ):
         for _ in range(count):
             n += 1
-            store.filed.append(Filed(f"m{n}", filed_as))
+            store.filed.append(Filed(f"m{n}", filed_as, None))
             if now_labels is not None:
                 gmail.mails[f"m{n}"] = set(now_labels)
     return RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP), store
@@ -110,12 +110,30 @@ async def test_the_share_of_mail_now_in_other_is_reported() -> None:
 
 
 async def test_a_mail_moved_by_hand_into_other_counts_as_refiled_and_as_other() -> None:
-    store, gmail = FakeStore(filed=[Filed("a", FINANCE_ID)]), FakeGmail({"a": {"INBOX", "L_OTH"}})
+    store, gmail = FakeStore(filed=[Filed("a", FINANCE_ID, None)]), FakeGmail({"a": {"INBOX", "L_OTH"}})
     service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
 
     report = await service.run_once()
 
     assert (report.refiled, report.in_other) == (1, 1)
+
+
+async def test_a_mail_filed_with_an_extra_label_is_not_refiled_while_both_labels_stay() -> None:
+    store = FakeStore(filed=[Filed("a", FINANCE_ID, TRAVEL_ID), Filed("b", FINANCE_ID, TRAVEL_ID)])
+    gmail = FakeGmail({"a": {"INBOX", "L_FIN", "L_TRV"}, "b": {"INBOX", "L_FIN"}})
+    service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
+
+    report = await service.run_once()
+
+    assert report.refiled == 1  # only "b", where the user took the extra label off
+
+
+async def test_a_mail_filed_with_an_extra_label_is_refiled_when_the_topic_changes() -> None:
+    store = FakeStore(filed=[Filed("a", FINANCE_ID, TRAVEL_ID)])
+    gmail = FakeGmail({"a": {"INBOX", "L_OTH", "L_TRV"}})
+    service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
+
+    assert (await service.run_once()).refiled == 1
 
 
 async def test_a_deleted_mail_is_not_counted_as_refiled() -> None:
@@ -168,7 +186,7 @@ class CountingGmail(FakeGmail):
 def _capped(filings: int, cap: int) -> tuple[RefileReportService, FakeStore, CountingGmail]:
     store, gmail = FakeStore(), CountingGmail()
     for n in range(filings):  # newest first, as the store hands them out; every third was re-filed
-        store.filed.append(Filed(f"m{n}", FINANCE_ID))
+        store.filed.append(Filed(f"m{n}", FINANCE_ID, None))
         gmail.mails[f"m{n}"] = {"INBOX", "L_TRV" if n % 3 == 0 else "L_FIN"}
     return RefileReportService(store, gmail, now=lambda: NOW, max_checked=cap), store, gmail
 
@@ -212,6 +230,6 @@ async def test_the_log_carries_the_success_numbers_of_the_period(caplog: pytest.
         await service.run_once()
 
     assert "Filed by a sender rule: 25.0% of 40 new mails" in caplog.text
-    assert "Model calls per day: 2.0" in caplog.text
+    assert "At least 2.0 model calls per day (filing calls only)" in caplog.text
     assert "Always-notify alerts per day: 1.0" in caplog.text
     assert "Filed under Other: 10.0% of 40 new mails" in caplog.text

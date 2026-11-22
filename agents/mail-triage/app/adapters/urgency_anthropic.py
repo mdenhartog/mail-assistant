@@ -29,6 +29,8 @@ if TYPE_CHECKING:
 
 __all__ = ["AnthropicUrgency", "parse_urgency"]
 
+# Anything Telegram may turn into a link or a mention: a scheme, ``www.``, ``@``, ``t.me`` or a domain-like token.
+_LINKABLE = re.compile(r"://|@|\bwww\.|\bt\.me\b|\b[\w-]+(?:\.[\w-]+)*\.[^\W\d_]{2,}\b", re.IGNORECASE)
 _UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
 INVALID = UrgencyVerdict(needs_attention=True, reason="urgency answer not valid; treated as needing attention")
 SYSTEM_PROMPT = (
@@ -53,14 +55,16 @@ class _Answer(BaseModel):
 
     @field_validator("reason")
     @classmethod
-    def _no_category_id(cls, value: str) -> str:
+    def _plain_reason(cls, value: str) -> str:
         if _UUID.search(value):
             raise ValueError("the reason names a category id")
+        if _LINKABLE.search(value):
+            raise ValueError("the reason could be shown as a link or a mention")
         return value
 
 
 def parse_urgency(text: str) -> UrgencyVerdict:
-    """The verdict of an answer text; anything outside the closed shape needs attention."""
+    """The verdict of an answer text; an odd shape or a reason that could become a link needs attention."""
     try:
         answer = _Answer.model_validate(json.loads(text))
     except (ValidationError, ValueError):

@@ -180,10 +180,6 @@ class BuildStore(Protocol):
         """The newest plan of the mailbox, terminal or not."""
         ...
 
-    async def create_plan(self, list_version: int, cap: int) -> PlanRecord | None:
-        """A new ``building`` plan, or ``None`` when the mailbox already has a non-terminal one."""
-        ...
-
     async def replace_plan(self, plan_id: uuid.UUID) -> bool:
         """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items."""
         ...

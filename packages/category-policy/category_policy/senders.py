@@ -94,10 +94,12 @@ class Match:
 type Matcher = Callable[[str | None], Match | None]
 
 
-def _a_label_domain(text: str) -> str | None:
+def normalise_domain(text: str) -> str | None:
     """Return the lower-case A-label form of a domain, or None when it cannot be one.
 
-    Text that the IDNA mapping would change (full-width letters, ``ß``) is refused rather than silently folded.
+    The one domain normaliser of the matcher and of the sender verification. Text that the IDNA mapping would change
+    (full-width letters, ``ß``, ``ς``, ligatures, ``İ``) is refused rather than silently folded, so look-alike
+    registrable domains never merge with an ASCII one. Only ASCII is lower-cased; the result is compared exactly.
     """
     lowered = text.lower()
     try:
@@ -119,7 +121,7 @@ def _address(text: str) -> str | None:
     if not separator or "@" in domain:
         return None
     local = local.lower()
-    a_label = _a_label_domain(domain)
+    a_label = normalise_domain(domain)
     if a_label is None or len(local) > _LOCAL_MAX or not _LOCAL.fullmatch(local):
         return None
     return f"{local}@{a_label}"
@@ -139,7 +141,7 @@ def parse_entry(text: str, subdomains: bool) -> ParsedEntry | None:
     if "@" in cleaned:
         value = None if subdomains else _address(cleaned)
         return None if value is None else ParsedEntry(value, is_domain=False, subdomains=False)
-    domain = _a_label_domain(cleaned)
+    domain = normalise_domain(cleaned)
     return None if domain is None else ParsedEntry(domain, is_domain=True, subdomains=subdomains)
 
 

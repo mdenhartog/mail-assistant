@@ -162,12 +162,22 @@ def test_given_a_sender_rule_when_built_then_it_shows_the_domain_and_no_summary_
     text = build_alert("1", meta, _judgement(reason="Sender rule: energie.example.nl"), basis).text
 
     assert "energie.example.nl" in text
-    assert "content not checked by the model" in text.casefold()
+    assert "category not chosen by the model; urgency read by the model" in text.casefold()
+    assert "not checked by the model" not in text.casefold()
     assert "Summary" not in text
     assert "The supplier asks for payment" not in text
     assert "<a " not in text
     assert "<code>billing@energie.example.nl</code>" in text  # a code span is never made clickable by Telegram
     assert "<code>Invoice https://evil.example/x</code>" in text
+
+
+def test_given_a_model_reason_with_a_link_in_a_rule_alert_when_built_then_it_sits_in_a_code_span() -> None:
+    basis = AlertBasis(TICKED, verified_domain="energie.example.nl", by_rule=True)
+    meta = MailMeta("billing@energie.example.nl", "Invoice", reply_to=None, has_attachment=False)
+
+    text = build_alert("1", meta, _judgement(reason="Pay at t.me/evil or @evil_bot <b>now</b>"), basis).text
+
+    assert "<b>Why it matters:</b> <code>Pay at t.me/evil or @evil_bot &lt;b&gt;now&lt;/b&gt;</code>" in text
 
 
 def test_given_a_model_filed_ticked_mail_without_an_authenticated_sender_when_built_then_it_shows_the_address() -> None:

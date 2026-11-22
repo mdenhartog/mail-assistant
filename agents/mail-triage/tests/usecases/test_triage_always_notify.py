@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from datetime import datetime
 
     from app.adapters.gmail_read import FetchedMail
+    from app.usecases.triage import Outcome
 
 FINANCE_TICKED = ListedCategory(FINANCE_ID, "Finance", "Bills and invoices", notify=True)
 FINANCE_PLAIN = replace(FINANCE_TICKED, notify=False)
@@ -88,6 +89,20 @@ async def test_given_an_urgent_mail_in_a_ticked_category_then_exactly_one_alert_
     assert store.outcomes["m1"].alert is AlertState.OPEN
     assert causes(store) == (AlertCause(CauseKind.URGENT), AlertCause(CauseKind.ALWAYS_NOTIFY, "Finance"))
     assert len(store.outcomes) == 1
+
+
+async def test_given_an_urgent_mail_in_a_ticked_category_in_quiet_hours_then_exactly_one_alert_is_held() -> None:
+    """AC-24: the two causes make one alert, and quiet hours hold that one alert."""
+    _, store = await run_model(
+        mail("a@example.com", auth=()), JudgingList(3, (FINANCE_TICKED,)), judged(urgent=True), NIGHT
+    )
+
+    assert len(store.outcomes) == 1
+    outcome = store.outcomes["m1"]
+    assert outcome.alert is AlertState.HELD
+    assert outcome.release_at is not None
+    assert outcome.release_at > NIGHT
+    assert causes(store) == (AlertCause(CauseKind.URGENT), AlertCause(CauseKind.ALWAYS_NOTIFY, "Finance"))
 
 
 async def test_given_a_topic_and_an_extra_label_that_are_both_ticked_then_one_alert_names_both() -> None:
@@ -159,3 +174,38 @@ async def test_given_the_pipeline_is_run_twice_over_the_same_mail_then_it_is_fil
     await pipeline(mailbox, FakeJudge(judged()), store).run_once()
 
     assert len(mailbox.filed) == 1
+
+
+class AlertTableStore(FakeStore):
+    """A store whose alert table is keyed on the mail, as the database's unique key is, and that can crash once."""
+
+    def __init__(self, *, current: JudgingList, crash_on_first_complete: bool) -> None:
+        super().__init__(current=current)
+        self.alert_rows: dict[str, Outcome] = {}
+        self.crash_pending = crash_on_first_complete
+
+    async def complete(self, message_id: str, outcome: Outcome) -> None:
+        if self.crash_pending:
+            self.crash_pending = False
+            raise ConnectionError("the process died after the mail was filed in Gmail")
+        if outcome.alert is not None:
+            assert message_id not in self.alert_rows, "a second alert row for the same mail"
+            self.alert_rows[message_id] = outcome
+        await super().complete(message_id, outcome)
+
+
+async def test_given_a_crash_between_filing_and_the_alert_when_the_mail_is_run_again_then_there_is_one_alert() -> None:
+    """AC-28: the retry files the mail again and writes the one alert; a third run writes no more."""
+    mailbox = FakeMailbox(["m1"])
+    mailbox.mails["m1"] = mail("a@example.com", auth=())
+    store = AlertTableStore(current=JudgingList(3, (FINANCE_TICKED,)), crash_on_first_complete=True)
+
+    await pipeline(mailbox, FakeJudge(judged(urgent=True), judged(urgent=True)), store).run_once()
+    assert store.alert_rows == {}  # crashed after Gmail was changed, before the alert was written
+    assert len(mailbox.filed) == 1
+
+    await pipeline(mailbox, FakeJudge(judged(urgent=True)), store).run_once()
+    await pipeline(mailbox, FakeJudge(judged(urgent=True)), store).run_once()
+
+    assert list(store.alert_rows) == ["m1"]
+    assert store.alert_rows["m1"].alert is AlertState.OPEN

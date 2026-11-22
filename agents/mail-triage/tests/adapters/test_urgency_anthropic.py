@@ -11,7 +11,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.adapters.judge_anthropic import DailyBudget, ModelUnavailable, TrimmedMail
-from app.adapters.urgency_anthropic import AnthropicUrgency
+from app.adapters.urgency_anthropic import AnthropicUrgency, parse_urgency
 from app.core.sender_rules import UrgencyNotJudged, UrgencyVerdict
 
 KEY = "sk-ant-test-0123456789"
@@ -192,3 +192,32 @@ async def test_given_the_budget_is_used_up_when_asked_then_no_call_is_made() -> 
 
     assert await make(model, budget=budget).needs_attention(MAIL) == UrgencyNotJudged("budget")
     assert model.requests == []
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "Pay at https://evil.example/x now",
+        "Pay at www.evil.example now",
+        "See evil.example/pay",
+        "See evil.example",
+        "Contact bank-support.nl today",
+        "Write to @evil_bot",
+        "Write to someone@evil.example",
+        "Join t.me/evil",
+        "Join T.ME/evil",
+        "Open ftp://evil",
+    ],
+)
+def test_given_a_reason_that_telegram_could_turn_into_a_link_when_parsed_then_the_mail_needs_attention(
+    reason: str,
+) -> None:
+    assert parse_urgency(json.dumps({"needs_attention": False, "reason": reason})) == NEEDS_ATTENTION
+
+
+def test_given_a_plain_reason_with_a_decimal_and_a_sentence_end_when_parsed_then_it_is_kept() -> None:
+    text = json.dumps({"needs_attention": True, "reason": "The invoice of 12.50 euro is due Friday. Pay soon."})
+
+    assert parse_urgency(text) == UrgencyVerdict(
+        needs_attention=True, reason="The invoice of 12.50 euro is due Friday. Pay soon."
+    )
