@@ -117,6 +117,21 @@ def digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+# Found by the R1 journey (U-label-structure-17): many new categories were counted as one
+async def test_given_several_new_categories_when_uploaded_then_the_preview_counts_each_of_them(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    client = await sign_in(api)
+    names = [f"  - name: Fresh {n}\n    description: d\n" for n in range(5)]
+    text = "schema: 1\ncategories:\n" + "".join(names)
+
+    body = await preview_of(client, text)
+
+    assert (body["added"], body["changed"], body["removed"]) == (5, 0, 1)
+
+
 # Criterion 1
 async def test_given_a_valid_file_when_uploaded_then_the_preview_has_the_counts_and_only_the_preview_row_is_stored(
     api: Api,
