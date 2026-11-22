@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-from app.db.models import Category, CategoryCount, CategorySender, Filing, ListSettings, ListVersion
+from app.db.models import Category, CategoryCount, CategorySender, Filing, ListSettings, ListVersion, SenderSkip
 from category_policy.kinds import Kind
 from category_policy.senders import SenderEntry
 
@@ -24,6 +24,7 @@ __all__ = [
     "CategoryRow",
     "CurrentList",
     "category_counts",
+    "count_skip",
     "current_list",
     "filed_category",
     "record_filing",
@@ -114,11 +115,14 @@ async def record_filing(  # noqa: PLR0913, PLR0917 - one column each
     extra_id: uuid.UUID | None,
     source: str,
     source_ref: str | None,
-) -> None:
+) -> bool:
     """Write the ``filing`` row of one labelled mail: ids, version, source and the matched entry (AC-39).
 
     Never sender or subject: ``source_ref`` is the sender entry of the list that matched, nothing of the mail.
     A retry of the same mail under the same list version changes nothing; the time of filing is the database's.
+
+    Returns:
+        ``True`` when this call wrote the row, ``False`` when the filing was already there (a restart).
     """
     statement = (
         insert(Filing)
@@ -132,8 +136,20 @@ async def record_filing(  # noqa: PLR0913, PLR0917 - one column each
             source_ref=source_ref,
         )
         .on_conflict_do_nothing(index_elements=["mailbox_id", "message_id", "list_version"])
+        .returning(Filing.message_id)
     )
-    await session.execute(statement)
+    return (await session.execute(statement)).first() is not None
+
+
+async def count_skip(session: AsyncSession, mailbox_id: str, entry: str) -> None:
+    """Count one more skipped mail for the list ``entry`` (never a sender address; the time is the database's)."""
+    statement = insert(SenderSkip).values(mailbox_id=mailbox_id, entry=entry)
+    await session.execute(
+        statement.on_conflict_do_update(
+            index_elements=["mailbox_id", "entry"],
+            set_={"skipped": SenderSkip.skipped + 1, "last_skipped_at": func.now()},
+        )
+    )
 
 
 async def filed_category(session: AsyncSession, mailbox_id: str, message_id: str) -> uuid.UUID | None:
