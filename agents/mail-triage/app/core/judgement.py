@@ -14,8 +14,12 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from category_policy.kinds import Kind
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from category_policy.senders import SenderEntry
 
 LABEL_PREFIX = "Assistant/"
 OTHER_LABEL = f"{LABEL_PREFIX}Other"
@@ -54,11 +58,14 @@ class Judgement(BaseModel):
 
 @dataclass(frozen=True, slots=True)
 class ListedCategory:
-    """One category of the list version being judged against."""
+    """One category of the list version being judged against, with what the sender rules need (ADR-0054)."""
 
     category_id: str
     name: str
     description: str
+    kind: Kind = Kind.TOPIC
+    notify: bool = False
+    senders: tuple[SenderEntry, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,13 +100,18 @@ def parse_judgement(raw: object) -> Judgement:
         raise JudgementError("model output does not match the schema") from None
 
 
+def category_label(category: ListedCategory) -> str:
+    """The Gmail label name of a category."""
+    return f"{LABEL_PREFIX}{category.name.strip()}"
+
+
 def resolve(judgement: Judgement, categories: Sequence[ListedCategory]) -> Filing | NeedsAttention:
     """Turn a valid judgement into a label: a category of the list by exact id, otherwise "Other"."""
     if judgement.confidence < LOW_CONFIDENCE:
         return NeedsAttention("low_confidence")
     for category in categories:
         if category.category_id == judgement.category_id and category.category_id != OTHER_ID:
-            return Filing(f"{LABEL_PREFIX}{category.name.strip()}", category.category_id, judgement)
+            return Filing(category_label(category), category.category_id, judgement)
     return Filing(OTHER_LABEL, OTHER_ID, judgement)
 
 
