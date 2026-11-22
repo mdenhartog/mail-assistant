@@ -13,6 +13,7 @@ const row = (name: string, notify = false): Row => ({
   kind: "topic",
   notify,
   sendersText: "",
+  skipped: new Map(),
 });
 
 const shape = (nodes: readonly TreeNode[]): unknown[] =>

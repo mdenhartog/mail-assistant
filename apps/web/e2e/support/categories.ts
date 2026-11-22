@@ -78,6 +78,19 @@ export function categoriesStates(): UiState[] {
       return gate.release;
     }),
     state("categories: loaded", (page) => toLoaded(page)),
+    state("categories: edit view with skipped counts", async (page) => {
+      const senders = [
+        { entry: "billing@example.com", subdomains: false, skippedCount: 3 },
+        { entry: "a-very-long-sender-name-without-any-break@a-very-long-domain-name-that-keeps-going.example.com", subdomains: true, skippedCount: 1 },
+        { entry: "quiet@example.com", subdomains: false, skippedCount: 0 },
+      ];
+      const [invoices, ...rest] = CATEGORIES.categories;
+      await toLoaded(page, { getCategories: reply(200, { ...CATEGORIES, categories: [{ ...invoices, senders }, ...rest] }) });
+      await page.getByRole("button", { name: "Edit Invoices", exact: true }).click();
+      await expect(page.getByText("Not applied 3 times: Gmail could not confirm the sender")).toBeVisible();
+      await expect(page.getByText("Not applied 1 time: Gmail could not confirm the sender")).toBeVisible();
+      await expect(page.getByText("The AI judged those mails instead.")).toBeVisible();
+    }),
     state("categories: not ready", async (page) => {
       await stubApi(page, { signedIn: true, getCategories: reply(200, { ...CATEGORIES, version: 0, ready: false, categories: [] }) });
       await page.goto("/categories");
