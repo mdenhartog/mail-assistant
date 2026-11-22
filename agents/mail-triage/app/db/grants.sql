@@ -186,3 +186,18 @@ GRANT UPDATE (used_at) ON categories.upload_preview TO web_settings_runtime;
 -- only reads them. Rows without a skip for 90 days go with purge_expired().
 GRANT SELECT ON categories.sender_skip TO web_settings_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON categories.sender_skip TO mail_triage_runtime;
+
+-- Sort again (INT-008, U-label-structure-20, ADR-0056). The api asks through request_resort alone (it has no INSERT on
+-- the request table) and reads the requests, the plan kind and the new item columns. The agent reads the requests, names
+-- the kind and the request of a plan it builds (the threshold is copied by a trigger, never chosen) and writes the pair,
+-- the confidence and the tip of an item. Only approve_system_plan (the agent's alone) approves a system plan and sets the
+-- decision source; the api has no right on it (SQLSTATE 42501).
+GRANT SELECT ON categories.resort_request TO web_settings_runtime, mail_triage_runtime;
+GRANT SELECT (old_topic_id, old_extra_id, new_topic_id, new_extra_id, confidence_pct, decision_source, tip)
+    ON categories.plan_item TO web_settings_runtime;
+GRANT INSERT (kind, request_id) ON categories.plan TO mail_triage_runtime;
+GRANT INSERT (old_topic_id, old_extra_id, new_topic_id, new_extra_id, confidence_pct)
+    ON categories.plan_item TO mail_triage_runtime;
+GRANT UPDATE (tip) ON categories.plan_item TO mail_triage_runtime;
+GRANT EXECUTE ON FUNCTION categories.request_resort(text, numeric) TO web_settings_runtime;
+GRANT EXECUTE ON FUNCTION categories.approve_system_plan(uuid) TO mail_triage_runtime;
