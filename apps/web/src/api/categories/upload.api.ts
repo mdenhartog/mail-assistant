@@ -3,8 +3,8 @@ import { readList } from "@/api/categories/categories.api";
 import type { CategoryList } from "@/api/categories/categories.types";
 import type { FileFailure, UploadPreview, UploadProblem } from "@/api/categories/upload.types";
 
-/** Bigger than any file the API accepts (256 KiB), so only a file that could never pass is stopped before it is read. */
-const MAX_READ_BYTES = 1024 * 1024;
+/** Bigger than any file the API accepts (256 KiB), so only a file that could never pass is stopped before it is sent. */
+const MAX_SEND_BYTES = 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -36,28 +36,14 @@ function isPreview(value: unknown): value is UploadPreview {
   );
 }
 
-/** The file as text, read in the browser; a file that is far too big is refused without being read. */
-function readText(file: File): Promise<string> {
-  if (file.size > MAX_READ_BYTES) {
-    return Promise.reject(new ApiError(413));
-  }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      resolve(typeof reader.result === "string" ? reader.result : "");
-    };
-    reader.onerror = () => {
-      reject(new Error("The file could not be read"));
-    };
-    reader.readAsText(file);
-  });
-}
-
-/** Sends the file for a check; nothing is stored but the preview. */
+/** Sends the file for a check, its bytes unchanged so the API sees any BOM or invalid UTF-8; nothing is stored but the preview. */
 export async function uploadFile(file: File): Promise<UploadPreview> {
+  if (file.size > MAX_SEND_BYTES) {
+    throw new ApiError(413);
+  }
   const response = await apiFetch("/api/categories/upload", {
     method: "POST",
-    body: await readText(file),
+    body: file,
     headers: { "Content-Type": "application/yaml" },
   });
   const body: unknown = await response.json();
