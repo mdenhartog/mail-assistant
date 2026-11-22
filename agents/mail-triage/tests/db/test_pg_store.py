@@ -11,8 +11,9 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
+from app.core.alert_decision import AlertCause, CauseKind
 from app.core.alert_state import AlertState
-from app.core.alert_text import AuthResults
+from app.core.alert_text import AlertBasis
 from app.db.pg_conversation import ConversationStore
 from app.db.pg_store import PgStore
 from app.usecases.reply import StoredDraft
@@ -49,7 +50,7 @@ def content(**changes: object) -> MailContent:
         "has_attachment": False,
         "reason": "Due Friday",
         "summary": "Pay it",
-        "auth": AuthResults("pass", "pass", "fail"),
+        "verified_domain": "example.com",
     }
     return MailContent(**{**base, **changes})  # type: ignore[arg-type]
 
@@ -68,6 +69,7 @@ def outcome(
         alert=alert,
         note="",
         content=content(**changes),
+        causes=(AlertCause(CauseKind.URGENT),) if alert is not None else (),
     )
 
 
@@ -118,7 +120,45 @@ async def test_given_an_urgent_mail_when_completed_then_an_alert_with_its_conten
     assert pending.meta.has_attachment is True
     assert pending.judgement.reason == "Due Friday"
     assert pending.judgement.summary == "Pay it"
-    assert pending.auth == AuthResults("pass", "pass", "fail")
+    assert pending.basis == AlertBasis((AlertCause(CauseKind.URGENT),), verified_domain="example.com", by_rule=False)
+
+
+async def test_given_an_always_notify_alert_when_completed_then_its_causes_and_sender_check_are_delivered(
+    store: PgStore,
+) -> None:
+    causes = (AlertCause(CauseKind.URGENT), AlertCause(CauseKind.ALWAYS_NOTIFY, "Huis/Energie"))
+    result = replace(outcome(alert=AlertState.OPEN, verified_domain=None), causes=causes)
+
+    await add(store, "m1", result)
+
+    [pending] = await store.unsent()
+    assert pending.basis == AlertBasis(causes, verified_domain=None, by_rule=False)
+
+
+async def test_given_an_alert_written_before_causes_existed_when_read_then_it_counts_as_urgent(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    await add(store, "m1", outcome(alert=AlertState.OPEN))
+    async with engine.begin() as connection:
+        await connection.execute(text("update alert set causes = null, by_rule = false"))
+
+    [pending] = await store.unsent()
+
+    assert pending.basis.causes == (AlertCause(CauseKind.URGENT),)
+
+
+async def test_given_the_same_mail_completed_twice_when_it_is_urgent_and_ticked_then_exactly_one_alert_exists(
+    store: PgStore, engine: AsyncEngine
+) -> None:
+    causes = (AlertCause(CauseKind.URGENT), AlertCause(CauseKind.ALWAYS_NOTIFY, "Huis"))
+    result = replace(outcome(alert=AlertState.OPEN), causes=causes)
+    await add(store, "m1", result)
+
+    await store.complete("m1", result)  # a restart between the filing and the send completes it again
+
+    async with engine.connect() as connection:
+        assert (await connection.execute(text("select count(*) from alert"))).scalar_one() == 1
+    assert len(await store.unsent()) == 1
 
 
 async def test_given_a_mail_without_alert_when_completed_then_nothing_is_waiting_for_delivery(store: PgStore) -> None:

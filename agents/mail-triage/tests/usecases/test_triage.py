@@ -11,7 +11,6 @@ import pytest
 from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
-from app.core.alert_text import AuthResults
 from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
 from app.core.pinned import PinnedSenders
 from app.core.sender_rules import UrgencyVerdict
@@ -384,7 +383,7 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         text="body that must not be stored",
         has_attachment=True,
         headers={},
-        auth_results=("mx.google.com; spf=fail; dkim=pass; dmarc=pass",),
+        auth_results=("mx.google.com; spf=fail; dkim=pass; dmarc=pass",),  # no header.from: not vouched for
     )
     verdict = Judgement(topic_id=FINANCE_ID, urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
 
@@ -397,12 +396,13 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         has_attachment=True,
         reason="Due Friday",
         summary="Pay it",
-        auth=AuthResults(spf="fail", dkim="pass", dmarc="pass"),
+        verified_domain=None,  # no header.from: Gmail does not vouch for this sender
     )
     assert "body that must not be stored" not in str(store.outcomes["m1"])
 
 
 async def test_given_a_forged_lower_authentication_results_header_then_the_alert_content_ignores_it() -> None:
+    # Only the topmost header counts: the forged lower one cannot make the sender verified (ADR-0054).
     mailbox, store = FakeMailbox(["m1"]), FakeStore()
     mailbox.mails["m1"] = FetchedMail(
         message_id="m1",
@@ -413,13 +413,16 @@ async def test_given_a_forged_lower_authentication_results_header_then_the_alert
         text="body",
         has_attachment=False,
         headers={"Authentication-Results": "forged; spf=pass; dkim=pass; dmarc=pass"},
-        auth_results=("mx.google.com; spf=fail; dkim=fail; dmarc=fail", "forged; spf=pass; dkim=pass; dmarc=pass"),
+        auth_results=(
+            "mx.google.com; dmarc=fail header.from=example.com",
+            "mx.google.com; dmarc=pass header.from=example.com",
+        ),
     )
     verdict = Judgement(topic_id=FINANCE_ID, urgent=True, reason="r", summary="s", confidence=0.9)
 
     await pipeline(mailbox, FakeJudge(verdict), store).run_once()
 
-    assert store.outcomes["m1"].content.auth == AuthResults(spf="fail", dkim="fail", dmarc="fail")
+    assert store.outcomes["m1"].content.verified_domain is None
 
 
 async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_no_model_text() -> None:
