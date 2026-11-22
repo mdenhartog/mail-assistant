@@ -60,7 +60,9 @@ class MailItem(Base):
     has_attachment: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     auth_spf: Mapped[str | None] = mapped_column(String(16))
     auth_dkim: Mapped[str | None] = mapped_column(String(16))
-    auth_dmarc: Mapped[str | None] = mapped_column(String(16))
+    auth_dmarc: Mapped[str | None] = mapped_column(String(16))  # no longer written (the weaker parse); dropped later
+    # The From domain Gmail vouches for (``authenticated_from_domain``); ``None`` when it does not (ADR-0054).
+    verified_domain: Mapped[str | None] = mapped_column(String(255))
     # Filed by the one-time catch-up of old unread mail (INT-003), so its alerts can be counted.
     backlog: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Progress of the pipeline for this mail.
@@ -94,6 +96,10 @@ class Alert(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     # When a held alert may be delivered: the quiet end under the policy valid when it was held (INT-002).
     release_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why the alert exists (ADR-0057): ``urgent`` and ``always_notify:<category>``; ``None`` for an alert from before.
+    causes: Mapped[list[str] | None] = mapped_column(JSONB)
+    # A sender rule filed the mail, so the model never read it and the alert shows no summary.
+    by_rule: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
 
 class Draft(Base):

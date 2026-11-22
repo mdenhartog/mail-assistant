@@ -13,9 +13,11 @@ from typing import TYPE_CHECKING
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
+from app.core.alert_decision import decode_causes, encode_causes
 from app.core.alert_state import AlertState
-from app.core.alert_text import AuthResults, MailMeta
+from app.core.alert_text import AlertBasis, MailMeta
 from app.core.judgement import OTHER_ID, Judgement, JudgingList, ListedCategory
+from app.core.sender_rules import FilingSource
 from app.db import pg_categories, repos
 from app.db.models import Alert, CatchupState, Draft, MailItem, PollState
 from app.usecases.catchup import CatchUpState
@@ -54,8 +56,8 @@ def _pending(alert: Alert, item: MailItem) -> PendingAlert:
         reply_to=item.reply_to,
         has_attachment=item.has_attachment,
     )
-    auth = AuthResults(item.auth_spf, item.auth_dkim, item.auth_dmarc)
-    return PendingAlert(str(alert.id), AlertState(alert.state), meta, judgement, auth, alert.release_at)
+    basis = AlertBasis(decode_causes(alert.causes), item.verified_domain, alert.by_rule)
+    return PendingAlert(str(alert.id), AlertState(alert.state), meta, judgement, basis, alert.release_at)
 
 
 def _stored(draft: Draft) -> StoredDraft:
@@ -143,9 +145,7 @@ class PgStore:
             "reason": content.reason,
             "summary": content.summary,
             "has_attachment": content.has_attachment,
-            "auth_spf": content.auth.spf,
-            "auth_dkim": content.auth.dkim,
-            "auth_dmarc": content.auth.dmarc,
+            "verified_domain": content.verified_domain,
         }
         async with self._sessions.begin() as session:
             statement = update(MailItem).where(MailItem.gmail_message_id == message_id).values(**values)
@@ -159,6 +159,8 @@ class PgStore:
                         mail_item_id=item_id,
                         state=outcome.alert.value,
                         release_at=outcome.release_at,
+                        causes=encode_causes(outcome.causes),
+                        by_rule=outcome.filing is not None and outcome.filing.source is FilingSource.SENDER_RULE,
                         created_at=now,
                         updated_at=now,
                     )
