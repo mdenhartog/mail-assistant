@@ -74,7 +74,7 @@ Likelihood and impact are L, M or H.
 | LS-17 | Export | Information disclosure | The export leaks more than the list or is cached or rendered by the browser. | L | M | The export has exactly the upload fields; session-protected GET sent as an attachment with `nosniff` and `no-store`; the repository layer filters by mailbox id. | AC-37, AC-60 | V14, V4 |
 | LS-18 | "Sort everything again" | Spoofing / DoS | A cross-site request or script starts plans repeatedly, burning budget and flooding Review moves. | L | M | Session, CSRF and `Origin` check, a database function, one non-terminal plan per mailbox and kind, an hourly limit, and a numbers-only Telegram notice. | AC-46, AC-36 | V4, V7 |
 | LS-19 | Header parsing | Tampering | The `Authentication-Results` header is folded, duplicated, in a comment or an `arc=` result, in `X-Original-Authentication-Results` or in an attached `message/rfc822` part, so a parser reads "dmarc=pass" from the wrong place; Gmail adds no header at all and a forged one is read instead. | M | H | Strict parsing of the topmost header only, from `mx.google.com`; a missing, malformed, ambiguous or non-topmost result means "not authenticated"; table tests with forged, folded, duplicated and attached headers and with real anonymised Gmail headers. | AC-15 | V2 |
-| LS-20 | Alert as a channel | Spoofing / Tampering | A platform that delivers text written by anyone passes DMARC under its own domain (PayPal invoice requests, Google Docs shares, DocuSign, LinkedIn messages): with a rule and a tick the text reaches Telegram unread, framed under a trusted category name. | H | M | Multi-tenant domains are refused as domain entries (a full address stays allowed); a sender-rule alert says "content not checked by the model" and shows the verified domain, with no clickable or masked link; the user ticks a category knowingly. Residual: AR-1. | AC-14, AC-21 | V1, V2 |
+| LS-20 | Alert as a channel | Spoofing / Tampering | A platform that delivers text written by anyone passes DMARC under its own domain (PayPal invoice requests, Google Docs shares, DocuSign, LinkedIn messages): with a rule and a tick the text reaches Telegram unread, framed under a trusted category name. | H | M | Multi-tenant domains are refused as domain entries (a full address stays allowed); a sender-rule alert says "Category not chosen by the model; urgency read by the model" and shows the verified domain, with the reason inside a code span and no clickable or masked link (a reason that could become a link is refused); the user ticks a category knowingly. Residual: AR-1. | AC-14, AC-21 | V1, V2 |
 | LS-21 | Always notify | Spoofing | Before this feature an alert needed an "urgent" verdict; now an unauthenticated mail only has to persuade the model that it is an invoice to raise an alert under a trusted category name. | M | M | An alert for a mail filed by the model without an authenticated sender says "sender not verified" and shows the real address, never only the display name; the same for a missing or unparsable `From`. | AC-22 | V1, V2 |
 
 STRIDE coverage check: Spoofing (LS-1 to 3, 18, 20, 21), Tampering (LS-4 to 6, 7, 9, 11, 12, 19, 20), Repudiation (LS-16), Information disclosure (LS-6, 12, 17), Denial of service (LS-5, 13 to 15, 18), Elevation of privilege (LS-8, 10, 11). No STRIDE type is left unassessed.
@@ -83,7 +83,7 @@ STRIDE coverage check: Spoofing (LS-1 to 3, 18, 20, 21), Tampering (LS-4 to 6, 7
 
 | id | risk | why it is acceptable |
 | --- | --- | --- |
-| AR-1 | A legitimate sender that is compromised or abused, or a platform that relays text written by anyone, passes DMARC and is filed by its sender rule without the model choosing the category, and with a tick its text reaches Telegram. Likelihood is high for platform senders. | The user chose sender rules (D4, D11). The harm is limited to a wrong label and an alert that says "content not checked by the model" with no clickable link; the urgency-only call, the escaped text, the refused platform domains and the daily overview bound it. |
+| AR-1 | A legitimate sender that is compromised or abused, or a platform that relays text written by anyone, passes DMARC and is filed by its sender rule without the model choosing the category, and with a tick its text reaches Telegram. Likelihood is high for platform senders. | The user chose sender rules (D4, D11). The harm is limited to a wrong label and an alert that says "Category not chosen by the model; urgency read by the model" with no clickable link; the urgency-only call, the escaped text, the refused platform domains and the daily overview bound it. |
 | AR-2 | The model's confidence is its own report, not a calibrated probability; a mail can reach the threshold wrongly. | The user chose a threshold (D9). A delayed apply with Cancel, Move back for every item, the minimum threshold of 50 and the code-side rule bound the harm to a wrong label. |
 | AR-3 | Gmail's authentication verdict is trusted. | Gmail is already the trusted source of the mail itself (ADR-0018, A-1); there is no better source on our side. |
 
@@ -91,3 +91,25 @@ STRIDE coverage check: Spoofing (LS-1 to 3, 18, 20, 21), Tampering (LS-4 to 6, 7
 
 1. AR-1, AR-2 and AR-3 are accepted by the user as written (2026-11-21).
 2. ADRs to record in phase 3: sender rules and the authenticated sender; judging with topic, extra label and the urgency-only call; plan lifecycle as two plans, the confidence threshold and system approval; YAML upload as an input boundary; archive label name in the list (supersedes ADR-0052); always-notify alert; category contract v2. AR-1 to AR-3 are recorded as accepted risks.
+
+## Outcome of the R1 challenge (phase 6, 2026-11-22)
+
+The red-team, code-review and dependency-audit rounds ran on the R1 code. The dependency audit found nothing. The findings below were fixed in pull requests #194, #195 and #196, or are accepted or open as written.
+
+| id | finding | threat | decision |
+| --- | --- | --- | --- |
+| RED-001 | Sender domains were compared with Unicode case folding, so a look-alike domain could match an entry | LS-19, AC-13 | Fixed (#195): domains are compared as A-labels (punycode), with no Unicode case folding |
+| RED-002 | A model reason in the alert of a sender-rule mail could become a clickable link | LS-20, AC-21 | Fixed (#195): the reason is shown inside a code span and a reason that could become a link is refused; the alert wording is "Category not chosen by the model; urgency read by the model" |
+| RED-003 | A mail with several `From` headers was read as having a sender | LS-19, AC-13 | Fixed (#195): several `From` headers mean no sender, so the mail goes to the model |
+| RED-005 | The browser decoded the file again before sending it, which hid a byte order mark or an encoding problem from the checks of the api | LS-6, AC-32 | Fixed (#196): the web app sends the file bytes unchanged |
+| RED-006 | One session could store thousands of previews within the purge window | LS-5 | Fixed (#194): a session may store as many previews per hour as the hourly limit for list saves (429 with `Retry-After`) |
+| RED-007 | Parsing the YAML blocked the event loop of the api | LS-5 | Fixed (#194): the parse runs off the event loop |
+| RED-004 | `archiveLabel` in an uploaded file is validated and stored with the list, but has no effect before R2 | LS-8 | Accepted for R1: the template, the example and the user guide say so. Decision pending for the owner: keep it stored, or refuse the field until R2 |
+| RED-008 | A forged topmost `Authentication-Results` header for a mail that did not enter through Google's MX | LS-19, AR-3 | Accepted risk next to AR-3 (Gmail's verdict is trusted), unless a decision says otherwise |
+
+Residual items and follow-ups:
+
+- **Preview size.** `categories.upload_preview.content` has no database CHECK on its size. The api limits the file to 256 KiB, so the risk is low; a follow-up migration in `mail-triage` adds the constraint (the api cannot add DDL, ADR-0025).
+- **Downgrade of 0024.** The downgrade of revision 0024 is lossy by nature: it drops the kinds, ticks, senders, general instructions and previews that did not exist before, so a rollback after users saved the new fields loses them.
+- **Wording.** "Content not checked by the model" was replaced everywhere (see AR-1, LS-20, ADR-0054 and the plan of U-label-structure-10).
+- **Alert text in ticked categories.** The sentence "urgency read by the model" is fixed text; for a sender-rule mail in a ticked category no model call is made (C-10), so the sentence says more than happens there. To be corrected in a follow-up (reported in the review record).

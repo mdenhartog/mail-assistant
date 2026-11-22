@@ -19,7 +19,10 @@ All calls to outside systems go outward:
 - The only inbound traffic is browser to Traefik to web and api, on a private address.
 
 The agent and the api never call each other and never import each other. They meet only in PostgreSQL schemas:
-`settings` (ADR-0023, ADR-0025) and `web_auth.web_lock` plus `security_event` (ADR-0033, ADR-0039).
+`settings` (ADR-0023, ADR-0025), `web_auth.web_lock` plus `security_event` (ADR-0033, ADR-0039) and `categories`
+(ADR-0042, ADR-0043, ADR-0053). In `categories` the api writes the list, the upload previews and the sort-again
+request; the agent writes filings, plans and `sender_skip`, a count per list entry that it derives from its filings so
+that the api can show it without any right on mail data.
 
 ## Quality attributes
 
@@ -49,6 +52,7 @@ The agent and the api never call each other and never import each other. They me
 |---|---|---|---|
 | `public` schema | mail-triage only | Confidential | Mail metadata and summaries, encrypted Gmail refresh token. The api role has no grant here (ADR-0025). |
 | `settings` schema | mail-triage and api, through the shared contract | Confidential | Time zone and quiet hours show the user's routine. Channel and actor of a change come from `session_user` by trigger (ADR-0030). |
+| `categories` schema | api (list, upload previews, requests, decisions); mail-triage (filings, plans, `sender_skip`, alert causes) | Confidential | The list holds the user's own sender entries, which are third-party personal data. An upload preview holds the normalised file for 15 minutes and is removed an hour after it expires. `sender_skip` holds list entries and counts only, never a sender address or subject (migration 0027). Migrations 0023 to 0028 built it (ADR-0053, ADR-0058). |
 | `web_auth` schema | api; the agent writes `web_lock` and reads four columns of `security_event` | Confidential | Hashed codes, session ids, client hashes. |
 
 Trust boundaries: browser to Traefik, pods to PostgreSQL, the internet APIs (Gmail and OAuth, Anthropic, Telegram) and
@@ -143,6 +147,13 @@ PostgreSQL holds everything. The agent's Alembic chain is the only migrator.
 | [ADR-0028](../memory/decisions/ADR-0028-place-list.md) | The place list for time-zone lookup |
 | [ADR-0029](../memory/decisions/ADR-0029-secrets-sealed-secrets.md) | Cluster secrets with Sealed Secrets |
 | [ADR-0030](../memory/decisions/ADR-0030-runtime-role-hardening.md) | Runtime role hardening |
+| [ADR-0053](../memory/decisions/ADR-0053-category-contract-v2.md) | Category contract v2 |
+| [ADR-0054](../memory/decisions/ADR-0054-sender-rules-and-authenticated-sender.md) | Sender rules and the authenticated sender |
+| [ADR-0055](../memory/decisions/ADR-0055-judging-topic-extra-and-urgency-call.md) | Judging with topic, extra label and the urgency-only call |
+| [ADR-0056](../memory/decisions/ADR-0056-resort-on-request-threshold-and-two-plans.md) | Sort again on request, threshold and two plans (R2) |
+| [ADR-0057](../memory/decisions/ADR-0057-always-notify-alert.md) | The always-notify alert |
+| [ADR-0058](../memory/decisions/ADR-0058-yaml-upload-input-boundary.md) | YAML upload as an input boundary |
+| [ADR-0059](../memory/decisions/ADR-0059-archive-label-name-in-the-list.md) | Archive label name in the list (R2) |
 
 ## Components
 
@@ -162,7 +173,7 @@ Generated from `docs/architecture/model.json` by `node scripts/architecture.mjs 
 | assistant (unused scaffold) (`assistant`) | agent | Unused scaffold of a Strands chat agent on Bedrock AgentCore, kept as the start of the wanted chat with the agent; it conflicts with ADR-0017 and must be rebuilt for the Anthropic API when that feature is designed. | — | `tools`, `aws-bedrock` | `agents/assistant` |
 | chat-gateway (unused scaffold) (`chat-gateway`) | channel | Unused scaffold of a stateless Telegram and WhatsApp webhook relay to an agent, kept as the start of the wanted chat; it conflicts with ADR-0019 and ADR-0037 and must be re-decided when that feature is designed. | — | `assistant`, `telegram`, `whatsapp`, `aws-bedrock` | `channels/chat-gateway` |
 | tools (unused scaffold) (`tools`) | mcp-server | Unused scaffold of an MCP tool server, kept as the start of the wanted chat with the agent; no feature uses it yet. | — | — | `mcp-servers/tools` |
-| PostgreSQL (`postgres`) | datastore | The one relational database (ADR-0007), split in schemas with one login role per runtime and least-privilege grants (ADR-0025, ADR-0030). | public: mail-triage state, capped mail content (30 days, ADR-0020), encrypted Gmail refresh token, audit (confidential); settings: schedule (shared contract) and settings_change (append-only, trigger-written); time zone and quiet hours reveal the user's routine (confidential); web_auth: sessions, login requests with hashed codes, security events, web_lock (confidential); categories: list, versions, senders, list settings (general instructions, archive label name), upload previews (1 hour), the sort-again request, audit (api-writable); label map, filing records with the matched sender entry (1 year), plans of kind auto and review with confidence and tips, plan items with sender and subject for at most 14 days, rejections, apply audit (agent-owned); every table carries a mailbox id (ADR-0042, ADR-0043, ADR-0044, ADR-0053, ADR-0056, ADR-0058) | — | — |
+| PostgreSQL (`postgres`) | datastore | The one relational database (ADR-0007), split in schemas with one login role per runtime and least-privilege grants (ADR-0025, ADR-0030). | public: mail-triage state, capped mail content (30 days, ADR-0020), encrypted Gmail refresh token, audit (confidential); settings: schedule (shared contract) and settings_change (append-only, trigger-written); time zone and quiet hours reveal the user's routine (confidential); web_auth: sessions, login requests with hashed codes, security events, web_lock (confidential); categories: list, versions, senders, list settings (general instructions, archive label name), upload previews (valid 15 minutes, removed an hour after they expire), the sort-again request, audit including the kind, tick, senders and general instructions of each list (api-writable); label map, filing records with the topic, extra label, source and matched sender entry (1 year), sender_skip (per list entry, how often Gmail could not confirm the sender: derived from the filing records by the agent, read by the api, holds no sender address or subject, removed after 90 days without a skip), alert causes, plans of kind auto and review with confidence and tips, plan items with sender and subject for at most 14 days, rejections, apply audit (agent-owned); every table carries a mailbox id (ADR-0042, ADR-0043, ADR-0044, ADR-0053, ADR-0056, ADR-0058) | — | — |
 | Gmail API (`gmail`) | external | The user's mailbox: mail-triage lists, labels and (after confirmation) sends mail (ADR-0011). | — | — | — |
 | Google OAuth 2.0 (`google-oauth`) | external | One-time consent and token refresh for the Gmail scopes of mail-triage. | — | — | — |
 | Anthropic API (`anthropic`) | external | Judges each mail (topic, extra label, urgency, summary, confidence) with a JSON-schema result, answers the urgency-only question for sender-rule mail, and writes tips per category (ADR-0017, ADR-0055, ADR-0056; accepted risk in ADR-0018). | — | — | — |
