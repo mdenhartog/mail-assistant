@@ -77,6 +77,7 @@ export function CategoryFields({ row, rows, errors, onChange }: CategoryFieldsPr
         onChange={(sendersText) => {
           onChange({ sendersText });
         }}
+        skipped={row.skipped}
         value={row.sendersText}
       />
       <NotifyField
