@@ -8,11 +8,18 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_read import FetchedMail
-from app.core.judgement import OTHER_ID, Judgement, ListedCategory, NeedsAttention
+from app.core.judgement import (
+    OTHER_ID,
+    Judgement,
+    JudgementError,
+    ListedCategory,
+    NeedsAttention,
+    parse_judgement,
+)
 from app.core.pinned import PinnedSenders
 from app.core.resort_plan import PlanState
 from app.core.scope import ArchiveLabel
-from app.usecases.resort_build import PLAN_CAP, BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild
+from app.usecases.resort_build import BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild, ResortRequest
 from tests.fakes.budget_ledger import BudgetLedger
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_gmail import FakeGmail
@@ -49,6 +56,8 @@ class FakeBuildStore:
         self.rejections: dict[str, int] = {}  # message id -> list version
         self.estimates: dict[uuid.UUID, int] = {}
         self.not_looked_at: dict[uuid.UUID, int] = {}
+        self.requests: list[ResortRequest] = []
+        self.planned: set[uuid.UUID] = set()  # requests that have a plan
 
     def save_list(self, categories: Sequence[ListedCategory] = CATEGORIES) -> None:
         """The user saves a new list version now."""
@@ -69,13 +78,29 @@ class FakeBuildStore:
     async def latest_plan(self) -> PlanRecord | None:
         return self.plans[-1] if self.plans else None
 
-    async def seed_plan(self, list_version: int, cap: int) -> PlanRecord | None:
-        """Test only: the api creates plans, the agent port cannot."""
-        if any(p.state in (PlanState.BUILDING, PlanState.READY) for p in self.plans):
+    def add_request(self, threshold: int = 50) -> ResortRequest:
+        """The api writes a "Sort everything again" request."""
+        request = ResortRequest(uuid.uuid4(), threshold)
+        self.requests.append(request)
+        return request
+
+    async def open_request(self) -> ResortRequest | None:
+        """The latest request, when no plan was made for it yet."""
+        if not self.requests or self.requests[-1].request_id in self.planned:
             return None
-        plan = PlanRecord(uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap)
+        return self.requests[-1]
+
+    async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
+        """Insert the plan of a request; ``None`` when a plan is open already (the one-open-plan index)."""
+        if any(
+            p.state in (PlanState.BUILDING, PlanState.READY, PlanState.SCHEDULED, PlanState.APPLYING)
+            for p in self.plans
+        ):
+            return None
+        plan = PlanRecord(uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap, request.request_id)
         self.plans.append(plan)
         self.items[plan.plan_id] = []
+        self.planned.add(request.request_id)
         return plan
 
     def _set(self, plan_id: uuid.UUID, **changes: object) -> PlanRecord:
@@ -171,28 +196,43 @@ class GmailBuildMailbox:
 
 @dataclass
 class ScriptedJudge:
-    """Answers with ``answer`` (a category id) for every mail, or per subject; spends ``cost`` from the ledger."""
+    """Answers with ``answer`` (a topic id) for every mail, or per subject; spends ``cost`` from the ledger.
+
+    ``answers`` gives (topic, extra, confidence) per subject; ``raw`` gives a raw model answer per subject that goes
+    through the same validation as the real one.
+    """
 
     answer: str = FINANCE
     by_subject: dict[str, str] = field(default_factory=dict)
+    answers: dict[str, tuple[str, str | None, float]] = field(default_factory=dict)
+    raw: dict[str, dict[str, object]] = field(default_factory=dict)
     ledger: BudgetLedger | None = None
     cost: int = 2
     on_judge: Callable[[], None] | None = None
     verdict: NeedsAttention | None = None
     calls: int = 0
+    subjects: list[str] = field(default_factory=list)
 
     async def judge(
         self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
     ) -> Judgement | NeedsAttention:
         self.calls += 1
+        self.subjects.append(mail.subject)
         if self.ledger is not None:
             self.ledger.spend(self.cost)
         if self.on_judge is not None:
             self.on_judge()
         if self.verdict is not None:
             return self.verdict
-        category_id = self.by_subject.get(mail.subject, self.answer)
-        return Judgement(topic_id=category_id, urgent=False, reason="r", summary="s", confidence=0.9)
+        if mail.subject in self.raw:
+            try:
+                return parse_judgement(self.raw[mail.subject])
+            except JudgementError:
+                return NeedsAttention("invalid_output")
+        topic, extra, confidence = self.answers.get(
+            mail.subject, (self.by_subject.get(mail.subject, self.answer), None, 0.9)
+        )
+        return Judgement(topic_id=topic, extra_id=extra, urgent=False, reason="r", summary="s", confidence=confidence)
 
 
 class Rig:
@@ -221,9 +261,9 @@ class Rig:
             per_run=per_run,
         )
 
-    async def start_plan(self) -> None:
-        """A ``building`` plan for the current list, as a request will create it (U-label-structure-22)."""
-        await self.store.seed_plan(self.store.list.version, PLAN_CAP)
+    def request(self, threshold: int = 50) -> ResortRequest:
+        """The user presses "Sort everything again"; the next run starts the plan."""
+        return self.store.add_request(threshold)
 
     def remaining(self) -> int:
         """The budget view the use case reads: what the day still allows, the reserve included."""

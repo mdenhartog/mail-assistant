@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any
 
 from app.core.resort_plan import PlanState
 from app.db.pg_resort import PgBuildStore
-from app.usecases.resort_build import ItemDraft
+from app.usecases.resort_build import ItemDraft, ResortRequest
+from category_policy.kinds import Kind
 from tests.db.resort_support import MAILBOX, OTHER_ID, agent_sessions, seed_list
 
 if TYPE_CHECKING:
@@ -27,7 +28,15 @@ CAP = 50
 
 def _draft(message_id: str, new_category: str) -> ItemDraft:
     return ItemDraft(
-        message_id, "Sender", "sender@example.test", "A subject", uuid.UUID(OTHER_ID), uuid.UUID(new_category)
+        message_id,
+        "Sender",
+        "sender@example.test",
+        "A subject",
+        uuid.UUID(OTHER_ID),
+        None,
+        uuid.UUID(new_category),
+        None,
+        90,
     )
 
 
@@ -170,3 +179,113 @@ async def test_given_estimate_and_rejections_when_read_back_then_they_match_per_
     assert await store.rejected_ids(1) == frozenset({"r1"})
     assert await store.rejected_ids(2) == frozenset({"r2"})
     assert await PgBuildStore(agent_sessions, "other").latest_plan() is None  # another mailbox sees none of it
+
+
+async def _request(owner: asyncpg.Connection, threshold: int, mailbox: str = MAILBOX) -> ResortRequest:
+    request_id = uuid.uuid4()
+    await owner.execute(
+        "insert into categories.resort_request (mailbox_id, id, threshold) values ($1, $2, $3)",
+        mailbox,
+        request_id,
+        threshold,
+    )
+    return ResortRequest(request_id, threshold)
+
+
+async def test_given_the_list_has_kinds_senders_and_instructions_when_it_is_read_then_the_build_gets_them(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    finance, news = uuid.uuid4(), uuid.uuid4()
+    category = (
+        "insert into categories.category (mailbox_id, version, id, name, description, position, kind, notify) "
+        "values ($1, 1, $2, $3, 'about it', $4, $5, $6)"
+    )
+    async with cat_owner.transaction():
+        await cat_owner.execute("insert into categories.list_version (mailbox_id, version) values ($1, 1)", MAILBOX)
+        for identity in (finance, news):
+            await cat_owner.execute(
+                "insert into categories.category_identity (mailbox_id, id) values ($1, $2)", MAILBOX, identity
+            )
+        await cat_owner.execute(category, MAILBOX, finance, "Finance", 0, "topic", False)
+        await cat_owner.execute(category, MAILBOX, news, "Newsletter", 1, "extra", True)
+        await cat_owner.execute(
+            "insert into categories.category_sender (mailbox_id, version, category_id, entry, is_domain, subdomains) "
+            "values ($1, 1, $2, 'bank.example.test', true, true)",
+            MAILBOX,
+            finance,
+        )
+        await cat_owner.execute(
+            "insert into categories.list_settings (mailbox_id, version, general_instructions, archive_label) "
+            "values ($1, 1, 'test-rules', 'Archive')",
+            MAILBOX,
+        )
+
+    current = await PgBuildStore(agent_sessions, MAILBOX).current_list()
+
+    first, newsletter = current.categories
+    assert (first.kind, newsletter.kind, newsletter.notify) == (Kind.TOPIC, Kind.EXTRA, True)
+    assert [(s.text, s.subdomains) for s in first.senders] == [("bank.example.test", True)]
+    assert current.general_instructions == "test-rules"
+
+
+async def test_given_requests_when_the_newest_has_no_plan_then_it_is_open_and_an_older_one_never_is(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    store = PgBuildStore(agent_sessions, MAILBOX)
+    assert await store.open_request() is None
+    await _request(cat_owner, 60)
+    newest = await _request(cat_owner, 90)
+    await cat_owner.execute("insert into categories.mailbox (id) values ('other') on conflict do nothing")
+    await _request(cat_owner, 70, "other")
+
+    assert await store.open_request() == newest
+
+    await seed_list(cat_owner, ["Finance"])
+    plan = await store.start_plan(newest, 1, CAP)
+    assert plan is not None
+    assert await store.open_request() is None  # the older request stays unbuilt
+    assert await PgBuildStore(agent_sessions, "other").open_request() is not None
+
+
+async def test_given_a_request_when_the_agent_starts_the_plan_then_the_threshold_is_copied_and_it_is_building(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    store = PgBuildStore(agent_sessions, MAILBOX)
+    await seed_list(cat_owner, ["Finance"])
+    request = await _request(cat_owner, 85)
+
+    plan = await store.start_plan(request, 1, CAP)
+
+    assert plan is not None
+    assert (plan.state, plan.cap, plan.list_version, plan.request_id) == (
+        PlanState.BUILDING,
+        CAP,
+        1,
+        request.request_id,
+    )
+    row = await cat_owner.fetchrow("select kind, threshold, request_id from categories.plan")
+    assert row is not None
+    assert (row["kind"], row["threshold"], row["request_id"]) == ("review", 85, request.request_id)
+    assert await store.start_plan(request, 1, CAP) is None  # an open plan of the mailbox: nothing more is made
+    assert await cat_owner.fetchval("select count(*) from categories.plan") == 1
+
+
+async def test_given_an_item_with_a_pair_when_progress_is_written_then_the_pair_and_confidence_are_stored(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    store = PgBuildStore(agent_sessions, MAILBOX)
+    plan_id, category = await _building_plan(store, cat_owner)
+    extra = uuid.uuid4()
+    draft = ItemDraft("m1", "S", "s@example.test", "x", uuid.UUID(OTHER_ID), None, uuid.UUID(category), extra, 73)
+
+    assert await store.record_progress(plan_id, item=draft, cursor="c1", checked=1, unclear=0)
+
+    row = await cat_owner.fetchrow(
+        "select old_category_id, new_category_id, old_topic_id, old_extra_id, new_topic_id, new_extra_id, "
+        "confidence_pct, decision_source from categories.plan_item"
+    )
+    assert row is not None
+    assert (row["old_category_id"], row["new_category_id"]) == (uuid.UUID(OTHER_ID), uuid.UUID(category))
+    assert (row["old_topic_id"], row["old_extra_id"]) == (uuid.UUID(OTHER_ID), None)
+    assert (row["new_topic_id"], row["new_extra_id"], row["confidence_pct"]) == (uuid.UUID(category), extra, 73)
+    assert row["decision_source"] == "user"
