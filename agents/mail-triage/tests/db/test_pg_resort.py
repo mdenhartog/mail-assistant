@@ -11,7 +11,7 @@ import asyncio
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from app.core.resort_plan import PlanState
+from app.core.resort_plan import PlanKind, PlanState
 from app.db.pg_resort import PgBuildStore
 from app.usecases.resort_build import ItemDraft, ResortRequest
 from category_policy.kinds import Kind
@@ -75,9 +75,11 @@ async def test_given_a_building_plan_when_progress_is_written_then_item_counts_a
     store = PgBuildStore(agent_sessions, MAILBOX)
     plan_id, category = await _building_plan(store, cat_owner)
 
-    assert await store.record_progress(plan_id, item=_draft("m1", category), cursor="c1", checked=1, unclear=0)
-    assert await store.record_progress(plan_id, item=None, cursor="c2", checked=0, unclear=1)
-    assert await store.record_progress(plan_id, item=None, cursor="c3", checked=1, unclear=0)
+    assert await store.record_progress(
+        plan_id, item=_draft("m1", category), kind=PlanKind.REVIEW, cursor="c1", checked=1, unclear=0
+    )
+    assert await store.record_progress(plan_id, item=None, kind=PlanKind.REVIEW, cursor="c2", checked=0, unclear=1)
+    assert await store.record_progress(plan_id, item=None, kind=PlanKind.REVIEW, cursor="c3", checked=1, unclear=0)
 
     plan = await store.latest_plan()
     assert plan is not None
@@ -105,8 +107,12 @@ async def test_given_the_same_mail_listed_twice_when_progress_is_written_then_on
     store = PgBuildStore(agent_sessions, MAILBOX)
     plan_id, category = await _building_plan(store, cat_owner)
 
-    assert await store.record_progress(plan_id, item=_draft("m1", category), cursor="c1", checked=1, unclear=0)
-    assert await store.record_progress(plan_id, item=_draft("m1", category), cursor="c2", checked=1, unclear=0)
+    assert await store.record_progress(
+        plan_id, item=_draft("m1", category), kind=PlanKind.REVIEW, cursor="c1", checked=1, unclear=0
+    )
+    assert await store.record_progress(
+        plan_id, item=_draft("m1", category), kind=PlanKind.REVIEW, cursor="c2", checked=1, unclear=0
+    )
 
     assert await cat_owner.fetchval("select count(*) from categories.plan_item") == 1
 
@@ -116,12 +122,16 @@ async def test_given_a_replaced_plan_when_progress_is_written_then_it_is_refused
 ) -> None:
     store = PgBuildStore(agent_sessions, MAILBOX)
     plan_id, category = await _building_plan(store, cat_owner)
-    assert await store.record_progress(plan_id, item=_draft("m1", category), cursor="c1", checked=1, unclear=0)
+    assert await store.record_progress(
+        plan_id, item=_draft("m1", category), kind=PlanKind.REVIEW, cursor="c1", checked=1, unclear=0
+    )
 
     assert await store.replace_plan(plan_id)
 
     assert await cat_owner.fetchval("select count(*) from categories.plan_item") == 0  # the items went with the plan
-    assert not await store.record_progress(plan_id, item=_draft("m2", category), cursor="c2", checked=1, unclear=0)
+    assert not await store.record_progress(
+        plan_id, item=_draft("m2", category), kind=PlanKind.REVIEW, cursor="c2", checked=1, unclear=0
+    )
     assert await cat_owner.fetchval("select count(*) from categories.plan_item") == 0
     assert not await store.replace_plan(plan_id)  # a second replace changes nothing
     assert (await store.latest_plan()) is not None
@@ -133,7 +143,9 @@ async def test_given_two_agent_processes_when_both_complete_the_same_plan_then_e
 ) -> None:
     first, second = PgBuildStore(agent_sessions, MAILBOX), PgBuildStore(agent_sessions, MAILBOX)
     plan_id, category = await _building_plan(first, cat_owner)
-    await first.record_progress(plan_id, item=_draft("m1", category), cursor="c1", checked=1, unclear=0)
+    await first.record_progress(
+        plan_id, item=_draft("m1", category), kind=PlanKind.REVIEW, cursor="c1", checked=1, unclear=0
+    )
 
     results = await asyncio.gather(
         first.complete_build(plan_id, not_looked_at=7), second.complete_build(plan_id, not_looked_at=9)
@@ -142,7 +154,9 @@ async def test_given_two_agent_processes_when_both_complete_the_same_plan_then_e
     assert sorted(results) == [False, True]
     assert await cat_owner.fetchval("select state from categories.plan") == "ready"
     assert await cat_owner.fetchval("select not_looked_at from categories.plan") in {7, 9}
-    assert not await first.record_progress(plan_id, item=None, cursor="c9", checked=1, unclear=0)  # no more progress
+    assert not await first.record_progress(
+        plan_id, item=None, kind=PlanKind.REVIEW, cursor="c9", checked=1, unclear=0
+    )  # no more progress
 
 
 async def test_given_a_replace_and_a_complete_at_once_then_exactly_one_wins_and_a_replaced_plan_keeps_no_item(
@@ -150,7 +164,9 @@ async def test_given_a_replace_and_a_complete_at_once_then_exactly_one_wins_and_
 ) -> None:
     first, second = PgBuildStore(agent_sessions, MAILBOX), PgBuildStore(agent_sessions, MAILBOX)
     plan_id, category = await _building_plan(first, cat_owner)
-    await first.record_progress(plan_id, item=_draft("m1", category), cursor="c1", checked=1, unclear=0)
+    await first.record_progress(
+        plan_id, item=_draft("m1", category), kind=PlanKind.REVIEW, cursor="c1", checked=1, unclear=0
+    )
 
     completed, replaced = await asyncio.gather(
         first.complete_build(plan_id, not_looked_at=0), second.replace_plan(plan_id)
@@ -263,11 +279,13 @@ async def test_given_a_request_when_the_agent_starts_the_plan_then_the_threshold
         1,
         request.request_id,
     )
-    row = await cat_owner.fetchrow("select kind, threshold, request_id from categories.plan")
-    assert row is not None
-    assert (row["kind"], row["threshold"], row["request_id"]) == ("review", 85, request.request_id)
+    rows = await cat_owner.fetch("select kind, threshold, request_id from categories.plan")
+    assert {(r["kind"], r["threshold"], r["request_id"]) for r in rows} == {
+        ("review", 85, request.request_id),
+        ("auto", 85, request.request_id),
+    }
     assert await store.start_plan(request, 1, CAP) is None  # an open plan of the mailbox: nothing more is made
-    assert await cat_owner.fetchval("select count(*) from categories.plan") == 1
+    assert await cat_owner.fetchval("select count(*) from categories.plan") == 2
 
 
 async def test_given_an_item_with_a_pair_when_progress_is_written_then_the_pair_and_confidence_are_stored(
@@ -278,7 +296,7 @@ async def test_given_an_item_with_a_pair_when_progress_is_written_then_the_pair_
     extra = uuid.uuid4()
     draft = ItemDraft("m1", "S", "s@example.test", "x", uuid.UUID(OTHER_ID), None, uuid.UUID(category), extra, 73)
 
-    assert await store.record_progress(plan_id, item=draft, cursor="c1", checked=1, unclear=0)
+    assert await store.record_progress(plan_id, item=draft, kind=PlanKind.REVIEW, cursor="c1", checked=1, unclear=0)
 
     row = await cat_owner.fetchrow(
         "select old_category_id, new_category_id, old_topic_id, old_extra_id, new_topic_id, new_extra_id, "

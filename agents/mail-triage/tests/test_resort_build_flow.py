@@ -89,7 +89,7 @@ async def test_a_deleted_category_makes_its_mails_items_and_its_label_stays() ->
 
 async def test_rejected_mail_stays_out_until_the_list_changes_again() -> None:
     rig = Rig()
-    rig.request()
+    rig.request(100)  # everything waits for review: no auto plan stays open and blocks the next request
     kept = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="kept")
     other = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="other")
     rig.judge.answer = TRAVEL
@@ -100,7 +100,7 @@ async def test_rejected_mail_stays_out_until_the_list_changes_again() -> None:
 
     rig.store.save_list()  # the list changes again: the rejection no longer holds
     await rig.build.run_once()  # replaces the ready plan
-    rig.request()  # a request builds the next one
+    rig.request(100)  # a request builds the next one
     await rig.build.run_once()
     assert {i.message_id for i in rig.store.items_of(rig.store.plan())} == {kept, other}
 
@@ -117,11 +117,13 @@ async def test_the_plan_notice_holds_numbers_only() -> None:
 
     (text,) = rig.telegram.texts
     assert re.fullmatch(
-        r"Plan ready: \d+ mails checked, \d+ to move, \d+ unclear, \d+ not looked at\. "
-        r"Review it in the web app\.",
+        r"Sort again is ready: \d+ mails checked\. \d+ move on their own after the wait "
+        r"\(you can cancel before then\), \d+ wait for your review in the web app\. "
+        r"\d+ unclear, \d+ not looked at\.",
         text,
     )
-    assert "2 mails checked, 2 to move, 0 unclear, 0 not looked at" in text
+    assert "2 mails checked. 2 move on their own" in text
+    assert "0 wait for your review" in text
     assert len(rig.telegram.texts) == 1
     await rig.build.run_once()  # nothing new: no second notice
     assert len(rig.telegram.texts) == 1

@@ -17,7 +17,7 @@ from app.core.judgement import (
     parse_judgement,
 )
 from app.core.pinned import PinnedSenders
-from app.core.resort_plan import PlanState
+from app.core.resort_plan import PlanKind, PlanState
 from app.core.scope import ArchiveLabel
 from app.usecases.resort_build import BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild, ResortRequest
 from tests.fakes.budget_ledger import BudgetLedger
@@ -58,6 +58,9 @@ class FakeBuildStore:
         self.not_looked_at: dict[uuid.UUID, int] = {}
         self.requests: list[ResortRequest] = []
         self.planned: set[uuid.UUID] = set()  # requests that have a plan
+        # The auto plan of each request, by the id of its review plan (``plans`` holds the review plans).
+        self.auto_state: dict[uuid.UUID, PlanState] = {}
+        self.auto: dict[uuid.UUID, list[ItemDraft]] = {}
 
     def save_list(self, categories: Sequence[ListedCategory] = CATEGORIES) -> None:
         """The user saves a new list version now."""
@@ -70,6 +73,13 @@ class FakeBuildStore:
         return self.plans[index]
 
     def items_of(self, plan: PlanRecord) -> list[ItemDraft]:
+        """Every item the build wrote for the request of ``plan``, in both plans."""
+        return [*self.auto.get(plan.plan_id, []), *self.items.get(plan.plan_id, [])]
+
+    def auto_items_of(self, plan: PlanRecord) -> list[ItemDraft]:
+        return self.auto.get(plan.plan_id, [])
+
+    def review_items_of(self, plan: PlanRecord) -> list[ItemDraft]:
         return self.items.get(plan.plan_id, [])
 
     async def current_list(self) -> BuildList:
@@ -92,14 +102,16 @@ class FakeBuildStore:
 
     async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
         """Insert the plan of a request; ``None`` when a plan is open already (the one-open-plan index)."""
-        if any(
-            p.state in (PlanState.BUILDING, PlanState.READY, PlanState.SCHEDULED, PlanState.APPLYING)
-            for p in self.plans
-        ):
+        open_states = (PlanState.BUILDING, PlanState.READY, PlanState.SCHEDULED, PlanState.APPLYING)
+        if any(p.state in open_states for p in self.plans) or any(s in open_states for s in self.auto_state.values()):
             return None
-        plan = PlanRecord(uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap, request.request_id)
+        plan = PlanRecord(
+            uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap, request.request_id, request.threshold
+        )
         self.plans.append(plan)
         self.items[plan.plan_id] = []
+        self.auto[plan.plan_id] = []
+        self.auto_state[plan.plan_id] = PlanState.BUILDING
         self.planned.add(request.request_id)
         return plan
 
@@ -114,6 +126,9 @@ class FakeBuildStore:
             return False
         self._set(plan_id, state=PlanState.REPLACED)
         self.items[plan_id] = []
+        if self.auto_state.get(plan_id) is PlanState.BUILDING:
+            self.auto_state[plan_id] = PlanState.REPLACED
+            self.auto[plan_id] = []
         return True
 
     async def record_estimate(self, plan_id: uuid.UUID, estimate: int) -> None:
@@ -125,25 +140,30 @@ class FakeBuildStore:
             return False
         self._set(plan_id, state=PlanState.READY)
         self.not_looked_at[plan_id] = not_looked_at
+        if self.auto_state.get(plan_id) is PlanState.BUILDING:  # the database approves the auto plan in this step
+            self.auto_state[plan_id] = PlanState.SCHEDULED if self.auto[plan_id] else PlanState.REPLACED
         return True
 
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
         return frozenset(m for m, v in self.rejections.items() if v == list_version)
 
-    async def record_progress(
-        self, plan_id: uuid.UUID, *, item: ItemDraft | None, cursor: str, checked: int, unclear: int
+    async def record_progress(  # noqa: PLR0913
+        self, plan_id: uuid.UUID, *, item: ItemDraft | None, kind: PlanKind, cursor: str, checked: int, unclear: int
     ) -> bool:
         plan = next(p for p in self.plans if p.plan_id == plan_id)
         if plan.state is not PlanState.BUILDING:
             return False
+        review = item is not None and kind is PlanKind.REVIEW
+        auto = item is not None and kind is PlanKind.AUTO
         if item is not None:
-            self.items[plan_id].append(item)
+            (self.items if review else self.auto)[plan_id].append(item)
         self._set(
             plan_id,
             cursor=cursor,
             checked=plan.checked + checked,
             unclear=plan.unclear + unclear,
-            items=plan.items + (item is not None),
+            items=plan.items + review,
+            auto_items=plan.auto_items + auto,
         )
         return True
 

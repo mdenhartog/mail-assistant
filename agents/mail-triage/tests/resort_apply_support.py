@@ -35,6 +35,8 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
 
 ARCHIVE = ArchiveLabel("Archive")
+NEWSLETTER = "00000000-0000-0000-0000-0000000000e1"  # an extra-label category of the apply tests
+RECEIPT = "00000000-0000-0000-0000-0000000000e2"
 
 
 LEASE = timedelta(minutes=5)
@@ -66,6 +68,8 @@ class FakeApplyStore:
     def __init__(self, clock: FakeClock) -> None:
         self._clock = clock
         self.categories: dict[str, str] = {c.category_id: c.name for c in CATEGORIES}
+        self.categories |= {NEWSLETTER: "Newsletter", RECEIPT: "Receipt"}
+        self.extras: frozenset[str] = frozenset({"Assistant/Newsletter", "Assistant/Receipt"})
         self.plans: dict[uuid.UUID, PlanRow] = {}
         self.intents: dict[tuple[uuid.UUID, str], AuditMove] = {}
         self.restores: list[tuple[uuid.UUID, AuditMove, str]] = []
@@ -123,6 +127,16 @@ class FakeApplyStore:
 
     async def current_categories(self) -> dict[str, str]:
         return dict(self.categories)
+
+    async def extra_label_names(self) -> frozenset[str]:
+        return self.extras
+
+    async def target_ids(self, plan_id: uuid.UUID) -> frozenset[str]:
+        found: set[str] = set()
+        for row in self.plans[plan_id].items:
+            if row.state is ItemState.APPROVED:
+                found |= {str(row.item.new_topic_id), *([str(row.item.new_extra_id)] if row.item.new_extra_id else [])}
+        return frozenset(found)
 
     async def next_items(self, plan_id: uuid.UUID, limit: int) -> list[ApplyItem]:
         rows = [r.item for r in self.plans[plan_id].items if r.state is ItemState.APPROVED]
@@ -292,6 +306,8 @@ class ApplyRig:
         self.gmail = FakeGmail()
         self.finance = self.gmail.add_label("Assistant/Finance")
         self.travel = self.gmail.add_label("Assistant/Travel")
+        self.newsletter = self.gmail.add_label("Assistant/Newsletter")
+        self.receipt = self.gmail.add_label("Assistant/Receipt")
         self.mailbox = GmailApplyMailbox(self.gmail)
         self.store = FakeApplyStore(self.clock)
         self.lock = FakeLock()
@@ -332,8 +348,15 @@ class ApplyRig:
         return self.gmail.calls.count("messages.modify")
 
 
-def item(mid: str, old: str, new: str) -> ApplyItem:
-    return ApplyItem(mid, uuid.UUID(old), uuid.UUID(new))
+def item(mid: str, old: str, new: str, old_extra: str | None = None, new_extra: str | None = None) -> ApplyItem:
+    """A move of the pair (``old``, ``old_extra``) to (``new``, ``new_extra``)."""
+    return ApplyItem(
+        mid,
+        uuid.UUID(old),
+        uuid.UUID(new),
+        None if old_extra is None else uuid.UUID(old_extra),
+        None if new_extra is None else uuid.UUID(new_extra),
+    )
 
 
-__all__ = ["FINANCE", "GOOGLE_AUTH", "OTHER_ID", "TRAVEL", "UTC", "ApplyRig", "item"]
+__all__ = ["FINANCE", "GOOGLE_AUTH", "NEWSLETTER", "OTHER_ID", "RECEIPT", "TRAVEL", "UTC", "ApplyRig", "item"]

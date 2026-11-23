@@ -79,7 +79,7 @@ async def test_a_newer_list_cancels_the_build_without_half_written_items() -> No
     rig.judge.answer = TRAVEL
     await rig.build.run_once()  # two mails judged, then the budget is gone
     assert rig.store.plan().state is PlanState.BUILDING
-    assert rig.store.plan().items == 2
+    assert rig.store.plan().auto_items == 2  # the default threshold of 50 sends them to the auto plan
     old = rig.store.plan()
 
     rig.store.save_list()
