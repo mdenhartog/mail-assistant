@@ -521,3 +521,102 @@ async def test_given_the_database_refuses_the_write_when_confirmed_then_500_with
     assert response.status_code == 500
     assert [c for c in CANARIES if c in response.text or c in caplog.text] == []
     assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+# U-label-structure-19: the archive label in the file (criteria 2 and 3, and the RED-004 finding of R1)
+ARCHIVE_FILE = FILE.replace("categories:", "archiveLabel: Bewaard\ncategories:")
+
+
+async def test_given_a_file_with_a_new_archive_label_when_uploaded_then_the_preview_reports_it_and_confirm_stores_it(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills and receipts"), ("Travel", "Trips")], instructions="Be brief")
+    client = await sign_in(api)
+
+    preview = await preview_of(client, ARCHIVE_FILE)
+    assert preview["archiveLabelChanged"] is True
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1  # a preview stores no list
+
+    response = await client.confirm(preview)
+
+    assert response.status_code == 200
+    assert response.json()["archiveLabel"] == "Bewaard"
+    assert await owner.fetchval("select archive_label from categories.list_settings where version = 2") == "Bewaard"
+
+
+@pytest.mark.parametrize("stored_name", ["Bewaard", "Assistant/Archive"])
+async def test_given_a_file_without_an_archive_label_when_uploaded_then_the_stored_name_is_kept(
+    api: Api,
+    owner: asyncpg.Connection,
+    stored_name: str,
+) -> None:
+    await seed(
+        owner,
+        [("Invoices", "Bills and receipts"), ("Travel", "Trips")],
+        instructions="Be brief",
+        details={1: {"senders": [("airline.example.nl", True, False)]}},
+        archive_label=stored_name,
+    )
+    client = await sign_in(api)
+
+    preview = await preview_of(client)
+
+    assert preview["archiveLabelChanged"] is False
+    confirmed = await client.confirm(preview)
+    assert confirmed.json()["archiveLabel"] == stored_name
+    assert confirmed.json()["version"] == 1  # nothing else differs: no new version, so no rename
+
+
+async def test_given_a_file_without_an_archive_label_and_other_changes_when_confirmed_then_the_stored_name_is_kept(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], archive_label="Bewaard")
+    client = await sign_in(api)
+
+    confirmed = await client.confirm(await preview_of(client))
+
+    assert (confirmed.json()["version"], confirmed.json()["archiveLabel"]) == (2, "Bewaard")
+    assert await owner.fetchval("select archive_label from categories.list_settings where version = 2") == "Bewaard"
+
+
+async def test_given_the_same_archive_label_when_uploaded_then_it_is_not_reported_as_changed(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], archive_label="Bewaard")
+    client = await sign_in(api)
+
+    preview = await preview_of(client, ARCHIVE_FILE)
+
+    assert preview["archiveLabelChanged"] is False
+
+
+@pytest.mark.parametrize("name", ["INBOX", "Assistant/Invoices", "Assistant/Other", "Assistant/Invoices/Old"])
+async def test_given_a_file_with_an_invalid_archive_label_when_uploaded_then_422_on_the_field_and_nothing_is_stored(
+    api: Api,
+    owner: asyncpg.Connection,
+    name: str,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    client = await sign_in(api)
+
+    response = await client.upload(ARCHIVE_FILE.replace("Bewaard", name))
+
+    assert response.status_code == 422
+    assert [p["field"] for p in response.json()["problems"]] == ["archiveLabel"]
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_a_restore_when_the_previous_version_had_another_archive_label_then_it_comes_back(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills and receipts"), ("Travel", "Trips")], archive_label="Eerder")
+    client = await sign_in(api)
+    assert (await client.confirm(await preview_of(client, ARCHIVE_FILE))).json()["version"] == 2
+
+    restored = (await client.restore(2)).json()
+
+    assert (restored["version"], restored["archiveLabel"]) == (3, "Eerder")

@@ -149,3 +149,17 @@ async def test_given_an_export_then_it_has_only_the_upload_fields_and_no_id_or_o
     assert not isinstance(parsed, FileProblems)
     assert [c.name for c in parsed.categories] == ["Invoices"]
     assert parsed.categories[0].notify is True
+
+
+# U-label-structure-19, criterion 3
+async def test_given_a_custom_archive_label_when_exported_and_uploaded_then_it_is_in_the_file_and_unchanged(
+    api: Api, owner: asyncpg.Connection
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], archive_label="Bewaard")
+    client = await sign_in(api)
+
+    exported = await get(client, EXPORT)
+    preview = await client.upload(exported.text)
+
+    assert "archiveLabel: Bewaard" in exported.text
+    assert preview.json()["archiveLabelChanged"] is False
