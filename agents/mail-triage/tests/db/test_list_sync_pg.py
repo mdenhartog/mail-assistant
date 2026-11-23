@@ -108,13 +108,13 @@ async def test_given_a_first_start_when_the_sync_runs_on_postgres_then_the_list_
     gmail.add_label("Assistant/Bills")
     gmail.add_mail(labels=(gmail.label_id("Assistant/Bills"),))
 
-    ref = ArchiveLabel("Archive")
+    ref = ArchiveLabel("Assistant/Archive")  # the default name: the list has no settings row yet
     result = await ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref).run()
 
     assert (result.version, result.seeded, await store.cursor()) == (1, True, 1)
-    assert gmail.label_names().count("Archive") == 1
+    assert gmail.label_names().count("Assistant/Archive") == 1
     names = {r["name"] for r in await cat_api.fetch("select name from categories.gmail_label")}
-    assert names == {"Assistant/Bills", "Assistant/Other"}
+    assert names == {"Assistant/Bills", "Assistant/Other", "Assistant/Archive"}
     assert isinstance(next(iter(await store.stored_labels())), uuid.UUID)
 
 
@@ -129,14 +129,20 @@ async def test_given_list_settings_and_a_cursor_when_the_archive_names_are_read_
     await store.seed(("Bills",))
     assert await store.archive_names() == ArchiveNames("Assistant/Archive", None)  # no settings row, no cursor
 
-    await cat_owner.execute(
-        "insert into categories.list_settings (mailbox_id, version, archive_label) values ($1, 1, 'Bewaard')", MAILBOX
-    )
-    await store.advance_cursor(1)
-    await cat_owner.execute("insert into categories.list_version (mailbox_id, version) values ($1, 2)", MAILBOX)
-    await cat_owner.execute(
-        "insert into categories.list_settings (mailbox_id, version, archive_label) values ($1, 2, 'Mail/Done')", MAILBOX
-    )
+    # a settings row may only join a list version made in the same transaction
+    for version, name in ((2, "Bewaard"), (3, "Mail/Done")):
+        async with cat_owner.transaction():
+            await cat_owner.execute(
+                "insert into categories.list_version (mailbox_id, version) values ($1, $2)", MAILBOX, version
+            )
+            await cat_owner.execute(
+                "insert into categories.list_settings (mailbox_id, version, archive_label) values ($1, $2, $3)",
+                MAILBOX,
+                version,
+                name,
+            )
+        if version == 2:
+            await store.advance_cursor(2)
 
     assert await store.archive_names() == ArchiveNames(wanted="Mail/Done", applied="Bewaard")
 
