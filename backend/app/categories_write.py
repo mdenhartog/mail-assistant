@@ -25,6 +25,7 @@ from category_policy import (
     label_for,
     normalise_name,
     parse_entry,
+    validate_archive_label,
     validate_entries,
     validate_instructions,
     validate_list,
@@ -108,6 +109,7 @@ def to_response(stored: StoredList) -> CategoryList:
             for category in stored.categories
         ],
         general_instructions=stored.general_instructions,
+        archive_label=stored.archive_label,
         other=OtherItem(mail_count=stored.counts.get(OTHER_ID, 0)),
         older_categories=[OlderCategory(label_name=label, mail_count=None) for label in older_labels(stored)],
     )
@@ -134,12 +136,15 @@ def _sender_problems(items: list[CategoryInput]) -> list[CategoryProblem]:
     ]
 
 
-def problems_of(items: list[CategoryInput], instructions: str, stored: StoredList) -> list[CategoryProblem]:
+def problems_of(
+    items: list[CategoryInput], instructions: str, archive_label: str, stored: StoredList
+) -> list[CategoryProblem]:
     """Check a whole list against the shared rules and the ids of the stored list.
 
     Args:
         items: The categories as sent.
         instructions: The general instructions as sent.
+        archive_label: The archive label name as sent (ADR-0059).
         stored: The stored list: the known ids and the Gmail labels. A name whose label is an older category adopts it;
             a kept category's own label is no clash.
 
@@ -164,6 +169,12 @@ def problems_of(items: list[CategoryInput], instructions: str, stored: StoredLis
         ]
     ]
     found.extend(_sender_problems(items))
+    found.extend(
+        CategoryProblem(rule=problem.rule, field="archive_label", index=None, position=None, other_index=None)
+        for problem in validate_archive_label(
+            archive_label, [Category(item.name, item.description, item.kind) for item in items]
+        )
+    )
     known = {category.id for category in stored.categories}
     seen: set[uuid.UUID] = set()
     for index, item in enumerate(items):
@@ -228,15 +239,20 @@ def canonical_instructions(raw: str) -> str:
     return raw.strip()
 
 
-def is_unchanged(rows: list[StoredCategory], instructions: str, stored: StoredList) -> bool:
-    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order and instructions.
+def is_unchanged(rows: list[StoredCategory], instructions: str, archive_label: str, stored: StoredList) -> bool:
+    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order, instructions, archive.
 
     Args:
         rows: The rows built from the request.
         instructions: The general instructions in their stored form.
+        archive_label: The archive label name.
         stored: The stored list.
 
     Returns:
         True when saving would add nothing.
     """
-    return tuple(rows) == stored.categories and instructions == stored.general_instructions
+    return (
+        tuple(rows) == stored.categories
+        and instructions == stored.general_instructions
+        and archive_label == stored.archive_label
+    )

@@ -219,6 +219,10 @@
         "additionalProperties": false,
         "description": "What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1.",
         "properties": {
+          "archiveLabel": {
+            "title": "Archivelabel",
+            "type": "string"
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/CategoryItem"
@@ -255,6 +259,7 @@
           "ready",
           "categories",
           "generalInstructions",
+          "archiveLabel",
           "other",
           "olderCategories"
         ],
@@ -265,6 +270,10 @@
         "additionalProperties": false,
         "description": "The body of the write route: the whole list and the version it is based on.",
         "properties": {
+          "archiveLabel": {
+            "title": "Archivelabel",
+            "type": "string"
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/CategoryInput"
@@ -285,7 +294,8 @@
         "required": [
           "version",
           "categories",
-          "generalInstructions"
+          "generalInstructions",
+          "archiveLabel"
         ],
         "title": "CategoryListUpdate",
         "type": "object"
@@ -301,7 +311,8 @@
               "id",
               "list",
               "senders",
-              "instructions"
+              "instructions",
+              "archive_label"
             ],
             "title": "Field",
             "type": "string"
@@ -1602,6 +1613,11 @@
             "title": "Added",
             "type": "integer"
           },
+          "archiveLabelChanged": {
+            "description": "True when the file gives a different archive label; absent keeps the stored one.",
+            "title": "Archivelabelchanged",
+            "type": "boolean"
+          },
           "baseVersion": {
             "minimum": 1.0,
             "title": "Baseversion",
@@ -1653,7 +1669,8 @@
           "changed",
           "removed",
           "removedCategories",
-          "instructionsChanged"
+          "instructionsChanged",
+          "archiveLabelChanged"
         ],
         "title": "UploadPreview",
         "type": "object"
