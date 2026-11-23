@@ -15,6 +15,7 @@ const PREVIEW = {
   removed: 2,
   removedCategories: ["Travel", "Huis/Energie"],
   instructionsChanged: false,
+  archiveLabelChanged: false,
 };
 const PROBLEMS = {
   type: "about:blank",
@@ -118,6 +119,20 @@ describe("Upload: the preview (criterion 1, 2, 6)", () => {
     expect(sent).toMatchObject({ method: "POST", contentType: "application/yaml" });
     expect(new TextDecoder().decode(sent?.bytes ?? new Uint8Array())).toBe("schema: 1\ncategories: []\n");
     expect(calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
+  it("given the archive label changes, then the preview says so; otherwise it says nothing about it", async () => {
+    wire({ upload: () => json({ ...PREVIEW, archiveLabelChanged: true }) });
+    await uploaded();
+    const preview = await screen.findByRole("region", { name: "Preview of your file" });
+    expect(within(preview).getByText("The archive label changes too.")).toBeInTheDocument();
+  });
+
+  it("given the archive label stays, then the preview has no archive label line", async () => {
+    wire();
+    await uploaded();
+    const preview = await screen.findByRole("region", { name: "Preview of your file" });
+    expect(within(preview).queryByText(/archive label/i)).not.toBeInTheDocument();
   });
 
   it("given removals, then the confirm button names the count and does not hold the focus", async () => {

@@ -32,7 +32,7 @@ export function resetResort(): void {
 }
 
 /** A request as the api stores it (the channel and the time are the database's). Returns its id. */
-export function seedRequest(threshold: number): string {
+function seedRequest(threshold: number): string {
   return sql(`INSERT INTO categories.resort_request (mailbox_id, threshold) VALUES ('${MAILBOX}', ${String(threshold)}) RETURNING id`)
     .split("\n")[0] ?? "";
 }

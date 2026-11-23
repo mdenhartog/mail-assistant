@@ -68,6 +68,7 @@ export function PreviewPanel({ preview, busy, onReplace, onCancel }: PreviewPane
         <Count count={preview.removed} kind="removed" />
       </p>
       {preview.instructionsChanged ? <p className="text-text">The general instructions change too.</p> : null}
+      {preview.archiveLabelChanged ? <p className="text-text">The archive label changes too.</p> : null}
       {preview.removed > 0 ? <RemovedBlock names={preview.removedCategories} /> : null}
       <p className="text-text-muted">Nothing is stored until you replace your list.</p>
       <div className="flex flex-wrap gap-3">
