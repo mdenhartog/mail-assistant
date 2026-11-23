@@ -3,6 +3,7 @@
 import math
 import threading
 import uuid
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
@@ -57,6 +58,22 @@ def test_given_equal_names_by_case_and_width_when_planned_then_they_keep_their_i
     assert [row.id for row in plan.rows] == [INVOICES, NEW]
     assert (plan.added, plan.changed, plan.removed) == (1, 1, ["Old"])  # "invoices" differs from "Invoices" as text
     assert plan.new_ids == {NEW}
+
+
+def test_given_another_archive_label_when_planned_then_the_plan_carries_it_and_says_it_changed() -> None:
+    parsed = parse_file(file_of(("Invoices", "Bills")).replace(b"categories:", b"archiveLabel: Bewaard\ncategories:"))
+
+    plan = plan_of(parsed, stored(), lambda: NEW)
+
+    assert (plan.archive_label, plan.archive_changed) == ("Bewaard", True)
+
+
+def test_given_no_archive_label_in_the_file_when_planned_then_the_stored_one_is_kept() -> None:
+    custom = replace(stored(), archive_label="Bewaard")
+
+    plan = plan_of(parse_file(file_of(("Invoices", "Bills"))), custom, lambda: NEW)
+
+    assert (plan.archive_label, plan.archive_changed) == ("Bewaard", False)
 
 
 def test_given_the_same_list_when_planned_then_nothing_is_added_changed_or_removed() -> None:

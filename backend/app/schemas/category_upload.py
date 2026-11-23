@@ -25,6 +25,9 @@ class UploadPreview(BaseModel):
     removed: Annotated[int, Field(ge=0)]
     removed_categories: list[str]
     instructions_changed: bool
+    archive_label_changed: Annotated[
+        bool, Field(description="True when the file gives a different archive label; absent keeps the stored one.")
+    ]
 
 
 class UploadConfirm(BaseModel):

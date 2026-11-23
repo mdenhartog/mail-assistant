@@ -10,7 +10,7 @@ import asyncio
 import hashlib
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -57,6 +57,8 @@ class ListPlan:
     rows: list[StoredCategory]
     new_ids: frozenset[uuid.UUID]
     instructions: str
+    archive_label: str
+    archive_changed: bool
     added: int
     changed: int
     removed: list[str]
@@ -131,7 +133,9 @@ def plan_of(parsed: ParsedList, stored: StoredList, new_id: Callable[[], uuid.UU
     """
     items = _inputs(parsed, stored)
     instructions = canonical_instructions(parsed.general_instructions)
-    found = problems_of(items, instructions, stored)
+    # A file without the field keeps the stored name: a hand-written file must never trigger a rename.
+    archive = parsed.archive_label if parsed.archive_label_given else stored.archive_label
+    found = problems_of(items, instructions, archive, stored)
     if found:
         raise FileRefused(policy_problems(found))
     rows, new_ids = build(items, new_id)
@@ -141,6 +145,8 @@ def plan_of(parsed: ParsedList, stored: StoredList, new_id: Callable[[], uuid.UU
         rows=rows,
         new_ids=new_ids,
         instructions=instructions,
+        archive_label=archive,
+        archive_changed=archive != stored.archive_label,
         added=len(new_ids),
         changed=sum(1 for row in rows if row.id in before and row != before[row.id]),
         removed=[canonical_text(c.name) for c in stored.categories if c.id not in kept],
@@ -197,6 +203,8 @@ class CategoryUpload:
             raise RateLimited(held.retry_after_seconds)
         parsed = await asyncio.to_thread(parse_file, data)  # CPU-bound: not on the event loop
         plan = plan_of(parsed, stored, self._ids.category_id)  # the ids are only counted, never stored
+        # The stored content names the settled archive label, so a confirm cannot fall back to the default.
+        resolved = replace(parsed, archive_label=plan.archive_label, archive_label_given=True)
         preview_id = self._ids.category_id()
         file_hash = hashlib.sha256(data).hexdigest()
         expires_at = self._clock.now() + PREVIEW_TTL
@@ -205,7 +213,7 @@ class CategoryUpload:
             session_digest=session_digest,
             file_hash=file_hash,
             base_version=stored.version,
-            content=dump_category_file(parsed).decode(),
+            content=dump_category_file(resolved).decode(),
             expires_at=expires_at,
         )
         return UploadPreview(
@@ -218,6 +226,7 @@ class CategoryUpload:
             removed=len(plan.removed),
             removed_categories=plan.removed,
             instructions_changed=plan.instructions != stored.general_instructions,
+            archive_label_changed=plan.archive_changed,
         )
 
     async def confirm(self, preview_id: uuid.UUID, file_hash: str, session_digest: str) -> StoredList:
@@ -249,9 +258,9 @@ class CategoryUpload:
             plan = plan_of(await asyncio.to_thread(parse_file, content.encode()), stored, self._ids.category_id)
         except FileRefused:
             raise Unconfirmable from None
-        if is_unchanged(plan.rows, plan.instructions, stored):
+        if is_unchanged(plan.rows, plan.instructions, plan.archive_label, stored):
             return stored
-        return await self._write(stored, plan.rows, plan.new_ids, plan.instructions)
+        return await self._write(stored, plan.rows, plan.new_ids, (plan.instructions, plan.archive_label))
 
     async def restore_previous(self, version: int) -> StoredList:
         """Store a new version equal to the one before the current version.
@@ -272,15 +281,20 @@ class CategoryUpload:
         previous = await self._repository.read_version(version - 1)
         if previous is None:
             raise Unconfirmable
-        if is_unchanged(list(previous.categories), previous.general_instructions, stored):
+        settings = (previous.general_instructions, previous.archive_label)
+        if is_unchanged(list(previous.categories), *settings, stored):
             return stored
-        return await self._write(stored, list(previous.categories), frozenset(), previous.general_instructions)
+        return await self._write(stored, list(previous.categories), frozenset(), settings)
 
     async def _write(
-        self, stored: StoredList, rows: list[StoredCategory], new_ids: frozenset[uuid.UUID], instructions: str
+        self,
+        stored: StoredList,
+        rows: list[StoredCategory],
+        new_ids: frozenset[uuid.UUID],
+        settings: tuple[str, str],  # the general instructions and the archive label name
     ) -> StoredList:
         try:
-            await self._repository.add_version(stored.version, rows, new_ids, instructions)
+            await self._repository.add_version(stored.version, rows, new_ids, *settings)
         except VersionConflict:
             raise Unconfirmable from None
         return await self._repository.read()

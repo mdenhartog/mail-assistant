@@ -722,6 +722,8 @@ export interface components {
          * @description What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1.
          */
         CategoryList: {
+            /** Archivelabel */
+            archiveLabel: string;
             /** Categories */
             categories: components["schemas"]["CategoryItem"][];
             /** Generalinstructions */
@@ -739,6 +741,8 @@ export interface components {
          * @description The body of the write route: the whole list and the version it is based on.
          */
         CategoryListUpdate: {
+            /** Archivelabel */
+            archiveLabel: string;
             /** Categories */
             categories: components["schemas"]["CategoryInput"][];
             /** Generalinstructions */
@@ -758,7 +762,7 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "name" | "description" | "id" | "list" | "senders" | "instructions";
+            field: "name" | "description" | "id" | "list" | "senders" | "instructions" | "archive_label";
             /** Index */
             index: number | null;
             /** Otherindex */
@@ -1320,6 +1324,11 @@ export interface components {
         UploadPreview: {
             /** Added */
             added: number;
+            /**
+             * Archivelabelchanged
+             * @description True when the file gives a different archive label; absent keeps the stored one.
+             */
+            archiveLabelChanged: boolean;
             /** Baseversion */
             baseVersion: number;
             /** Changed */

@@ -17,7 +17,7 @@ File format (``schema: 1``)::
 
     schema: 1
     generalInstructions: text          # optional
-    archiveLabel: Assistant/Archive    # optional
+    archiveLabel: Assistant/Archive    # optional; absent = the stored name is kept on an upload
     categories:
       - name: Huis/Energie
         kind: topic                    # optional: topic (default) or extra
@@ -138,13 +138,16 @@ class ParsedList:
 
     Attributes:
         general_instructions: The general instructions text ("" when absent).
-        archive_label: The archive label name.
+        archive_label: The archive label name (the default when the file does not give one).
         categories: The categories in file order.
+        archive_label_given: Whether the file named an archive label; a reader may keep its stored name when it did
+            not. Not part of equality: two lists with the same content are equal.
     """
 
     general_instructions: str
     archive_label: str
     categories: tuple[FileCategory, ...]
+    archive_label_given: bool = field(default=True, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -379,7 +382,12 @@ class _Reader:
         self._policy(drafts, instructions, archive)
         if self.problems.items:
             return None
-        return ParsedList(instructions[0], archive[0], tuple(self._category(draft) for draft in drafts))
+        return ParsedList(
+            instructions[0],
+            archive[0],
+            tuple(self._category(draft) for draft in drafts),
+            archive_label_given=fields.get("archiveLabel") is not None,
+        )
 
     def _fields(self, node: _Map, allowed: frozenset[str], path: str) -> dict[str, _Node]:
         found: dict[str, _Node] = {}

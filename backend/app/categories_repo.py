@@ -66,8 +66,6 @@ _INSERT_SENDER = text(
     "INSERT INTO categories.category_sender (mailbox_id, version, category_id, entry, is_domain, subdomains) "
     "VALUES (:mailbox, :version, :category_id, :entry, :is_domain, :subdomains)"
 )
-# The archive label is not the api's to change here: the new version carries the previous one's over (the default when
-# that version has no settings row, as one written by an agent before it writes them).
 _INSERT_SETTINGS = text(
     "INSERT INTO categories.list_settings (mailbox_id, version, general_instructions, archive_label) "
     "VALUES (:mailbox, :version, :instructions, :archive)"
@@ -246,16 +244,18 @@ class CategoriesRepository:
         categories: Sequence[StoredCategory],
         new_ids: frozenset[uuid.UUID],
         general_instructions: str,
+        archive_label: str,
     ) -> None:
         """Add ``expected_version + 1`` with the given categories in order, in one transaction.
 
-        The version gets its category rows, one row per sender entry and one settings row (the general instructions;
-        the archive label is carried over from the version it is based on).
+        The version gets its category rows, one row per sender entry and one settings row (the general
+        instructions and the archive label name).
 
         Args:
             expected_version: The version the change is based on; it must still be the latest.
             categories: The whole new list.
             general_instructions: The general instructions of the list, in their stored form.
+            archive_label: The archive label name of the list (validated by the caller).
             new_ids: The ids of the categories that did not exist before; their identity rows are inserted first.
 
         Raises:
@@ -272,12 +272,8 @@ class CategoriesRepository:
                 for new_id in sorted(new_ids):
                     await session.execute(_INSERT_IDENTITY, {"mailbox": self._mailbox, "id": new_id})
                 await _insert_rows(session, params, categories)
-                previous = (
-                    await session.execute(_SETTINGS, {"mailbox": self._mailbox, "version": expected_version})
-                ).one_or_none()
-                archive = previous.archive_label if previous else ARCHIVE_LABEL_DEFAULT
                 await session.execute(
-                    _INSERT_SETTINGS, {**params, "instructions": general_instructions, "archive": archive}
+                    _INSERT_SETTINGS, {**params, "instructions": general_instructions, "archive": archive_label}
                 )
         except IntegrityError as error:
             if getattr(error.orig, "sqlstate", None) == _UNIQUE_VIOLATION:  # (mailbox, version): a second writer won
