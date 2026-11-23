@@ -53,9 +53,35 @@ Limits: at most 256 KiB of file; a session may store as many previews per hour a
 
 The export and the template are sent with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and `Cache-Control: no-store`. The export file name is `mail-categories.yaml`.
 
+## Archive label
+
+`GET /api/categories` returns `archiveLabel` (a string, `Assistant/Archive` until it is changed) next to the categories and the general instructions. `PUT /api/categories` takes `archiveLabel` as a required field of the whole list: the name is saved with the list as one version, together with the audit record and the Telegram change notice. A name that breaks the rules is a `422` problem with the rule and the field `archive_label`; the rules are in the [user guide](../user-guide/label-structure.md#name-your-archive-label). The same field is part of the YAML file: `archiveLabel` in an upload and in the export. A file without the field keeps the stored name, so the upload preview and the stored list use the stored name. The upload preview has `archiveLabelChanged` (a boolean, `true` when the file gives another name than the stored one).
+
+## Sort everything again
+
+| Operation | Needs | Request | Success | Errors |
+| --- | --- | --- | --- | --- |
+| `POST /api/resort-requests` | session, CSRF token, `Origin` | JSON `{"threshold": 50}`, a JSON integer from 50 to 100 | `201` `{"requestId": "<uuid>", "threshold": 50}` | `401`, `403`, `409`, `415`, `422`, `429`, `500` |
+| `GET /api/resort-requests/latest` | session | none | `200` `{"threshold": 50}`: the threshold of the latest request, 50 when there is none | `401`, `429` |
+
+- The threshold must be a JSON integer. A string, a decimal, `true` or a number outside 50 to 100 is a `422`; nothing is stored. Extra fields are refused.
+- The request stores a row and returns at once; the agent builds the plans later and tells the user in Telegram. The api never moves mail and never approves anything of the plan that moves on its own.
+- `409`: a plan is open (building, ready, scheduled or applying), or the previous request has not become a plan yet. Nothing is stored, so a double post stores one request.
+- `429`: a session may ask as often per hour as it may save the list (10 by default), with `Retry-After`.
+
+## The review plan
+
+The routes of the review plan (`GET /api/plan`, `GET /api/plan/items`, `POST /api/plan/items/search`, `POST /api/plan/approve`, `POST /api/plan/decisions`, `POST /api/plan/{plan_id}/move-back`) need the session (and for `POST` the CSRF token and `Origin`); a locked web sign-in answers `401`. They only read and decide the plan of kind `review`: the plan that the agent approves on its own is never offered for a decision. Additive fields since the sort-again feature:
+
+- On the plan (`PlanView`): `threshold` (the threshold the plan copied from its request, 50 to 100, or `null`) and `auto`, a summary of the sibling plan that moves on its own: `moved`, `scheduled` and `skipped`, all `0` when there is none. Mail that failed is not counted in `auto`.
+- On an item (`PlanItem`): `oldTopic`, `oldExtra`, `newTopic` and `newExtra` (the full nested names, `null` when the mail has no such label), `confidencePct` (0 to 100 or `null`) and `tip`.
+- `tip` is plain text exactly as stored. It is a suggestion, never used in any write, and a client must show it as text only. It is `null` for an item without a tip.
+
+The existing contracts of approve, decisions and move-back do not change. Their status codes are in the [reference](reference.md).
+
 ## Other operations
 
-The sign-in, settings, places, plan and probe routes are listed in the [reference](reference.md).
+The sign-in, settings, places and probe routes are listed in the [reference](reference.md).
 
 ## Versioning
 

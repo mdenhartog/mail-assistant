@@ -2,13 +2,13 @@
 intent: INT-008
 spec: docs/specs/label-structure.md
 plan: docs/plans/label-structure/index.md
-pr: R1 is built in the pull requests listed under "Units and pull requests"; the documentation of phase 8 is on the branch docs/INT-008/r1-release
-release: not released
+pr: R1 is built in the pull requests listed under "Units and pull requests"; R2 is one feature pull request, to be filled when opened
+release: not released (R1 and R2 are built; R2 is in the second part of this file)
 ---
 
 # Review record: label structure, sender rules and always-notify (release R1)
 
-The feature lets the user describe their own label structure: nested categories, topics and extra labels, sender lists that file mail without the model choosing the category, a tick per category that sends an alert for every new mail, and a YAML file to upload, restore and export the list. It is planned in 38 units and two releases (the index is `docs/plans/label-structure/index.md`). This record covers release R1: units 01 to 17 and 28 to 38. Release R2 (units 18 to 27: archive label name, "Sort everything again" with the confidence threshold, system approval and tips) is not built. Nothing is deployed and nothing is released. The documentation of phase 8 is this record, the [user guide](../user-guide/label-structure.md) and the [API guide](../api/README.md).
+The feature lets the user describe their own label structure: nested categories, topics and extra labels, sender lists that file mail without the model choosing the category, a tick per category that sends an alert for every new mail, and a YAML file to upload, restore and export the list. It is planned in 38 units and two releases (the index is `docs/plans/label-structure/index.md`). This record covers release R1: units 01 to 17 and 28 to 38. Release R2 (units 18 to 27 and 39: archive label name, "Sort everything again" with the confidence threshold, system approval and tips) is recorded in the second part of this file. Nothing is deployed and nothing is released. The documentation of phase 8 is this record, the [user guide](../user-guide/label-structure.md) and the [API guide](../api/README.md).
 
 ## Gates
 
@@ -80,7 +80,7 @@ Pull requests #194, #195 and #196 were open with green checks when this record w
 
 ## Acceptance criteria
 
-The criteria of R1 are AC-1 to AC-40, AC-44, AC-54 to AC-56, AC-58, AC-60 to AC-68 (see the Releases section of the spec). The matrix of criterion, test and layer is in the unit files under `docs/plans/label-structure/`. This record does not repeat it. Criteria of R2 (AC-41 to AC-43, AC-45 to AC-53, AC-57, AC-59) are not built.
+The criteria of R1 are AC-1 to AC-40, AC-44, AC-54 to AC-56, AC-58, AC-60 to AC-68 (see the Releases section of the spec). The matrix of criterion, test and layer is in the unit files under `docs/plans/label-structure/`. This record does not repeat it. Criteria of R2 (AC-41 to AC-43, AC-45 to AC-53, AC-57, AC-59) are built in release R2; see the second part.
 
 AC-63 is met in part: the success numbers show the share filed by a sender rule, the model calls per day (a lower bound), the always-notify alerts and the share under "Other"; the Move-back rate of system-approved items is absent until R2, because system approval arrives with R2.
 
@@ -92,7 +92,7 @@ AC-63 is met in part: the success numbers show the share filed by a sender rule,
 - **No screenshots.** The user guide page has no screenshots; none were generated for this feature. The page describes the screens in words.
 - **Reference authorisation.** The generated API reference shows every operation as public because the OpenAPI document declares no security scheme; the API guide explains the real access (session, CSRF token and `Origin`).
 - **Personal names.** The user reviews the documents for personal names (the user's own mailbox structure was the source of the example and the golden fixture, anonymised). This review is not done.
-- **`archiveLabel`.** Stored but without effect before R2 (RED-004).
+- **`archiveLabel`.** Stored but without effect in R1 (RED-004); R2 makes it effective.
 - **Old mail.** No button re-sorts old mail in R1 (D12); the user guide says so.
 
 ## Architecture
@@ -104,7 +104,7 @@ The architecture is reconciled with what was built. The design (ADR-0053 to ADR-
 - An upload preview lives 15 minutes and is removed an hour after it expires (the design said one hour).
 - The README names the schema `categories` and its writers, and links ADR-0053 to ADR-0059. The diagrams were not changed.
 
-ADRs: ADR-0053 (category contract v2), ADR-0054 (sender rules and the authenticated sender), ADR-0055 (judging with topic, extra label and the urgency-only call), ADR-0057 (the always-notify alert), ADR-0058 (YAML upload as an input boundary). ADR-0056 (two plans) and ADR-0059 (archive label name in the list) belong to R2. ADR-0054 and the plan of U-10 carry the wording of the alert after the challenge.
+ADRs: ADR-0053 (category contract v2), ADR-0054 (sender rules and the authenticated sender), ADR-0055 (judging with topic, extra label and the urgency-only call), ADR-0057 (the always-notify alert), ADR-0058 (YAML upload as an input boundary). ADR-0056 (two plans) and ADR-0059 (archive label name in the list) belong to R2 and are in its architecture section. ADR-0054 and the plan of U-10 carry the wording of the alert after the challenge.
 
 ## Approvals
 
@@ -117,3 +117,98 @@ ADRs: ADR-0053 (category contract v2), ADR-0054 (sender rules and the authentica
 ## Deploy
 
 Pending: local Docker deploy requested by the owner after merge.
+
+## Release R2: review record (archive label, sort everything again, tips)
+
+Release R2 is units 18 to 27 and unit 39 of the plan (unit 39 was added during the build, see the plan index). It is built on the feature branch `feature/INT-008/label-structure` and lands in one pull request for the feature. The documentation of phase 8 is this record, the [user guide](../user-guide/label-structure.md), the [API guide](../api/README.md) and the reconciled architecture. With R2 all of the spec is built; what is not delivered is listed under "Known limits of R2".
+
+## R2 gates
+
+| Phase | Result | Evidence |
+| --- | --- | --- |
+| 1 Spec | Revision 2, approved 2026-11-21; R2 criteria AC-41 to AC-43, AC-45 to AC-53, AC-57 and AC-59 | `docs/specs/label-structure.md` |
+| 2 Threat model | LS-8 to LS-12, LS-14, LS-16 and LS-18 cover R2; amended after the R2 challenge | `docs/security/label-structure-threat-model.md` |
+| 3 Design | ADR-0056 and ADR-0059 accepted with the design | `docs/design/label-structure-design.md` |
+| 4 Plan | Units 18 to 27, and unit 39 added while starting unit 26 | `docs/plans/label-structure/` |
+| 5 Build, test first | Units built on unit branches, each with its failing test commit first, and landed in the feature branch | `git log` of the feature branch |
+| 6 Challenge | Red team and code review ran on the R2 code; repair rounds A and B merged into the feature branch | "R2 challenge" below |
+| 7 Verify | One feature pull request and one CI run for the whole of R2. Pull request: to be filled when opened. CI result: to be filled when the run ends. I did not run the prod-like e2e specs for this record (no Docker) | "Known limits of R2" |
+| 8 Finish | User guide, API guide, threat model, architecture and this record updated; the spec stays `status: done` | `node scripts/docs.mjs check`, `node scripts/architecture.mjs check` |
+| 9 Release | Not started | "R2 approvals and deploy" below |
+
+## R2 units
+
+| Unit | What | Component |
+| --- | --- | --- |
+| U-18 | The agent adopts, creates and renames the archive label by id after any running plan; the environment setting is removed | mail-triage |
+| U-19 | `archiveLabel` on the list, the upload and the export | api |
+| U-20 | Migration 0029: `resort_request`, plan kind, request and threshold, item pairs, `request_resort` and `approve_system_plan` | mail-triage |
+| U-21 | `POST /api/resort-requests` and `GET /api/resort-requests/latest` | api |
+| U-22 | Plan build v2: pair targets, confidence and the scope | mail-triage |
+| U-23 | Two plans, system approval, apply, the notice and cancel | mail-triage |
+| U-24 | Tips per category with the sender suggestion rules | mail-triage |
+| U-25 | The sort-again controls and the archive label field | web |
+| U-26 | Review moves with pairs, full names and tips | web |
+| U-27 | The R2 journey with three viewports and axe | web |
+| U-39 | The review plan shows pairs, confidence, tips and the auto summary | api |
+
+Repairs on the way: the upload preview says when the archive label changes (`archiveLabelChanged`, in the web app of U-16); the runner wiring test of U-18 passes the archive label; the repair rounds of the challenge are below.
+
+## R2 challenge
+
+The outcome per finding is also in the threat model ("Outcome of the R2 challenge").
+
+| Finding | What | Decision |
+| --- | --- | --- |
+| RED-R2-001 | The system approval could apply at once | Fixed: it always waits the delay (at least a minute) |
+| RED-R2-002 | A tip could keep disguised markup or a recommended sender | Fixed: NFKC, cleaned until stable, only code writes the suggested sender |
+| RED-R2-003 | The system approval was audited as `telegram` | Fixed: channel `system` |
+| RED-R2-004 | Decide and approve could act on an `auto` plan | Fixed: only a `review` plan |
+| RED-R2-005 | Sent mail was in scope | Fixed: out of scope |
+| RED-R2-006 | More than one archive name rule | Fixed: one rule in `category-policy` |
+| RED-R2-007 | The archive label is found by name; a rename in Gmail makes a new empty label | Accepted limitation; follow-up: store the id |
+| REV-001 | Three stale tests | Fixed |
+| REV-002 | The move-back rate of system-approved items | Delivered (a lower bound) |
+| REV-003 | Two copies of the archive rule | Fixed |
+| REV-004 | Missing tests | Added |
+| REV-005 | Large modules `resort_apply`, `pg_resort` and `resort_build` | Follow-up: split them |
+
+## Decisions taken while building
+
+- **Plan items below 60 % confidence are kept.** The agent does not drop them, so the threshold of the user (50 to 100) decides what moves and what is reviewed.
+- **A file without `archiveLabel` keeps the stored name.** The upload preview and the confirm use the stored name; `archiveLabelChanged` is true only when the file gives another one. This also settles RED-004 of R1: the field is now used and no longer ignored.
+- **The system plan always waits the delay** (RED-R2-001), also for a small plan.
+- **A double post of a request is refused.** One request is stored while no plan or request is open (409).
+- **24-hour counting.** Mail that moves on its own counts toward the rolling 24 hours of ADR-0047, like an approval by the user.
+- **Channel `system`.** A fourth channel of `plan_approval` and `apply_audit`, a constant of `approve_system_plan`, not derived from the session role.
+
+## Known limits of R2
+
+- **No Cancel in the web app.** Cancel, Move back and Lock are in Telegram only; the web page says so.
+- **The agent is not in the prod-like e2e stack.** The R2 journey seeds the plans with SQL. The Gmail apply and the archive label rename are proven by the agent tests only.
+- **Failed items** are not counted in the `auto` summary of the review plan.
+- **Model calls per day** (tips included) is a lower bound.
+- **The archive label** is found by name; a rename in Gmail creates a new, empty label (RED-R2-007).
+- **No screenshots** for the R2 screens; the user guide describes them in words.
+- **The template and example files** served by the api still say that `archiveLabel` has no effect before release 2 (`packages/category-policy/template/`). That is code, not documentation; it is a follow-up.
+- **Personal names.** The review of the documents for personal names by the user is still not done.
+- **Large modules.** `resort_apply`, `pg_resort` and `resort_build` are to be split (REV-005).
+
+## R2 architecture
+
+The design (ADR-0056, ADR-0059) fixed the components; no dependency changed. The model (`docs/architecture/model.json`) and the written parts of `docs/architecture/README.md` now name:
+
+- Migration 0029 (ADR-0056): `categories.resort_request`; `plan.kind`, `plan.request_id` and `plan.threshold`; one open plan per mailbox and kind; on `plan_item` the old and new pair, `confidence_pct`, `decision_source` and `tip`; the `SECURITY DEFINER` functions `request_resort` (api role) and `approve_system_plan` (agent role only, SQLSTATE 42501 for the api); the approval channel `system`; `approve_plan` and `record_decision` limited to the `review` plan.
+- The agent: two plans, tips and the archive label sync (ADR-0059: the environment setting `ARCHIVE_LABEL` is gone, the name lives in `list_settings`).
+- The api: the sort-again request and `archiveLabel`; it still never approves system items.
+
+ADRs: [ADR-0056](../memory/decisions/ADR-0056-resort-on-request-threshold-and-two-plans.md) (re-sort on request, two plans, system approval; supersedes decisions 1 to 4 of ADR-0046) and [ADR-0059](../memory/decisions/ADR-0059-archive-label-name-in-the-list.md) (archive label name in the list; supersedes ADR-0052).
+
+## R2 approvals and deploy
+
+| Date | Decision |
+| --- | --- |
+| Not given | Approval of release R2 for production |
+| Not given | Decision on the follow-ups: store the archive label id, split the large modules |
+
+Deploy: pending, local Docker deploy requested by the owner after merge.
