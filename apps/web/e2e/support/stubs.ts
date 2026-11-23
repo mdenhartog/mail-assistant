@@ -171,6 +171,7 @@ export const UPLOAD_PREVIEW = {
   removed: 2,
   removedCategories: ["Travel/Trains", "W".repeat(60)],
   instructionsChanged: true,
+  archiveLabelChanged: true,
 } as const;
 
 const putCategoriesEcho: Handler = async (route, { state }) => {
@@ -200,7 +201,7 @@ export const PLAN = {
 export const NO_PLAN = { ...PLAN, id: null, state: null, groups: [], counts: { items: 0, pending: 0, approved: 0, rejected: 0 } } as const;
 
 /** Untrusted model text: markup and a link inside it must stay text. */
-export const TIP = 'Add billing@acme.example (4 mails) as a sender of Invoices. <a href="https://evil.example">not a link</a> https://evil.example/' + "x".repeat(60);
+const TIP = 'Add billing@acme.example (4 mails) as a sender of Invoices. <a href="https://evil.example">not a link</a> https://evil.example/' + "x".repeat(60);
 
 export function planItems(first: number, size: number, hasMore: boolean, page = 1): unknown {
   return {
