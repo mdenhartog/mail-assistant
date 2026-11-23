@@ -255,6 +255,20 @@ class ScriptedJudge:
         return Judgement(topic_id=topic, extra_id=extra, urgent=False, reason="r", summary="s", confidence=confidence)
 
 
+class FakeTips:
+    """The tip writer: records the plan and the list it was asked for."""
+
+    def __init__(self, telegram: FakeTelegram) -> None:
+        self._telegram = telegram
+        self.calls: list[tuple[uuid.UUID, tuple[str, ...]]] = []
+        self.seen_texts: list[int] = []  # how many notices were out when each write started
+
+    async def write(self, plan_id: uuid.UUID, categories: Sequence[ListedCategory]) -> int:
+        self.seen_texts.append(len(self._telegram.texts))
+        self.calls.append((plan_id, tuple(c.category_id for c in categories)))
+        return 0
+
+
 class Rig:
     """Everything a build test needs, wired the way the agent will wire it."""
 
@@ -267,6 +281,7 @@ class Rig:
         self.ledger = BudgetLedger(self.clock, daily_total=daily_total, reserve=RESERVE)
         self.judge = ScriptedJudge(ledger=self.ledger)
         self.telegram = FakeTelegram()
+        self.tips = FakeTips(self.telegram)
         self.finance_label = self.gmail.add_label("Assistant/Finance")
         self.travel_label = self.gmail.add_label("Assistant/Travel")
         self.build = ResortBuild(
@@ -274,6 +289,7 @@ class Rig:
             judge=self.judge,
             store=self.store,
             notifier=self.telegram,
+            tips=self.tips,
             budget=self,
             now=self.clock,
             pinned=PINNED,
