@@ -209,13 +209,15 @@ describe("Categories page: the full-screen edit view (criterion 2)", () => {
 });
 
 describe("Categories page: the fixed block and the help texts (criterion 4, AC-68)", () => {
-  it("shows the explanation block without pointing at a button that R1 does not have", async () => {
+  it("shows the explanation block, including the sentence that points at the Sort everything again button", async () => {
     wire();
     await loaded();
     expect(
-      screen.getByText("Changing the list never moves mail you already have. Only new mail follows it."),
+      screen.getByText(
+        "Changing the list never moves mail you already have. Only new mail follows it. To re-sort the inbox, press Sort everything again.",
+      ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Sort everything again/)).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Sort everything again" })).toBeInTheDocument();
     expect(screen.getByText("Your archive label is left alone.")).toBeInTheDocument();
   });
 

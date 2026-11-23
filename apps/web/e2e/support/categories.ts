@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
-import { CATEGORIES, held, reply, stubApi, UPLOAD_PREVIEW } from "./stubs";
+import { CATEGORIES, held, NO_PLAN, PLAN, reply, stubApi, UPLOAD_PREVIEW } from "./stubs";
 import type { Handlers } from "./stubs";
 import type { UiState } from "./states";
 
@@ -18,7 +18,7 @@ function state(name: string, reach: (page: Page) => Promise<unknown>): UiState {
 }
 
 async function toLoaded(page: Page, handlers: Handlers = {}): Promise<void> {
-  await stubApi(page, { signedIn: true, ...handlers });
+  await stubApi(page, { signedIn: true, getPlan: reply(200, NO_PLAN), ...handlers });
   await page.goto("/categories");
   await expect(page.getByRole("heading", { level: 1, name: "Categories" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit Invoices", exact: true })).toBeVisible();
@@ -65,6 +65,61 @@ async function toReplaced(page: Page, handlers: Handlers = {}): Promise<void> {
   await toUploaded(page, handlers);
   await page.getByRole("button", { name: "Replace my whole list (2 removed)" }).click();
   await expect(page.getByText("Your list was replaced.")).toBeVisible();
+}
+
+async function toSortAgain(page: Page, handlers: Handlers = {}): Promise<void> {
+  await toLoaded(page, handlers);
+  await expect(page.getByRole("textbox", { name: "Confidence threshold (%)" })).toBeVisible();
+}
+
+/** The states of the sort-again controls (AC-45, AC-46, AC-68). */
+function sortAgainStates(): UiState[] {
+  return [
+    state("categories: sort again", (page) => toSortAgain(page)),
+    state("categories: sort again, loading", async (page) => {
+      const gate = held(reply(200, { threshold: 50 }));
+      await stubApi(page, { signedIn: true, getPlan: reply(200, NO_PLAN), getLatestResort: gate.handler });
+      await page.goto("/categories");
+      await expect(page.getByText("Loading the threshold")).toBeVisible();
+      return gate.release;
+    }),
+    state("categories: sort again, load failed", async (page) => {
+      await toLoaded(page, { getLatestResort: reply(500) });
+      await expect(page.getByText("Could not load the threshold.")).toBeVisible();
+    }),
+    state("categories: sort again, later visit", async (page) => {
+      await toLoaded(page, { getLatestResort: reply(200, { threshold: 85 }) });
+      await expect(page.getByRole("textbox", { name: "Confidence threshold (%)" })).toHaveValue("85");
+    }),
+    state("categories: sort again, refused threshold", async (page) => {
+      await toSortAgain(page);
+      await page.getByRole("textbox", { name: "Confidence threshold (%)" }).fill("49");
+      await page.getByRole("button", { name: "Sort everything again" }).click();
+      await expect(page.getByText("Use a whole number from 50 to 100.")).toBeVisible();
+    }),
+    state("categories: sort again, plan open", async (page) => {
+      await toLoaded(page, { getPlan: reply(200, PLAN) });
+      await expect(page.getByText(/A plan is open\./)).toBeVisible();
+    }),
+    state("categories: sort again, requested", async (page) => {
+      await toSortAgain(page);
+      await page.getByRole("button", { name: "Sort everything again" }).click();
+      await expect(page.getByText(/Your request is in/)).toBeVisible();
+    }),
+    state("categories: sort again, request refused", async (page) => {
+      await toLoaded(page, { postResort: reply(409) });
+      await page.getByRole("button", { name: "Sort everything again" }).click();
+      await expect(page.getByText(/already open or being prepared/)).toBeVisible();
+    }),
+    state("categories: archive label refused", async (page) => {
+      const problem = { type: "about:blank", title: "Unprocessable content", status: 422, problems: [{ rule: "archive_system_label", field: "archive_label", index: null, position: null, otherIndex: null }] };
+      await toLoaded(page, { putCategories: reply(422, problem, { "Content-Type": "application/problem+json" }) });
+      await page.getByLabel("Archive label").fill("INBOX");
+      await page.getByRole("button", { name: "Save changes" }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Save changes" }).click();
+      await expect(page.getByText("This is a Gmail label of its own and cannot be your archive label.")).toBeVisible();
+    }),
+  ];
 }
 
 /** The states of the Categories page (AC-23); the same checks run on them as on the login and settings states. */
@@ -154,6 +209,7 @@ export function categoriesStates(): UiState[] {
       await page.getByRole("button", { name: "Restore previous version" }).click();
       await expect(page.getByText("The previous version is back.")).toBeVisible();
     }),
+    ...sortAgainStates(),
     state("categories: upload list changed", async (page) => {
       await toUploaded(page, { confirmUpload: reply(409, { type: "about:blank", title: "Conflict", status: 409 }) });
       await page.getByRole("button", { name: "Replace my whole list (2 removed)" }).click();

@@ -27,6 +27,7 @@ export const NEWS = {
 
 export const LIST = {
   version: 3,
+  archiveLabel: "Assistant/Archive",
   ready: true,
   generalInstructions: "Keep receipts for the tax year.",
   categories: [INVOICES, NEWS],
@@ -38,10 +39,11 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-export interface Put {
+interface Put {
   body: {
     version: number;
     generalInstructions: string;
+    archiveLabel: string;
     categories: {
       id?: string;
       name: string;
@@ -56,26 +58,72 @@ export interface Put {
 
 type Answer = Response | Promise<Response>;
 
-/** GET answers `get`; PUT goes to `put` (default: echo the list back at the next version). */
-export function wire(options: { get?: () => Answer; put?: (body: Put["body"]) => Answer } = {}): {
+/** What `GET /api/plan` says while no plan is open. */
+export const NO_OPEN_PLAN = {
+  id: null,
+  state: null,
+  progress: { checked: 0, cap: 5000, unclear: 0, estimate: 0, notLookedAt: 0 },
+  groups: [],
+  counts: { items: 0, pending: 0, approved: 0, rejected: 0 },
+  applyAfter: null,
+  applyThreshold: null,
+  applyDelayMinutes: null,
+  lastPlan: null,
+};
+
+export interface WireOptions {
+  get?: () => Answer;
+  put?: (body: Put["body"]) => Answer;
+  /** `GET /api/resort-requests/latest` (default: the first visit, 50). */
+  latest?: () => Answer;
+  /** `GET /api/plan` (default: no plan open). */
+  plan?: () => Answer;
+  /** `POST /api/resort-requests` (default: stored, 201). */
+  resort?: (body: unknown) => Answer;
+}
+
+export interface Wired {
   puts: Put[];
   gets: () => number;
-} {
-  const seen: { puts: Put[]; gets: number } = { puts: [], gets: 0 };
+  /** The bodies of every POST to `/api/resort-requests`. */
+  resorts: unknown[];
+}
+
+type Seen = { puts: Put[]; gets: number; resorts: unknown[] };
+
+async function answerResort(options: WireOptions, request: Request, seen: Seen): Promise<Response> {
+  const body: unknown = await request.json();
+  seen.resorts.push(body);
+  return options.resort ? options.resort(body) : json({ requestId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00bb", threshold: 50 }, 201);
+}
+
+async function answerList(options: WireOptions, request: Request, seen: Seen): Promise<Response> {
+  if (request.method === "GET") {
+    seen.gets += 1;
+    return options.get ? options.get() : json(LIST);
+  }
+  const body = (await request.json()) as Put["body"];
+  seen.puts.push({ body, token: request.headers.get("X-CSRF-Token") });
+  return options.put ? options.put(body) : json({ ...LIST, version: body.version + 1 });
+}
+
+/** The routes of the Categories page: the list (GET answers `get`; PUT goes to `put`, default: echo at the next version), the plan and the sort-again request. */
+export function wire(options: WireOptions = {}): Wired {
+  const seen: Seen = { puts: [], gets: 0, resorts: [] };
+  const routes: Record<string, (request: Request) => Answer> = {
+    "/api/resort-requests/latest": () => (options.latest ? options.latest() : json({ threshold: 50 })),
+    "/api/plan": () => (options.plan ? options.plan() : json(NO_OPEN_PLAN)),
+    "/api/resort-requests": (request) => answerResort(options, request, seen),
+  };
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: string, init?: RequestInit) => {
       const request = new Request(new URL(input, "http://localhost"), init);
-      if (request.method === "GET") {
-        seen.gets += 1;
-        return options.get ? options.get() : json(LIST);
-      }
-      const body = (await request.json()) as Put["body"];
-      seen.puts.push({ body, token: request.headers.get("X-CSRF-Token") });
-      return options.put ? options.put(body) : json({ ...LIST, version: body.version + 1 });
+      const route = routes[new URL(request.url).pathname];
+      return route ? route(request) : answerList(options, request, seen);
     }),
   );
-  return { puts: seen.puts, gets: () => seen.gets };
+  return { puts: seen.puts, gets: () => seen.gets, resorts: seen.resorts };
 }
 
 /** The page inside a data router (the unsaved-changes guard needs one), with a second route to leave to. */

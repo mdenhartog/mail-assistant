@@ -33,6 +33,8 @@ export interface Handlers {
   restorePrevious?: Handler;
   exportList?: Handler;
   getPlan?: Handler;
+  getLatestResort?: Handler;
+  postResort?: Handler;
   getPlanItems?: Handler;
   postDecision?: Handler;
   postApprove?: Handler;
@@ -148,6 +150,7 @@ export const CATEGORIES = {
   version: 5,
   ready: true,
   generalInstructions: "Keep receipts for the tax year.",
+  archiveLabel: "Assistant/Archive",
   categories: [
     { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120, kind: "extra", notify: true, senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 0 }] },
     { id: "00000000-0000-4000-8000-000000000002", name: "Newsletters", description: "Weekly digests and product news I read on Sunday.", mailCount: 1, kind: "topic", notify: false, senders: [] },
@@ -191,6 +194,9 @@ export const PLAN = {
   lastPlan: null,
 } as const;
 
+/** `GET /api/plan` while no plan is open. */
+export const NO_PLAN = { ...PLAN, id: null, state: null, groups: [], counts: { items: 0, pending: 0, approved: 0, rejected: 0 } } as const;
+
 export function planItems(first: number, size: number, hasMore: boolean, page = 1): unknown {
   return {
     page,
@@ -230,6 +236,8 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
       await route.fulfill({ status: 200, contentType: "application/yaml", body: "schema: 1\n" });
     },
     getPlan: reply(200, PLAN),
+    getLatestResort: reply(200, { threshold: 50 }),
+    postResort: reply(201, { requestId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00bb", threshold: 50 }),
     getPlanItems: async (route, call) => {
       const page = Number(new URL(route.request().url()).searchParams.get("page") ?? "1");
       await reply(200, planItems((page - 1) * 12 + 1, page < 2 ? 12 : 8, page < 2, page))(route, call);
@@ -255,6 +263,8 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     ["restorePrevious", "/api/categories/restore-previous", "POST", own.restorePrevious],
     ["exportList", "/api/categories/export", "GET", own.exportList],
     ["getPlan", "/api/plan", "GET", own.getPlan],
+    ["getLatestResort", "/api/resort-requests/latest", "GET", own.getLatestResort],
+    ["postResort", "/api/resort-requests", "POST", own.postResort],
     ["getPlanItems", "/api/plan/items", "GET", own.getPlanItems],
     ["postDecision", "/api/plan/decisions", "POST", own.postDecision],
     ["postApprove", "/api/plan/approve", "POST", own.postApprove],
@@ -272,7 +282,7 @@ function samePath(stubPath: string, pathname: string): boolean {
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getLatestResort: 0, postResort: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),

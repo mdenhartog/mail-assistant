@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App, routes } from "@/App";
 import { setCsrfToken } from "@/api/client";
-import { INVOICES, LIST, json } from "@/test/categories";
+import { INVOICES, LIST, NO_OPEN_PLAN, json } from "@/test/categories";
 
 const SESSION = {
   maskedAddress: "m***@example.com",
@@ -27,6 +27,12 @@ function stub(categories: Handler, ended: { value: boolean } = { value: false })
       const path = new URL(request.url).pathname;
       if (path === "/api/session") {
         return Promise.resolve(ended.value ? new Response(null, { status: 401 }) : json(SESSION));
+      }
+      if (path === "/api/plan") {
+        return Promise.resolve(json(NO_OPEN_PLAN));
+      }
+      if (path === "/api/resort-requests/latest") {
+        return Promise.resolve(json({ threshold: 50 }));
       }
       const answer = categories(request);
       return Promise.resolve(answer);
