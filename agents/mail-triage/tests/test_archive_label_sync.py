@@ -57,7 +57,7 @@ async def test_given_a_later_change_of_the_name_when_synced_then_the_label_is_re
     assert label in gmail.mail_table[mail].labels  # no mail moved into or out of it
     assert (ref.name, ref.label_id) == ("Mail/Done", label)
     names = {gmail.label_table[i] for i in gmail.mail_table[mail].labels}
-    assert classify(names, ref.name) is Scope.OUT
+    assert classify(names, ref.name, ()) is Scope.OUT
 
 
 async def test_given_a_change_while_a_plan_is_in_flight_when_synced_then_the_rename_waits_for_it() -> None:

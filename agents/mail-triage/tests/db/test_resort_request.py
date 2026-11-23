@@ -306,7 +306,7 @@ async def test_given_qualifying_items_when_the_agent_approves_then_the_plan_is_s
     row = (await cat_agent.fetch(APPROVE, plan_id))[0]
 
     assert row["state"] == "scheduled"
-    assert abs(await _offset(cat_owner, row["apply_after"])) < timedelta(minutes=1)
+    assert timedelta(minutes=14) < await _offset(cat_owner, row["apply_after"]) <= timedelta(minutes=15)
     plan = await cat_owner.fetchrow("select state, apply_after from categories.plan where id = $1", plan_id)
     assert plan is not None
     assert (plan["state"], plan["apply_after"]) == (row["state"], row["apply_after"])
@@ -550,6 +550,27 @@ async def _columns(connection: asyncpg.Connection, table: str) -> set[str]:
     return {r["column_name"] for r in rows}
 
 
+async def test_given_a_ready_auto_plan_when_the_api_decides_or_approves_it_then_both_refuse_and_nothing_changes(
+    cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection
+) -> None:
+    await set_apply_config(cat_owner, threshold=1, delay_minutes=15)
+    plan_id = await _plan(cat_owner, await _request(cat_owner, 80), (90, 95))  # an auto plan the owner made ready
+    for call in (
+        "select categories.record_decision('mb1', $1, 2, '{\"kind\": \"all\"}'::jsonb, 'approved')",
+        "select * from categories.approve_plan('mb1', $1, 2)",
+    ):
+        with pytest.raises(asyncpg.PostgresError) as refused:
+            await cat_api.fetch(call, plan_id)
+        assert sqlstate_of(refused.value) == "MC409"
+
+    plan = await cat_owner.fetchrow("select state, apply_after from categories.plan where id = $1", plan_id)
+    assert plan is not None
+    assert (plan["state"], plan["apply_after"]) == ("ready", None)
+    assert await cat_owner.fetchval("select count(*) from categories.plan_item where decision <> 'pending'") == 0
+    assert await _count(cat_owner, "plan_decision") == 0
+    assert await _count(cat_owner, "plan_approval") == 0
+
+
 async def test_given_0029_when_it_runs_twice_goes_down_and_up_again_then_it_is_idempotent_and_reversible(
     database_url: str,
 ) -> None:
@@ -606,6 +627,14 @@ async def test_given_0029_when_it_runs_twice_goes_down_and_up_again_then_it_is_i
         assert "kind" not in index
         purge = await connection.fetchval("select pg_get_functiondef('categories.purge_expired()'::regprocedure)")
         assert "resort_request" not in purge
+        for function in ("approve_plan(text,uuid,integer)", "record_decision(text,uuid,integer,jsonb,text)"):
+            body = await connection.fetchval(f"select pg_get_functiondef('categories.{function}'::regprocedure)")
+            assert "p.kind = 'review'" not in body  # the 0015 bodies are back
+        checks = await connection.fetchval(
+            "select string_agg(pg_get_constraintdef(oid), ' ') from pg_constraint "
+            "where conname in ('ck_plan_approval_channel', 'ck_apply_audit_channel')"
+        )
+        assert "system" not in checks
         assert await connection.fetchval("select count(*) from categories.plan_item") == 1  # the old rows survive
 
         await asyncio.to_thread(command.upgrade, config, "0029")
@@ -613,5 +642,10 @@ async def test_given_0029_when_it_runs_twice_goes_down_and_up_again_then_it_is_i
         assert await _functions(connection) == set(NEW_FUNCTIONS)
         index = await connection.fetchval("select indexdef from pg_indexes where indexname = 'uq_plan_one_open'")
         assert "kind" in index
+        checks = await connection.fetchval(
+            "select string_agg(pg_get_constraintdef(oid), ' ') from pg_constraint "
+            "where conname in ('ck_plan_approval_channel', 'ck_apply_audit_channel')"
+        )
+        assert checks.count("system") == 2
     finally:
         await connection.close()
