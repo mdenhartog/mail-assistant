@@ -127,14 +127,14 @@ export function wire(options: WireOptions = {}): Wired {
 }
 
 /** The page inside a data router (the unsaved-changes guard needs one), with a second route to leave to. */
-export function renderPageInRouter(): { container: HTMLElement; router: ReturnType<typeof createMemoryRouter> } {
+export function renderPageInRouter(path = "/categories"): { container: HTMLElement; router: ReturnType<typeof createMemoryRouter> } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const router = createMemoryRouter(
     [
       { path: "/categories", element: <CategoriesPage /> },
       { path: "/elsewhere", element: <p>Elsewhere page</p> },
     ],
-    { initialEntries: ["/categories"] },
+    { initialEntries: [path] },
   );
   const { container } = render(
     <QueryClientProvider client={client}>

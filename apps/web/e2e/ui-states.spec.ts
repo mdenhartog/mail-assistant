@@ -318,6 +318,17 @@ test.describe("the approve summary", () => {
   });
 });
 
+test("an open group shows the tip as a suggestion in plain text with a link to the category's edit view", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await STATES.find((state) => state.name === "review: group open")?.open(page);
+
+  await expect(page.getByText("This is a suggestion, nothing was changed.")).toBeVisible();
+  await expect(page.getByText(/not a link/)).toBeVisible();
+  await expect(page.locator('a[href*="evil"]')).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open the edit view of Invoices" })).toHaveAttribute("href", /\/categories\?edit=00000000-0000-4000-8000-000000000001$/);
+  await expect(page.getByText("5 mails were already moved on their own, 12 are scheduled and 1 was skipped.")).toBeVisible();
+});
+
 test("a group opens and closes with the keyboard and the selection is announced once, after a pause", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 667 });
   await STATES.find((state) => state.name === "review: ready")?.open(page);
