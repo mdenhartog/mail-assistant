@@ -725,7 +725,7 @@ class PlanApproval(Base):
     __tablename__ = "plan_approval"
     __table_args__ = (
         CheckConstraint("approved_count >= 0", name="ck_plan_approval_count"),
-        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_plan_approval_channel"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator', 'system')", name="ck_plan_approval_channel"),
         Index("ix_plan_approval_at", "mailbox_id", "at"),
         {"schema": "categories"},
     )
@@ -744,7 +744,7 @@ class ApplyAudit(Base):
 
     __tablename__ = "apply_audit"
     __table_args__ = (
-        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_apply_audit_channel"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator', 'system')", name="ck_apply_audit_channel"),
         CheckConstraint("kind IN ('apply', 'restore')", name="ck_apply_audit_kind"),
         Index("ix_apply_audit_plan", "mailbox_id", "plan_id"),
         Index(

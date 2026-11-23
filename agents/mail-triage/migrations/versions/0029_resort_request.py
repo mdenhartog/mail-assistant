@@ -13,13 +13,17 @@ use them land. An old plan reads as a ``review`` plan without a request or a thr
   ``tip``.
 - ``approve_system_plan(plan)``: the agent's own approval of an ``auto`` plan. It locks the plan, re-checks every item
   against the stored threshold, records the decision source ``threshold``, inserts the approval that counts toward the
-  rolling 24 hours and schedules the plan by the rule of ``approve_plan``. Rights are in ``app/db/grants.sql``: the api
-  has no right on it.
+  rolling 24 hours and always schedules the plan after the configured delay (at least a minute), so the notice with
+  Cancel, Move back and Lock is sent first, whatever the 24-hour sum. The approval is recorded with the channel
+  ``system`` (``plan_approval`` and ``apply_audit`` accept it; the apply copies it to its audit rows). Rights are in
+  ``app/db/grants.sql``: the api has no right on it.
+- ``record_decision`` and ``approve_plan`` (revision 0015, callable by the api) now act only on a ``review`` plan.
 - ``purge_expired()`` removes requests after a year (when no plan still points at them).
 
-Both functions are ``SECURITY DEFINER``, owned by the non-login definer role, with the search path pinned and no right
-for ``PUBLIC``. The downgrade removes what this revision added and restores the index of revision 0015; it stops with a
-database error when a mailbox has an ``auto`` and a ``review`` plan open at once (the old index allows one).
+The two new functions are ``SECURITY DEFINER``, owned by the non-login definer role, with the search path pinned and no
+right for ``PUBLIC``. The downgrade removes what this revision added, restores the index and the function bodies of
+revision 0015 and the old channel checks (``system`` rows become ``telegram``); it stops with a database error
+when a mailbox has an ``auto`` and a ``review`` plan open at once (the old index allows one).
 
 Revision ID: 0029
 Revises: 0028
@@ -44,6 +48,9 @@ _CHANNEL = """CASE session_user
                 WHEN 'web_settings_runtime' THEN 'web'
                 ELSE 'operator'
             END"""
+_SYSTEM_CHANNELS = "('telegram', 'web', 'operator', 'system')"
+_OLD_CHANNELS = "('telegram', 'web', 'operator')"
+_CHANNEL_CHECKS = (("plan_approval", "ck_plan_approval_channel"), ("apply_audit", "ck_apply_audit_channel"))
 _ACTOR = "encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex')"
 
 _REQUEST_DERIVE = f"""
@@ -111,10 +118,10 @@ $$
 
 # The agent's approval of an ``auto`` plan (ADR-0056, ADR-0047). One locked transaction: every item is checked against
 # the threshold stored on the plan (a missing confidence never qualifies), the items become approved with the source
-# ``threshold``, the approval is recorded, the approvals of the mailbox over the last 24 hours (this one included) are
-# summed and the plan is scheduled for now, or for now plus the delay when the sum is above the limit: the rule of
-# approve_plan. The function takes no threshold, no delay and no mailbox; a repeated call on a scheduled plan returns
-# it.
+# ``threshold``, the approval is recorded with the channel ``system`` (a constant, not the session's role) and counts
+# toward the 24-hour sum that approve_plan takes for a user. The plan is
+# always scheduled for now plus the delay (at least a minute): the notice must reach the user before any move, whatever
+# the sum. The function takes no threshold, no delay and no mailbox; a repeated call on a scheduled plan returns it.
 _APPROVE_SYSTEM_PLAN = f"""
 CREATE FUNCTION categories.approve_system_plan(p_plan uuid)
 RETURNS TABLE (state text, apply_after timestamptz)
@@ -127,8 +134,6 @@ DECLARE
     v_after timestamptz;
     v_threshold integer;
     v_approved integer;
-    v_sum bigint;
-    v_limit integer;
     v_delay integer;
 BEGIN
     SELECT p.mailbox_id, p.kind, p.state, p.apply_after, p.threshold
@@ -149,7 +154,7 @@ BEGIN
                   AND (i.confidence_pct IS NULL OR i.confidence_pct < v_threshold)) THEN
         RAISE EXCEPTION 'an item is below the threshold of the plan' USING ERRCODE = 'MC409';
     END IF;
-    SELECT c.threshold, c.delay_minutes INTO v_limit, v_delay
+    SELECT c.delay_minutes INTO v_delay
       FROM categories.apply_config c WHERE c.mailbox_id = v_mailbox;
     IF NOT FOUND THEN
         RAISE EXCEPTION 'the apply settings are not ready' USING ERRCODE = 'MC409';
@@ -161,11 +166,8 @@ BEGIN
     SELECT count(*) INTO v_approved
       FROM categories.plan_item i WHERE i.mailbox_id = v_mailbox AND i.plan_id = p_plan AND i.decision = 'approved';
     INSERT INTO categories.plan_approval (mailbox_id, plan_id, approved_count, channel, actor_digest, at)
-    VALUES (v_mailbox, p_plan, v_approved, {_CHANNEL}, {_ACTOR}, now());
-    SELECT coalesce(sum(a.approved_count), 0) INTO v_sum FROM categories.plan_approval a
-     WHERE a.mailbox_id = v_mailbox AND a.at > now() - interval '24 hours';
-
-    v_after := CASE WHEN v_sum > v_limit THEN now() + make_interval(mins => v_delay) ELSE now() END;
+    VALUES (v_mailbox, p_plan, v_approved, 'system', {_ACTOR}, now());
+    v_after := now() + make_interval(mins => greatest(v_delay, 1));
     UPDATE categories.plan p SET state = 'scheduled', apply_after = v_after, last_activity_at = now()
      WHERE p.mailbox_id = v_mailbox AND p.id = p_plan;
     RETURN QUERY SELECT 'scheduled'::text, v_after;
@@ -207,10 +209,48 @@ def _replace_purge(sql: str) -> None:
     op.execute(f"ALTER FUNCTION {_PURGE} OWNER TO categories_definer")
 
 
+_LOOKUP = "FROM categories.plan p WHERE p.mailbox_id = p_mailbox AND p.id = p_plan FOR UPDATE;"
+_REVIEW_LOOKUP = (
+    "FROM categories.plan p WHERE p.mailbox_id = p_mailbox AND p.id = p_plan AND p.kind = 'review' FOR UPDATE;"
+)
+_USER_FUNCTIONS = (
+    "categories.record_decision(text, uuid, integer, jsonb, text)",
+    "categories.approve_plan(text, uuid, integer)",
+)
+
+
+def _replace_user_functions(old: str, new: str) -> None:
+    """Rebuild the api's two plan functions from their definitions in the database, with ``old`` swapped for ``new``."""
+    for function in _USER_FUNCTIONS:
+        body = _current_definition(function)
+        if body.count(old) != 1:
+            raise RuntimeError("a plan function has changed shape")
+        op.execute(f"ALTER FUNCTION {function} OWNER TO current_user")
+        op.execute(body.replace(old, new, 1))
+        op.execute(f"ALTER FUNCTION {function} OWNER TO categories_definer")
+
+
+def _set_channels(allowed: str) -> None:
+    for table, name in _CHANNEL_CHECKS:
+        op.drop_constraint(name, table, schema=_SCHEMA)
+        op.create_check_constraint(name, table, f"channel IN {allowed}", schema=_SCHEMA)
+
+
+def _remove_system_channel() -> None:
+    """The old constraints know no system channel; the rows that carry it were the agent's own login (telegram)."""
+    for table, _name in _CHANNEL_CHECKS:
+        op.execute(f"UPDATE categories.{table} SET channel = 'telegram' WHERE channel = 'system'")
+    _set_channels(_OLD_CHANNELS)
+
+
+def _current_definition(function: str) -> str:
+    statement = sa.text("SELECT pg_get_functiondef(CAST(:name AS regprocedure))")
+    return str(op.get_bind().execute(statement, {"name": function}).scalar_one())
+
+
 def _current_purge() -> str:
     """The definition in the database now, so this revision builds on whatever the chain made of it."""
-    statement = sa.text("SELECT pg_get_functiondef(CAST(:name AS regprocedure))")
-    return str(op.get_bind().execute(statement, {"name": _PURGE}).scalar_one())
+    return _current_definition(_PURGE)
 
 
 def _create_request_table() -> None:
@@ -301,6 +341,8 @@ def upgrade() -> None:
     for function in _FUNCTIONS:
         op.execute(f"REVOKE ALL ON FUNCTION {function} FROM PUBLIC")
         op.execute(f"ALTER FUNCTION {function} OWNER TO categories_definer")
+    _set_channels(_SYSTEM_CHANNELS)
+    _replace_user_functions(_LOOKUP, _REVIEW_LOOKUP)
     body = _current_purge()
     if body.count(_PURGE_MARK) != 1:
         raise RuntimeError("the purge function has changed shape")
@@ -313,6 +355,8 @@ def downgrade() -> None:
     if _PURGE_PART not in body:
         raise RuntimeError("the purge function does not hold the part of revision 0029")
     _replace_purge(body.replace(_PURGE_PART, "", 1))
+    _replace_user_functions(_REVIEW_LOOKUP, _LOOKUP)
+    _remove_system_channel()
     for name, _when, _function, _condition in reversed(_TRIGGERS):
         table = "resort_request" if name == "resort_request_derive" else "plan"
         op.execute(f"DROP TRIGGER {name} ON categories.{table}")
