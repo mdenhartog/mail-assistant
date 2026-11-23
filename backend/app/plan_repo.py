@@ -17,6 +17,8 @@ from sqlalchemy.exc import DBAPIError
 if TYPE_CHECKING:
     import uuid
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.db import Database
     from app.plan_models import Decision
 
@@ -263,6 +265,52 @@ def _raise_refusal(error: DBAPIError) -> None:
     raise refusal from None  # not chained: the driver text may carry what was asked
 
 
+def _open_plan_of(row: Any) -> OpenPlan:  # noqa: ANN401 - a SQLAlchemy result row
+    """Build the open plan from its row."""
+    return OpenPlan(
+        row.id,
+        row.state,
+        _utc(row.apply_after),
+        row.checked_count,
+        row.cap,
+        row.unclear_count,
+        row.estimate_total,
+        row.not_looked_at,
+        row.list_version,
+        row.request_id,
+        row.threshold,
+    )
+
+
+async def _auto_summary_of(session: AsyncSession, params: dict[str, Any], plan: OpenPlan) -> AutoSummary:
+    """Read what the automatic run of the plan's request did; the empty summary when it has no request or no row."""
+    if plan.request_id is None:
+        return AutoSummary()
+    found = (await session.execute(_AUTO_SUMMARY, {**params, "request": plan.request_id})).first()
+    return AutoSummary() if found is None else AutoSummary(found.moved, found.scheduled, found.skipped)
+
+
+async def _groups_and_decisions(
+    session: AsyncSession, scope: dict[str, Any]
+) -> tuple[tuple[GroupRow, ...], dict[str, int]]:
+    """Read the groups of the open plan and its decision counts."""
+    groups = tuple(
+        GroupRow(
+            g.old_category_id,
+            g.new_category_id,
+            g.n,
+            g.approved,
+            g.rejected,
+            g.sender_name,
+            g.sender_address,
+            g.subject,
+        )
+        for g in await session.execute(_GROUPS, scope)
+    )
+    decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
+    return groups, decisions
+
+
 class PlanRepository:
     """Reads the plan of one mailbox and calls the functions that change it."""
 
@@ -282,46 +330,13 @@ class PlanRepository:
             row = (await session.execute(_OPEN_PLAN, params)).first()
             ended = (await session.execute(_LAST_ENDED, params)).first()
             config = (await session.execute(_APPLY_CONFIG, params)).first()
-            open_plan = (
-                None
-                if row is None
-                else OpenPlan(
-                    row.id,
-                    row.state,
-                    _utc(row.apply_after),
-                    row.checked_count,
-                    row.cap,
-                    row.unclear_count,
-                    row.estimate_total,
-                    row.not_looked_at,
-                    row.list_version,
-                    row.request_id,
-                    row.threshold,
-                )
-            )
+            open_plan = None if row is None else _open_plan_of(row)
             groups: tuple[GroupRow, ...] = ()
             decisions: dict[str, int] = {}
             auto = AutoSummary()
-            if open_plan is not None and open_plan.request_id is not None:
-                found = (await session.execute(_AUTO_SUMMARY, {**params, "request": open_plan.request_id})).first()
-                if found is not None:
-                    auto = AutoSummary(found.moved, found.scheduled, found.skipped)
             if open_plan is not None:
-                scope = {**params, "plan": open_plan.id}
-                groups = tuple(
-                    GroupRow(
-                        g.old_category_id,
-                        g.new_category_id,
-                        g.n,
-                        g.approved,
-                        g.rejected,
-                        g.sender_name,
-                        g.sender_address,
-                        g.subject,
-                    )
-                    for g in await session.execute(_GROUPS, scope)
-                )
-                decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
+                auto = await _auto_summary_of(session, params, open_plan)
+                groups, decisions = await _groups_and_decisions(session, {**params, "plan": open_plan.id})
         last = None if ended is None else EndedPlan(ended.id, ended.state, _utc(ended.terminal_at), ended.moved)
         return PlanSnapshot(
             open_plan,
