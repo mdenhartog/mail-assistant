@@ -7,6 +7,7 @@ import { Banner } from "@/components/Banner";
 import { Button } from "@/components/Button";
 import { ItemFilterBar } from "@/features/review/ItemFilterBar";
 import { ReviewItem } from "@/features/review/ReviewItem";
+import { TipBlock } from "@/features/review/TipBlock";
 import { groupKey } from "@/features/review/text";
 
 /** Pages are 100 items and the API allows 100 pages; the loop never runs longer than that. */
@@ -18,9 +19,16 @@ const DEBOUNCE_MS = 300;
 
 export type SelectionUpdate = (previous: ReadonlySet<number>) => ReadonlySet<number>;
 
+export interface TipTarget {
+  id: string | null;
+  name: string;
+}
+
 export interface GroupPanelProps {
   group: PlanGroup;
   title: string;
+  /** The category the group moves to; the tip links to its edit view. */
+  target: TipTarget;
   selected: ReadonlySet<number>;
   busy: boolean;
   onSelection: (key: string, update: SelectionUpdate) => void;
@@ -116,9 +124,21 @@ interface BodyProps {
   title: string;
   selected: ReadonlySet<number>;
   onToggle: (id: number) => void;
+  /** The category the mails move to, for the tip. */
+  target: TipTarget;
 }
 
-function Body({ items, searching, title, selected, onToggle }: BodyProps): ReactElement {
+/** The tip is one per category: the first one the loaded mails carry. */
+function tipOf(rows: readonly PlanItem[]): string | null {
+  return rows.find((row) => row.tip !== null && row.tip.trim() !== "")?.tip ?? null;
+}
+
+function GroupTip({ rows, target }: { rows: readonly PlanItem[]; target: TipTarget }): ReactElement | null {
+  const tip = tipOf(rows);
+  return tip === null ? null : <TipBlock categoryId={target.id} categoryName={target.name} tip={tip} />;
+}
+
+function Body({ items, searching, title, selected, onToggle, target }: BodyProps): ReactElement {
   const rows = items.data?.pages.flatMap((page) => page.items) ?? [];
   if (items.isPending) {
     return <Skeleton />;
@@ -134,6 +154,7 @@ function Body({ items, searching, title, selected, onToggle }: BodyProps): React
   }
   return (
     <>
+      <GroupTip rows={rows} target={target} />
       {rows.length === 0 ? <EmptyText searching={searching} /> : null}
       <ul aria-label={`Mails in ${title}`} className="mt-3">
         {rows.map((row) => (
@@ -219,7 +240,7 @@ function MatchCount({ items }: { items: Items }): ReactElement | null {
  * leaves the other rows (and the focus) alone. "Select all" only selects; nothing is decided until a decision button is
  * pressed (AC-13). While a sender is searched, "Select all" first names how many mails match and then selects only them.
  */
-export function GroupPanel({ group, title, selected, busy, onSelection, onDecideSelected }: GroupPanelProps): ReactElement {
+export function GroupPanel({ group, title, target, selected, busy, onSelection, onDecideSelected }: GroupPanelProps): ReactElement {
   const filter = useItemFilter();
   const items = usePlanItems({ from: group.from, to: group.to }, true, filter.applied);
   const key = groupKey(group);
@@ -271,7 +292,7 @@ export function GroupPanel({ group, title, selected, busy, onSelection, onDecide
         />
       )}
       {searching ? <MatchCount items={items} /> : null}
-      <Body items={items} onToggle={toggle} searching={searching} selected={selected} title={title} />
+      <Body items={items} onToggle={toggle} searching={searching} selected={selected} target={target} title={title} />
     </div>
   );
 }
