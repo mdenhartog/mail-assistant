@@ -22,6 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from app.core.judgement import ListedCategory
 from app.core.resort_plan import ItemState, PlanState
+from app.db import pg_categories
 from app.db.migrate import RUNTIME_ROLE, WEB_ROLE
 from app.db.models import (
     ApplyAudit,
@@ -33,9 +34,12 @@ from app.db.models import (
     PlanItem,
     Rejection,
 )
+from app.db.models import (
+    ResortRequest as ResortRequestRow,
+)
 from app.usecases.move_back import MoveBackJob
 from app.usecases.resort_apply import ApplyItem, AuditMove, DuePlan
-from app.usecases.resort_build import BuildList, ItemDraft, PlanRecord
+from app.usecases.resort_build import BuildList, ItemDraft, PlanRecord, ResortRequest
 
 if TYPE_CHECKING:
     import uuid
@@ -70,6 +74,7 @@ def _record(plan: Plan, items: int) -> PlanRecord:
         plan.unclear_count,
         items,
         plan.cap,
+        plan.request_id,
     )
 
 
@@ -85,25 +90,66 @@ class PgBuildStore:
         return Plan.mailbox_id == self._mailbox, Plan.id == plan_id
 
     async def current_list(self) -> BuildList:
-        """The latest list version with its categories in order; version 0 when there is none."""
+        """The latest list version with its categories (kind, ticks, sender entries) in order; version 0 when none."""
+        async with self._sessions() as session:
+            current = await pg_categories.current_list(session, self._mailbox)
+        if current.version == 0:
+            return BuildList(0, _EPOCH, ())
+        async with self._sessions() as session:
+            created = (
+                await session.execute(
+                    select(ListVersion.created_at).where(
+                        ListVersion.mailbox_id == self._mailbox, ListVersion.version == current.version
+                    )
+                )
+            ).scalar_one()
+        return BuildList(
+            current.version,
+            created,
+            tuple(
+                ListedCategory(str(c.id), c.name, c.description, c.kind, c.notify, c.senders)
+                for c in current.categories
+            ),
+            current.general_instructions,
+        )
+
+    async def open_request(self) -> ResortRequest | None:
+        """The newest request of the mailbox when no plan was made for it yet; an older one is never built."""
         newest = (
-            select(ListVersion.version, ListVersion.created_at)
-            .where(ListVersion.mailbox_id == self._mailbox)
-            .order_by(ListVersion.version.desc())
+            select(ResortRequestRow.id, ResortRequestRow.threshold)
+            .where(ResortRequestRow.mailbox_id == self._mailbox)
+            .order_by(ResortRequestRow.at.desc(), ResortRequestRow.id.desc())
             .limit(1)
         )
         async with self._sessions() as session:
             row = (await session.execute(newest)).first()
             if row is None:
-                return BuildList(0, _EPOCH, ())
-            categories = await session.execute(
-                select(Category.id, Category.name, Category.description)
-                .where(Category.mailbox_id == self._mailbox, Category.version == row.version)
-                .order_by(Category.position)
+                return None
+            planned = select(Plan.id).where(Plan.mailbox_id == self._mailbox, Plan.request_id == row.id).limit(1)
+            if (await session.execute(planned)).first() is not None:
+                return None
+        return ResortRequest(row.id, row.threshold)
+
+    async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
+        """Insert the ``building`` plan of ``request``; the database copies the threshold from the request.
+
+        ``None`` when the mailbox has an open plan of this kind already (the one-open-plan index).
+        """
+        statement = (
+            insert(Plan)
+            .values(
+                mailbox_id=self._mailbox,
+                list_version=list_version,
+                cap=cap,
+                kind="review",
+                request_id=request.request_id,
             )
-            return BuildList(
-                row.version, row.created_at, tuple(_listed(c.id, c.name, c.description) for c in categories)
-            )
+            .on_conflict_do_nothing()
+            .returning(Plan)
+        )
+        async with self._sessions.begin() as session:
+            plan = (await session.execute(statement)).scalar_one_or_none()
+        return None if plan is None else _record(plan, 0)
 
     async def latest_plan(self) -> PlanRecord | None:
         """The newest plan of the mailbox, terminal or not."""
@@ -186,16 +232,17 @@ class PgBuildStore:
                         sender_name=item.sender_name,
                         sender_address=item.sender_address,
                         subject=item.subject,
-                        old_category_id=item.old_category_id,
-                        new_category_id=item.new_category_id,
+                        old_category_id=item.old_topic_id,  # the columns the apply reads: the topic of the pair
+                        new_category_id=item.new_topic_id,
+                        old_topic_id=item.old_topic_id,
+                        old_extra_id=item.old_extra_id,
+                        new_topic_id=item.new_topic_id,
+                        new_extra_id=item.new_extra_id,
+                        confidence_pct=item.confidence_pct,
                     )
                     .on_conflict_do_nothing(constraint="uq_plan_item_message")  # a mail listed twice stays one item
                 )
         return True
-
-
-def _listed(category_id: uuid.UUID, name: str, description: str) -> ListedCategory:
-    return ListedCategory(str(category_id), name, description)
 
 
 class PgApplyStore:

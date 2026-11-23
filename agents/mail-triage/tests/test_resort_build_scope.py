@@ -32,12 +32,12 @@ ARCHIVE = "Archive"
 
 @pytest.mark.parametrize(("labels", "expected"), MATRIX)
 def test_only_mail_in_scope_can_become_an_item(labels: set[str], expected: Scope) -> None:
-    assert classify(labels, ARCHIVE) is expected
+    assert classify(labels, ARCHIVE, frozenset()) is expected
 
 
 def test_the_label_name_is_matched_exactly_not_by_prefix_look_alike() -> None:
-    assert classify({"assistant/Finance"}, ARCHIVE) is Scope.OUT
-    assert classify({"Assistant"}, ARCHIVE) is Scope.OUT
+    assert classify({"assistant/Finance"}, ARCHIVE, frozenset()) is Scope.OUT
+    assert classify({"Assistant"}, ARCHIVE, frozenset()) is Scope.OUT
     assert assistant_labels({"INBOX", "Assistant/Finance", "Assistantx/Y"}) == ["Assistant/Finance"]
 
 

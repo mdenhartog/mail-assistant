@@ -408,7 +408,7 @@ class ResortApply:
     ) -> _Checked | SkipReason:
         """The checks before a move, in the order that cannot leak: scope, pinning, then the old label."""
         label_names = {names[i] for i in mail.labels if i in names}
-        scope = classify(label_names, self._archive.name)
+        scope = classify(label_names, self._archive.name, frozenset())  # pairs: U-label-structure-23
         if scope is Scope.OUT:
             return SkipReason.OUT_OF_SCOPE
         if scope is Scope.UNCLEAR:

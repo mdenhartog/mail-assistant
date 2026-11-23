@@ -1,12 +1,15 @@
-"""The plan build: judge the mail in scope against the current list and write the moves it would take (INT-004).
+"""The plan build: judge the mail in scope against the list and write the moves it would take (INT-008).
 
-ADR-0046 point 3, spec AC-9, AC-10, AC-11, AC-13, AC-17, AC-18, AC-33, AC-52, AC-54.
+ADR-0056, ADR-0055, spec AC-9 to AC-11, AC-13, AC-17, AC-18, AC-33, AC-47, AC-53, AC-54.
 
-No build starts by itself (spec D12): a list change or a first start creates no plan. This use case only continues a
-plan that is ``building`` and replaces a ``building`` or ``ready`` plan that a newer list outdated. It lists mail
-newest first, reads each mail once, and writes an item only when the category would change. It spends only the model
-budget above the reserve of ADR-0021; when that is used up the plan stays ``building`` and the next run continues from
-the stored cursor. Nothing here moves or labels mail: the mailbox port has no write.
+No build starts by itself (spec D12): a list change or a first start creates no plan. A plan starts only from a
+``resort_request`` row (the user pressed "Sort everything again"): the newest request without a plan gets a plan of its
+own, and the database copies the threshold onto it. This use case then continues a plan that is ``building`` and
+replaces a ``building`` or ``ready`` plan that a newer list outdated. It lists mail newest first, reads each mail once,
+and writes an item only when the pair (topic, extra label) would change, with the confidence of the answer as a whole
+percentage. A mail that a sender rule files is decided in code at confidence 100 without a model call. It spends only
+the model budget above the reserve of ADR-0021; when that is used up the plan stays ``building`` and the next run
+continues from the stored cursor. Nothing here moves or labels mail: the mailbox port has no write.
 
 Every write of progress is one compare-and-set on the plan, so a plan that was replaced meanwhile gets no more items.
 The notice holds numbers only (AC-18); logs hold ids and counts, never mail text.
@@ -23,11 +26,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
-from app.core.judgement import OTHER_ID, Filing, ListedCategory, NeedsAttention, resolve
-from app.core.resort_plan import PlanState, on_list_changed
+from app.core.judgement import OTHER_ID, OTHER_LABEL, ListedCategory, NeedsAttention, file_under
+from app.core.resort_plan import PlanState, build_may_start, on_list_changed
 from app.core.scope import LABEL_PREFIX, Scope, assistant_labels, classify, clean_display
+from app.core.sender_rules import ExtraRule, RuleFiling, RuleSkipped, SenderRules
 from app.usecases.catchup import BUDGET_RESERVE, CALLS_PER_MAIL
 from app.usecases.triage import pinned_mail_kind
+from category_policy.kinds import Kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -51,6 +56,7 @@ __all__ = [
     "PlanNumbers",
     "PlanRecord",
     "ResortBuild",
+    "ResortRequest",
     "plan_ready_text",
 ]
 
@@ -100,7 +106,7 @@ class BuildList:
     version: int  # 0 before the first version exists
     changed_at: datetime
     categories: tuple[ListedCategory, ...]
-    general_instructions: str = ""  # filled by the plan-build reader of a later unit; empty until then
+    general_instructions: str = ""  # the owner's rules for the whole list: untrusted text for the model
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +121,15 @@ class PlanRecord:
     unclear: int
     items: int
     cap: int
+    request_id: uuid.UUID | None = None  # the request the plan was made for; ``None`` for a plan of an older kind
+
+
+@dataclass(frozen=True, slots=True)
+class ResortRequest:
+    """A "Sort everything again" request: its id and the confidence threshold the user typed (50 to 100)."""
+
+    request_id: uuid.UUID
+    threshold: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,14 +142,20 @@ class Candidate:
 
 @dataclass(frozen=True, slots=True)
 class ItemDraft:
-    """One planned move, with only what the review page shows (AC-39: no body)."""
+    """One planned move of a pair (topic, extra label), with only what the review page shows (AC-39: no body).
+
+    ``confidence_pct`` is the model's own report as a whole percentage (100 for a sender rule).
+    """
 
     message_id: str
     sender_name: str
     sender_address: str
     subject: str
-    old_category_id: uuid.UUID
-    new_category_id: uuid.UUID
+    old_topic_id: uuid.UUID
+    old_extra_id: uuid.UUID | None
+    new_topic_id: uuid.UUID
+    new_extra_id: uuid.UUID | None
+    confidence_pct: int
 
 
 class BuildMailbox(Protocol):
@@ -179,6 +200,14 @@ class BuildStore(Protocol):
 
     async def latest_plan(self) -> PlanRecord | None:
         """The newest plan of the mailbox, terminal or not."""
+        ...
+
+    async def open_request(self) -> ResortRequest | None:
+        """The newest request of the mailbox when no plan was made for it yet; older requests are never built."""
+        ...
+
+    async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
+        """Insert the ``building`` plan of ``request``; ``None`` when a plan of the mailbox is open already."""
         ...
 
     async def replace_plan(self, plan_id: uuid.UUID) -> bool:
@@ -266,7 +295,7 @@ class ResortBuild:
         self._per_run = per_run
 
     async def run_once(self) -> BuildResult:
-        """Replace a plan that a newer list outdated and work on the plan being built; never start a plan."""
+        """Replace an outdated plan, start the plan of a new request and work on the plan being built."""
         current = await self._store.current_list()
         if current.version == 0:
             return BuildResult(BuildStatus.IDLE)
@@ -275,9 +304,18 @@ class ResortBuild:
             if on_list_changed(latest.state).discard_decisions:
                 await self._store.replace_plan(latest.plan_id)
             latest = await self._store.latest_plan()
+        if latest is None or build_may_start(latest.state):
+            latest = await self._start(current)
         if latest is None or not self._continues(latest, current):
             return BuildResult(BuildStatus.IDLE)
         return await self._build(latest, current)
+
+    async def _start(self, current: BuildList) -> PlanRecord | None:
+        """The plan of the newest request that has none; no request, no plan (D12)."""
+        request = await self._store.open_request()
+        if request is None:
+            return None
+        return await self._store.start_plan(request, current.version, self._cap)
 
     @staticmethod
     def _continues(latest: PlanRecord, current: BuildList) -> bool:
@@ -309,7 +347,7 @@ class ResortBuild:
         """
         names = await asyncio.to_thread(self._mail.label_names)
         rejected = await self._store.rejected_ids(plan.list_version)
-        by_label = {f"{LABEL_PREFIX}{c.name.strip()}": c.category_id for c in current.categories}
+        lookup = _Lookup(current)
         checked, unclear, items, cursor = plan.checked, plan.unclear, plan.items, plan.cursor
         looked = 0
         while checked < plan.cap:
@@ -322,7 +360,7 @@ class ResortBuild:
                 if looked >= self._per_run:
                     raise _Pause
                 await self._still_current(plan)
-                result = await self._look(plan, candidate, current, names, rejected, by_label)
+                result = await self._look(plan, candidate, lookup, names, rejected)
                 looked += 1
                 cursor = candidate.resume_after
                 checked, unclear, items = checked + result[0], unclear + result[1], items + result[2]
@@ -341,14 +379,13 @@ class ResortBuild:
             cursor = page[-1].resume_after
         return count
 
-    async def _look(  # noqa: PLR0913, PLR0917
+    async def _look(
         self,
         plan: PlanRecord,
         candidate: Candidate,
-        current: BuildList,
+        lookup: _Lookup,
         names: dict[str, str],
         rejected: frozenset[str],
-        by_label: dict[str, str],
     ) -> tuple[int, int, int]:
         """Look at one mail and write its progress; return (checked, unclear, items) added."""
         item: ItemDraft | None = None
@@ -360,47 +397,95 @@ class ResortBuild:
         )
         if mail is not None:
             label_names = {names[i] for i in mail.labels if i in names}
-            scope = classify(label_names, self._archive.name)
+            scope = classify(label_names, self._archive.name, lookup.extra_ids)
             if scope is Scope.UNCLEAR:
                 checked = unclear = 1
             elif scope is Scope.IN_SCOPE and pinned_mail_kind(mail, self._pinned) is None:
                 checked = 1
-                item = await self._judged_item(mail, current, assistant_labels(label_names), by_label)
+                item = await self._judged_item(mail, lookup, assistant_labels(label_names))
         if not await self._store.record_progress(
             plan.plan_id, item=item, cursor=candidate.resume_after, checked=checked, unclear=unclear
         ):
             raise _Cancelled
         return checked, unclear, item is not None
 
-    async def _judged_item(
-        self, mail: FetchedMail, current: BuildList, labels: list[str], by_label: dict[str, str]
-    ) -> ItemDraft | None:
+    async def _judged_item(self, mail: FetchedMail, lookup: _Lookup, labels: list[str]) -> ItemDraft | None:
+        ruled = lookup.rules.apply(mail.auth_results, mail.sender)
+        if isinstance(ruled, RuleFiling):  # decided in code: no model call, no budget (ADR-0054, ADR-0055)
+            target = _Target(ruled.topic.category_id, _id_of(ruled.extra), CERTAIN)
+        else:
+            target = await self._judged_target(mail, lookup, ruled)
+        return None if target is None else _draft(mail, lookup, labels, target)
+
+    async def _judged_target(
+        self, mail: FetchedMail, lookup: _Lookup, ruled: ExtraRule | RuleSkipped | None
+    ) -> _Target | None:
         if self._budget.remaining() < BUDGET_RESERVE + CALLS_PER_MAIL:
             raise _Pause
         try:
             verdict = await self._judge.judge(
-                trim_mail(mail.subject, mail.sender, mail.text), current.categories, current.general_instructions
+                trim_mail(mail.subject, mail.sender, mail.text), lookup.categories, lookup.instructions
             )
         except ModelUnavailable:
             logger.warning("model unavailable; the plan build continues next run")
             raise _Pause from None
-        if isinstance(verdict, NeedsAttention) and verdict.reason == "budget":
-            raise _Pause
-        filing = resolve(verdict, current.categories) if not isinstance(verdict, NeedsAttention) else verdict
-        if isinstance(filing, NeedsAttention):
-            return None  # no trustworthy category: the mail stays where it is
-        return _draft(mail, filing, labels, by_label)
+        if isinstance(verdict, NeedsAttention):
+            if verdict.reason == "budget":
+                raise _Pause
+            return None  # no trustworthy answer: the mail stays where it is
+        filing = file_under(verdict, lookup.categories)
+        extra = _id_of(ruled.extra) if isinstance(ruled, ExtraRule) else _id_of(filing.extra)
+        return _Target(filing.category_id, extra, _percent(verdict.confidence))
 
 
 _REPLACEABLE = frozenset({PlanState.BUILDING, PlanState.READY})
+CERTAIN = 100  # the confidence of a sender rule: it is code, not a guess
 
 
-def _draft(mail: FetchedMail, filing: Filing, labels: list[str], by_label: dict[str, str]) -> ItemDraft | None:
-    """An item only when the category would change; a label outside the list (a deleted category) always moves."""
-    label = labels[0] if labels else None
-    old_id = by_label.get(label, OTHER_ID) if label else OTHER_ID
-    legacy = label is not None and label not in by_label
-    if filing.category_id == old_id and not legacy:
+@dataclass(frozen=True, slots=True)
+class _Target:
+    """The pair a mail should carry and how sure the answer was."""
+
+    topic_id: str
+    extra_id: str | None
+    confidence_pct: int
+
+
+class _Lookup:
+    """The list of this run: label names by kind, the sender rules and the instructions."""
+
+    def __init__(self, current: BuildList) -> None:
+        self.categories = current.categories
+        self.instructions = current.general_instructions
+        self.rules = SenderRules(current.categories)
+        self.topics = {OTHER_LABEL: OTHER_ID}
+        self.extras: dict[str, str] = {}
+        for category in current.categories:
+            label = f"{LABEL_PREFIX}{category.name.strip()}"
+            if category.kind is Kind.EXTRA:
+                self.extras[label] = category.category_id
+            else:
+                self.topics[label] = category.category_id
+        self.extra_ids = frozenset(self.extras)  # the label names of the extra categories
+
+
+def _id_of(category: ListedCategory | None) -> str | None:
+    return None if category is None else category.category_id
+
+
+def _percent(confidence: float) -> int:
+    """The validated 0 to 1 confidence as a whole percentage; the model's text never sets it any other way."""
+    return max(0, min(100, round(confidence * 100)))
+
+
+def _draft(mail: FetchedMail, lookup: _Lookup, labels: list[str], target: _Target) -> ItemDraft | None:
+    """An item only when the pair would change; a topic label outside the list (a deleted category) always moves."""
+    topic_label = next((label for label in labels if label not in lookup.extras), None)
+    extra_label = next((label for label in labels if label in lookup.extras), None)
+    old_topic = lookup.topics.get(topic_label, OTHER_ID) if topic_label else OTHER_ID
+    old_extra = lookup.extras[extra_label] if extra_label else None
+    legacy = topic_label is not None and topic_label not in lookup.topics
+    if (old_topic, old_extra) == (target.topic_id, target.extra_id) and not legacy:
         return None
     name, _address = parseaddr(mail.headers.get("From", ""))
     name = clean_display(name, NAME_MAX)
@@ -409,6 +494,9 @@ def _draft(mail: FetchedMail, filing: Filing, labels: list[str], by_label: dict[
         sender_name=name,
         sender_address=clean_display(mail.sender, ADDRESS_MAX),
         subject=clean_display(mail.subject, SUBJECT_MAX),
-        old_category_id=uuid.UUID(old_id),
-        new_category_id=uuid.UUID(filing.category_id),
+        old_topic_id=uuid.UUID(old_topic),
+        old_extra_id=None if old_extra is None else uuid.UUID(old_extra),
+        new_topic_id=uuid.UUID(target.topic_id),
+        new_extra_id=None if target.extra_id is None else uuid.UUID(target.extra_id),
+        confidence_pct=target.confidence_pct,
     )

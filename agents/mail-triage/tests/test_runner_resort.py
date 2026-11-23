@@ -11,6 +11,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.core.scope import ArchiveLabel
 from app.runner import Runner
 from app.settings import SettingsError, load_settings
 from app.usecases.approval_notice import PlanNoticeActions
@@ -215,6 +216,7 @@ def _wired(extra: dict[str, str] | None = None) -> Any:
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
+        archive=ArchiveLabel("Archive"),
         heartbeat=None,  # type: ignore[arg-type]
         now=lambda: NOW,
     )
