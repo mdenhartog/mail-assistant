@@ -13,6 +13,10 @@ const TEXT: Record<string, string> = {
   instructions_too_long: "Use at most 4000 characters for the general instructions.",
   sender_invalid: "This is not a valid address or domain.",
   sender_refused_domain: "A whole domain like this cannot be listed. Use full addresses instead.",
+  archive_invalid: "This is not a valid label name.",
+  archive_system_label: "This is a Gmail label of its own and cannot be your archive label.",
+  archive_inside_assistant: "Use a name outside Assistant/, or exactly Assistant/Archive.",
+  archive_category_label: "A category already uses this label, or lies below it. Choose another name.",
   sender_too_many: "A category can list at most 100 senders.",
 };
 

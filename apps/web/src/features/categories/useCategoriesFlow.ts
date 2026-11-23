@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { CategoryList } from "@/api/categories/categories.types";
 import { MAX_CATEGORIES } from "@/features/categories/policy";
 import { blankRow, isDirty, nameOfLabel, openOlder, rowsOf } from "@/features/categories/rows";
-import type { Row, RowPatch } from "@/features/categories/rows";
+import type { ListSettings, Row, RowPatch } from "@/features/categories/rows";
 
 interface Removed {
   row: Row;
@@ -14,6 +14,8 @@ export interface CategoriesFlow {
   rows: Row[];
   /** The general instructions of the whole list. */
   instructions: string;
+  /** The instructions and the archive label name, as the save and the dirty check read them. */
+  settings: ListSettings;
   older: CategoryList["olderCategories"];
   dirty: boolean;
   canAdd: boolean;
@@ -21,6 +23,7 @@ export interface CategoriesFlow {
   removed: Removed | null;
   setRow: (key: string, patch: RowPatch) => void;
   setInstructions: (value: string) => void;
+  setArchiveLabel: (value: string) => void;
   /** Puts a row back as it was (Cancel in the edit view). */
   restore: (row: Row) => void;
   /** Takes a row away without a notice (a new category that was cancelled). */
@@ -40,17 +43,17 @@ export interface CategoriesFlow {
 export function useCategoriesFlow(list: CategoryList): CategoriesFlow {
   const [rows, setRows] = useState<Row[]>(() => rowsOf(list));
   const [instructions, setInstructions] = useState(list.generalInstructions);
+  const [archiveLabel, setArchiveLabel] = useState(list.archiveLabel);
   const [version, setVersion] = useState(list.version);
   const [removed, setRemoved] = useState<Removed | null>(null);
   const counter = useRef(0);
-
   if (version !== list.version) {
     setVersion(list.version);
     setRows(rowsOf(list));
     setInstructions(list.generalInstructions);
+    setArchiveLabel(list.archiveLabel);
     setRemoved(null);
   }
-
   const append = (name: string): string => {
     counter.current += 1;
     const key = `new-${String(counter.current)}`;
@@ -61,14 +64,16 @@ export function useCategoriesFlow(list: CategoryList): CategoriesFlow {
   return {
     rows,
     instructions,
+    settings: { instructions, archiveLabel },
     older: openOlder(list, rows),
-    dirty: isDirty(rows, list, instructions),
+    dirty: isDirty(rows, list, { instructions, archiveLabel }),
     canAdd: rows.length < MAX_CATEGORIES,
     removed,
     setRow: (key, patch) => {
       setRows((current) => current.map((row) => (row.key === key ? { ...row, ...patch } : row)));
     },
     setInstructions,
+    setArchiveLabel,
     restore: (row) => {
       setRows((current) => current.map((other) => (other.key === row.key ? row : other)));
     },

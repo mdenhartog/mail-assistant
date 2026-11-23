@@ -50,6 +50,12 @@ export function openOlder(list: CategoryList, rows: readonly Row[]): CategoryLis
   return list.olderCategories.filter((older) => !taken.has(normaliseName(nameOfLabel(older.labelName))));
 }
 
+/** The list-level fields next to the categories: the general instructions and the archive label name. */
+export interface ListSettings {
+  instructions: string;
+  archiveLabel: string;
+}
+
 /** The senders as one comparable text, so blank lines and spaces are not a change. */
 function sendersKey(text: string): string {
   return textOfSenders(parseSenders(text).entries);
@@ -68,9 +74,10 @@ function differs(row: Row, stored: CategoryItem | undefined): boolean {
 }
 
 /** Whether the draft differs from the stored list in order or in any field of a category. */
-export function isDirty(rows: readonly Row[], list: CategoryList, instructions: string): boolean {
+export function isDirty(rows: readonly Row[], list: CategoryList, settings: ListSettings): boolean {
   return (
-    instructions !== list.generalInstructions ||
+    settings.instructions !== list.generalInstructions ||
+    settings.archiveLabel !== list.archiveLabel ||
     rows.length !== list.categories.length ||
     rows.some((row, index) => differs(row, list.categories[index]))
   );
@@ -84,6 +91,7 @@ export type Change =
   | { kind: "notify"; name: string; on: boolean }
   | { kind: "senders"; name: string }
   | { kind: "instructions" }
+  | { kind: "archiveLabel" }
   | { kind: "remove"; name: string }
   | { kind: "add"; name: string };
 
@@ -107,12 +115,13 @@ function fieldChanges(row: Row, before: CategoryItem): Change[] {
   return changes;
 }
 
-/** What a save will do against the stored list: the list's instructions, each category's changes, removals, then additions. */
-export function changesOf(rows: readonly Row[], list: CategoryList, instructions: string): Change[] {
+/** What a save will do against the stored list: the list's instructions and archive label, each category's changes, removals, then additions. */
+export function changesOf(rows: readonly Row[], list: CategoryList, settings: ListSettings): Change[] {
   const stored = new Map(list.categories.map((category) => [category.id, category]));
   const kept = new Set(rows.map((row) => row.id));
   return [
-    ...(instructions === list.generalInstructions ? [] : [{ kind: "instructions" } as const]),
+    ...(settings.instructions === list.generalInstructions ? [] : [{ kind: "instructions" } as const]),
+    ...(settings.archiveLabel === list.archiveLabel ? [] : [{ kind: "archiveLabel" } as const]),
     ...rows.flatMap((row) => {
       const before = row.id === null ? undefined : stored.get(row.id);
       return before === undefined ? [] : fieldChanges(row, before);

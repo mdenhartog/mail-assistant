@@ -54,6 +54,7 @@ function isList(value: unknown): value is CategoryList {
     typeof value["version"] === "number" &&
     typeof value["ready"] === "boolean" &&
     typeof value["generalInstructions"] === "string" &&
+    typeof value["archiveLabel"] === "string" &&
     allOf(value["categories"], isCategory) &&
     allOf(value["olderCategories"], isOlder) &&
     isOther(value["other"])

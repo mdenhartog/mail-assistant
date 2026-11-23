@@ -5,6 +5,7 @@ import type { CategoryList } from "@/api/categories/categories.types";
 import { Button } from "@/components/Button";
 import { StickyBar } from "@/components/StickyBar";
 import { CategoryListBody } from "@/features/categories/CategoryListBody";
+import { ArchiveLabelField } from "@/features/categories/ArchiveLabelField";
 import { InstructionsField } from "@/features/categories/InstructionsField";
 import { Intro, OtherCard } from "@/features/categories/Intro";
 import { OlderCategories } from "@/features/categories/OlderCategories";
@@ -71,6 +72,15 @@ export function CategoriesListScreen({ list, flow, save, view, edit, changes }: 
         }}
         readOnly={save.saving}
         value={flow.instructions}
+      />
+      <ArchiveLabelField
+        error={save.archiveError}
+        onChange={(value) => {
+          flow.setArchiveLabel(value);
+          save.clearArchive();
+        }}
+        readOnly={save.saving}
+        value={flow.settings.archiveLabel}
       />
       <CategoryListBody
         flow={flow}
