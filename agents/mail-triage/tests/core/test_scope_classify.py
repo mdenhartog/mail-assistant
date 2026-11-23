@@ -93,3 +93,8 @@ def test_given_a_renamed_archive_label_then_a_mail_with_it_and_a_category_is_out
 
     assert classify({"Mail/Done", "Assistant/Travel", "INBOX"}, archive.name, frozenset()) is Scope.OUT
     assert classify({"Bewaard", "INBOX"}, archive.name, frozenset()) is Scope.IN_SCOPE
+
+
+@pytest.mark.parametrize("names", [["INBOX", "SENT"], ["Assistant/Work", "SENT"], ["SENT"]])
+def test_given_the_users_own_sent_mail_then_it_is_out_of_scope(names: list[str]) -> None:
+    assert classify(names, "Archive", ()) is Scope.OUT

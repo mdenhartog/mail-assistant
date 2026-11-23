@@ -121,3 +121,14 @@ def test_another_failure_of_gmail_is_not_hidden_as_a_missing_mail() -> None:
 
     with pytest.raises(HttpError):
         _build(gmail).fetch(mid)
+
+
+def test_the_search_leaves_out_sent_mail_even_with_an_inbox_or_assistant_label() -> None:
+    gmail = FakeGmail()
+    work = gmail.add_label("Assistant/Work")
+    kept = gmail.add_mail(("INBOX",))
+    gmail.add_mail(("INBOX", "SENT"))  # a reply the user sent to themselves
+    gmail.add_mail((work, "SENT"))
+
+    assert _ids(_build(gmail).candidates(None, 100)) == [kept]
+    assert _build(gmail).estimate_in_scope() == 1

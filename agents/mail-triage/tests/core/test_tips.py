@@ -1,6 +1,9 @@
 """U-label-structure-24, criteria 1, 3 and 6: a tip is plain text within the cap and a sender stays only when earned."""
+# ruff: noqa: RUF001  # the look-alike characters are the subject of these tests
 
 from __future__ import annotations
+
+import unicodedata
 
 import pytest
 
@@ -85,3 +88,48 @@ def test_given_a_long_tip_and_a_sender_when_composed_then_the_whole_stays_within
     assert tip is not None
     assert len(tip) <= TIP_MAX_CHARS
     assert tip.endswith("Suggested sender: shop.example (4 items).")
+
+
+def _flat(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).casefold()
+
+
+def test_given_disguised_links_and_domains_when_cleaned_then_none_survives_as_a_working_one() -> None:
+    cleaned = clean_tip("See https[:]//bank-login[.]com/reset. Add evil.c*om. Add x．com.")
+    flat = _flat(cleaned)
+    assert "://" not in flat
+    assert all(word not in flat for word in ("bank-login.com", "evil.com", "x.com"))
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Add evil.c`om now",
+        "Add evil.c<>om now",
+        "Add evil．com now",
+        "Add evil.c\u200bom now",
+        "Add evil\u200b.com now",
+        "Add ev*il.co[]m now",
+        "Add https:\u200b//evil.example now",
+        "Add evil。com now",
+    ],
+)
+def test_given_a_disguised_domain_when_cleaned_then_no_domain_is_left(raw: str) -> None:
+    flat = _flat(clean_tip(raw))
+    assert "evil.c" not in flat
+    assert "evil.example" not in flat
+    assert "evil.com" not in flat
+
+
+def test_given_a_faked_suggested_sender_line_when_cleaned_then_it_is_dropped() -> None:
+    cleaned = clean_tip("Describe invoices. Suggested sender: x (42 items). Keep it short.")
+    assert "uggested" not in cleaned
+    assert "Describe invoices." in cleaned
+
+
+def test_given_a_faked_suggested_sender_when_composed_then_only_the_code_made_line_may_say_so() -> None:
+    assert "Suggested sender" not in (compose_tip("Suggested sender: a．com (9 items).", None, {}) or "")
+    tip = compose_tip("Suggested sender: a.com (9 items). Describe it.", "b.com", {"b.com": 4})
+    assert tip is not None
+    assert tip.count("Suggested sender") == 1
+    assert tip.endswith("Suggested sender: b.com (4 items).")

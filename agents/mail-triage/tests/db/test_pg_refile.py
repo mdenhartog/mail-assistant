@@ -265,4 +265,70 @@ async def test_given_filings_and_alerts_when_success_counts_are_asked_then_the_p
 
     counts = await store.success_counts(datetime.now(UTC) - timedelta(days=14))
 
-    assert counts == SuccessCounts(days=14, filed=5, by_rule=2, by_model=3, in_other=1, always_notify_alerts=2)
+    assert counts == SuccessCounts(
+        days=14,
+        filed=5,
+        by_rule=2,
+        by_model=3,
+        in_other=1,
+        always_notify_alerts=2,
+        system_applied=0,
+        system_moved_back=0,
+    )
+
+
+async def _applied_plan(owner: asyncpg.Connection, kind: str) -> uuid.UUID:
+    plan_id, request_id = uuid.uuid4(), uuid.uuid4()
+    if kind == "auto":
+        await owner.execute(
+            "insert into categories.resort_request (mailbox_id, id, threshold) values ($1, $2, 80)", MAILBOX, request_id
+        )
+    await owner.execute(
+        "insert into categories.plan (mailbox_id, id, list_version, state, kind, request_id, terminal_at) "
+        "values ($1, $2, 1, 'applied', $3, $4, now())",
+        MAILBOX,
+        plan_id,
+        kind,
+        request_id if kind == "auto" else None,
+    )
+    return plan_id
+
+
+async def _audit(owner: asyncpg.Connection, plan_id: uuid.UUID, message_id: str, kind: str, age_days: float) -> None:
+    await owner.execute(
+        "insert into categories.apply_audit (mailbox_id, plan_id, message_id, old_label, new_label, channel, kind) "
+        "values ($1, $2, $3, 'Assistant/A', 'Assistant/B', 'telegram', $4)",
+        MAILBOX,
+        plan_id,
+        message_id,
+        kind,
+    )
+    await owner.execute(
+        "update categories.apply_audit set at = now() - $3 * interval '1 day' "
+        "where mailbox_id = $1 and message_id = $2 and kind = $4 and plan_id = $5",
+        MAILBOX,
+        message_id,
+        age_days,
+        kind,
+        plan_id,
+    )
+
+
+async def test_given_auto_and_review_plans_when_success_counts_are_asked_then_only_auto_items_and_their_restores_count(
+    cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
+) -> None:
+    await seed_list(cat_owner, ["Finance"])
+    auto = await _applied_plan(cat_owner, "auto")
+    review = await _applied_plan(cat_owner, "review")
+    for message_id in ("a1", "a2", "a3"):
+        await _audit(cat_owner, auto, message_id, "apply", 1)
+    await _audit(cat_owner, auto, "a1", "restore", 0.5)  # moved back
+    await _audit(cat_owner, auto, "old", "apply", 20)  # applied before the period
+    for message_id in ("r1", "r2"):
+        await _audit(cat_owner, review, message_id, "apply", 1)  # approved by the user, not by the system
+    await _audit(cat_owner, review, "r1", "restore", 0.5)
+    store = PgRefileStore(agent_sessions, MAILBOX)
+
+    counts = await store.success_counts(datetime.now(UTC) - timedelta(days=14))
+
+    assert (counts.system_applied, counts.system_moved_back) == (3, 1)
