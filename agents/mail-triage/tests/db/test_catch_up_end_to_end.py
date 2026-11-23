@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.adapters.gmail_read import FetchedMail
+from app.core.scope import ArchiveLabel
 from app.settings import load_settings
 from app.usecases.catchup import BACKLOG_ALERT_LIMIT, BUDGET_RESERVE
 from app.wiring import build_runner
@@ -162,6 +163,7 @@ def agent(  # noqa: PLR0913, PLR0917 - the fakes of the world are passed in, lik
         labels=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
+        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=tmp / "heartbeat",
         now=clock.now,
