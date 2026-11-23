@@ -24,9 +24,22 @@ _CONFLICT = "MC409"  # a plan, count, group, id or state mismatch (the 409 of th
 _MALFORMED = "22023"  # a malformed argument
 
 _OPEN_PLAN = text(
-    "SELECT id, state, apply_after, checked_count, cap, unclear_count, estimate_total, not_looked_at "
+    "SELECT id, state, apply_after, checked_count, cap, unclear_count, estimate_total, not_looked_at, "
+    "list_version, request_id, threshold "
     "FROM categories.plan "
-    "WHERE mailbox_id = :mailbox AND state IN ('building', 'ready', 'scheduled', 'applying')"
+    "WHERE mailbox_id = :mailbox AND kind = 'review' AND state IN ('building', 'ready', 'scheduled', 'applying')"
+)
+# The sibling ``auto`` plan of the same request (ADR-0056): what moved on its own, what waits for the apply and what the
+# apply skipped. ``moved_count`` holds the mails of items the apply already removed; items still there count too.
+_AUTO_SUMMARY = text(
+    "SELECT p.moved_count + (SELECT count(*) FROM categories.plan_item i WHERE i.mailbox_id = p.mailbox_id "
+    "AND i.plan_id = p.id AND i.state = 'applied') AS moved, "
+    "CASE WHEN p.state IN ('scheduled', 'applying') THEN (SELECT count(*) FROM categories.plan_item i "
+    "WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id AND i.state = 'approved') ELSE 0 END AS scheduled, "
+    "(SELECT count(*) FROM categories.plan_item i WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id "
+    "AND i.state = 'skipped') AS skipped "
+    "FROM categories.plan p WHERE p.mailbox_id = :mailbox AND p.kind = 'auto' AND p.request_id = :request "
+    "ORDER BY p.created_at DESC LIMIT 1"
 )
 # The plan that ended most recently and is still kept (the purge removes the rest); a discarded one is not shown.
 # For an applied plan the apply removes the items it moved and adds their number to ``moved_count``; items still there
@@ -54,10 +67,20 @@ _DECISIONS = text(
     "SELECT decision, count(*) AS n FROM categories.plan_item "
     "WHERE mailbox_id = :mailbox AND plan_id = :plan GROUP BY decision"
 )
-# One literal statement: the sort arrives as bound parameters and every CASE is NULL unless its sort is the chosen one,
+# One literal statement: the pair names are the full nested names in the list the plan was built on (NULL when there
+# is no such category); the sort arrives as bound parameters and every CASE is NULL unless its sort is the chosen one,
 # so the unchosen terms tie and the chosen one orders. The id breaks ties, so a page boundary never moves between calls.
 _ITEMS = text(
-    "SELECT id, sender_name, sender_address, subject, old_category_id, new_category_id, decision, state, reason "
+    "SELECT id, sender_name, sender_address, subject, old_category_id, new_category_id, decision, state, reason, "
+    "confidence_pct, tip, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.old_topic_id) AS old_topic_name, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.old_extra_id) AS old_extra_name, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.new_topic_id) AS new_topic_name, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.new_extra_id) AS new_extra_name "
     "FROM categories.plan_item WHERE mailbox_id = :mailbox AND plan_id = :plan "
     "AND (CAST(:from_id AS uuid) IS NULL OR old_category_id = CAST(:from_id AS uuid)) "
     "AND (CAST(:to_id AS uuid) IS NULL OR new_category_id = CAST(:to_id AS uuid)) "
@@ -103,6 +126,18 @@ class OpenPlan:
     unclear: int
     estimate: int | None
     not_looked_at: int
+    list_version: int
+    request_id: uuid.UUID | None
+    threshold: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class AutoSummary:
+    """What the sibling ``auto`` plan of the open plan's request did: moved on its own, scheduled, skipped."""
+
+    moved: int = 0
+    scheduled: int = 0
+    skipped: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +177,12 @@ class ItemRow:
     decision: str
     state: str
     reason: str | None
+    confidence_pct: int | None
+    tip: str | None
+    old_topic: str | None
+    old_extra: str | None
+    new_topic: str | None
+    new_extra: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +195,7 @@ class PlanSnapshot:
     last_ended: EndedPlan | None
     apply_threshold: int | None
     apply_delay_minutes: int | None
+    auto: AutoSummary = AutoSummary()
 
 
 @dataclass(frozen=True, slots=True)
@@ -252,10 +294,18 @@ class PlanRepository:
                     row.unclear_count,
                     row.estimate_total,
                     row.not_looked_at,
+                    row.list_version,
+                    row.request_id,
+                    row.threshold,
                 )
             )
             groups: tuple[GroupRow, ...] = ()
             decisions: dict[str, int] = {}
+            auto = AutoSummary()
+            if open_plan is not None and open_plan.request_id is not None:
+                found = (await session.execute(_AUTO_SUMMARY, {**params, "request": open_plan.request_id})).first()
+                if found is not None:
+                    auto = AutoSummary(found.moved, found.scheduled, found.skipped)
             if open_plan is not None:
                 scope = {**params, "plan": open_plan.id}
                 groups = tuple(
@@ -280,6 +330,7 @@ class PlanRepository:
             last,
             None if config is None else config.threshold,
             None if config is None else config.delay_minutes,
+            auto,
         )
 
     async def items(self, page: int, page_size: int, query: ItemQuery) -> ItemsPage:
@@ -300,6 +351,7 @@ class PlanRepository:
             params: dict[str, Any] = {
                 "mailbox": self._mailbox,
                 "plan": plan.id,
+                "version": plan.list_version,
                 "from_id": query.from_id,
                 "to_id": query.to_id,
                 "sender": None if not query.sender else _like_pattern(query.sender),
@@ -320,6 +372,12 @@ class PlanRepository:
                 r.decision,
                 r.state,
                 r.reason,
+                r.confidence_pct,
+                r.tip,
+                r.old_topic_name,
+                r.old_extra_name,
+                r.new_topic_name,
+                r.new_extra_name,
             )
             for r in rows[:page_size]
         )

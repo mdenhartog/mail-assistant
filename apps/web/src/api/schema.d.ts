@@ -712,6 +712,18 @@ export interface components {
             planId: string;
         };
         /**
+         * AutoSummary
+         * @description What the sibling ``auto`` plan of the request did on its own (ADR-0056); all zero when there is none.
+         */
+        AutoSummary: {
+            /** Moved */
+            moved: number;
+            /** Scheduled */
+            scheduled: number;
+            /** Skipped */
+            skipped: number;
+        };
+        /**
          * CategoryConflict409
          * @description The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.
          */
@@ -1112,6 +1124,8 @@ export interface components {
          * @description One mail of the plan. Sender and subject are text (ADR-0044); the Gmail message id is never exposed.
          */
         PlanItem: {
+            /** Confidencepct */
+            confidencePct: number | null;
             /**
              * Decision
              * @enum {string}
@@ -1124,6 +1138,14 @@ export interface components {
             from: string;
             /** Id */
             id: number;
+            /** Newextra */
+            newExtra: string | null;
+            /** Newtopic */
+            newTopic: string | null;
+            /** Oldextra */
+            oldExtra: string | null;
+            /** Oldtopic */
+            oldTopic: string | null;
             /** Reason */
             reason: string | null;
             /** Senderaddress */
@@ -1137,6 +1159,8 @@ export interface components {
             state: "pending" | "approved" | "rejected" | "applied" | "skipped" | "failed";
             /** Subject */
             subject: string;
+            /** Tip */
+            tip: string | null;
             /**
              * To
              * Format: uuid
@@ -1199,6 +1223,7 @@ export interface components {
             applyDelayMinutes: number | null;
             /** Applythreshold */
             applyThreshold: number | null;
+            auto: components["schemas"]["AutoSummary"];
             counts: components["schemas"]["PlanCounts"];
             /** Groups */
             groups: components["schemas"]["PlanGroup"][];
@@ -1208,6 +1233,8 @@ export interface components {
             progress: components["schemas"]["PlanProgress"];
             /** State */
             state: ("building" | "ready" | "scheduled" | "applying" | "applied" | "replaced" | "discarded" | "cancelled") | null;
+            /** Threshold */
+            threshold: number | null;
         };
         /**
          * Problem422

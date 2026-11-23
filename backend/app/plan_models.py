@@ -77,6 +77,16 @@ class LastPlan(BaseModel):
     moved_count: Annotated[int, Field(ge=0)]  # mails the apply moved; 0 for a plan that was not applied
 
 
+class AutoSummary(BaseModel):
+    """What the sibling ``auto`` plan of the request did on its own (ADR-0056); all zero when there is none."""
+
+    model_config = _CONFIG
+
+    moved: Annotated[int, Field(ge=0)]  # mails moved without review (applied items)
+    scheduled: Annotated[int, Field(ge=0)]  # mails approved by the threshold that wait for the apply
+    skipped: Annotated[int, Field(ge=0)]  # mails the apply skipped
+
+
 class PlanView(BaseModel):
     """What ``GET /api/plan`` returns; ``state`` is None while there is no open plan."""
 
@@ -91,6 +101,8 @@ class PlanView(BaseModel):
     apply_threshold: Annotated[int, Field(ge=1)] | None  # approve above this many mails needs the delay (AC-30)
     apply_delay_minutes: Annotated[int, Field(ge=0)] | None  # None while the apply settings are not stored
     last_plan: LastPlan | None
+    threshold: Annotated[int, Field(ge=50, le=100)] | None  # the confidence threshold the plan copied; None if old
+    auto: AutoSummary
 
 
 class PlanItem(BaseModel):
@@ -107,6 +119,12 @@ class PlanItem(BaseModel):
     decision: Literal["pending", "approved", "rejected"]
     state: Literal["pending", "approved", "rejected", "applied", "skipped", "failed"]
     reason: str | None
+    old_topic: str | None  # full nested names as the plan's list names them; None when there is none
+    old_extra: str | None
+    new_topic: str | None
+    new_extra: str | None
+    confidence_pct: Annotated[int, Field(ge=0, le=100)] | None
+    tip: str | None  # plain text exactly as stored; shown, never applied (ADR-0056)
 
 
 class PlanItemsPage(BaseModel):
