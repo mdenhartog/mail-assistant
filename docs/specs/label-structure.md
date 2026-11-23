@@ -261,6 +261,8 @@ Every criterion is Given/When/Then; the matrix of criterion, test name and layer
 - **R1:** contract v2 and migration (AC-54, AC-55), names, kinds and descriptions (AC-1 to AC-7), sender rules and the verifier (AC-8 to AC-19), always-notify alerts (AC-20 to AC-29), upload, export and template (AC-30 to AC-40), **removal of the automatic plan** (AC-44), audit, canaries, load and concurrency (AC-56, AC-60 to AC-62, AC-58 for the urgency call), the success report (AC-63), the Categories page without the sort-again and archive parts (AC-64 to AC-68). Old mail stays where it is until R2.
 - **R2:** the archive label (AC-41 to AC-43, AC-59), the "Sort everything again" button with the threshold, two plans, system approval, Cancel, Move back (AC-45 to AC-51, AC-53, AC-57) and the tips (AC-52).
 
+Status: R1 and R2 are both built (`status: done`). What is not delivered is listed under "Known limits of R2" in `docs/reviews/label-structure.md`.
+
 ## Open points for the user
 
 All answered by the user on 2026-11-21:

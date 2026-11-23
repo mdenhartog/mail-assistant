@@ -17,8 +17,8 @@ generalInstructions: >-
   Mail from the school and from the doctor is always important.
   Prefer the most specific category.
 
-# archiveLabel (optional): the name of your archive label. It is checked and stored with the list, but in this
-# release it has no effect on Gmail; it takes effect in release 2.
+# archiveLabel (optional): the name of your archive label. It is checked and stored with the list; a change
+# renames the Gmail label once no plan is running. A file without this field keeps the name you have now.
 # Default: Assistant/Archive. A name outside Assistant/ is allowed. It may not be a Gmail system label
 # (INBOX, SPAM, ...) and may not be the label of one of your categories.
 archiveLabel: Assistant/Archive
