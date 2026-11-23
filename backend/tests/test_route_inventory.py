@@ -34,6 +34,8 @@ DESIGN_PATHS = {
     "/api/plan/decisions",
     "/api/plan/approve",
     "/api/plan/{plan_id}/move-back",
+    "/api/resort-requests",
+    "/api/resort-requests/latest",
     "/healthz",
     "/readyz",
 }
@@ -258,6 +260,7 @@ def test_given_the_mounted_write_routes_when_read_then_each_has_the_session_and_
         "/api/plan/decisions",
         "/api/plan/items/search",
         "/api/plan/{plan_id}/move-back",
+        "/api/resort-requests",
         "/api/settings",
         "/api/settings/reset",
         "/auth/logout",
