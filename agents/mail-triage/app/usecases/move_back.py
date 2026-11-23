@@ -135,7 +135,8 @@ class MoveBack:
             return False  # another label as well: changed meanwhile
         if (
             old not in held
-            and classify({names[i] for i in mail.labels if i in names}, self._archive.name) is not Scope.IN_SCOPE
+            and classify({names[i] for i in mail.labels if i in names}, self._archive.name, frozenset())
+            is not Scope.IN_SCOPE
         ):
             return False  # archived, trashed or out of the inbox meanwhile
         try:

@@ -128,6 +128,11 @@ def resolve(judgement: Judgement, categories: Sequence[ListedCategory]) -> Filin
     """Turn a valid judgement into labels: a topic of the list by exact id, otherwise "Other" without an extra label."""
     if judgement.confidence < LOW_CONFIDENCE:
         return NeedsAttention("low_confidence")
+    return file_under(judgement, categories)
+
+
+def file_under(judgement: Judgement, categories: Sequence[ListedCategory]) -> Filing:
+    """The topic and extra label the answer names, whatever its confidence (the plan build keeps the number itself)."""
     for category in categories:
         if (
             category.category_id == judgement.topic_id
