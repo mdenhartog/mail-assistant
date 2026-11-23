@@ -1364,6 +1364,66 @@
         "title": "RequestCodeResponse",
         "type": "object"
       },
+      "ResortLatest": {
+        "additionalProperties": false,
+        "description": "The value the threshold field shows: 50 on the first visit, else the latest request's threshold.",
+        "properties": {
+          "threshold": {
+            "description": "How sure the agent must be, in percent, for a move to be approved without review.",
+            "maximum": 100.0,
+            "minimum": 50.0,
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threshold"
+        ],
+        "title": "ResortLatest",
+        "type": "object"
+      },
+      "ResortRequestCreate": {
+        "additionalProperties": false,
+        "description": "The body of a sort-again request.",
+        "properties": {
+          "threshold": {
+            "description": "How sure the agent must be, in percent, for a move to be approved without review.",
+            "maximum": 100.0,
+            "minimum": 50.0,
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threshold"
+        ],
+        "title": "ResortRequestCreate",
+        "type": "object"
+      },
+      "ResortRequested": {
+        "additionalProperties": false,
+        "description": "The answer to a stored request: its id and the threshold it holds.",
+        "properties": {
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          },
+          "threshold": {
+            "description": "How sure the agent must be, in percent, for a move to be approved without review.",
+            "maximum": 100.0,
+            "minimum": 50.0,
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requestId",
+          "threshold"
+        ],
+        "title": "ResortRequested",
+        "type": "object"
+      },
       "RestoreRequest": {
         "additionalProperties": false,
         "description": "The body of a restore: the version the user sees as the current one.",
@@ -2584,6 +2644,87 @@
         "summary": "Post Move Back",
         "tags": [
           "plan"
+        ]
+      }
+    },
+    "/api/resort-requests": {
+      "post": {
+        "description": "Ask the agent to sort the mail again with a threshold; one request while no plan or request is open.\n\nArgs:\n    body: The threshold, a JSON integer from 50 to 100.\n    request: The request, whose app holds the database access, the settings and the clock.\n\nReturns:\n    The id of the request and its threshold, or a 409 with nothing stored.\n\nRaises:\n    RateLimited: The hourly limit is used up.",
+        "operationId": "create_resort_request_api_resort_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResortRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResortRequested"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "A plan is open, or the latest request has not become a plan yet; nothing was stored"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "description": "The threshold is not a JSON integer from 50 to 100"
+          },
+          "429": {
+            "description": "Too many requests in an hour (the limit of list saves); see Retry-After"
+          },
+          "500": {
+            "description": "The request could not be stored"
+          }
+        },
+        "summary": "Create Resort Request",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/resort-requests/latest": {
+      "get": {
+        "description": "Return the value the threshold field shows: 50 on the first visit, else the latest request's threshold.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The threshold.",
+        "operationId": "read_latest_resort_request_api_resort_requests_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResortLatest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Latest Resort Request",
+        "tags": [
+          "categories"
         ]
       }
     },

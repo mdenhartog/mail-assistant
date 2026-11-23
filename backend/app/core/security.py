@@ -41,6 +41,8 @@ ROUTE_ALLOW_LIST: frozenset[str] = frozenset(
         "/api/plan/decisions",
         "/api/plan/approve",
         "/api/plan/{plan_id}/move-back",
+        "/api/resort-requests",
+        "/api/resort-requests/latest",
         "/healthz",
         "/readyz",
     }
