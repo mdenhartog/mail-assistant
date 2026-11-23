@@ -43,6 +43,20 @@ describe("Review moves: full names and the pair (AC-52, R2)", () => {
     expect(text.getByText("Model confidence 62 %")).toBeInTheDocument();
   });
 
+  it("given a pair and a confidence, then the tick box is named by the mail alone and the pair is its description", async () => {
+    wirePlan({
+      items: page([
+        item(1, { oldTopic: "Home/Energy", oldExtra: null, newTopic: "Finance/Invoices", newExtra: null, confidencePct: 62 }),
+      ]),
+    });
+    await renderReview();
+    await openFirstGroup();
+
+    const box = await screen.findByRole("checkbox");
+    expect(box).not.toHaveAccessibleName(/From topic|To topic|confidence/);
+    expect(box).toHaveAccessibleDescription(/From topic Home\/Energy, extra none.*To topic Finance\/Invoices, extra none.*Model confidence 62 %/);
+  });
+
   it("given a missing topic, extra or confidence, then the row says none and leaves the confidence out", async () => {
     wirePlan({ items: page([item(1, { oldTopic: null, oldExtra: null, newTopic: "Finance/Invoices", newExtra: null })]) });
     await renderReview();
