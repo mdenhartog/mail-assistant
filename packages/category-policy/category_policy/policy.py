@@ -245,6 +245,21 @@ def validate_archive_label(name: str, categories: Sequence[Category]) -> list[Pr
     return []
 
 
+def validate_archive_name(name: str) -> list[Problem]:
+    """Check the name of the archive label on its own, for callers that have no categories at hand.
+
+    The same rules as :func:`validate_archive_label`, without the check against the category labels; it is that
+    function with an empty list, so there is one set of rules (ADR-0059).
+
+    Args:
+        name: The proposed archive label name, as typed (it is not trimmed).
+
+    Returns:
+        The problems, all with field ``archive_label``; empty when the name is valid.
+    """
+    return validate_archive_label(name, ())
+
+
 def validate_category(
     name: str,
     description: str,

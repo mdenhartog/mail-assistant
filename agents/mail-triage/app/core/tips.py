@@ -10,6 +10,7 @@ its count itself. Nothing here applies a tip to the list or to Gmail.
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import Counter
 from typing import TYPE_CHECKING
 
@@ -30,6 +31,9 @@ _URL = re.compile(r"\S*://\S*|\bwww\.\S*", re.IGNORECASE)
 _MENTION = re.compile(r"@\S*")
 _DOMAIN_LIKE = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.[^\W\d_]{2,}\b")
 _MARKS = re.compile(r"[`*<>\[\]]")
+_HIDDEN = frozenset({"Cc", "Cf"})  # controls and format characters (zero-width, bidi); line breaks are kept
+_NEWLINE = chr(10)
+_SENDER_WORDING = re.compile(r"suggested\s+sender", re.IGNORECASE)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
 _INSTRUCTION = re.compile(
     r"\b(ignore|disregard|forget|override|bypass|pretend)\b"
@@ -43,15 +47,33 @@ _INSTRUCTION = re.compile(
 )
 
 
-def clean_tip(text: str, limit: int = TIP_MAX_CHARS) -> str:
-    """The plain text of a tip: no markup, link, mention, domain or instruction-like sentence; cut at ``limit``."""
+def _strip_links(text: str) -> str:
+    """One pass: the marks and brackets that disguise a link go first, then links, entities, mentions and domains."""
     text = _MARKDOWN_LINK.sub(r"\1", text)
     text = _TAG.sub("", text)
+    text = _MARKS.sub("", text)
     for pattern in (_ENTITY, _URL, _MENTION, _DOMAIN_LIKE):
         text = pattern.sub("", text)
-    text = _MARKS.sub("", text)
+    return text
+
+
+def clean_tip(text: str, limit: int = TIP_MAX_CHARS) -> str:
+    """The plain text of a tip: no markup, link, mention, domain or instruction-like sentence; cut at ``limit``.
+
+    The text is normalised (NFKC) and stripped of hidden characters first, and the link checks repeat until nothing
+    changes, so a disguised link (``https[:]//x[.]com``, ``x.c*om``, a full-width dot) cannot work again after the
+    marks are removed. A sentence that says "suggested sender" is dropped: only ``compose_tip`` may write that.
+    """
+    text = unicodedata.normalize("NFKC", text)
+    text = "".join(c for c in text if c == _NEWLINE or unicodedata.category(c) not in _HIDDEN)
+    while (stripped := _strip_links(text)) != text:
+        text = stripped
     sentences = (s.strip() for s in _SENTENCE_END.split(text))
-    kept = (" ".join(s.split()) for s in sentences if s.strip() and not _INSTRUCTION.search(s))
+    kept = (
+        " ".join(s.split())
+        for s in sentences
+        if s.strip() and not _INSTRUCTION.search(s) and not _SENDER_WORDING.search(s)
+    )
     return " ".join(kept)[: max(limit, 0)].rstrip()
 
 

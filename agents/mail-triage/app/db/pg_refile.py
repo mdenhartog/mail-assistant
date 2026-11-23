@@ -1,7 +1,8 @@
 """The database side of the daily re-file report (INT-004, AC-46, ADR-0043).
 
-One store per mailbox: every statement filters on ``mailbox_id``. The agent role reads ``filing`` and ``category_label``
-and writes the report only through ``categories.record_refile_report``; it has no right on the report table itself
+One store per mailbox: every statement filters on ``mailbox_id``. The agent role reads ``filing``,
+``category_label``, ``plan`` and ``apply_audit`` and writes the report only through
+``categories.record_refile_report``; it has no right on the report table itself
 (``app/db/grants.sql``). No statement here is built from a string.
 """
 
@@ -10,11 +11,12 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import desc, func, select, text
+from sqlalchemy import and_, desc, func, select, text
 from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.core.judgement import OTHER_ID
-from app.db.models import Alert, CategoryLabel, Filing
+from app.core.resort_plan import PlanKind
+from app.db.models import Alert, ApplyAudit, CategoryLabel, Filing, Plan
 from app.usecases.refile_report import PERIOD, Filed
 from app.usecases.report import SuccessCounts
 
@@ -105,6 +107,7 @@ class PgRefileStore:
                 await session.execute(select(func.count(), by_rule, in_other, always_notify).select_from(newest))
             ).one()
         filed, ruled, other, alerts = row
+        applied, moved_back = await self._system_moves(since)
         return SuccessCounts(
             days=PERIOD.days,
             filed=filed,
@@ -112,4 +115,40 @@ class PgRefileStore:
             by_model=filed - ruled,
             in_other=other,
             always_notify_alerts=alerts,
+            system_applied=applied,
+            system_moved_back=moved_back,
         )
+
+    async def _system_moves(self, since: datetime) -> tuple[int, int]:
+        """Items applied from automatic plans since ``since`` and how many of them a move back restored.
+
+        An automatic plan approves every item itself (``decision_source`` threshold), and its items go when it is
+        applied, so the plan's own kind identifies them; the plan is kept 14 days after it ended, the length of the
+        period. A restore row names the same plan and mail as the apply row it undoes, so it is matched by both.
+        """
+        applied = (
+            select(ApplyAudit.plan_id, ApplyAudit.message_id)
+            .join(Plan, and_(Plan.mailbox_id == ApplyAudit.mailbox_id, Plan.id == ApplyAudit.plan_id))
+            .where(
+                ApplyAudit.mailbox_id == self._mailbox,
+                ApplyAudit.kind == "apply",
+                ApplyAudit.at >= since,
+                Plan.kind == PlanKind.AUTO.value,
+            )
+            .subquery()
+        )
+        restored = (
+            select(ApplyAudit.id)
+            .where(
+                ApplyAudit.mailbox_id == self._mailbox,
+                ApplyAudit.kind == "restore",
+                ApplyAudit.plan_id == applied.c.plan_id,
+                ApplyAudit.message_id == applied.c.message_id,
+            )
+            .exists()
+        )
+        async with self._sessions() as session:
+            row = (
+                await session.execute(select(func.count(), func.count().filter(restored)).select_from(applied))
+            ).one()
+        return int(row[0]), int(row[1])

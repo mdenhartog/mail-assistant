@@ -13,7 +13,7 @@ import unicodedata
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from category_policy import ARCHIVE_LABEL_DEFAULT
+from category_policy import validate_archive_name
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Iterable
@@ -32,11 +32,7 @@ __all__ = [
 LABEL_PREFIX = "Assistant/"
 _INBOX = "INBOX"
 _SPACED_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})  # controls, U+2028 and U+2029
-_EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT"})
-_ARCHIVE_NAME_MAX = 225  # the length Gmail allows for a label name
-_SYSTEM_LABELS = frozenset(
-    {"inbox", "spam", "trash", "draft", "sent", "starred", "unread", "important", "chat", "snoozed", "scheduled"}
-)
+_EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT", "SENT"})
 
 
 class Scope(StrEnum):
@@ -63,18 +59,8 @@ class ArchiveLabel:
 
 
 def usable_archive_name(name: str) -> bool:
-    """The rules of ADR-0059 point 2: outside ``Assistant/`` or exactly ``Assistant/Archive``; never a system label."""
-    key = name.casefold()
-    return (
-        0 < len(name) <= _ARCHIVE_NAME_MAX
-        and name == name.strip()
-        and ".." not in name
-        and all(name.split("/"))  # no empty part: no leading, trailing or double slash
-        and not any(unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"} for char in name)
-        and key not in _SYSTEM_LABELS
-        and not key.startswith("category_")
-        and (not key.startswith("assistant/") or name == ARCHIVE_LABEL_DEFAULT)
-    )
+    """The name rules of ADR-0059 point 2, from the shared policy (without the check against the categories)."""
+    return not validate_archive_name(name)
 
 
 def is_archive_label(name: str, archive: str) -> bool:

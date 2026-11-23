@@ -34,7 +34,7 @@ from app.adapters.gmail_resort import (
     LabelNameTaken,
     is_category_label,
 )
-from category_policy import MAX_CATEGORIES, normalise_name
+from category_policy import MAX_CATEGORIES, Category, normalise_name, validate_archive_label
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -167,8 +167,8 @@ class ListSync:
         labels = await asyncio.to_thread(self._gmail.list_labels)
         by_name = {label.name.casefold(): label for label in labels}
         by_id = {label.id: label for label in labels}
-        failed_archive, waiting = await self._ensure_archive(by_name, by_id)
         current = await self._store.current_list()
+        failed_archive, waiting = await self._ensure_archive(by_name, by_id, current)
         seeded = current.version == 0
         if seeded:
             current = await self._store.seed(seed_names(labels))
@@ -224,19 +224,26 @@ class ListSync:
         by_name[label.name.casefold()] = label
         return label, created, renamed, failed
 
-    async def _ensure_archive(self, by_name: dict[str, Label], by_id: dict[str, Label]) -> tuple[int, bool]:
+    async def _ensure_archive(
+        self, by_name: dict[str, Label], by_id: dict[str, Label], current: CurrentList
+    ) -> tuple[int, bool]:
         """Adopt, make or rename the archive label; return the failed count and whether a rename waits (ADR-0059).
 
         Matching is by name without regard to case (C-14). The shared ``ArchiveLabel`` takes the name the label has in
-        Gmail, so the old name protects mail until a rename is done.
+        Gmail, so the old name protects mail until a rename is done. A label is only made or renamed under a name the
+        shared policy accepts next to the categories of the list (ADR-0059); otherwise the sync goes on without it.
         """
         names = await self._store.archive_names()
+        categories = [Category(row.name, row.description, row.kind) for row in current.categories]
+        refused = bool(validate_archive_label(names.wanted, categories))
         target = by_name.get(names.wanted.casefold())
         old = by_name.get(names.applied.casefold()) if names.applied is not None else None
         if old is not None and (target is None or target.id == old.id):
             if names.wanted in (names.applied, old.name):
                 self._adopt(old, by_name, by_id)
                 return 0, False
+            if refused:
+                return self._refuse_archive(old, by_name, by_id)
             return await self._rename(old, names.wanted, by_name, by_id)
         if old is not None:  # another label already has the new name: the old label stays the archive label
             self._adopt(old, by_name, by_id)
@@ -245,16 +252,33 @@ class ListSync:
         if target is not None:  # the first time, or a rename that an earlier run did before it crashed
             self._adopt(target, by_name, by_id)
             return 0, False
+        await self._make_archive(names.wanted, refused, by_name, by_id)
+        return 0, False
+
+    async def _make_archive(
+        self, wanted: str, refused: bool, by_name: dict[str, Label], by_id: dict[str, Label]
+    ) -> None:
+        if refused:
+            self._refuse_archive(None, by_name, by_id)
+            return
         try:
-            label = await asyncio.to_thread(self._gmail.create_archive_label, names.wanted)
+            label = await asyncio.to_thread(self._gmail.create_archive_label, wanted)
         except LabelNameRejected:
             # The archive label is the user's own place for mail that must stay where it is. Without it the sync of the
             # categories goes on, and a missing archive label does not keep the run from being done.
             logger.warning("list sync: Gmail refused to make the archive label; the sync goes on without it")
-            self._archive.name = names.wanted
+            self._archive.name = wanted
             self._archive.label_id = None
-            return 0, False
+            return
         self._adopt(label, by_name, by_id)
+
+    def _refuse_archive(
+        self, old: Label | None, by_name: dict[str, Label], by_id: dict[str, Label]
+    ) -> tuple[int, bool]:
+        """The wanted name breaks the policy: keep protecting the label that is known, make and rename nothing."""
+        logger.warning("list sync: the archive label name breaks the label rules; no label is made or renamed")
+        if old is not None:
+            self._adopt(old, by_name, by_id)
         return 0, False
 
     async def _rename(
