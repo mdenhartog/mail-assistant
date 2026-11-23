@@ -30,6 +30,14 @@ ITEM_API_COLUMNS = frozenset(
         "decision",
         "state",
         "reason",
+        # INT-008 (U-label-structure-20): what the review page shows of the pair, the confidence and the tip
+        "old_topic_id",
+        "old_extra_id",
+        "new_topic_id",
+        "new_extra_id",
+        "confidence_pct",
+        "decision_source",
+        "tip",
     }
 )
 ITEM_AGENT_INSERT = frozenset(
@@ -42,10 +50,17 @@ ITEM_AGENT_INSERT = frozenset(
         "subject",
         "old_category_id",
         "new_category_id",
+        "old_topic_id",
+        "old_extra_id",
+        "new_topic_id",
+        "new_extra_id",
+        "confidence_pct",  # never decision_source: only approve_system_plan sets it
     }
 )
 NONE: frozenset[str] = frozenset()
-PLAN_AGENT_INSERT = frozenset({"mailbox_id", "list_version", "cap"})  # a new plan is always ``building`` (RED-006)
+PLAN_AGENT_INSERT = frozenset(  # a new plan is always ``building`` (RED-006); the threshold is copied, never written
+    {"mailbox_id", "list_version", "cap", "kind", "request_id"}
+)
 PLAN_AGENT_UPDATE = frozenset(  # never ``apply_after`` or ``list_version``: only ``approve_plan`` schedules a plan
     {
         "state",
@@ -65,8 +80,9 @@ MATRIX: dict[str, dict[str, tuple[frozenset[str] | str, frozenset[str] | str, fr
     "plan": {"api": (ALL, NONE, NONE), "agent": (ALL, PLAN_AGENT_INSERT, PLAN_AGENT_UPDATE)},
     "plan_item": {
         "api": (ITEM_API_COLUMNS, NONE, NONE),
-        "agent": (ALL, ITEM_AGENT_INSERT, frozenset({"state", "reason", "attempts"})),
+        "agent": (ALL, ITEM_AGENT_INSERT, frozenset({"state", "reason", "attempts", "tip"})),
     },
+    "resort_request": {"api": (ALL, NONE, NONE), "agent": (ALL, NONE, NONE)},  # written by request_resort alone
     "plan_decision": {"api": (NONE, NONE, NONE), "agent": (ALL, NONE, NONE)},
     "plan_approval": {"api": (NONE, NONE, NONE), "agent": (ALL, NONE, NONE)},
     "apply_audit": {
