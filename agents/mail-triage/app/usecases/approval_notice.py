@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 
 from app.core import approval_text
 from app.core.alert_text import AlertMessage, Button
+from app.core.resort_plan import PlanKind
 from app.usecases.resort_apply import Offer
 from app.usecases.telegram_actions import Refusal
 
@@ -60,11 +61,17 @@ _REFUSALS: Final = {
 
 @dataclass(frozen=True, slots=True)
 class ScheduledPlan:
-    """A ``scheduled`` plan: how many mails it moves and when the apply may start."""
+    """A ``scheduled`` plan: how many mails it moves and when the apply may start.
+
+    ``kind`` is ``auto`` for a plan the system approved; ``waiting_review`` is then the number of items of the same
+    request that wait for the user in the ``review`` plan.
+    """
 
     plan_id: uuid.UUID
     mail_count: int
     apply_after: datetime
+    kind: PlanKind = PlanKind.REVIEW
+    waiting_review: int = 0
 
 
 class CancelOutcome(enum.Enum):
@@ -118,11 +125,22 @@ class ApprovalNotice:
         for plan in await self._store.unannounced():
             cancel = await self._button(approval_text.CANCEL, plan.plan_id, now)
             lock = await self._button(approval_text.LOCK, plan.plan_id, now)
-            await self._chat.send(
-                approval_text.scheduled_notice(
+            if plan.kind is PlanKind.AUTO:
+                back = await self._button(approval_text.MOVE_BACK, plan.plan_id, now)
+                message = approval_text.system_notice(
+                    plan.mail_count,
+                    plan.waiting_review,
+                    plan.apply_after,
+                    now=now,
+                    cancel_data=cancel.data,
+                    back_data=back.data,
+                    lock_data=lock.data,
+                )
+            else:
+                message = approval_text.scheduled_notice(
                     plan.mail_count, plan.apply_after, now=now, cancel_data=cancel.data, lock_data=lock.data
                 )
-            )
+            await self._chat.send(message)
             await self._store.mark_announced(plan.plan_id)
 
     async def send_result(self, text: str, plan_id: uuid.UUID, offers: tuple[Offer, ...], now: datetime) -> int:
@@ -182,9 +200,18 @@ class PlanNoticeActions:
         elif action == approval_text.LOCK:
             answer = await self._lock_all(now)
         else:
-            asked = await self._move_back.request(plan_id)
-            answer = approval_text.MOVE_BACK_ASKED if asked else approval_text.MOVE_BACK_UNAVAILABLE
+            answer = await self._move_back_or_cancel(plan_id)
         await self._chat.edit_message(command.message_id, answer)
+
+    async def _move_back_or_cancel(self, plan_id: uuid.UUID) -> str:
+        """Move back is the undo: before the apply nothing moved, so it cancels the plan; after it, it restores."""
+        outcome = await self._store.cancel_before_start(plan_id)
+        if outcome is CancelOutcome.CANCELLED:
+            return approval_text.CANCELLED
+        if outcome is CancelOutcome.TOO_LATE:
+            return approval_text.TOO_LATE
+        asked = await self._move_back.request(plan_id)
+        return approval_text.MOVE_BACK_ASKED if asked else approval_text.MOVE_BACK_UNAVAILABLE
 
     async def _cancel(self, plan_id: uuid.UUID) -> str:
         result = await self._store.cancel_before_start(plan_id)

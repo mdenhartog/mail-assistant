@@ -36,6 +36,13 @@ MOVE_BACK_UNAVAILABLE: Final = (
     "There is nothing to move back for this plan (not applied, or already asked). Nothing was changed."
 )
 _LOCK_NOTE: Final = "Web sign-in is locked. Send /web_unlock to allow it again."
+LOCK_EXPLAINED: Final = (
+    "Lock web sign-in stops web sign-in and cancels plans that still wait, until you send /web_unlock."
+)
+TARGET_REMOVED: Final = (
+    "A sort-again plan was cancelled: a category it moves mail into is no longer in the list. "
+    "Mail that was already moved stays where it is."
+)
 
 
 def button_data(action: str, nonce: str) -> str:
@@ -66,6 +73,34 @@ def scheduled_notice(count: int, at: datetime, *, now: datetime, cancel_data: st
         "Cancel the move before then to stop it, or lock web sign-in."
     )
     return AlertMessage(text, (Button(CANCEL_LABEL, cancel_data), Button(LOCK_LABEL, lock_data)))
+
+
+def system_notice(  # noqa: PLR0913
+    count: int,
+    waiting_review: int,
+    at: datetime,
+    *,
+    now: datetime,
+    cancel_data: str,
+    back_data: str,
+    lock_data: str,
+) -> AlertMessage:
+    """The notice of a plan the system approved: what moves on its own, what waits for review, three buttons.
+
+    Numbers and times only. Cancel and Move back before the time stop the plan; the last sentence says what Lock does.
+    """
+    what = f"{count} mail moves on its own" if count == 1 else f"{count} mails move on their own"
+    minutes = max(1, -(-int((at - now).total_seconds()) // 60))
+    unit = "minute" if minutes == 1 else "minutes"
+    review = f" {waiting_review} wait for your review in the web app." if waiting_review else ""
+    text = (
+        f"{what} in {minutes} {unit} (at {at:%H:%M} UTC).{review} Only labels change. "
+        f"Cancel the move or press Move back before then to stop it. {LOCK_EXPLAINED}"
+    )
+    return AlertMessage(
+        text,
+        (Button(CANCEL_LABEL, cancel_data), Button(MOVE_BACK_LABEL, back_data), Button(LOCK_LABEL, lock_data)),
+    )
 
 
 def locked_and_cancelled(plans: int) -> str:

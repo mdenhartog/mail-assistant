@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from app.core.resort_plan import ItemState, PlanState
 from app.usecases.resort_apply import Offer, SkipReason
-from tests.resort_apply_support import FINANCE, GOOGLE_AUTH, OTHER_ID, TRAVEL, ApplyRig, item
+from tests.resort_apply_support import FINANCE, GOOGLE_AUTH, NEWSLETTER, OTHER_ID, TRAVEL, ApplyRig, item
 
 
 async def test_an_approved_item_swaps_the_assistant_label_and_nothing_else_changes() -> None:
@@ -74,7 +74,8 @@ async def test_mail_changed_meanwhile_is_skipped_with_a_reason() -> None:
     assert rig.modifies() == 0
 
 
-async def test_a_proposed_category_that_left_the_list_is_skipped_and_nothing_moves_to_it() -> None:
+async def test_a_plan_with_a_category_that_left_the_list_is_cancelled_and_nothing_moves() -> None:
+    """D20 replaces the old per-item skip: the whole plan is cancelled before any item is applied."""
     rig = ApplyRig()
     gone = "00000000-0000-0000-0000-0000000000ff"
     stale = rig.mail(("INBOX", rig.finance))
@@ -83,10 +84,32 @@ async def test_a_proposed_category_that_left_the_list_is_skipped_and_nothing_mov
 
     await rig.apply().run_once()
 
+    assert rig.store.state(plan) is PlanState.CANCELLED
+    assert rig.labels_of(stale) == {"INBOX", "Assistant/Finance"}
+    assert rig.labels_of(fine) == {"INBOX", "Assistant/Finance"}  # nothing of a cancelled plan moves
+    assert rig.modifies() == 0
+
+
+async def test_a_category_that_leaves_the_list_during_the_apply_skips_the_item_not_the_plan() -> None:
+    """Defence in depth: the batch re-checks the list for every item."""
+    rig = ApplyRig()
+    stale = rig.mail(("INBOX", rig.finance))
+    fine = rig.mail(("INBOX", rig.finance))
+    plan = rig.store.add_plan([item(stale, FINANCE, TRAVEL), item(fine, FINANCE, FINANCE, None, NEWSLETTER)])
+    original = rig.store.target_ids
+
+    async def vanish(plan_id: object) -> frozenset[str]:
+        found = await original(plan_id)  # type: ignore[arg-type]
+        rig.store.categories.pop(TRAVEL)  # the list changes right after the plan-level check
+        return found
+
+    rig.store.target_ids = vanish  # type: ignore[method-assign]
+
+    await rig.apply().run_once()
+
     assert rig.store.item(plan, stale).reason is SkipReason.CATEGORY_REMOVED
     assert rig.labels_of(stale) == {"INBOX", "Assistant/Finance"}
-    assert rig.labels_of(fine) == {"INBOX", "Assistant/Travel"}  # an older list version does not stop the rest
-    assert rig.store.state(plan) is PlanState.APPLIED
+    assert rig.labels_of(fine) == {"INBOX", "Assistant/Finance", "Assistant/Newsletter"}
 
 
 async def test_a_label_of_a_deleted_category_counts_as_the_old_label_of_other() -> None:

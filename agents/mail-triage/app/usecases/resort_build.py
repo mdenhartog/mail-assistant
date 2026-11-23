@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.judgement import OTHER_ID, OTHER_LABEL, ListedCategory, NeedsAttention, file_under
-from app.core.resort_plan import PlanState, build_may_start, on_list_changed
+from app.core.resort_plan import PlanKind, PlanState, build_may_start, kind_for, on_list_changed
 from app.core.scope import LABEL_PREFIX, Scope, assistant_labels, classify, clean_display
 from app.core.sender_rules import ExtraRule, RuleFiling, RuleSkipped, SenderRules
 from app.usecases.catchup import BUDGET_RESERVE, CALLS_PER_MAIL
@@ -86,7 +86,8 @@ class PlanNumbers:
     """The counts the notice carries."""
 
     checked: int
-    to_move: int
+    to_move: int  # items of the ``auto`` plan: they move on their own after the wait
+    to_review: int  # items of the ``review`` plan: they wait for the user
     unclear: int
     not_looked_at: int
 
@@ -119,9 +120,11 @@ class PlanRecord:
     cursor: str | None
     checked: int
     unclear: int
-    items: int
+    items: int  # items of the ``review`` plan, the plan this record stands for
     cap: int
     request_id: uuid.UUID | None = None  # the request the plan was made for; ``None`` for a plan of an older kind
+    threshold: int | None = None  # copied from the request by the database; ``None`` without a request
+    auto_items: int = 0  # items of the ``auto`` plan of the same request
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,11 +210,14 @@ class BuildStore(Protocol):
         ...
 
     async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
-        """Insert the ``building`` plan of ``request``; ``None`` when a plan of the mailbox is open already."""
+        """Insert the ``building`` ``review`` and ``auto`` plans of ``request``; ``None`` when one is open already.
+
+        The returned record is the ``review`` plan; it carries the build progress of both.
+        """
         ...
 
     async def replace_plan(self, plan_id: uuid.UUID) -> bool:
-        """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items."""
+        """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items; its ``auto`` plan too."""
         ...
 
     async def record_estimate(self, plan_id: uuid.UUID, estimate: int) -> None:
@@ -219,17 +225,24 @@ class BuildStore(Protocol):
         ...
 
     async def complete_build(self, plan_id: uuid.UUID, *, not_looked_at: int) -> bool:
-        """Compare-and-set ``building`` to ``ready`` and store the not-looked-at count; true for the one caller."""
+        """Compare-and-set ``building`` to ``ready``, store the not-looked-at count and approve the ``auto`` plan.
+
+        One step: the ``auto`` plan goes ``ready`` and then ``scheduled`` through ``approve_system_plan``, or is dropped
+        when it holds no item. True for the one caller.
+        """
         ...
 
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
         """Mail the user rejected under this list version (AC-13)."""
         ...
 
-    async def record_progress(
-        self, plan_id: uuid.UUID, *, item: ItemDraft | None, cursor: str, checked: int, unclear: int
+    async def record_progress(  # noqa: PLR0913
+        self, plan_id: uuid.UUID, *, item: ItemDraft | None, kind: PlanKind, cursor: str, checked: int, unclear: int
     ) -> bool:
-        """In one transaction add the item, the counts and the cursor; false when the plan is no longer ``building``."""
+        """In one transaction add the item (to the plan of ``kind``), the counts and the cursor.
+
+        False when the plan is no longer ``building``.
+        """
         ...
 
 
@@ -252,8 +265,9 @@ class BudgetView(Protocol):
 def plan_ready_text(numbers: PlanNumbers) -> str:
     """The notice: numbers and fixed words only, never a sender, subject or category name (AC-18)."""
     return (
-        f"Plan ready: {numbers.checked} mails checked, {numbers.to_move} to move, "
-        f"{numbers.unclear} unclear, {numbers.not_looked_at} not looked at. Review it in the web app."
+        f"Sort again is ready: {numbers.checked} mails checked. {numbers.to_move} move on their own after the wait "
+        f"(you can cancel before then), {numbers.to_review} wait for your review in the web app. "
+        f"{numbers.unclear} unclear, {numbers.not_looked_at} not looked at."
     )
 
 
@@ -304,11 +318,22 @@ class ResortBuild:
             if on_list_changed(latest.state).discard_decisions:
                 await self._store.replace_plan(latest.plan_id)
             latest = await self._store.latest_plan()
+        latest = await self._replace_for_new_request(latest)
         if latest is None or build_may_start(latest.state):
             latest = await self._start(current)
         if latest is None or not self._continues(latest, current):
             return BuildResult(BuildStatus.IDLE)
         return await self._build(latest, current)
+
+    async def _replace_for_new_request(self, latest: PlanRecord | None) -> PlanRecord | None:
+        """A newer request replaces the pending ``review`` plan (and its ``auto`` plan while that is still building)."""
+        if latest is None or latest.state not in _REPLACEABLE:
+            return latest
+        request = await self._store.open_request()
+        if request is None or request.request_id == latest.request_id:
+            return latest
+        await self._store.replace_plan(latest.plan_id)
+        return await self._store.latest_plan()
 
     async def _start(self, current: BuildList) -> PlanRecord | None:
         """The plan of the newest request that has none; no request, no plan (D12)."""
@@ -325,7 +350,7 @@ class ResortBuild:
         if plan.cursor is None:
             await self._store.record_estimate(plan.plan_id, await asyncio.to_thread(self._mail.estimate_in_scope))
         try:
-            checked, unclear, items, cursor = await self._scan(plan, current)
+            checked, unclear, review, auto, cursor = await self._scan(plan, current)
         except _Pause:
             return BuildResult(BuildStatus.PAUSED)
         except _Cancelled:
@@ -333,22 +358,29 @@ class ResortBuild:
         not_looked_at = await self._count_rest(cursor) if checked >= plan.cap else 0
         if not await self._store.complete_build(plan.plan_id, not_looked_at=not_looked_at):
             return BuildResult(BuildStatus.CANCELLED)
-        numbers = PlanNumbers(checked, items, unclear, not_looked_at)
+        numbers = PlanNumbers(checked, auto, review, unclear, not_looked_at)
         logger.info(
-            "plan ready checked=%d items=%d unclear=%d not_looked_at=%d", checked, items, unclear, not_looked_at
+            "plans ready checked=%d auto=%d review=%d unclear=%d not_looked_at=%d",
+            checked,
+            auto,
+            review,
+            unclear,
+            not_looked_at,
         )
         await self._notifier.say(plan_ready_text(numbers))
         return BuildResult(BuildStatus.READY, numbers)
 
-    async def _scan(self, plan: PlanRecord, current: BuildList) -> tuple[int, int, int, str | None]:
-        """Look at the listed mail until the cap, the end or the slice; return (checked, unclear, items, cursor).
+    async def _scan(self, plan: PlanRecord, current: BuildList) -> tuple[int, int, int, int, str | None]:
+        """Look at the listed mail until the cap, the end or the slice.
+
+        Return (checked, unclear, review items, auto items, cursor).
 
         After ``per_run`` mails the run pauses (the progress of each mail is already stored) and the next run goes on.
         """
         names = await asyncio.to_thread(self._mail.label_names)
         rejected = await self._store.rejected_ids(plan.list_version)
         lookup = _Lookup(current)
-        checked, unclear, items, cursor = plan.checked, plan.unclear, plan.items, plan.cursor
+        checked, unclear, review, auto, cursor = plan.checked, plan.unclear, plan.items, plan.auto_items, plan.cursor
         looked = 0
         while checked < plan.cap:
             page = await asyncio.to_thread(self._mail.candidates, cursor, PAGE_SIZE)
@@ -363,8 +395,9 @@ class ResortBuild:
                 result = await self._look(plan, candidate, lookup, names, rejected)
                 looked += 1
                 cursor = candidate.resume_after
-                checked, unclear, items = checked + result[0], unclear + result[1], items + result[2]
-        return checked, unclear, items, cursor
+                checked, unclear = checked + result[0], unclear + result[1]
+                review, auto = review + (result[2] is PlanKind.REVIEW), auto + (result[2] is PlanKind.AUTO)
+        return checked, unclear, review, auto, cursor
 
     async def _still_current(self, plan: PlanRecord) -> None:
         """A newer list outdates the plan at once: replace it and stop before another mail is judged (AC-33)."""
@@ -386,8 +419,8 @@ class ResortBuild:
         lookup: _Lookup,
         names: dict[str, str],
         rejected: frozenset[str],
-    ) -> tuple[int, int, int]:
-        """Look at one mail and write its progress; return (checked, unclear, items) added."""
+    ) -> tuple[int, int, PlanKind | None]:
+        """Look at one mail and write its progress; return (checked, unclear, the plan its item went to)."""
         item: ItemDraft | None = None
         checked = unclear = 0
         mail = (
@@ -403,11 +436,12 @@ class ResortBuild:
             elif scope is Scope.IN_SCOPE and pinned_mail_kind(mail, self._pinned) is None:
                 checked = 1
                 item = await self._judged_item(mail, lookup, assistant_labels(label_names))
+        kind = PlanKind.REVIEW if item is None else kind_for(item.confidence_pct, plan.threshold)
         if not await self._store.record_progress(
-            plan.plan_id, item=item, cursor=candidate.resume_after, checked=checked, unclear=unclear
+            plan.plan_id, item=item, kind=kind, cursor=candidate.resume_after, checked=checked, unclear=unclear
         ):
             raise _Cancelled
-        return checked, unclear, item is not None
+        return checked, unclear, None if item is None else kind
 
     async def _judged_item(self, mail: FetchedMail, lookup: _Lookup, labels: list[str]) -> ItemDraft | None:
         ruled = lookup.rules.apply(mail.auth_results, mail.sender)
