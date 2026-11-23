@@ -1,16 +1,16 @@
 """The narrow Gmail adapter for category labels and re-sort plans (ADR-0046 item 6, spec AC-28).
 
 The public operations are exactly: list (labels, mail of a label), read (one mail's labels, the size of a label),
-add label, remove label, create label and rename a label by id. Nothing else about a mailbox can be changed through
-it. A test holds the allow-list and scans this source.
+add label, remove label, create label, rename a label by id, and create or rename the archive label by id (ADR-0059).
+Nothing else about a mailbox can be changed through it. A test holds the allow-list and scans this source.
 
 Rules the adapter enforces itself, whatever the caller asks:
 
 - Mail may only get or lose a label under ``Assistant/``; the archive label, system labels and other labels are
   refused, so the agent never files mail in the archive label (AC-25, ADR-0052).
-- A rename needs a category label as its source and a category label name as its target; the archive
-  label and ``Assistant/Other`` never change name.
-- The archive label and names under ``Assistant/`` are the only labels it creates.
+- A rename needs a category label as its source and a category label name as its target; ``Assistant/Other`` never
+  changes name. The archive label is renamed only through ``rename_archive_label``, by its id, to a usable name.
+- Names under ``Assistant/`` and a usable archive label name are the only labels it creates.
 
 The guards use label names from the latest listing; call ``list_labels`` at the start of a run.
 """
@@ -24,10 +24,13 @@ from typing import TYPE_CHECKING, Any
 from googleapiclient.errors import HttpError
 
 from app.adapters.gmail_read import BACKOFF_SECONDS, MAX_ATTEMPTS, retryable
+from app.core.scope import usable_archive_name
 from category_policy import label_for, validate_category
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from app.core.scope import ArchiveLabel
 
 LABEL_PREFIX = "Assistant/"
 OTHER_LABEL = f"{LABEL_PREFIX}Other"
@@ -75,12 +78,12 @@ class GmailResort:
     def __init__(
         self,
         service: Any,  # noqa: ANN401
-        archive_label: str,
+        archive: ArchiveLabel,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        """Keep the service, the archive label name, the sleep used between retries and the latest label names."""
+        """Keep the service, the shared archive label, the sleep used between retries and the latest label names."""
         self._service = service
-        self._archive = archive_label
+        self._archive = archive
         self._sleep = sleep
         self._names: dict[str, str] = {}
 
@@ -132,7 +135,12 @@ class GmailResort:
 
     def _require_category_label(self, label_id: str) -> None:
         name = self._name_of(label_id)
-        if name is None or not _under_prefix(name) or name.casefold() == self._archive.casefold():
+        if (
+            name is None
+            or not _under_prefix(name)
+            or name.casefold() == self._archive.name.casefold()
+            or label_id == self._archive.label_id
+        ):
             raise LabelRefused("only labels under Assistant/ may be added to or removed from mail")
 
     def add_label(self, message_id: str, label_id: str) -> None:
@@ -148,9 +156,18 @@ class GmailResort:
         self._run(self._service.users().messages().modify(userId=ME, id=message_id, body=body))
 
     def create_label(self, name: str) -> Label:
-        """Create the archive label or one under ``Assistant/``; when Gmail says it exists, return the existing one."""
-        if name != self._archive and not _under_prefix(name):
-            raise LabelRefused(f"only the archive label and labels under {LABEL_PREFIX} may be created")
+        """Create a label under ``Assistant/``; when Gmail says it exists, return the existing one."""
+        if not _under_prefix(name):
+            raise LabelRefused(f"only labels under {LABEL_PREFIX} may be created")
+        return self._create(name)
+
+    def create_archive_label(self, name: str) -> Label:
+        """Create the archive label under a usable name; when Gmail says it exists, return the existing one."""
+        if not usable_archive_name(name):
+            raise LabelRefused("the name is not a usable archive label name")
+        return self._create(name)
+
+    def _create(self, name: str) -> Label:
         body = {"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"}
         try:
             made = self._run(self._service.users().labels().create(userId=ME, body=body))
@@ -174,6 +191,17 @@ class GmailResort:
             raise LabelRefused("only a category label under Assistant/ can be renamed")
         if not is_category_label(new_name):
             raise LabelRefused("the new name must be a category label name under Assistant/")
+        self._patch_name(label_id, new_name)
+
+    def rename_archive_label(self, label_id: str, new_name: str) -> None:
+        """Rename the archive label by its id to a usable name; the id and the mail in it stay."""
+        if label_id != self._archive.label_id or self._name_of(label_id) is None:
+            raise LabelRefused("only the archive label can be renamed this way")
+        if not usable_archive_name(new_name):
+            raise LabelRefused("the new name is not a usable archive label name")
+        self._patch_name(label_id, new_name)
+
+    def _patch_name(self, label_id: str, new_name: str) -> None:
         try:
             self._run(self._service.users().labels().patch(userId=ME, id=label_id, body={"name": new_name}))
         except HttpError as error:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.scope import Scope, assistant_labels, classify, is_archive_label
+from app.core.scope import ArchiveLabel, Scope, assistant_labels, classify, is_archive_label
 
 ARCHIVE = "Archive"
 
@@ -83,3 +83,13 @@ def test_given_a_configured_archive_label_then_a_mail_with_it_is_out_of_scope_an
 def test_given_a_configured_archive_label_then_the_old_name_is_not_protected_any_more() -> None:
     assert classify({"Archive", "INBOX"}, "Bewaard") is Scope.IN_SCOPE
     assert is_archive_label("Archive", "Bewaard") is False
+
+
+def test_given_a_renamed_archive_label_then_a_mail_with_it_and_a_category_is_out_of_scope() -> None:
+    archive = ArchiveLabel("Bewaard")
+    assert classify({"Bewaard", "Assistant/Travel", "INBOX"}, archive.name) is Scope.OUT
+
+    archive.name = "Mail/Done"  # the sync renamed the label by id; the mail now carries the new name
+
+    assert classify({"Mail/Done", "Assistant/Travel", "INBOX"}, archive.name) is Scope.OUT
+    assert classify({"Bewaard", "INBOX"}, archive.name) is Scope.IN_SCOPE

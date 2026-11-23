@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import Judgement
     from app.core.pinned import PinnedSenders
+    from app.core.scope import ArchiveLabel
 
 __all__ = [
     "BUILD_SLICE",
@@ -248,7 +249,7 @@ class ResortBuild:
         budget: BudgetView,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
-        archive_label: str,  # the protected label (C-14, ADR-0052)
+        archive: ArchiveLabel,  # the protected label (C-14, ADR-0059)
         cap: int = PLAN_CAP,
         per_run: int = BUILD_SLICE,  # how many mails one run looks at before it pauses (ADR-0051)
     ) -> None:
@@ -260,7 +261,7 @@ class ResortBuild:
         self._budget = budget
         self._now = now
         self._pinned = pinned
-        self._archive = archive_label
+        self._archive = archive
         self._cap = cap
         self._per_run = per_run
 
@@ -359,7 +360,7 @@ class ResortBuild:
         )
         if mail is not None:
             label_names = {names[i] for i in mail.labels if i in names}
-            scope = classify(label_names, self._archive)
+            scope = classify(label_names, self._archive.name)
             if scope is Scope.UNCLEAR:
                 checked = unclear = 1
             elif scope is Scope.IN_SCOPE and pinned_mail_kind(mail, self._pinned) is None:

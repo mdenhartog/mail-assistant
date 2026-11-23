@@ -11,6 +11,7 @@ from app.adapters.gmail_read import FetchedMail
 from app.core.judgement import OTHER_ID, Judgement, ListedCategory, NeedsAttention
 from app.core.pinned import PinnedSenders
 from app.core.resort_plan import PlanState
+from app.core.scope import ArchiveLabel
 from app.usecases.resort_build import PLAN_CAP, BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild
 from tests.fakes.budget_ledger import BudgetLedger
 from tests.fakes.fake_clock import FakeClock
@@ -21,6 +22,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from app.adapters.judge_anthropic import TrimmedMail
+
+ARCHIVE = ArchiveLabel("Archive")
+
 
 START = datetime(2026, 11, 15, 9, 0, tzinfo=UTC)
 FINANCE = "00000000-0000-0000-0000-00000000000a"
@@ -213,7 +217,7 @@ class Rig:
             budget=self,
             now=self.clock,
             pinned=PINNED,
-            archive_label="Archive",
+            archive=ARCHIVE,
             per_run=per_run,
         )
 

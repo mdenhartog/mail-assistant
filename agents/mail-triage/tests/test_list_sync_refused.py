@@ -12,13 +12,15 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from app.adapters.gmail_resort import GmailResort
+from app.core.scope import ArchiveLabel
 from app.usecases.list_sync import ListSync
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.list_store import FakeListStore
 
 
 def make(gmail: FakeGmail, store: FakeListStore) -> ListSync:
-    return ListSync(GmailResort(gmail, "Archive", sleep=lambda _s: None), store, "Archive")
+    ref = ArchiveLabel("Archive")
+    return ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref)
 
 
 async def test_given_gmail_refuses_the_archive_label_when_the_sync_runs_then_the_categories_are_made_and_it_finishes(

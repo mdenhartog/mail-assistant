@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 
 from app.db.pg_categories import CategoryRow, CurrentList
-from app.usecases.list_sync import StoredLabel
+from app.usecases.list_sync import ArchiveNames, StoredLabel
 
 
 class FakeListStore:
@@ -20,6 +20,8 @@ class FakeListStore:
         self.cursor_version = 0
         self.crash_before_cursor = False
         self.seeded: list[tuple[str, ...]] = []
+        self.archive = ArchiveNames(wanted="Archive", applied=None)  # the name the list wants and the one in Gmail
+        self.plan_open = False  # a plan is ``scheduled`` or ``applying``
 
     def save_list(self, names: list[str], keep: dict[str, uuid.UUID] | None = None) -> dict[str, uuid.UUID]:
         """The api writes a new version: ``keep`` maps a name to a category id that stays (a rename keeps its id)."""
@@ -55,3 +57,10 @@ class FakeListStore:
             self.crash_before_cursor = False
             raise ConnectionResetError("injected: the process dies before the cursor moves")
         self.cursor_version = version
+        self.archive = ArchiveNames(self.archive.wanted, self.archive.wanted)  # the Gmail effects are done
+
+    async def archive_names(self) -> ArchiveNames:
+        return self.archive
+
+    async def plan_in_flight(self) -> bool:
+        return self.plan_open
