@@ -21,6 +21,7 @@ from app.plan_models import (
     AllScope,
     ApprovalResult,
     ApproveRequest,
+    AutoSummary,
     DecisionRequest,
     DecisionResult,
     GroupExample,
@@ -144,6 +145,8 @@ def _view(snapshot: PlanSnapshot) -> PlanView:
         apply_threshold=snapshot.apply_threshold,
         apply_delay_minutes=snapshot.apply_delay_minutes,
         last_plan=last_plan_view(last),
+        threshold=None if plan is None else plan.threshold,
+        auto=AutoSummary(moved=snapshot.auto.moved, scheduled=snapshot.auto.scheduled, skipped=snapshot.auto.skipped),
     )
 
 
@@ -196,6 +199,12 @@ def _items_page(found: ItemsPage, page: int) -> PlanItemsPage:
                 decision=i.decision,  # pyright: ignore[reportArgumentType]  # the table checks the set
                 state=i.state,  # pyright: ignore[reportArgumentType]  # the table checks the set
                 reason=i.reason,
+                old_topic=i.old_topic,
+                old_extra=i.old_extra,
+                new_topic=i.new_topic,
+                new_extra=i.new_extra,
+                confidence_pct=i.confidence_pct,
+                tip=i.tip,
             )
             for i in found.items
         ],

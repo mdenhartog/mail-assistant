@@ -78,6 +78,34 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "AutoSummary": {
+        "additionalProperties": false,
+        "description": "What the sibling ``auto`` plan of the request did on its own (ADR-0056); all zero when there is none.",
+        "properties": {
+          "moved": {
+            "minimum": 0.0,
+            "title": "Moved",
+            "type": "integer"
+          },
+          "scheduled": {
+            "minimum": 0.0,
+            "title": "Scheduled",
+            "type": "integer"
+          },
+          "skipped": {
+            "minimum": 0.0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "moved",
+          "scheduled",
+          "skipped"
+        ],
+        "title": "AutoSummary",
+        "type": "object"
+      },
       "CategoryConflict409": {
         "additionalProperties": false,
         "description": "The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.",
@@ -958,6 +986,19 @@
         "additionalProperties": false,
         "description": "One mail of the plan. Sender and subject are text (ADR-0044); the Gmail message id is never exposed.",
         "properties": {
+          "confidencePct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidencepct"
+          },
           "decision": {
             "enum": [
               "pending",
@@ -976,6 +1017,50 @@
             "minimum": 1.0,
             "title": "Id",
             "type": "integer"
+          },
+          "newExtra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newextra"
+          },
+          "newTopic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newtopic"
+          },
+          "oldExtra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldextra"
+          },
+          "oldTopic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldtopic"
           },
           "reason": {
             "anyOf": [
@@ -1012,6 +1097,17 @@
             "title": "Subject",
             "type": "string"
           },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          },
           "to": {
             "format": "uuid",
             "title": "To",
@@ -1027,7 +1123,13 @@
           "to",
           "decision",
           "state",
-          "reason"
+          "reason",
+          "oldTopic",
+          "oldExtra",
+          "newTopic",
+          "newExtra",
+          "confidencePct",
+          "tip"
         ],
         "title": "PlanItem",
         "type": "object"
@@ -1186,6 +1288,9 @@
             ],
             "title": "Applythreshold"
           },
+          "auto": {
+            "$ref": "#/components/schemas/AutoSummary"
+          },
           "counts": {
             "$ref": "#/components/schemas/PlanCounts"
           },
@@ -1241,6 +1346,19 @@
               }
             ],
             "title": "State"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 50.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
           }
         },
         "required": [
@@ -1252,7 +1370,9 @@
           "applyAfter",
           "applyThreshold",
           "applyDelayMinutes",
-          "lastPlan"
+          "lastPlan",
+          "threshold",
+          "auto"
         ],
         "title": "PlanView",
         "type": "object"
