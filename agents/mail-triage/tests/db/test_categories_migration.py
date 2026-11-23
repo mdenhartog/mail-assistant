@@ -34,7 +34,8 @@ PLAN_TABLES = {"plan", "plan_item", "plan_decision", "plan_approval", "apply_aud
 REPORT_TABLES = {"refile_report"}  # 0019
 CONTRACT_V2_TABLES = {"category_sender", "list_settings", "upload_preview"}  # 0024
 SENDER_SKIP_TABLES = {"sender_skip"}  # 0027
-ALL_TABLES = LIST_TABLES | PLAN_TABLES | REPORT_TABLES | CONTRACT_V2_TABLES | SENDER_SKIP_TABLES
+RESORT_REQUEST_TABLES = {"resort_request"}  # 0029
+ALL_TABLES = LIST_TABLES | PLAN_TABLES | REPORT_TABLES | CONTRACT_V2_TABLES | SENDER_SKIP_TABLES | RESORT_REQUEST_TABLES
 
 
 def _plain(url: str) -> str:

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.adapters.gmail_read import FetchedMail
+    from app.core.scope import ArchiveLabel
 
 __all__ = ["GmailApply"]
 
@@ -33,12 +34,12 @@ class GmailApply:
     def __init__(
         self,
         service: Any,  # noqa: ANN401
-        archive_label: str,
+        archive: ArchiveLabel,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         """Build the reader and the narrow label adapter on one service."""
         self._reader = GmailReader(service, sleep)
-        self._resort = GmailResort(service, archive_label, sleep)
+        self._resort = GmailResort(service, archive, sleep)
 
     def label_names(self) -> dict[str, str]:
         """Label id to label name (this also refreshes the names the label guards use)."""

@@ -30,7 +30,7 @@ ME: Final = "me"
 PAGE_SIZE: Final = 100
 HTTP_BAD_REQUEST: Final = 400
 # Gmail searches the nested labels of ``assistant`` too, and never searches spam or trash unless asked to.
-IN_SCOPE_QUERY: Final = "in:inbox OR label:assistant"
+IN_SCOPE_QUERY: Final = "(in:inbox OR label:assistant) -in:sent"
 
 
 class GmailBuild:

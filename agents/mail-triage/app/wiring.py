@@ -27,8 +27,10 @@ from app.adapters.gmail_send import GmailSender
 from app.adapters.judge_anthropic import AnthropicJudge, DailyBudget
 from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
+from app.adapters.tip_anthropic import AnthropicTips
 from app.adapters.token_store import TokenCipher, TokenDecryptError, TokenStore
 from app.adapters.urgency_anthropic import AnthropicUrgency
+from app.core.scope import ArchiveLabel
 from app.db import repos
 from app.db.engine import make_engine
 from app.db.migrate import (
@@ -47,7 +49,7 @@ from app.db.pg_list_sync import PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_refile import PgRefileStore
-from app.db.pg_resort import PgApplyStore, PgBuildStore
+from app.db.pg_resort import PgApplyStore, PgBuildStore, PgTipStore
 from app.db.pg_security_events import PgSecurityEvents
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
@@ -65,6 +67,7 @@ from app.usecases.list_notice import ListNotice, ListNoticeActions
 from app.usecases.list_sync import ListSync
 from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
+from app.usecases.plan_tips import PlanTips
 from app.usecases.policy_notice import PolicyNotice
 from app.usecases.refile_report import RefileReportService
 from app.usecases.reply import ReplyService
@@ -157,6 +160,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     mailbox: object,
     sender: object,
     labels: LabelGmail,
+    archive: ArchiveLabel,
     build_mailbox: BuildMailbox,
     apply_mailbox: ApplyMailbox,
     own_address: str,
@@ -259,7 +263,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         store=store,
         inbox=inbox,
         router=router,
-        list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id), settings.archive_label),
+        list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id), archive),
         list_notice=ListNotice(list_store, outbox, list_actions, chat_id=settings.telegram_allowed_chat_id),
         approval_notice=approval_notice,
         resort_build=ResortBuild(
@@ -267,10 +271,20 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             judge=judge,
             store=PgBuildStore(sessions, settings.mailbox_id),
             notifier=notifier,
+            tips=PlanTips(
+                model=AnthropicTips(
+                    client=client,
+                    api_key=settings.anthropic_api_key,
+                    model=settings.model_small,
+                    budget=budget,
+                    reserve=BUDGET_RESERVE,
+                ),
+                store=PgTipStore(sessions, settings.mailbox_id),
+            ),
             budget=budget,
             now=now,
             pinned=settings.pinned_senders,
-            archive_label=settings.archive_label,
+            archive=archive,
             cap=settings.plan_cap,
         ),
         resort_apply=ResortApply(
@@ -280,14 +294,14 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             notifier=notifier,
             now=now,
             pinned=settings.pinned_senders,
-            archive_label=settings.archive_label,
+            archive=archive,
         ),
         move_back=MoveBack(
             mailbox=apply_mailbox,
             store=apply_store,
             lock=web_lock,
             notifier=notifier,
-            archive_label=settings.archive_label,
+            archive=archive,
         ),
         refile_report=RefileReportService(
             PgRefileStore(sessions, settings.mailbox_id),
@@ -400,6 +414,8 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
             scopes=list(GMAIL_SCOPES),
         )
         service = build("gmail", "v1", credentials=credentials, cache_discovery=False)
+        names = await PgListSyncStore(sessions, settings.mailbox_id).archive_names()
+        archive = ArchiveLabel(names.applied or names.wanted)  # the sync learns the id and does any rename
         address = str(service.users().getProfile(userId="me").execute()["emailAddress"])
         ports = MailPorts(GmailReader(service), GmailSender(service))
         stop = asyncio.Event()
@@ -414,9 +430,10 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
                 client=client,
                 mailbox=ports,
                 sender=ports,
-                labels=GmailResort(service, settings.archive_label),
+                labels=GmailResort(service, archive),
+                archive=archive,
                 build_mailbox=GmailBuild(service),
-                apply_mailbox=GmailApply(service, settings.archive_label),
+                apply_mailbox=GmailApply(service, archive),
                 own_address=address,
                 heartbeat=HEARTBEAT,
                 now=_utc_now,

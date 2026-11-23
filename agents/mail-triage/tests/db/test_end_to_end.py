@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from app.adapters.gmail_read import FetchedMail
 from app.adapters.gmail_send import ConfirmedDraft
+from app.core.scope import ArchiveLabel
 from app.settings import load_settings
 from app.wiring import MailPorts, build_runner
 from tests.test_settings import VALID
@@ -144,6 +145,7 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
         labels=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
+        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,
@@ -203,6 +205,7 @@ async def test_given_the_agent_runs_twice_when_the_same_mail_is_listed_then_it_a
         labels=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
+        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,

@@ -113,3 +113,30 @@ Residual items and follow-ups:
 - **Downgrade of 0024.** The downgrade of revision 0024 is lossy by nature: it drops the kinds, ticks, senders, general instructions and previews that did not exist before, so a rollback after users saved the new fields loses them.
 - **Wording.** "Content not checked by the model" was replaced everywhere (see AR-1, LS-20, ADR-0054 and the plan of U-label-structure-10).
 - **Alert text in ticked categories.** The sentence "urgency read by the model" is fixed text; for a sender-rule mail in a ticked category no model call is made (C-10), so the sentence says more than happens there. To be corrected in a follow-up (reported in the review record).
+
+## Outcome of the R2 challenge (phase 6, 2026-11-23)
+
+The red-team and code-review rounds ran on the R2 code (units 18 to 27 and 39). The fixes are on the feature branch (repair rounds A and B), so they land with the one pull request of the feature.
+
+| id | finding | threat | decision |
+| --- | --- | --- | --- |
+| RED-R2-001 | The system approval could schedule a small plan to apply at once, so the notice with Cancel, Move back and Lock had nothing to stop | LS-10, LS-11, AC-46, AC-49 | Fixed: `approve_system_plan` always schedules the plan after the configured delay (at least a minute), whatever the 24-hour sum |
+| RED-R2-002 | A tip could carry disguised markup, a link or a recommended sender that survived the cleaning | LS-12, AC-52 | Fixed: the tip is normalised (NFKC) and cleaned until nothing more changes; only code writes the suggested sender, from the authenticated domain of at least 3 items, never the model text |
+| RED-R2-003 | An approval by the system was audited under the channel of the agent login (`telegram`) | LS-16, AC-56 | Fixed: the channel `system` is a constant in `approve_system_plan`; `plan_approval` and `apply_audit` accept it and the apply copies it |
+| RED-R2-004 | The decide and approve functions could act on a plan of kind `auto` | LS-11 | Fixed: `record_decision` and `approve_plan` act only on a `review` plan |
+| RED-R2-005 | Sent mail was in the scope of a re-sort | LS-8, AC-45 | Fixed: sent mail is out of scope, like spam, trash, the archive label, pinned and rejected mail |
+| RED-R2-006 | The archive label name was checked by more than one rule | LS-8, AC-42 | Fixed: one rule in `category-policy` (`validate_archive_label`) serves the api, the upload and the agent |
+| RED-R2-007 | The archive label is found by its name, not by a stored id; if the user renames it in Gmail, the agent creates a new, empty label | LS-9, AC-41 | Accepted limitation (the user is told to rename on the Categories page); follow-up: store the Gmail id |
+| REV-001 | Three tests were stale after the R2 changes | n/a | Fixed |
+| REV-002 | The move-back rate of system-approved items was not delivered | AC-63 | Delivered in the success numbers; it is a lower bound |
+| REV-003 | Two copies of the archive name rule | LS-8 | Fixed: one rule (see RED-R2-006) |
+| REV-004 | Missing tests for the findings above | n/a | Fixed: tests added |
+| REV-005 | The modules `resort_apply`, `pg_resort` and `resort_build` are large | n/a | Follow-up: split them |
+
+Known limits of R2:
+
+- **No Cancel in the web app.** A waiting plan is cancelled only from Telegram (Cancel, Move back or Lock); the web app says so.
+- **No agent in the prod-like e2e stack.** The R2 journey seeds the plans with SQL; the Gmail apply and the archive label rename are proven by the agent tests only, not end to end.
+- **Failed items.** Items that failed in Gmail are not counted in the `auto` summary of the review plan.
+- **Items below 60 % confidence** are kept in the review plan, so that the threshold of the user decides what is shown; they are not dropped by the agent.
+- **Model calls per day** (tips included) is a lower bound, as in R1.

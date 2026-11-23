@@ -9,10 +9,11 @@
       "paths": [
         "agents/mail-triage"
       ],
-      "responsibility": "Polls Gmail, files each new mail by an authenticated sender rule or by judging it with the model against the user's category list (topic and extra label, closed set, urgency separate, a small urgency-only call for sender-rule mail), labels it, raises the urgency and always-notify alerts, builds two plans on request (system-approved and review) with tips and applies them, handles the archive label, and runs every Telegram dialogue with the user (alerts, snooze, reply, settings, web-change notices, web lock, plan notices); its migrate job is the only migrator of the database.",
+      "responsibility": "Polls Gmail, files each new mail by an authenticated sender rule or by judging it with the model against the user's category list (topic and extra label, closed set, urgency separate, a small urgency-only call for sender-rule mail), labels it, raises the urgency and always-notify alerts, builds two plans on request (an auto plan that approves itself through approve_system_plan and always waits the delay, and a review plan) with one tip per category and applies them, finds the archive label by name and adopts, creates or renames it by id once no plan is scheduled or applying, and runs every Telegram dialogue with the user (alerts, snooze, reply, settings, web-change notices, web lock, plan notices); its migrate job is the only migrator of the database.",
       "owns": [
         "public schema: mail items, alerts, drafts, audit and overview log, conversation state, poll state, web_notice_token (full rights), encrypted Gmail token",
-        "Alembic chain and grants for all schemas (public, settings, web_auth), run by its migrate job with the owner role (ADR-0025, ADR-0030)",
+        "Alembic chain and grants for all schemas (public, settings, web_auth), run by its migrate job with the owner role (ADR-0025, ADR-0030); revision 0029 (ADR-0056) adds resort_request, plan kind, request and threshold, the plan_item pair, confidence, decision source and tip columns, and the SECURITY DEFINER functions request_resort (api role) and approve_system_plan (agent role only), with the plan approval channel system",
+        "categories schema, written by the agent: filings, plans of kind auto and review with their items and tips, sender_skip, alert causes, apply audit",
         "web_auth: select, insert, update and delete on web_lock; select on four columns of security_event (ADR-0033, ADR-0039)"
       ],
       "dependsOn": [
@@ -36,6 +37,7 @@
       "owns": [
         "web_auth sessions, login requests and security events (data; the DDL lives in the mail-triage chain)",
         "co-writer of settings.schedule through the shared contract (ADR-0023, ADR-0025)",
+        "categories schema, written by the api: list, list settings (general instructions, archive label name), upload previews, the sort-again request (only through request_resort), approve and reject decisions on review plan items; the api role has no right on approve_system_plan",
         "OpenAPI contract docs/api/openapi.json"
       ],
       "dependsOn": [

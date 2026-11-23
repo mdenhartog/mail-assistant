@@ -14,38 +14,46 @@ later run takes the work over.
 from __future__ import annotations
 
 import hashlib
+import uuid
 from datetime import UTC, datetime, timedelta
+from email.utils import parseaddr
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import and_, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import aliased
 
 from app.core.judgement import ListedCategory
-from app.core.resort_plan import ItemState, PlanState
+from app.core.resort_plan import ItemState, PlanKind, PlanState
+from app.core.scope import LABEL_PREFIX
+from app.db import pg_categories
 from app.db.migrate import RUNTIME_ROLE, WEB_ROLE
 from app.db.models import (
     ApplyAudit,
     Category,
     ListVersion,
+    MailItem,
     MoveBackRequest,
     Plan,
     PlanApproval,
     PlanItem,
     Rejection,
 )
+from app.db.models import (
+    ResortRequest as ResortRequestRow,
+)
 from app.usecases.move_back import MoveBackJob
+from app.usecases.plan_tips import TipRow
 from app.usecases.resort_apply import ApplyItem, AuditMove, DuePlan
-from app.usecases.resort_build import BuildList, ItemDraft, PlanRecord
+from app.usecases.resort_build import BuildList, ItemDraft, PlanRecord, ResortRequest
 
 if TYPE_CHECKING:
-    import uuid
-
     from sqlalchemy import ColumnElement
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from app.usecases.resort_apply import SkipReason
 
-__all__ = ["LEASE", "PgApplyStore", "PgBuildStore", "channel_of"]
+__all__ = ["LEASE", "PgApplyStore", "PgBuildStore", "PgTipStore", "channel_of"]
 
 LEASE: Final = timedelta(minutes=5)  # how long a run holds a plan or a request before another may take it over
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
@@ -60,7 +68,7 @@ def channel_of(actor_digest: str) -> str:
     return _DIGESTS.get(actor_digest.strip(), "operator")
 
 
-def _record(plan: Plan, items: int) -> PlanRecord:
+def _record(plan: Plan, items: int, auto_items: int = 0) -> PlanRecord:
     return PlanRecord(
         plan.id,
         plan.list_version,
@@ -70,6 +78,9 @@ def _record(plan: Plan, items: int) -> PlanRecord:
         plan.unclear_count,
         items,
         plan.cap,
+        plan.request_id,
+        plan.threshold,
+        auto_items,
     )
 
 
@@ -85,49 +96,132 @@ class PgBuildStore:
         return Plan.mailbox_id == self._mailbox, Plan.id == plan_id
 
     async def current_list(self) -> BuildList:
-        """The latest list version with its categories in order; version 0 when there is none."""
+        """The latest list version with its categories (kind, ticks, sender entries) in order; version 0 when none."""
+        async with self._sessions() as session:
+            current = await pg_categories.current_list(session, self._mailbox)
+        if current.version == 0:
+            return BuildList(0, _EPOCH, ())
+        async with self._sessions() as session:
+            created = (
+                await session.execute(
+                    select(ListVersion.created_at).where(
+                        ListVersion.mailbox_id == self._mailbox, ListVersion.version == current.version
+                    )
+                )
+            ).scalar_one()
+        return BuildList(
+            current.version,
+            created,
+            tuple(
+                ListedCategory(str(c.id), c.name, c.description, c.kind, c.notify, c.senders)
+                for c in current.categories
+            ),
+            current.general_instructions,
+        )
+
+    async def open_request(self) -> ResortRequest | None:
+        """The newest request of the mailbox when no plan was made for it yet; an older one is never built."""
         newest = (
-            select(ListVersion.version, ListVersion.created_at)
-            .where(ListVersion.mailbox_id == self._mailbox)
-            .order_by(ListVersion.version.desc())
+            select(ResortRequestRow.id, ResortRequestRow.threshold)
+            .where(ResortRequestRow.mailbox_id == self._mailbox)
+            .order_by(ResortRequestRow.at.desc(), ResortRequestRow.id.desc())
             .limit(1)
         )
         async with self._sessions() as session:
             row = (await session.execute(newest)).first()
             if row is None:
-                return BuildList(0, _EPOCH, ())
-            categories = await session.execute(
-                select(Category.id, Category.name, Category.description)
-                .where(Category.mailbox_id == self._mailbox, Category.version == row.version)
-                .order_by(Category.position)
+                return None
+            planned = select(Plan.id).where(Plan.mailbox_id == self._mailbox, Plan.request_id == row.id).limit(1)
+            if (await session.execute(planned)).first() is not None:
+                return None
+        return ResortRequest(row.id, row.threshold)
+
+    async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
+        """Insert the ``review`` and the ``auto`` plan of ``request``; the database copies the threshold from it.
+
+        Both are ``building``; the ``review`` plan carries the build progress. ``None`` when the mailbox has an open
+        plan of either kind already (the one-open-plan index): then neither is made.
+        """
+        async with self._sessions.begin() as session:
+            review = await self._insert_plan(session, request, PlanKind.REVIEW, list_version, cap)
+            auto = (
+                None if review is None else await self._insert_plan(session, request, PlanKind.AUTO, list_version, cap)
             )
-            return BuildList(
-                row.version, row.created_at, tuple(_listed(c.id, c.name, c.description) for c in categories)
+            if review is None or auto is None:
+                await session.rollback()
+                return None
+        return _record(review, 0)
+
+    async def _insert_plan(
+        self, session: AsyncSession, request: ResortRequest, kind: PlanKind, list_version: int, cap: int
+    ) -> Plan | None:
+        statement = (
+            insert(Plan)
+            .values(
+                mailbox_id=self._mailbox,
+                list_version=list_version,
+                cap=cap,
+                kind=kind.value,
+                request_id=request.request_id,
             )
+            .on_conflict_do_nothing()
+            .returning(Plan)
+        )
+        return (await session.execute(statement)).scalar_one_or_none()
 
     async def latest_plan(self) -> PlanRecord | None:
-        """The newest plan of the mailbox, terminal or not."""
+        """The newest ``review`` plan of the mailbox, terminal or not, with the item count of its ``auto`` plan too."""
         items = (
             select(func.count())
             .select_from(PlanItem)
             .where(PlanItem.mailbox_id == Plan.mailbox_id, PlanItem.plan_id == Plan.id)
             .scalar_subquery()
         )
+        auto = aliased(Plan)
+        auto_items = (
+            select(func.count())
+            .select_from(PlanItem)
+            .join(auto, and_(auto.mailbox_id == PlanItem.mailbox_id, auto.id == PlanItem.plan_id))
+            .where(
+                auto.mailbox_id == Plan.mailbox_id,
+                auto.request_id == Plan.request_id,
+                auto.kind == PlanKind.AUTO.value,
+            )
+            .scalar_subquery()
+        )
         statement = (
-            select(Plan, items)
-            .where(Plan.mailbox_id == self._mailbox)
+            select(Plan, items, auto_items)
+            .where(Plan.mailbox_id == self._mailbox, Plan.kind == PlanKind.REVIEW.value)
             .order_by(Plan.created_at.desc(), Plan.id.desc())
             .limit(1)
         )
         async with self._sessions() as session:
             row = (await session.execute(statement)).first()
-        return None if row is None else _record(row[0], row[1])
+        return None if row is None else _record(row[0], row[1], row[2])
+
+    async def _auto_plan_id(self, session: AsyncSession, plan_id: uuid.UUID) -> uuid.UUID | None:
+        """The ``auto`` plan made for the same request as the ``review`` plan ``plan_id``."""
+        auto = aliased(Plan)
+        statement = (
+            select(auto.id)
+            .join(Plan, and_(Plan.mailbox_id == auto.mailbox_id, Plan.request_id == auto.request_id))
+            .where(*self._mine(plan_id), auto.kind == PlanKind.AUTO.value)
+        )
+        return (await session.execute(statement)).scalar_one_or_none()
 
     async def replace_plan(self, plan_id: uuid.UUID) -> bool:
-        """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items (one database function)."""
-        statement = select(func.categories.replace_plan(self._mailbox, plan_id))
+        """Compare-and-set ``building`` or ``ready`` to ``replaced`` and drop its items (one database function).
+
+        The ``auto`` plan of the same request goes too while it is still ``building``; once the system approved it, it
+        finishes (spec D20, AC-51).
+        """
+        replace = select(func.categories.replace_plan(self._mailbox, plan_id))
         async with self._sessions.begin() as session:
-            return bool((await session.execute(statement)).scalar_one())
+            replaced = bool((await session.execute(replace)).scalar_one())
+            auto_id = await self._auto_plan_id(session, plan_id)
+            if auto_id is not None:
+                await session.execute(select(func.categories.replace_plan(self._mailbox, auto_id)))
+            return replaced
 
     async def record_estimate(self, plan_id: uuid.UUID, estimate: int) -> None:
         """Store the estimated number of mails in scope."""
@@ -136,15 +230,41 @@ class PgBuildStore:
             await session.execute(statement)
 
     async def complete_build(self, plan_id: uuid.UUID, *, not_looked_at: int) -> bool:
-        """Compare-and-set ``building`` to ``ready``; true for the one caller that did it."""
-        statement = (
+        """Ready both plans and approve the ``auto`` one in one transaction; true for the one caller that did it.
+
+        The ``auto`` plan is approved by ``approve_system_plan`` (which re-checks every item against the threshold of
+        the plan and counts toward the rolling 24 hours), or replaced when it holds no item: an empty plan is no
+        approval and must not block the next request.
+        """
+        ready = (
             update(Plan)
             .where(*self._mine(plan_id), Plan.state == PlanState.BUILDING.value)
             .values(state=PlanState.READY.value, not_looked_at=not_looked_at, last_activity_at=func.now())
             .returning(Plan.id)
         )
         async with self._sessions.begin() as session:
-            return (await session.execute(statement)).first() is not None
+            if (await session.execute(ready)).first() is None:
+                return False
+            auto_id = await self._auto_plan_id(session, plan_id)
+            if auto_id is not None:
+                await self._settle_auto_plan(session, auto_id)
+            return True
+
+    async def _settle_auto_plan(self, session: AsyncSession, auto_id: uuid.UUID) -> None:
+        await session.execute(
+            update(Plan)
+            .where(*self._mine(auto_id), Plan.state == PlanState.BUILDING.value)
+            .values(state=PlanState.READY.value, last_activity_at=func.now())
+        )
+        count = (
+            select(func.count())
+            .select_from(PlanItem)
+            .where(PlanItem.mailbox_id == self._mailbox, PlanItem.plan_id == auto_id)
+        )
+        if (await session.execute(count)).scalar_one() == 0:
+            await session.execute(select(func.categories.replace_plan(self._mailbox, auto_id)))
+        else:
+            await session.execute(select(func.categories.approve_system_plan(auto_id)))
 
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
         """Mail the user rejected under this list version."""
@@ -154,13 +274,14 @@ class PgBuildStore:
         async with self._sessions() as session:
             return frozenset((await session.execute(statement)).scalars())
 
-    async def record_progress(
-        self, plan_id: uuid.UUID, *, item: ItemDraft | None, cursor: str, checked: int, unclear: int
+    async def record_progress(  # noqa: PLR0913
+        self, plan_id: uuid.UUID, *, item: ItemDraft | None, kind: PlanKind, cursor: str, checked: int, unclear: int
     ) -> bool:
-        """In one transaction add the item, the counts and the cursor; false when the plan is no longer ``building``.
+        """In one transaction add the item (to the plan of ``kind``), the counts and the cursor.
 
-        The update comes first and locks the plan row: a replace waits for this transaction and then drops the item,
-        and a plan that was replaced before gets nothing.
+        False when the plan is no longer ``building``. The update comes first and locks the ``review`` plan row, which
+        carries the progress of both: a replace waits for this transaction and then drops the item, and a plan that was
+        replaced before gets nothing. The agent cannot move an item between plans, so the item goes into its plan here.
         """
         progress = (
             update(Plan)
@@ -176,26 +297,93 @@ class PgBuildStore:
         async with self._sessions.begin() as session:
             if (await session.execute(progress)).first() is None:
                 return False
-            if item is not None:
-                await session.execute(
-                    insert(PlanItem)
-                    .values(
-                        mailbox_id=self._mailbox,
-                        plan_id=plan_id,
-                        message_id=item.message_id,
-                        sender_name=item.sender_name,
-                        sender_address=item.sender_address,
-                        subject=item.subject,
-                        old_category_id=item.old_category_id,
-                        new_category_id=item.new_category_id,
-                    )
-                    .on_conflict_do_nothing(constraint="uq_plan_item_message")  # a mail listed twice stays one item
+            if item is None:
+                return True
+            target = plan_id if kind is PlanKind.REVIEW else await self._auto_plan_id(session, plan_id)
+            if target is None:
+                raise LookupError("the plan has no auto plan to take the item")
+            await session.execute(
+                insert(PlanItem)
+                .values(
+                    mailbox_id=self._mailbox,
+                    plan_id=target,
+                    message_id=item.message_id,
+                    sender_name=item.sender_name,
+                    sender_address=item.sender_address,
+                    subject=item.subject,
+                    old_category_id=item.old_topic_id,  # the legacy columns hold the topic of the pair
+                    new_category_id=item.new_topic_id,
+                    old_topic_id=item.old_topic_id,
+                    old_extra_id=item.old_extra_id,
+                    new_topic_id=item.new_topic_id,
+                    new_extra_id=item.new_extra_id,
+                    confidence_pct=item.confidence_pct,
                 )
+                .on_conflict_do_nothing(constraint="uq_plan_item_message")  # a mail listed twice stays one item
+            )
         return True
 
 
-def _listed(category_id: uuid.UUID, name: str, description: str) -> ListedCategory:
-    return ListedCategory(str(category_id), name, description)
+class PgTipStore:
+    """``TipStore`` on the items of a ``review`` plan: the agent may read them and update only ``tip`` (migration 0029).
+
+    The tip is a column of the item, so whatever deletes the item (replace, apply, the purge) deletes the tip.
+    """
+
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], mailbox_id: str) -> None:
+        """Keep the session factory and the mailbox."""
+        self._sessions = sessions
+        self._mailbox = mailbox_id
+
+    async def below_threshold(self, plan_id: uuid.UUID) -> list[TipRow]:
+        """The items of the ``review`` plan with their new topic, sender domain, subject and verified domain.
+
+        Every item of a ``review`` plan is below the threshold of its request. The verified domain is stored with
+        the filed mail (``mail_item``); an item without a stored mail, or one Gmail did not vouch for, has ``None``.
+        """
+        statement = (
+            select(PlanItem.new_topic_id, PlanItem.sender_address, PlanItem.subject, MailItem.verified_domain)
+            .join(Plan, and_(Plan.mailbox_id == PlanItem.mailbox_id, Plan.id == PlanItem.plan_id))
+            .outerjoin(MailItem, MailItem.gmail_message_id == PlanItem.message_id)
+            .where(
+                PlanItem.mailbox_id == self._mailbox,
+                PlanItem.plan_id == plan_id,
+                Plan.kind == PlanKind.REVIEW.value,
+                PlanItem.new_topic_id.is_not(None),
+            )
+            .order_by(PlanItem.id)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).all()
+        return [
+            TipRow(str(topic), _domain_of(address), subject, verified) for topic, address, subject, verified in rows
+        ]
+
+    async def store_tip(self, plan_id: uuid.UUID, category_id: str, tip: str) -> None:
+        """Write the tip on the items of the category while the plan is still ``ready``; later it changes nothing."""
+        ready = (
+            select(Plan.id)
+            .where(Plan.mailbox_id == PlanItem.mailbox_id, Plan.id == PlanItem.plan_id)
+            .where(Plan.state == PlanState.READY.value)
+            .exists()
+        )
+        statement = (
+            update(PlanItem)
+            .where(
+                PlanItem.mailbox_id == self._mailbox,
+                PlanItem.plan_id == plan_id,
+                PlanItem.new_topic_id == uuid.UUID(category_id),
+                ready,
+            )
+            .values(tip=tip)
+        )
+        async with self._sessions.begin() as session:
+            await session.execute(statement)
+
+
+def _domain_of(address: str) -> str:
+    """The lower-case domain of a stored sender; ``unknown`` when there is none."""
+    return parseaddr(address)[1].rpartition("@")[2].lower() or "unknown"
 
 
 class PgApplyStore:
@@ -298,10 +486,40 @@ class PgApplyStore:
         async with self._sessions() as session:
             return {str(row.id): row.name for row in await session.execute(statement)}
 
+    async def extra_label_names(self) -> frozenset[str]:
+        """The Gmail label names of the extra-label categories of the latest list version."""
+        latest = select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == self._mailbox).scalar_subquery()
+        statement = select(Category.name).where(
+            Category.mailbox_id == self._mailbox, Category.version == latest, Category.kind == "extra"
+        )
+        async with self._sessions() as session:
+            return frozenset(f"{LABEL_PREFIX}{name.strip()}" for name in (await session.execute(statement)).scalars())
+
+    async def target_ids(self, plan_id: uuid.UUID) -> frozenset[str]:
+        """The ids of the categories the items still ``approved`` move mail into (the new topic and the new extra)."""
+        topic = func.coalesce(PlanItem.new_topic_id, PlanItem.new_category_id)
+        statement = select(topic, PlanItem.new_extra_id).where(
+            PlanItem.mailbox_id == self._mailbox,
+            PlanItem.plan_id == plan_id,
+            PlanItem.state == ItemState.APPROVED.value,
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).all()
+        return frozenset(str(found) for row in rows for found in row if found is not None)
+
     async def next_items(self, plan_id: uuid.UUID, limit: int) -> list[ApplyItem]:
-        """Up to ``limit`` items still ``approved``, in the order they were planned."""
+        """Up to ``limit`` items still ``approved``, in the order they were planned.
+
+        An item of a plan made before pairs has no pair columns: its category ids stand in for the topics.
+        """
         statement = (
-            select(PlanItem.message_id, PlanItem.old_category_id, PlanItem.new_category_id)
+            select(
+                PlanItem.message_id,
+                func.coalesce(PlanItem.old_topic_id, PlanItem.old_category_id),
+                func.coalesce(PlanItem.new_topic_id, PlanItem.new_category_id),
+                PlanItem.old_extra_id,
+                PlanItem.new_extra_id,
+            )
             .where(
                 PlanItem.mailbox_id == self._mailbox,
                 PlanItem.plan_id == plan_id,
@@ -311,9 +529,7 @@ class PgApplyStore:
             .limit(limit)
         )
         async with self._sessions() as session:
-            return [
-                ApplyItem(r.message_id, r.old_category_id, r.new_category_id) for r in await session.execute(statement)
-            ]
+            return [ApplyItem(*row) for row in (await session.execute(statement)).all()]
 
     async def intent_for(self, plan_id: uuid.UUID, message_id: str) -> AuditMove | None:
         """The apply audit row of this plan and mail, when one exists."""

@@ -11,8 +11,9 @@ from typing import TYPE_CHECKING, Final
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import DBAPIError
+from sqlalchemy.orm import aliased
 
-from app.core.resort_plan import PlanState
+from app.core.resort_plan import PlanKind, PlanState
 from app.db.models import ApplyConfig, CategoryMailbox, MoveBackRequest, Plan, PlanApproval, PlanItem
 from app.usecases.approval_notice import CancelOutcome, ScheduledPlan
 
@@ -62,8 +63,22 @@ class PgApprovalStore:
             .where(PlanItem.mailbox_id == Plan.mailbox_id, PlanItem.plan_id == Plan.id, PlanItem.state == "approved")
             .scalar_subquery()
         )
+        review = aliased(Plan)
+        waiting = (  # items of the request's review plan that wait for the user; only an ``auto`` plan has one
+            select(func.count())
+            .select_from(PlanItem)
+            .join(review, and_(review.mailbox_id == PlanItem.mailbox_id, review.id == PlanItem.plan_id))
+            .where(
+                review.mailbox_id == Plan.mailbox_id,
+                review.request_id == Plan.request_id,
+                review.kind == PlanKind.REVIEW.value,
+                Plan.kind == PlanKind.AUTO.value,
+                PlanItem.state == "pending",
+            )
+            .scalar_subquery()
+        )
         statement = (
-            select(Plan.id, items, Plan.apply_after)
+            select(Plan.id, items, Plan.apply_after, Plan.kind, waiting)
             .where(
                 Plan.mailbox_id == self._mailbox,
                 Plan.state == PlanState.SCHEDULED.value,
@@ -74,7 +89,11 @@ class PgApprovalStore:
         )
         async with self._sessions() as session:
             rows = (await session.execute(statement)).all()
-        return [ScheduledPlan(plan_id, count, after) for plan_id, count, after in rows if after is not None]
+        return [
+            ScheduledPlan(plan_id, count, after, PlanKind(kind), waiting_count)
+            for plan_id, count, after, kind, waiting_count in rows
+            if after is not None
+        ]
 
     async def mark_announced(self, plan_id: uuid.UUID) -> None:
         """Remember that the notice of the plan was sent."""

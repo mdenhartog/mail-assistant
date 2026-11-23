@@ -571,6 +571,25 @@ class ApplyConfig(Base):
 # --- Mail categories, plan half (INT-004, ADR-0046, ADR-0047): migration 0015 -----------------------------------------
 
 
+class ResortRequest(Base):
+    """Insert-only "Sort everything again" request (0029); written by ``request_resort`` alone."""
+
+    __tablename__ = "resort_request"
+    __table_args__ = (
+        CheckConstraint("threshold BETWEEN 50 AND 100", name="ck_resort_request_threshold"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_resort_request_channel"),
+        Index("ix_resort_request_at", "mailbox_id", "at"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text("gen_random_uuid()"))
+    threshold: Mapped[int] = mapped_column(Integer)
+    channel: Mapped[str] = mapped_column(String(16), server_default="operator")
+    actor_digest: Mapped[str] = mapped_column(CHAR(64), server_default=text("repeat('0', 64)"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
 class Plan(Base):
     """One re-sort plan; its state moves follow ``app.core.resort_plan`` (a trigger refuses the others)."""
 
@@ -585,9 +604,20 @@ class Plan(Base):
             "(estimate_total IS NULL OR estimate_total >= 0) AND not_looked_at >= 0", name="ck_plan_progress"
         ),
         CheckConstraint("moved_count >= 0", name="ck_plan_moved_count"),
+        CheckConstraint("kind IN ('auto', 'review')", name="ck_plan_kind"),
+        CheckConstraint(
+            "kind = 'review' OR (request_id IS NOT NULL AND threshold IS NOT NULL)", name="ck_plan_request"
+        ),
+        CheckConstraint("threshold IS NULL OR threshold BETWEEN 50 AND 100", name="ck_plan_threshold"),
+        ForeignKeyConstraint(
+            ["mailbox_id", "request_id"],
+            ["categories.resort_request.mailbox_id", "categories.resort_request.id"],
+            name="fk_plan_request",
+        ),
         Index(
             "uq_plan_one_open",
             "mailbox_id",
+            "kind",
             unique=True,
             postgresql_where=text("state NOT IN ('applied', 'replaced', 'discarded', 'cancelled')"),
         ),
@@ -612,6 +642,9 @@ class Plan(Base):
     apply_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     announced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # notice of a delayed plan (0018)
     moved_count: Mapped[int] = mapped_column(Integer, server_default="0")  # items moved; the items go (0022)
+    kind: Mapped[str] = mapped_column(String(8), server_default="review")  # auto or review (0029)
+    request_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)  # the sort-again request of the plan (0029)
+    threshold: Mapped[int | None] = mapped_column(Integer)  # copied from the request, never changes (0029)
 
 
 class PlanItem(Base):
@@ -632,6 +665,12 @@ class PlanItem(Base):
             "state NOT IN ('applied', 'skipped', 'failed') OR decision = 'approved'", name="ck_plan_item_applied"
         ),
         CheckConstraint("state NOT IN ('approved', 'rejected') OR state = decision", name="ck_plan_item_decided"),
+        CheckConstraint("confidence_pct IS NULL OR confidence_pct BETWEEN 0 AND 100", name="ck_plan_item_confidence"),
+        CheckConstraint("decision_source IN ('user', 'threshold')", name="ck_plan_item_decision_source"),
+        CheckConstraint(
+            "decision_source <> 'threshold' OR decision = 'approved'", name="ck_plan_item_threshold_approved"
+        ),
+        CheckConstraint("char_length(tip) <= 500", name="ck_plan_item_tip"),
         Index("ix_plan_item_group", "mailbox_id", "plan_id", "old_category_id", "new_category_id"),
         {"schema": "categories"},
     )
@@ -650,6 +689,13 @@ class PlanItem(Base):
     reason: Mapped[str | None] = mapped_column(String(64))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, server_default="0")  # failed moves of this item (0018)
+    old_topic_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)  # the pair before and after (0029)
+    old_extra_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    new_topic_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    new_extra_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    confidence_pct: Mapped[int | None] = mapped_column(Integer)  # the model's own report, 0 to 100 (0029)
+    decision_source: Mapped[str] = mapped_column(String(16), server_default="user")  # user or threshold (0029)
+    tip: Mapped[str | None] = mapped_column(Text)  # plain text, at most 500 characters (0029)
 
 
 class PlanDecision(Base):
@@ -679,7 +725,7 @@ class PlanApproval(Base):
     __tablename__ = "plan_approval"
     __table_args__ = (
         CheckConstraint("approved_count >= 0", name="ck_plan_approval_count"),
-        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_plan_approval_channel"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator', 'system')", name="ck_plan_approval_channel"),
         Index("ix_plan_approval_at", "mailbox_id", "at"),
         {"schema": "categories"},
     )
@@ -698,7 +744,7 @@ class ApplyAudit(Base):
 
     __tablename__ = "apply_audit"
     __table_args__ = (
-        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_apply_audit_channel"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator', 'system')", name="ck_apply_audit_channel"),
         CheckConstraint("kind IN ('apply', 'restore')", name="ck_apply_audit_kind"),
         Index("ix_apply_audit_plan", "mailbox_id", "plan_id"),
         Index(

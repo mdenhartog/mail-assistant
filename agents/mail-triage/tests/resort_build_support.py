@@ -8,10 +8,18 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_read import FetchedMail
-from app.core.judgement import OTHER_ID, Judgement, ListedCategory, NeedsAttention
+from app.core.judgement import (
+    OTHER_ID,
+    Judgement,
+    JudgementError,
+    ListedCategory,
+    NeedsAttention,
+    parse_judgement,
+)
 from app.core.pinned import PinnedSenders
-from app.core.resort_plan import PlanState
-from app.usecases.resort_build import PLAN_CAP, BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild
+from app.core.resort_plan import PlanKind, PlanState
+from app.core.scope import ArchiveLabel
+from app.usecases.resort_build import BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild, ResortRequest
 from tests.fakes.budget_ledger import BudgetLedger
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_gmail import FakeGmail
@@ -21,6 +29,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
     from app.adapters.judge_anthropic import TrimmedMail
+
+ARCHIVE = ArchiveLabel("Archive")
+
 
 START = datetime(2026, 11, 15, 9, 0, tzinfo=UTC)
 FINANCE = "00000000-0000-0000-0000-00000000000a"
@@ -45,6 +56,11 @@ class FakeBuildStore:
         self.rejections: dict[str, int] = {}  # message id -> list version
         self.estimates: dict[uuid.UUID, int] = {}
         self.not_looked_at: dict[uuid.UUID, int] = {}
+        self.requests: list[ResortRequest] = []
+        self.planned: set[uuid.UUID] = set()  # requests that have a plan
+        # The auto plan of each request, by the id of its review plan (``plans`` holds the review plans).
+        self.auto_state: dict[uuid.UUID, PlanState] = {}
+        self.auto: dict[uuid.UUID, list[ItemDraft]] = {}
 
     def save_list(self, categories: Sequence[ListedCategory] = CATEGORIES) -> None:
         """The user saves a new list version now."""
@@ -57,6 +73,13 @@ class FakeBuildStore:
         return self.plans[index]
 
     def items_of(self, plan: PlanRecord) -> list[ItemDraft]:
+        """Every item the build wrote for the request of ``plan``, in both plans."""
+        return [*self.auto.get(plan.plan_id, []), *self.items.get(plan.plan_id, [])]
+
+    def auto_items_of(self, plan: PlanRecord) -> list[ItemDraft]:
+        return self.auto.get(plan.plan_id, [])
+
+    def review_items_of(self, plan: PlanRecord) -> list[ItemDraft]:
         return self.items.get(plan.plan_id, [])
 
     async def current_list(self) -> BuildList:
@@ -65,13 +88,31 @@ class FakeBuildStore:
     async def latest_plan(self) -> PlanRecord | None:
         return self.plans[-1] if self.plans else None
 
-    async def seed_plan(self, list_version: int, cap: int) -> PlanRecord | None:
-        """Test only: the api creates plans, the agent port cannot."""
-        if any(p.state in (PlanState.BUILDING, PlanState.READY) for p in self.plans):
+    def add_request(self, threshold: int = 50) -> ResortRequest:
+        """The api writes a "Sort everything again" request."""
+        request = ResortRequest(uuid.uuid4(), threshold)
+        self.requests.append(request)
+        return request
+
+    async def open_request(self) -> ResortRequest | None:
+        """The latest request, when no plan was made for it yet."""
+        if not self.requests or self.requests[-1].request_id in self.planned:
             return None
-        plan = PlanRecord(uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap)
+        return self.requests[-1]
+
+    async def start_plan(self, request: ResortRequest, list_version: int, cap: int) -> PlanRecord | None:
+        """Insert the plan of a request; ``None`` when a plan is open already (the one-open-plan index)."""
+        open_states = (PlanState.BUILDING, PlanState.READY, PlanState.SCHEDULED, PlanState.APPLYING)
+        if any(p.state in open_states for p in self.plans) or any(s in open_states for s in self.auto_state.values()):
+            return None
+        plan = PlanRecord(
+            uuid.uuid4(), list_version, PlanState.BUILDING, None, 0, 0, 0, cap, request.request_id, request.threshold
+        )
         self.plans.append(plan)
         self.items[plan.plan_id] = []
+        self.auto[plan.plan_id] = []
+        self.auto_state[plan.plan_id] = PlanState.BUILDING
+        self.planned.add(request.request_id)
         return plan
 
     def _set(self, plan_id: uuid.UUID, **changes: object) -> PlanRecord:
@@ -85,6 +126,9 @@ class FakeBuildStore:
             return False
         self._set(plan_id, state=PlanState.REPLACED)
         self.items[plan_id] = []
+        if self.auto_state.get(plan_id) is PlanState.BUILDING:
+            self.auto_state[plan_id] = PlanState.REPLACED
+            self.auto[plan_id] = []
         return True
 
     async def record_estimate(self, plan_id: uuid.UUID, estimate: int) -> None:
@@ -96,25 +140,30 @@ class FakeBuildStore:
             return False
         self._set(plan_id, state=PlanState.READY)
         self.not_looked_at[plan_id] = not_looked_at
+        if self.auto_state.get(plan_id) is PlanState.BUILDING:  # the database approves the auto plan in this step
+            self.auto_state[plan_id] = PlanState.SCHEDULED if self.auto[plan_id] else PlanState.REPLACED
         return True
 
     async def rejected_ids(self, list_version: int) -> frozenset[str]:
         return frozenset(m for m, v in self.rejections.items() if v == list_version)
 
-    async def record_progress(
-        self, plan_id: uuid.UUID, *, item: ItemDraft | None, cursor: str, checked: int, unclear: int
+    async def record_progress(  # noqa: PLR0913
+        self, plan_id: uuid.UUID, *, item: ItemDraft | None, kind: PlanKind, cursor: str, checked: int, unclear: int
     ) -> bool:
         plan = next(p for p in self.plans if p.plan_id == plan_id)
         if plan.state is not PlanState.BUILDING:
             return False
+        review = item is not None and kind is PlanKind.REVIEW
+        auto = item is not None and kind is PlanKind.AUTO
         if item is not None:
-            self.items[plan_id].append(item)
+            (self.items if review else self.auto)[plan_id].append(item)
         self._set(
             plan_id,
             cursor=cursor,
             checked=plan.checked + checked,
             unclear=plan.unclear + unclear,
-            items=plan.items + (item is not None),
+            items=plan.items + review,
+            auto_items=plan.auto_items + auto,
         )
         return True
 
@@ -167,28 +216,57 @@ class GmailBuildMailbox:
 
 @dataclass
 class ScriptedJudge:
-    """Answers with ``answer`` (a category id) for every mail, or per subject; spends ``cost`` from the ledger."""
+    """Answers with ``answer`` (a topic id) for every mail, or per subject; spends ``cost`` from the ledger.
+
+    ``answers`` gives (topic, extra, confidence) per subject; ``raw`` gives a raw model answer per subject that goes
+    through the same validation as the real one.
+    """
 
     answer: str = FINANCE
     by_subject: dict[str, str] = field(default_factory=dict)
+    answers: dict[str, tuple[str, str | None, float]] = field(default_factory=dict)
+    raw: dict[str, dict[str, object]] = field(default_factory=dict)
     ledger: BudgetLedger | None = None
     cost: int = 2
     on_judge: Callable[[], None] | None = None
     verdict: NeedsAttention | None = None
     calls: int = 0
+    subjects: list[str] = field(default_factory=list)
 
     async def judge(
         self, mail: TrimmedMail, categories: Sequence[ListedCategory], instructions: str
     ) -> Judgement | NeedsAttention:
         self.calls += 1
+        self.subjects.append(mail.subject)
         if self.ledger is not None:
             self.ledger.spend(self.cost)
         if self.on_judge is not None:
             self.on_judge()
         if self.verdict is not None:
             return self.verdict
-        category_id = self.by_subject.get(mail.subject, self.answer)
-        return Judgement(topic_id=category_id, urgent=False, reason="r", summary="s", confidence=0.9)
+        if mail.subject in self.raw:
+            try:
+                return parse_judgement(self.raw[mail.subject])
+            except JudgementError:
+                return NeedsAttention("invalid_output")
+        topic, extra, confidence = self.answers.get(
+            mail.subject, (self.by_subject.get(mail.subject, self.answer), None, 0.9)
+        )
+        return Judgement(topic_id=topic, extra_id=extra, urgent=False, reason="r", summary="s", confidence=confidence)
+
+
+class FakeTips:
+    """The tip writer: records the plan and the list it was asked for."""
+
+    def __init__(self, telegram: FakeTelegram) -> None:
+        self._telegram = telegram
+        self.calls: list[tuple[uuid.UUID, tuple[str, ...]]] = []
+        self.seen_texts: list[int] = []  # how many notices were out when each write started
+
+    async def write(self, plan_id: uuid.UUID, categories: Sequence[ListedCategory]) -> int:
+        self.seen_texts.append(len(self._telegram.texts))
+        self.calls.append((plan_id, tuple(c.category_id for c in categories)))
+        return 0
 
 
 class Rig:
@@ -203,6 +281,7 @@ class Rig:
         self.ledger = BudgetLedger(self.clock, daily_total=daily_total, reserve=RESERVE)
         self.judge = ScriptedJudge(ledger=self.ledger)
         self.telegram = FakeTelegram()
+        self.tips = FakeTips(self.telegram)
         self.finance_label = self.gmail.add_label("Assistant/Finance")
         self.travel_label = self.gmail.add_label("Assistant/Travel")
         self.build = ResortBuild(
@@ -210,16 +289,17 @@ class Rig:
             judge=self.judge,
             store=self.store,
             notifier=self.telegram,
+            tips=self.tips,
             budget=self,
             now=self.clock,
             pinned=PINNED,
-            archive_label="Archive",
+            archive=ARCHIVE,
             per_run=per_run,
         )
 
-    async def start_plan(self) -> None:
-        """A ``building`` plan for the current list, as a request will create it (U-label-structure-22)."""
-        await self.store.seed_plan(self.store.list.version, PLAN_CAP)
+    def request(self, threshold: int = 50) -> ResortRequest:
+        """The user presses "Sort everything again"; the next run starts the plan."""
+        return self.store.add_request(threshold)
 
     def remaining(self) -> int:
         """The budget view the use case reads: what the day still allows, the reserve included."""

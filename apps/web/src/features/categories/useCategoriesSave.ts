@@ -5,7 +5,7 @@ import { useSaveCategories } from "@/api/categories/categories.queries";
 import type { CategoryInput, CategoryList } from "@/api/categories/categories.types";
 import { MAX_INSTRUCTIONS, validateList } from "@/features/categories/policy";
 import { problemText } from "@/features/categories/problemText";
-import type { Row } from "@/features/categories/rows";
+import type { ListSettings, Row } from "@/features/categories/rows";
 import { draftErrors, rowErrors } from "@/features/categories/saveErrors";
 import type { ErrorsByRow } from "@/features/categories/saveErrors";
 import { parseSenders } from "@/features/categories/senders";
@@ -16,6 +16,8 @@ export interface CategoriesSave {
   errors: ErrorsByRow;
   /** What is wrong with the general instructions of the list. */
   instructionsError: string | undefined;
+  /** What the api said about the archive label name. */
+  archiveError: string | undefined;
   /** Changes on every submit that shows errors, so focus moves once per submit and not while typing. */
   errorStamp: number;
   result: SaveResult;
@@ -32,6 +34,7 @@ export interface CategoriesSave {
   /** Hides what the last save said, because the user is editing a card again. */
   clear: (key: string) => void;
   clearInstructions: () => void;
+  clearArchive: () => void;
 }
 
 function bodyOf(rows: readonly Row[]): CategoryInput[] {
@@ -53,7 +56,7 @@ interface Sender {
 }
 
 /** Sends the whole draft on the stored version once at a time; what comes back goes to the feedback. */
-function useSender(list: CategoryList, rows: readonly Row[], instructions: string, feedback: Feedback): Sender {
+function useSender(list: CategoryList, rows: readonly Row[], settings: ListSettings, feedback: Feedback): Sender {
   const save = useSaveCategories();
   const inFlight = useRef(false);
   const send = (): void => {
@@ -64,7 +67,7 @@ function useSender(list: CategoryList, rows: readonly Row[], instructions: strin
     feedback.setResult(null);
     feedback.clearAll();
     save.mutate(
-      { version: list.version, generalInstructions: instructions, categories: bodyOf(rows) },
+      { version: list.version, generalInstructions: settings.instructions, archiveLabel: settings.archiveLabel, categories: bodyOf(rows) },
       {
         onSuccess: () => {
           feedback.setResult("saved");
@@ -85,10 +88,10 @@ function useSender(list: CategoryList, rows: readonly Row[], instructions: strin
  * Validates the draft with the shared rules, asks with a summary, then saves it on the version it was
  * based on. The api checks again: its 422 is mapped to the same fields.
  */
-export function useCategoriesSave(list: CategoryList, rows: readonly Row[], instructions: string): CategoriesSave {
+export function useCategoriesSave(list: CategoryList, rows: readonly Row[], settings: ListSettings): CategoriesSave {
   const [asking, setAsking] = useState(false);
   const feedback = useFeedback(list.version);
-  const { send, saving } = useSender(list, rows, instructions, feedback);
+  const { send, saving } = useSender(list, rows, settings, feedback);
   // Every label this page knows is an older category: a card of that name adopts it (AC-53). The api knows the rest.
   const labels = list.olderCategories.map((older) => older.labelName);
 
@@ -97,7 +100,7 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], inst
       return;
     }
     const errors = draftErrors(rows, labels);
-    const tooLong = Array.from(instructions).length > MAX_INSTRUCTIONS ? problemText("instructions_too_long") : undefined;
+    const tooLong = Array.from(settings.instructions).length > MAX_INSTRUCTIONS ? problemText("instructions_too_long") : undefined;
     if (Object.keys(errors).length === 0 && tooLong === undefined) {
       feedback.setResult(null);
       setAsking(true);
@@ -120,6 +123,7 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], inst
   return {
     errors: feedback.errors,
     instructionsError: feedback.instructionsError,
+    archiveError: feedback.archiveError,
     errorStamp: feedback.errorStamp,
     result: feedback.result,
     asking,
@@ -136,5 +140,6 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], inst
     retry: send,
     clear: feedback.clearFor,
     clearInstructions: feedback.clearInstructions,
+    clearArchive: feedback.clearArchive,
   };
 }

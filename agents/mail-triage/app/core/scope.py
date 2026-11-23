@@ -1,8 +1,10 @@
 """Which mail a re-sort plan may touch (spec AC-10, AC-52; ADR-0046).
 
 Pure logic over Gmail label *names*. A mail is in scope when it sits in the inbox or carries one ``Assistant/`` label
-and is not spam, trash, in the archive label, a draft or the user's own sent mail. Two ``Assistant/`` labels are
-unclear: the mail is counted but never becomes an item, because the agent cannot tell which label is the current one.
+and is not spam, trash, in the archive label, a draft or the user's own sent mail. The kind of each label comes from the
+list (ADR-0056): a topic label next to an extra label is clear. Two topic labels (a label outside the list counts as a
+topic) or two extra labels are unclear: the mail is counted but never becomes an item, because the agent cannot tell
+which label is the current one.
 """
 
 from __future__ import annotations
@@ -11,22 +13,26 @@ import unicodedata
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
+from category_policy import validate_archive_name
+
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Collection, Iterable
 
 __all__ = [
     "LABEL_PREFIX",
+    "ArchiveLabel",
     "Scope",
     "assistant_labels",
     "classify",
     "clean_display",
     "is_archive_label",
+    "usable_archive_name",
 ]
 
 LABEL_PREFIX = "Assistant/"
 _INBOX = "INBOX"
 _SPACED_CATEGORIES = frozenset({"Cc", "Zl", "Zp"})  # controls, U+2028 and U+2029
-_EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT"})
+_EXCLUDED = frozenset({"SPAM", "TRASH", "DRAFT", "SENT"})
 
 
 class Scope(StrEnum):
@@ -35,6 +41,26 @@ class Scope(StrEnum):
     IN_SCOPE = "in_scope"
     UNCLEAR = "unclear"
     OUT = "out"
+
+
+class ArchiveLabel:
+    """The protected archive label as the agent knows it now (ADR-0059): the name it has in Gmail and its id.
+
+    One object is shared by every component, so a rename done by the label sync is seen by the plan build, the apply
+    and the move back at once. The name stays the old one until Gmail has the new one.
+    """
+
+    __slots__ = ("label_id", "name")
+
+    def __init__(self, name: str, label_id: str | None = None) -> None:
+        """Start with the name the database holds; the sync fills the id."""
+        self.name = name
+        self.label_id = label_id
+
+
+def usable_archive_name(name: str) -> bool:
+    """The name rules of ADR-0059 point 2, from the shared policy (without the check against the categories)."""
+    return not validate_archive_name(name)
 
 
 def is_archive_label(name: str, archive: str) -> bool:
@@ -47,13 +73,18 @@ def assistant_labels(label_names: Iterable[str]) -> list[str]:
     return sorted(name for name in label_names if name.startswith(LABEL_PREFIX))
 
 
-def classify(label_names: Iterable[str], archive: str) -> Scope:
-    """Classify a mail by its label names; excluded labels and the ``archive`` label win over everything else."""
+def classify(label_names: Iterable[str], archive: str, extra_labels: Collection[str]) -> Scope:
+    """Classify a mail by its label names; excluded labels and the ``archive`` label win over everything else.
+
+    ``extra_labels`` are the label names of the extra-label categories of the list; every other ``Assistant/`` label is
+    a topic label.
+    """
     names = set(label_names)
     if names & _EXCLUDED or any(is_archive_label(name, archive) for name in names):
         return Scope.OUT
     labels = assistant_labels(names)
-    if len(labels) > 1:
+    extras = [name for name in labels if name in extra_labels]
+    if len(extras) > 1 or len(labels) - len(extras) > 1:
         return Scope.UNCLEAR
     if labels or _INBOX in names:
         return Scope.IN_SCOPE

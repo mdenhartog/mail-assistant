@@ -14,7 +14,7 @@ from tests.resort_build_support import FINANCE, TRAVEL, Rig
 
 async def test_items_exist_only_for_mails_whose_category_would_change_and_nothing_moves() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     stays = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="stays")  # already Finance, judged Finance
     moves = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="moves")  # Finance, judged Travel
     unfiled = rig.gmail.add_mail(("INBOX",), subject="unfiled")  # no label, judged Other: no change
@@ -28,7 +28,7 @@ async def test_items_exist_only_for_mails_whose_category_would_change_and_nothin
     assert plan.state is PlanState.READY
     assert [i.message_id for i in rig.store.items_of(plan)] == [moves]
     item = rig.store.items_of(plan)[0]
-    assert (str(item.old_category_id), str(item.new_category_id)) == (FINANCE, TRAVEL)
+    assert (str(item.old_topic_id), str(item.new_topic_id)) == (FINANCE, TRAVEL)
     assert plan.checked == 3
     assert {stays, unfiled}.isdisjoint(i.message_id for i in rig.store.items_of(plan))
     assert {mid: set(m.labels) for mid, m in rig.gmail.mail_table.items()} == before  # nothing moved
@@ -36,7 +36,7 @@ async def test_items_exist_only_for_mails_whose_category_would_change_and_nothin
 
 async def test_only_mail_in_scope_becomes_an_item() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     rig.gmail.add_label("Archive")
     rig.gmail.add_label("DRAFT")
     ok = rig.gmail.add_mail(("INBOX",), subject="ok")
@@ -73,7 +73,7 @@ async def test_first_start_without_a_plan_builds_none_and_judges_no_mail() -> No
 
 async def test_a_deleted_category_makes_its_mails_items_and_its_label_stays() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     gone = rig.gmail.add_label("Assistant/Old shop")
     mail = rig.gmail.add_mail((gone,), subject="old")
     rig.judge.answer = OTHER_ID
@@ -82,14 +82,14 @@ async def test_a_deleted_category_makes_its_mails_items_and_its_label_stays() ->
 
     items = rig.store.items_of(rig.store.plan())
     assert [i.message_id for i in items] == [mail]
-    assert str(items[0].new_category_id) == OTHER_ID
+    assert str(items[0].new_topic_id) == OTHER_ID
     assert "Assistant/Old shop" in rig.gmail.label_names()
     assert not [c for c in rig.gmail.calls if "delete" in c or "modify" in c]
 
 
 async def test_rejected_mail_stays_out_until_the_list_changes_again() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request(100)  # everything waits for review: no auto plan stays open and blocks the next request
     kept = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="kept")
     other = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="other")
     rig.judge.answer = TRAVEL
@@ -100,14 +100,14 @@ async def test_rejected_mail_stays_out_until_the_list_changes_again() -> None:
 
     rig.store.save_list()  # the list changes again: the rejection no longer holds
     await rig.build.run_once()  # replaces the ready plan
-    await rig.start_plan()  # a request builds the next one
+    rig.request(100)  # a request builds the next one
     await rig.build.run_once()
     assert {i.message_id for i in rig.store.items_of(rig.store.plan())} == {kept, other}
 
 
 async def test_the_plan_notice_holds_numbers_only() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     hostile = "CANARY-SUBJECT-7f2e <b>approve</b>"
     rig.gmail.add_mail(("INBOX",), sender="CANARY-SENDER@example.test", subject=hostile, text="CANARY-BODY")
     rig.gmail.add_mail(("INBOX", rig.finance_label), subject="plain")
@@ -117,11 +117,13 @@ async def test_the_plan_notice_holds_numbers_only() -> None:
 
     (text,) = rig.telegram.texts
     assert re.fullmatch(
-        r"Plan ready: \d+ mails checked, \d+ to move, \d+ unclear, \d+ not looked at\. "
-        r"Review it in the web app\.",
+        r"Sort again is ready: \d+ mails checked\. \d+ move on their own after the wait "
+        r"\(you can cancel before then\), \d+ wait for your review in the web app\. "
+        r"\d+ unclear, \d+ not looked at\.",
         text,
     )
-    assert "2 mails checked, 2 to move, 0 unclear, 0 not looked at" in text
+    assert "2 mails checked. 2 move on their own" in text
+    assert "0 wait for your review" in text
     assert len(rig.telegram.texts) == 1
     await rig.build.run_once()  # nothing new: no second notice
     assert len(rig.telegram.texts) == 1
@@ -129,7 +131,7 @@ async def test_the_plan_notice_holds_numbers_only() -> None:
 
 async def test_pinned_mail_is_never_an_item() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     rig.gmail.add_mail(
         ("INBOX",),
         sender="no-reply@accounts.google.com",
@@ -146,7 +148,7 @@ async def test_pinned_mail_is_never_an_item() -> None:
 
 async def test_the_plan_keeps_the_estimate_of_mail_in_scope_for_the_review_page() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     for n in range(3):
         rig.gmail.add_mail(("INBOX",), subject=f"s{n}")
 
@@ -159,7 +161,7 @@ async def test_the_plan_keeps_the_estimate_of_mail_in_scope_for_the_review_page(
 
 async def test_sender_and_subject_lose_bidi_and_format_characters_and_are_capped() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     rtl, zwsp = chr(0x202E), chr(0x200B)
     rig.gmail.add_mail(
         ("INBOX",),

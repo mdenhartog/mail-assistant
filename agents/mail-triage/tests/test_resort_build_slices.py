@@ -15,7 +15,7 @@ from tests.resort_build_support import TRAVEL, Rig
 
 async def test_a_run_looks_at_a_bounded_number_of_mails_and_the_next_run_goes_on_until_the_plan_is_ready() -> None:
     rig = Rig(per_run=10)
-    await rig.start_plan()
+    rig.request()
     seed_scope_mails(rig.gmail, 25)
     rig.judge.answer = TRAVEL
 
@@ -40,7 +40,7 @@ async def test_a_run_looks_at_a_bounded_number_of_mails_and_the_next_run_goes_on
 
 async def test_a_plan_with_exactly_as_many_mails_as_the_slice_is_ready_at_once_and_a_second_run_does_nothing() -> None:
     rig = Rig(per_run=10)
-    await rig.start_plan()
+    rig.request()
     seed_scope_mails(rig.gmail, 10)
     rig.judge.answer = TRAVEL
 
@@ -54,7 +54,7 @@ async def test_a_plan_with_exactly_as_many_mails_as_the_slice_is_ready_at_once_a
 
 async def test_a_build_with_fewer_mails_than_the_slice_is_ready_in_one_run() -> None:
     rig = Rig(per_run=10)
-    await rig.start_plan()
+    rig.request()
     seed_scope_mails(rig.gmail, 4)
     rig.judge.answer = TRAVEL
 

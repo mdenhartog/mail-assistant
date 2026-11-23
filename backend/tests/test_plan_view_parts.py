@@ -28,6 +28,9 @@ def test_given_an_open_plan_when_the_progress_is_built_then_the_numbers_of_the_p
         unclear=3,
         estimate=1900,
         not_looked_at=7,
+        list_version=1,
+        request_id=None,
+        threshold=None,
     )
 
     progress = progress_view(plan)

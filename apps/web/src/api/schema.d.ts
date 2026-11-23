@@ -378,6 +378,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/resort-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Resort Request
+         * @description Ask the agent to sort the mail again with a threshold; one request while no plan or request is open.
+         *
+         *     Args:
+         *         body: The threshold, a JSON integer from 50 to 100.
+         *         request: The request, whose app holds the database access, the settings and the clock.
+         *
+         *     Returns:
+         *         The id of the request and its threshold, or a 409 with nothing stored.
+         *
+         *     Raises:
+         *         RateLimited: The hourly limit is used up.
+         */
+        post: operations["create_resort_request_api_resort_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/resort-requests/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Latest Resort Request
+         * @description Return the value the threshold field shows: 50 on the first visit, else the latest request's threshold.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The threshold.
+         */
+        get: operations["read_latest_resort_request_api_resort_requests_latest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/session": {
         parameters: {
             query?: never;
@@ -656,6 +712,18 @@ export interface components {
             planId: string;
         };
         /**
+         * AutoSummary
+         * @description What the sibling ``auto`` plan of the request did on its own (ADR-0056); all zero when there is none.
+         */
+        AutoSummary: {
+            /** Moved */
+            moved: number;
+            /** Scheduled */
+            scheduled: number;
+            /** Skipped */
+            skipped: number;
+        };
+        /**
          * CategoryConflict409
          * @description The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.
          */
@@ -722,6 +790,8 @@ export interface components {
          * @description What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1.
          */
         CategoryList: {
+            /** Archivelabel */
+            archiveLabel: string;
             /** Categories */
             categories: components["schemas"]["CategoryItem"][];
             /** Generalinstructions */
@@ -739,6 +809,8 @@ export interface components {
          * @description The body of the write route: the whole list and the version it is based on.
          */
         CategoryListUpdate: {
+            /** Archivelabel */
+            archiveLabel: string;
             /** Categories */
             categories: components["schemas"]["CategoryInput"][];
             /** Generalinstructions */
@@ -758,7 +830,7 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "name" | "description" | "id" | "list" | "senders" | "instructions";
+            field: "name" | "description" | "id" | "list" | "senders" | "instructions" | "archive_label";
             /** Index */
             index: number | null;
             /** Otherindex */
@@ -1052,6 +1124,8 @@ export interface components {
          * @description One mail of the plan. Sender and subject are text (ADR-0044); the Gmail message id is never exposed.
          */
         PlanItem: {
+            /** Confidencepct */
+            confidencePct: number | null;
             /**
              * Decision
              * @enum {string}
@@ -1064,6 +1138,14 @@ export interface components {
             from: string;
             /** Id */
             id: number;
+            /** Newextra */
+            newExtra: string | null;
+            /** Newtopic */
+            newTopic: string | null;
+            /** Oldextra */
+            oldExtra: string | null;
+            /** Oldtopic */
+            oldTopic: string | null;
             /** Reason */
             reason: string | null;
             /** Senderaddress */
@@ -1077,6 +1159,8 @@ export interface components {
             state: "pending" | "approved" | "rejected" | "applied" | "skipped" | "failed";
             /** Subject */
             subject: string;
+            /** Tip */
+            tip: string | null;
             /**
              * To
              * Format: uuid
@@ -1139,6 +1223,7 @@ export interface components {
             applyDelayMinutes: number | null;
             /** Applythreshold */
             applyThreshold: number | null;
+            auto: components["schemas"]["AutoSummary"];
             counts: components["schemas"]["PlanCounts"];
             /** Groups */
             groups: components["schemas"]["PlanGroup"][];
@@ -1148,6 +1233,8 @@ export interface components {
             progress: components["schemas"]["PlanProgress"];
             /** State */
             state: ("building" | "ready" | "scheduled" | "applying" | "applied" | "replaced" | "discarded" | "cancelled") | null;
+            /** Threshold */
+            threshold: number | null;
         };
         /**
          * Problem422
@@ -1202,6 +1289,44 @@ export interface components {
             maskedAddress: string;
             /** Resendafterseconds */
             resendAfterSeconds: number;
+        };
+        /**
+         * ResortLatest
+         * @description The value the threshold field shows: 50 on the first visit, else the latest request's threshold.
+         */
+        ResortLatest: {
+            /**
+             * Threshold
+             * @description How sure the agent must be, in percent, for a move to be approved without review.
+             */
+            threshold: number;
+        };
+        /**
+         * ResortRequestCreate
+         * @description The body of a sort-again request.
+         */
+        ResortRequestCreate: {
+            /**
+             * Threshold
+             * @description How sure the agent must be, in percent, for a move to be approved without review.
+             */
+            threshold: number;
+        };
+        /**
+         * ResortRequested
+         * @description The answer to a stored request: its id and the threshold it holds.
+         */
+        ResortRequested: {
+            /**
+             * Requestid
+             * Format: uuid
+             */
+            requestId: string;
+            /**
+             * Threshold
+             * @description How sure the agent must be, in percent, for a move to be approved without review.
+             */
+            threshold: number;
         };
         /**
          * RestoreRequest
@@ -1320,6 +1445,11 @@ export interface components {
         UploadPreview: {
             /** Added */
             added: number;
+            /**
+             * Archivelabelchanged
+             * @description True when the file gives a different archive label; absent keeps the stored one.
+             */
+            archiveLabelChanged: boolean;
             /** Baseversion */
             baseVersion: number;
             /** Changed */
@@ -2207,6 +2337,113 @@ export interface operations {
             };
             /** @description The body is malformed */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_resort_request_api_resort_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResortRequestCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResortRequested"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A plan is open, or the latest request has not become a plan yet; nothing was stored */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The threshold is not a JSON integer from 50 to 100 */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests in an hour (the limit of list saves); see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    read_latest_resort_request_api_resort_requests_latest_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResortLatest"];
+                };
+            };
+            /** @description No live session */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

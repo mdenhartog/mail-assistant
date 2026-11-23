@@ -20,6 +20,7 @@ __all__ = [
     "ListChange",
     "Plan",
     "PlanEvent",
+    "PlanKind",
     "PlanNotDueError",
     "PlanNotExpiredError",
     "PlanState",
@@ -27,6 +28,7 @@ __all__ = [
     "build_may_start",
     "discard_stale",
     "item_transition",
+    "kind_for",
     "may_start_next_batch",
     "on_list_changed",
     "start_apply",
@@ -47,6 +49,13 @@ class PlanState(StrEnum):
     REPLACED = "replaced"
     DISCARDED = "discarded"
     CANCELLED = "cancelled"
+
+
+class PlanKind(StrEnum):
+    """Who approves a plan (ADR-0056): ``auto`` by the agent through the threshold, ``review`` by the user."""
+
+    AUTO = "auto"
+    REVIEW = "review"
 
 
 class ItemState(StrEnum):
@@ -177,6 +186,17 @@ def on_list_changed(state: PlanState) -> ListChange:
     if state in (PlanState.BUILDING, PlanState.READY):
         return ListChange(transition(state, PlanEvent.LIST_CHANGED), discard_decisions=True, next_build_waits=False)
     return ListChange(state, discard_decisions=False, next_build_waits=state not in _TERMINAL)
+
+
+def kind_for(confidence_pct: int, threshold: int | None) -> PlanKind:
+    """The plan an item belongs to: ``auto`` when its confidence is at or above the threshold, else ``review``.
+
+    A sender-rule item is confidence 100, so it is ``auto`` at every threshold. Without a threshold (a plan that has no
+    request) nothing is ``auto``.
+    """
+    if threshold is not None and confidence_pct >= threshold:
+        return PlanKind.AUTO
+    return PlanKind.REVIEW
 
 
 def build_may_start(current: PlanState | None) -> bool:

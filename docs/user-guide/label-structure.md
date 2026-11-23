@@ -2,7 +2,7 @@
 
 Describe your whole mailbox structure on the Categories page or in one YAML file: nested categories such as `Huis/Water`, extra labels, senders that are filed without asking the AI, and a tick that sends you a Telegram message for every new mail in a category.
 
-This page covers release 1. Two parts of the feature arrive in release 2 and do not exist yet: the button **Sort everything again** (with its confidence threshold, the review of mail below the threshold and the tips) and the setting for the name of your archive label on the Categories page. See [What arrives in release 2](#what-arrives-in-release-2).
+This page covers the whole feature: the category list, sender lists and always-notify, the YAML file, the name of your archive label and the button **Sort everything again** with its review of the mail that is not sure enough.
 
 ## Before you start
 
@@ -13,7 +13,7 @@ This page covers release 1. Two parts of the feature arrive in release 2 and do 
 
 ## What changed for your existing mail
 
-Changing the list never moves mail you already have. Only new mail follows it. In release 1 the assistant also no longer re-sorts the mailbox by itself after a change or at first start: old mail stays where it is, also after you upload 40 new categories.
+Changing the list never moves mail you already have. Only new mail follows it. The assistant no longer re-sorts the mailbox by itself after a change or at first start: old mail stays where it is, also after you upload 40 new categories. To move old mail, press **Sort everything again** (see [Sort everything again](#sort-everything-again)).
 
 ## Name your categories
 
@@ -96,7 +96,7 @@ You can load your whole structure from a file at any time, and keep it as a file
 
 1. Select **Download the template** to get a commented file (or **Download the example** for a small filled-in list). Change it to your own mail. See [What the fields mean](#what-the-fields-mean).
 2. Select **Choose a YAML file** or drop the file on the box. The page says "Checking your file." Nothing changes yet.
-3. Read the preview. It leads with the counts, for example 3 added, 5 changed and 2 removed, each with a word and an icon so that colour is not the only signal. Categories that the file does not contain are listed in their own block with the sentence "Removed categories disappear from the app. Their Gmail labels and mail stay as they are." If the general instructions change too, the preview says so.
+3. Read the preview. It leads with the counts, for example 3 added, 5 changed and 2 removed, each with a word and an icon so that colour is not the only signal. Categories that the file does not contain are listed in their own block with the sentence "Removed categories disappear from the app. Their Gmail labels and mail stay as they are." If the general instructions change too, the preview says so, and if the file gives a different archive label it says "The archive label changes too."
 4. Select **Replace my whole list** (with removals: "Replace my whole list (2 removed)", which is not selected by default), or **Cancel** to change nothing.
 5. After a replace the page says "Your list was replaced." with the button **Restore previous version**.
 
@@ -127,7 +127,7 @@ The file is plain UTF-8 text with the version line `schema: 1`. Indent with spac
 | --- | --- | --- |
 | `schema` | yes | The version of the format. It must be `1`. |
 | `generalInstructions` | no | The general instructions for the whole list, up to 4000 characters. |
-| `archiveLabel` | no | The name of your archive label. It is checked and stored with your list, but in release 1 it has no effect: your archive label is not changed or used by the assistant. It takes effect in release 2. |
+| `archiveLabel` | no | The name of your archive label, saved with your list (see [Name your archive label](#name-your-archive-label)). A file without this field keeps the name you have now. |
 | `categories` | yes | The list, in the order you want it, at most 100. |
 | `name` | yes | The category name; nest with `/`, for example `Huis/Water`. |
 | `kind` | no | `topic` (default) or `extra`. |
@@ -165,16 +165,89 @@ A file is refused when, for example:
 - it uses a feature that the format does not allow: tabs, a byte order mark, anchors (`&`), aliases (`*`), merge keys (`<<`), tags (`!`), a key written twice or a field that does not exist;
 - a name, description, sender or the general instructions break the rules above, or the same sender entry is in two topic categories or two extra-label categories;
 - a whole domain of a public mail provider or sending service is listed;
-- `archiveLabel` is a Gmail system label (such as `INBOX`) or the label of one of your categories.
+- `archiveLabel` breaks the rules for an archive label name: a Gmail system label (such as `INBOX`), the label of one of your categories, a name inside `Assistant/` other than `Assistant/Archive`, or a name that is not a valid label name.
 
 If the page says "Could not check the file. Nothing was changed. Try again in a moment.", the check did not complete; upload the file again.
 
-## What arrives in release 2
+## Name your archive label
 
-These parts are described in the plan of the feature but are not in the app yet, so there is nothing to press or set for them:
+The archive label is the Gmail label where you keep mail that the assistant must leave alone. On the **Categories** page the field **Archive label** shows its name; it starts as `Assistant/Archive`. Under the field you read: "Mail in this label is never sorted or moved. Renaming it renames the Gmail label, nothing else."
 
-- **Sort everything again**, with a confidence threshold, a delay with Cancel and Move back in Telegram, and the review of the mail below the threshold with a tip per category. Until then old mail stays where it is after every change of the list; release 1 has no button to re-sort it.
-- **The archive label name** on the Categories page, including renaming the Gmail label. Until then the label is set where the assistant is installed, and the `archiveLabel` field of the file has no effect.
+1. Change the name in **Archive label**.
+2. Save the list as usual. The name is saved together with the list as one new version, and you get the usual change notice in Telegram.
+
+What happens in Gmail:
+
+- **The first time**, the assistant uses a Gmail label with that name when one exists, and creates it otherwise.
+- **A later change renames that label** (it is found again by its id), so the mail in it stays protected. The assistant never creates a second archive label and never moves mail into or out of it.
+- **A rename waits** until no plan is waiting or running (see [Sort everything again](#sort-everything-again)). New mail is sorted meanwhile.
+- **If you rename the label in Gmail yourself**, the assistant does not follow it: it looks for the label by the name in your list, so it creates a new, empty label with that name. Change the name on the Categories page instead.
+
+A name is valid when:
+
+- it has 1 to 225 characters, no control characters, no space at the start or the end, no `..` and no empty part between slashes;
+- it is outside `Assistant/`, or exactly `Assistant/Archive`;
+- it is not a Gmail system label such as `INBOX`, `SPAM`, `TRASH` or `CATEGORY_...` (any letter case);
+- it is not the label of one of your categories and lies below none of them.
+
+A refused name stores nothing and the field says why, for example "This is a Gmail label of its own and cannot be your archive label." or "Use a name outside Assistant/, or exactly Assistant/Archive."
+
+You can also set the name in the YAML file with `archiveLabel`. The upload preview says "The archive label changes too." when the file gives another name than you have; a file without the field keeps the name you have now.
+
+## Sort everything again
+
+Changing your list never moves old mail. When you want old mail filed by your current list, use the section **Sort everything again** on the **Categories** page.
+
+### Ask for it
+
+1. Type a number from 50 to 100 in **Confidence threshold (%)**. It starts at 50 and after that shows the number of your latest request. Under the field you read: "Mail from a sender rule always moves. Everything else the model is at least 50 % sure of moves by itself after a short delay, and each can be undone with Move back." The number in the text follows what you type. The page also says: "The model's confidence is its own estimate, not a calibrated probability."
+2. Select **Sort everything again**. Under the button you read: "Nothing moves until a short delay; you can cancel in Telegram."
+3. The page says "Your request is in. The assistant is preparing the plan and Telegram tells you what will move."
+
+A number outside 50 to 100, a decimal, a sign or text is refused before anything is sent: "Use a whole number from 50 to 100."
+
+### What moves by itself and what waits
+
+The assistant looks at the mail in your inbox and in your `Assistant/` labels. It leaves spam, trash, sent mail, mail that carries your archive label, pinned mail and mail you rejected before alone. It then makes two plans:
+
+- **Moves on its own.** Mail from a sender rule always, and every other mail whose model confidence is at or above your threshold. The delay always applies, also for a small number of mails, so you can stop it. After the delay the mail moves, and each mail can be undone with **Move back**.
+- **Waits in Review moves.** Everything else: the mail whose confidence is below your threshold. Nothing of it moves until you approve it, as described in [Choose your mail categories and review moves](mail-categories.md). Mail with a very low confidence (below 60 %) is kept in this review too, so that your threshold decides what is shown.
+
+Only a mail whose topic or extra label would change is in a plan. Only labels change: nothing is deleted or sent.
+
+### The Telegram notice
+
+When the plan that moves on its own is ready, Telegram sends a notice with numbers and a time only, for example "12 mails move on their own in 15 minutes (at 14:20 UTC). 7 wait for your review in the web app. Only labels change. Cancel the move or press Move back before then to stop it. Lock web sign-in stops web sign-in and cancels plans that still wait, until you send /web_unlock." It has three buttons:
+
+- **Cancel the move** stops the plan before the time. After the waiting time a late Cancel is refused and the bot says so.
+- **Move back** also stops it before the time. After the move, the result message offers **Move back** to put the mail back.
+- **Stop it and lock web sign-in** locks web sign-in (see [Lock web sign-in](web-settings.md#lock-web-sign-in)) and cancels every plan that still waits. Use it when you think someone else used your session.
+
+The web app has no Cancel button: you can only cancel from Telegram.
+
+If an upload or a rename removes a category that a waiting plan moves mail into, the plan is cancelled and Telegram says so; mail that already moved stays where it is. When you save your list while a plan is waiting or running, that plan finishes; a review that is still waiting is replaced.
+
+### Review moves with tips
+
+The mail that waits is on the page **Review moves**:
+
+- Every mail shows where it is now and where it would go, with the full nested names and both parts of the pair, for example "From topic Huis, extra none", "To topic Huis/Water, extra Facturen" and "Model confidence 72 %".
+- For each category that has mail below your threshold the page shows a **tip**: a plain-text suggestion. It is labelled "This is a suggestion, nothing was changed." and has the link "Open the edit view of" that category. A tip never changes anything by itself and is never made a link; you decide whether to follow it. It is removed with the review.
+- A line says how many mails already moved on their own, for example "5 mails were already moved on their own, 12 are scheduled and 1 was skipped." Mail that failed in Gmail is not counted in that line.
+- Approve and reject work as described in [Choose your mail categories and review moves](mail-categories.md).
+
+### When the button is refused
+
+- **A plan is open.** While a plan is being prepared, waiting or running, the button is disabled and the page says "A plan is open. Wait until it has been applied or cancelled." with a link to Review moves. When the assistant refuses the request you read "A plan is already open or being prepared. Wait until it has been applied or cancelled."
+- **Too many requests.** One session may ask as often per hour as it may save the list (10 by default): "Too many requests. Wait a minute and try again."
+- **Not sent.** "Could not send your request. Check your connection and try again." Nothing was stored.
+- **Sent twice.** A second request while the first is not yet a plan is refused, so nothing is stored twice.
+- **The threshold could not be loaded.** The page says "Could not load the threshold." with **Try again**.
+
+### Good to know
+
+- The confidence number is the model's own estimate. A low threshold moves more mail by itself; the delay with Cancel, Move back and Lock is your control.
+- Mail that moves on its own counts toward the amount that triggers the waiting time, like an approval of yours (see [When the mails move](mail-categories.md#when-the-mails-move)).
 
 ## Related pages
 

@@ -38,5 +38,24 @@ export function skippedText(count: number): string {
 /** Said once under the Senders field when any entry has a skipped count. */
 export const SKIPPED_NOTE = "The AI judged those mails instead.";
 
-/** The fixed block of the Categories page (Screens). R2 unit 25 adds the sentence about the Sort everything again button. */
-export const FIXED_BLOCK = "Changing the list never moves mail you already have. Only new mail follows it.";
+/** The fixed block of the Categories page (Screens). */
+export const FIXED_BLOCK =
+  "Changing the list never moves mail you already have. Only new mail follows it. To re-sort the inbox, press Sort everything again.";
+
+/** The archive label field's sentence (Screens). */
+export const ARCHIVE_HELP = "Mail in this label is never sorted or moved. Renaming it renames the Gmail label, nothing else.";
+
+/** The texts of the Sort everything again section; the two of the spec (Screens) are used literally. */
+export const SORT_AGAIN = {
+  title: "Sort everything again",
+  field: "Confidence threshold (%)",
+  /** The spec's text with the threshold in place. */
+  explain: (threshold: number): string =>
+    `Mail from a sender rule always moves. Everything else the model is at least ${String(threshold)} % sure of moves by itself after a short delay, and each can be undone with Move back.`,
+  underButton: "Nothing moves until a short delay; you can cancel in Telegram.",
+  calibration: "The model's confidence is its own estimate, not a calibrated probability.",
+  sent: "Your request is in. The assistant is preparing the plan and Telegram tells you what will move.",
+  open: "A plan is already open or being prepared. Wait until it has been applied or cancelled.",
+  tooMany: "Too many requests. Wait a minute and try again.",
+  failed: "Could not send your request. Check your connection and try again.",
+} as const;

@@ -31,6 +31,7 @@ function isPreview(value: unknown): value is UploadPreview {
     typeof value["fileHash"] === "string" &&
     isCounts(value) &&
     typeof value["instructionsChanged"] === "boolean" &&
+    typeof value["archiveLabelChanged"] === "boolean" &&
     Array.isArray(value["removedCategories"]) &&
     (value["removedCategories"] as unknown[]).every((name) => typeof name === "string")
   );

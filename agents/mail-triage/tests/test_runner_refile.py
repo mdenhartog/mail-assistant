@@ -14,6 +14,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.core.scope import ArchiveLabel
 from app.runner import Runner
 from app.settings import SettingsError, load_settings
 from app.wiring import build_runner
@@ -177,6 +178,7 @@ def test_given_the_wiring_when_built_then_the_report_hour_cap_and_gmail_come_fro
         labels=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=apply_mailbox,
+        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=None,  # type: ignore[arg-type]
         now=lambda: MORNING,

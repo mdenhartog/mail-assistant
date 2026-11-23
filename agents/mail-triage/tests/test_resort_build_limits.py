@@ -13,7 +13,7 @@ from tests.resort_build_support import RESERVE, TRAVEL, Rig
 
 async def test_the_newest_5000_are_in_the_plan_and_the_rest_is_not_looked_at() -> None:
     rig = Rig(daily_total=RESERVE + 2 * SCOPE_MAILS + 10)
-    await rig.start_plan()
+    rig.request()
     ids = seed_scope_mails(rig.gmail, SCOPE_MAILS)
     rig.judge.answer = TRAVEL
 
@@ -34,7 +34,7 @@ async def test_the_newest_5000_are_in_the_plan_and_the_rest_is_not_looked_at() -
 
 async def test_zero_budget_never_uses_the_reserve_and_the_build_continues_the_next_day() -> None:
     rig = Rig(daily_total=RESERVE + 6)  # room for three mails above the reserve
-    await rig.start_plan()
+    rig.request()
     for n in range(5):
         rig.gmail.add_mail(("INBOX",), subject=f"s{n}")
     rig.judge.answer = TRAVEL
@@ -73,13 +73,13 @@ async def test_a_list_change_builds_no_plan_even_when_the_debounce_time_has_pass
 
 async def test_a_newer_list_cancels_the_build_without_half_written_items() -> None:
     rig = Rig(daily_total=RESERVE + 4)
-    await rig.start_plan()
+    rig.request()
     for n in range(4):
         rig.gmail.add_mail(("INBOX", rig.finance_label), subject=f"s{n}")
     rig.judge.answer = TRAVEL
     await rig.build.run_once()  # two mails judged, then the budget is gone
     assert rig.store.plan().state is PlanState.BUILDING
-    assert rig.store.plan().items == 2
+    assert rig.store.plan().auto_items == 2  # the default threshold of 50 sends them to the auto plan
     old = rig.store.plan()
 
     rig.store.save_list()
@@ -94,7 +94,7 @@ async def test_a_newer_list_cancels_the_build_without_half_written_items() -> No
 
 async def test_a_list_saved_during_the_build_stops_it_before_another_mail_is_judged() -> None:
     rig = Rig()
-    await rig.start_plan()
+    rig.request()
     for n in range(5):
         rig.gmail.add_mail(("INBOX", rig.finance_label), subject=f"s{n}")
     rig.judge.answer = TRAVEL
@@ -112,7 +112,7 @@ async def test_a_list_saved_during_the_build_stops_it_before_another_mail_is_jud
 async def test_a_plan_that_is_scheduled_or_applying_is_left_alone_when_the_list_changes() -> None:
     for state in (PlanState.SCHEDULED, PlanState.APPLYING):
         rig = Rig()
-        await rig.start_plan()
+        rig.request()
         rig.gmail.add_mail(("INBOX",), subject="a")
         await rig.build.run_once()
         rig.store.plans[-1] = replace(rig.store.plan(), state=state)

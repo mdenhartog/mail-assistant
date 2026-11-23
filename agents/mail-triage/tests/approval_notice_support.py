@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.adapters.telegram_inbox import Command
 from app.core import approval_text
+from app.core.resort_plan import PlanKind
 from app.usecases.approval_notice import (
     ApprovalNotice,
     CancelOutcome,
@@ -31,14 +32,25 @@ class FakePlanStore:
     after: dict[uuid.UUID, datetime] = field(default_factory=dict)
     counts: dict[uuid.UUID, int] = field(default_factory=dict)
     announced: set[uuid.UUID] = field(default_factory=set)
+    kinds: dict[uuid.UUID, PlanKind] = field(default_factory=dict)
+    reviews: dict[uuid.UUID, int] = field(default_factory=dict)  # items waiting in the review plan of the request
     clock: list[datetime] = field(default_factory=lambda: [NOW])  # the database clock
 
-    def schedule(self, plan: uuid.UUID = PLAN, count: int = 60, at: datetime = NOW + DELAY) -> None:
+    def schedule(
+        self,
+        plan: uuid.UUID = PLAN,
+        count: int = 60,
+        at: datetime = NOW + DELAY,
+        *,
+        kind: PlanKind = PlanKind.REVIEW,
+        review: int = 0,
+    ) -> None:
         self.states[plan], self.after[plan], self.counts[plan] = "scheduled", at, count
+        self.kinds[plan], self.reviews[plan] = kind, review
 
     async def unannounced(self) -> list[ScheduledPlan]:
         return [
-            ScheduledPlan(p, self.counts[p], self.after[p])
+            ScheduledPlan(p, self.counts[p], self.after[p], self.kinds.get(p, PlanKind.REVIEW), self.reviews.get(p, 0))
             for p, s in self.states.items()
             if s == "scheduled" and p not in self.announced
         ]

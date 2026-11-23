@@ -6,7 +6,7 @@ spec: docs/specs/label-structure.md
 
 # My own label structure, sender rules and always-notify
 
-The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 38 units in two releases: R1 (units 01 to 17, 28 to 38) and R2 (units 18 to 27). Unit 35 (the ingress body limit of the upload route) was found while building unit 12 and lands in the same pull request as it. Units 33 (the ingress body limit of the Helm chart) and 34 (the web app sends the v2 list fields) were found while building unit 11 and land in the same pull request as it, so that `main` stays green and the edge does not refuse a v2 list. Units 36 to 38 carry the per-entry counts of skipped (not authenticated) sender-rule mail on the Categories page (K11 of the round table, AC-16): the agent records them in a derived table (36), the api returns them (37) and the web app shows them (38). Unit 32 was split out of unit 08. Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
+The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/design/label-structure-design.md`. 39 units in two releases: R1 (units 01 to 17, 28 to 38) and R2 (units 18 to 27 and 39). Unit 35 (the ingress body limit of the upload route) was found while building unit 12 and lands in the same pull request as it. Units 33 (the ingress body limit of the Helm chart) and 34 (the web app sends the v2 list fields) were found while building unit 11 and land in the same pull request as it, so that `main` stays green and the edge does not refuse a v2 list. Units 36 to 38 carry the per-entry counts of skipped (not authenticated) sender-rule mail on the Categories page (K11 of the round table, AC-16): the agent records them in a derived table (36), the api returns them (37) and the web app shows them (38). Unit 39 (the review-plan routes of the api show pairs, confidence, tips and what moved on its own) was found while starting unit 26, which needs it. Unit 32 was split out of unit 08. Units 28 to 31 were added while building unit 02: its rebuild of `category-policy` changes rules that the agent, the api and the web app each test or copy (units 28, 29 and 30), and the database check constraints still hold the old limits (unit 31), so they must land in the same pull request as unit 02 to keep `main` green. Every unit belongs to one component of `docs/architecture/model.json`. R2 starts after R1 is released (units 18 and 20 depend on unit 17).
 
 ## Units
 
@@ -48,7 +48,8 @@ The plan for `docs/specs/label-structure.md` (revision 2, approved) and `docs/de
 | [U-label-structure-23](U-label-structure-23.md) | Two plans, system approval, apply and cancel (R2) | backend | U-label-structure-20, U-label-structure-22 | no | 9 |
 | [U-label-structure-25](U-label-structure-25.md) | Web: the sort-again controls and the archive label field (R2) | web | U-label-structure-19, U-label-structure-21 | yes | 9 |
 | [U-label-structure-24](U-label-structure-24.md) | Tips per category (R2) | backend | U-label-structure-23 | yes | 10 |
-| [U-label-structure-26](U-label-structure-26.md) | Web: Review moves with pairs, full names and tips (R2) | web | U-label-structure-21, U-label-structure-24 | yes | 11 |
+| [U-label-structure-39](U-label-structure-39.md) | Api: the review plan shows pairs, confidence, tips and what moved on its own (R2) | backend | U-label-structure-21, U-label-structure-23, U-label-structure-24 | no | 10 |
+| [U-label-structure-26](U-label-structure-26.md) | Web: Review moves with pairs, full names and tips (R2) | web | U-label-structure-39 | yes | 11 |
 | [U-label-structure-27](U-label-structure-27.md) | End-to-end journey for R2 | web | U-label-structure-25, U-label-structure-26 | no | 12 |
 
 ## Build order
@@ -68,9 +69,9 @@ R2 (after R1 is released):
 1. Wave 7 — in parallel: U-label-structure-18, U-label-structure-20
 2. Wave 8 (after wave 7) — U-label-structure-19 and U-label-structure-22 in parallel; U-label-structure-21 one at a time (both api units change the OpenAPI document)
 3. Wave 9 (after wave 8) — U-label-structure-25 in parallel; U-label-structure-23 one at a time
-4ve 10 (after wave 9) — U-label-structure-24
-5ve 11 (after wave 10) — U-label-structure-26
-6ve 12 (after wave 11) — one at a time: U-label-structure-27; then the R2 release
+4. Wave 10 (after wave 9) — one at a time: U-label-structure-24, then U-label-structure-39 (both after unit 23; unit 39 changes the OpenAPI document)
+5. Wave 11 (after wave 10) — U-label-structure-26
+6. Wave 12 (after wave 11) — one at a time: U-label-structure-27; then the R2 release
 
 Test infrastructure first (unit 01), the migration before anything reads the new columns (units 05 and 20), and the automatic plan removal (unit 06) in the first wave so that no upload of 43 labels can start a plan.
 

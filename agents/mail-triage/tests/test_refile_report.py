@@ -20,7 +20,16 @@ TRAVEL_ID = "22222222-2222-2222-2222-222222222222"
 CANARY_SENDER = "canary-sender@example.invalid"
 CANARY_SUBJECT = "canary-subject-4711"
 NAMES = {"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel", "L_OTH": "Assistant/Other", "INBOX": "INBOX"}
-COUNTS = SuccessCounts(days=14, filed=40, by_rule=10, by_model=28, in_other=4, always_notify_alerts=14)
+COUNTS = SuccessCounts(
+    days=14,
+    filed=40,
+    by_rule=10,
+    by_model=28,
+    in_other=4,
+    always_notify_alerts=14,
+    system_applied=0,
+    system_moved_back=0,
+)
 LABEL_OF = {FINANCE_ID: "L_FIN", TRAVEL_ID: "L_TRV", OTHER_ID: "L_OTH"}
 
 

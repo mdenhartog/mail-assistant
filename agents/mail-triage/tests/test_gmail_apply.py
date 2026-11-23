@@ -9,12 +9,13 @@ from __future__ import annotations
 import pytest
 
 from app.adapters.gmail_apply import GmailApply
+from app.core.scope import ArchiveLabel
 from app.usecases.resort_apply import MailFailed, MailGone
 from tests.fakes.fake_gmail import FakeGmail
 
 
 def _apply(gmail: FakeGmail) -> GmailApply:
-    return GmailApply(gmail, "Archive", sleep=lambda _seconds: None)
+    return GmailApply(gmail, ArchiveLabel("Archive"), sleep=lambda _seconds: None)
 
 
 def test_ensure_label_returns_the_existing_label_without_creating_one() -> None:

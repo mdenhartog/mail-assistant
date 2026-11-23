@@ -79,6 +79,7 @@ class CategoryList(BaseModel):
     ready: bool
     categories: list[CategoryItem]
     general_instructions: str
+    archive_label: str
     other: OtherItem
     older_categories: list[OlderCategory]
 
@@ -107,6 +108,7 @@ class CategoryListUpdate(BaseModel):
     version: Annotated[int, Field(ge=0)]
     categories: list[CategoryInput]
     general_instructions: str
+    archive_label: str
 
 
 class CategoryProblem(BaseModel):
@@ -119,7 +121,7 @@ class CategoryProblem(BaseModel):
     model_config = _CONFIG
 
     rule: str
-    field: Literal["name", "description", "id", "list", "senders", "instructions"]
+    field: Literal["name", "description", "id", "list", "senders", "instructions", "archive_label"]
     index: int | None
     position: int | None
     other_index: int | None

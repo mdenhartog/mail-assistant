@@ -316,6 +316,8 @@ async def test_given_no_plan_when_get_then_the_state_is_null_and_there_is_nothin
         "applyThreshold": None,
         "applyDelayMinutes": None,
         "lastPlan": None,
+        "threshold": None,
+        "auto": {"moved": 0, "scheduled": 0, "skipped": 0},
     }
 
 
@@ -421,6 +423,12 @@ async def test_given_an_item_when_get_items_then_sender_name_address_subject_and
         "decision",
         "state",
         "reason",
+        "oldTopic",
+        "oldExtra",
+        "newTopic",
+        "newExtra",
+        "confidencePct",
+        "tip",
     }
     assert item["senderName"] == "Sender 0"
     assert item["senderAddress"] == SENDER_CANARY

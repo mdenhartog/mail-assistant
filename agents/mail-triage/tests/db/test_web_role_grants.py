@@ -234,6 +234,10 @@ async def test_given_the_web_role_when_its_table_privileges_are_listed_then_only
         ("categories", "list_settings"),
         ("categories", "upload_preview"),
         ("categories", "sender_skip"),  # U-label-structure-36: read only
+        (
+            "categories",
+            "resort_request",
+        ),  # 0029: read only (the web reaches it through request_resort); test_plan_grants.py
         # the plan half (U-mail-categories-12): the item columns are checked by test_plan_grants.py
         ("categories", "plan"),
         ("categories", "move_back_request"),

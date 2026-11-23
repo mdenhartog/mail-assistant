@@ -17,6 +17,8 @@ from sqlalchemy.exc import DBAPIError
 if TYPE_CHECKING:
     import uuid
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.db import Database
     from app.plan_models import Decision
 
@@ -24,9 +26,22 @@ _CONFLICT = "MC409"  # a plan, count, group, id or state mismatch (the 409 of th
 _MALFORMED = "22023"  # a malformed argument
 
 _OPEN_PLAN = text(
-    "SELECT id, state, apply_after, checked_count, cap, unclear_count, estimate_total, not_looked_at "
+    "SELECT id, state, apply_after, checked_count, cap, unclear_count, estimate_total, not_looked_at, "
+    "list_version, request_id, threshold "
     "FROM categories.plan "
-    "WHERE mailbox_id = :mailbox AND state IN ('building', 'ready', 'scheduled', 'applying')"
+    "WHERE mailbox_id = :mailbox AND kind = 'review' AND state IN ('building', 'ready', 'scheduled', 'applying')"
+)
+# The sibling ``auto`` plan of the same request (ADR-0056): what moved on its own, what waits for the apply and what the
+# apply skipped. ``moved_count`` holds the mails of items the apply already removed; items still there count too.
+_AUTO_SUMMARY = text(
+    "SELECT p.moved_count + (SELECT count(*) FROM categories.plan_item i WHERE i.mailbox_id = p.mailbox_id "
+    "AND i.plan_id = p.id AND i.state = 'applied') AS moved, "
+    "CASE WHEN p.state IN ('scheduled', 'applying') THEN (SELECT count(*) FROM categories.plan_item i "
+    "WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id AND i.state = 'approved') ELSE 0 END AS scheduled, "
+    "(SELECT count(*) FROM categories.plan_item i WHERE i.mailbox_id = p.mailbox_id AND i.plan_id = p.id "
+    "AND i.state = 'skipped') AS skipped "
+    "FROM categories.plan p WHERE p.mailbox_id = :mailbox AND p.kind = 'auto' AND p.request_id = :request "
+    "ORDER BY p.created_at DESC LIMIT 1"
 )
 # The plan that ended most recently and is still kept (the purge removes the rest); a discarded one is not shown.
 # For an applied plan the apply removes the items it moved and adds their number to ``moved_count``; items still there
@@ -54,10 +69,20 @@ _DECISIONS = text(
     "SELECT decision, count(*) AS n FROM categories.plan_item "
     "WHERE mailbox_id = :mailbox AND plan_id = :plan GROUP BY decision"
 )
-# One literal statement: the sort arrives as bound parameters and every CASE is NULL unless its sort is the chosen one,
+# One literal statement: the pair names are the full nested names in the list the plan was built on (NULL when there
+# is no such category); the sort arrives as bound parameters and every CASE is NULL unless its sort is the chosen one,
 # so the unchosen terms tie and the chosen one orders. The id breaks ties, so a page boundary never moves between calls.
 _ITEMS = text(
-    "SELECT id, sender_name, sender_address, subject, old_category_id, new_category_id, decision, state, reason "
+    "SELECT id, sender_name, sender_address, subject, old_category_id, new_category_id, decision, state, reason, "
+    "confidence_pct, tip, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.old_topic_id) AS old_topic_name, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.old_extra_id) AS old_extra_name, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.new_topic_id) AS new_topic_name, "
+    "(SELECT c.name FROM categories.category c WHERE c.mailbox_id = :mailbox AND c.version = :version "
+    "AND c.id = categories.plan_item.new_extra_id) AS new_extra_name "
     "FROM categories.plan_item WHERE mailbox_id = :mailbox AND plan_id = :plan "
     "AND (CAST(:from_id AS uuid) IS NULL OR old_category_id = CAST(:from_id AS uuid)) "
     "AND (CAST(:to_id AS uuid) IS NULL OR new_category_id = CAST(:to_id AS uuid)) "
@@ -103,6 +128,18 @@ class OpenPlan:
     unclear: int
     estimate: int | None
     not_looked_at: int
+    list_version: int
+    request_id: uuid.UUID | None
+    threshold: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class AutoSummary:
+    """What the sibling ``auto`` plan of the open plan's request did: moved on its own, scheduled, skipped."""
+
+    moved: int = 0
+    scheduled: int = 0
+    skipped: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +179,12 @@ class ItemRow:
     decision: str
     state: str
     reason: str | None
+    confidence_pct: int | None
+    tip: str | None
+    old_topic: str | None
+    old_extra: str | None
+    new_topic: str | None
+    new_extra: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +197,7 @@ class PlanSnapshot:
     last_ended: EndedPlan | None
     apply_threshold: int | None
     apply_delay_minutes: int | None
+    auto: AutoSummary = AutoSummary()
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +265,52 @@ def _raise_refusal(error: DBAPIError) -> None:
     raise refusal from None  # not chained: the driver text may carry what was asked
 
 
+def _open_plan_of(row: Any) -> OpenPlan:  # noqa: ANN401 - a SQLAlchemy result row
+    """Build the open plan from its row."""
+    return OpenPlan(
+        row.id,
+        row.state,
+        _utc(row.apply_after),
+        row.checked_count,
+        row.cap,
+        row.unclear_count,
+        row.estimate_total,
+        row.not_looked_at,
+        row.list_version,
+        row.request_id,
+        row.threshold,
+    )
+
+
+async def _auto_summary_of(session: AsyncSession, params: dict[str, Any], plan: OpenPlan) -> AutoSummary:
+    """Read what the automatic run of the plan's request did; the empty summary when it has no request or no row."""
+    if plan.request_id is None:
+        return AutoSummary()
+    found = (await session.execute(_AUTO_SUMMARY, {**params, "request": plan.request_id})).first()
+    return AutoSummary() if found is None else AutoSummary(found.moved, found.scheduled, found.skipped)
+
+
+async def _groups_and_decisions(
+    session: AsyncSession, scope: dict[str, Any]
+) -> tuple[tuple[GroupRow, ...], dict[str, int]]:
+    """Read the groups of the open plan and its decision counts."""
+    groups = tuple(
+        GroupRow(
+            g.old_category_id,
+            g.new_category_id,
+            g.n,
+            g.approved,
+            g.rejected,
+            g.sender_name,
+            g.sender_address,
+            g.subject,
+        )
+        for g in await session.execute(_GROUPS, scope)
+    )
+    decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
+    return groups, decisions
+
+
 class PlanRepository:
     """Reads the plan of one mailbox and calls the functions that change it."""
 
@@ -240,38 +330,13 @@ class PlanRepository:
             row = (await session.execute(_OPEN_PLAN, params)).first()
             ended = (await session.execute(_LAST_ENDED, params)).first()
             config = (await session.execute(_APPLY_CONFIG, params)).first()
-            open_plan = (
-                None
-                if row is None
-                else OpenPlan(
-                    row.id,
-                    row.state,
-                    _utc(row.apply_after),
-                    row.checked_count,
-                    row.cap,
-                    row.unclear_count,
-                    row.estimate_total,
-                    row.not_looked_at,
-                )
-            )
+            open_plan = None if row is None else _open_plan_of(row)
             groups: tuple[GroupRow, ...] = ()
             decisions: dict[str, int] = {}
+            auto = AutoSummary()
             if open_plan is not None:
-                scope = {**params, "plan": open_plan.id}
-                groups = tuple(
-                    GroupRow(
-                        g.old_category_id,
-                        g.new_category_id,
-                        g.n,
-                        g.approved,
-                        g.rejected,
-                        g.sender_name,
-                        g.sender_address,
-                        g.subject,
-                    )
-                    for g in await session.execute(_GROUPS, scope)
-                )
-                decisions = {d.decision: d.n for d in await session.execute(_DECISIONS, scope)}
+                auto = await _auto_summary_of(session, params, open_plan)
+                groups, decisions = await _groups_and_decisions(session, {**params, "plan": open_plan.id})
         last = None if ended is None else EndedPlan(ended.id, ended.state, _utc(ended.terminal_at), ended.moved)
         return PlanSnapshot(
             open_plan,
@@ -280,6 +345,7 @@ class PlanRepository:
             last,
             None if config is None else config.threshold,
             None if config is None else config.delay_minutes,
+            auto,
         )
 
     async def items(self, page: int, page_size: int, query: ItemQuery) -> ItemsPage:
@@ -300,6 +366,7 @@ class PlanRepository:
             params: dict[str, Any] = {
                 "mailbox": self._mailbox,
                 "plan": plan.id,
+                "version": plan.list_version,
                 "from_id": query.from_id,
                 "to_id": query.to_id,
                 "sender": None if not query.sender else _like_pattern(query.sender),
@@ -320,6 +387,12 @@ class PlanRepository:
                 r.decision,
                 r.state,
                 r.reason,
+                r.confidence_pct,
+                r.tip,
+                r.old_topic_name,
+                r.old_extra_name,
+                r.new_topic_name,
+                r.new_extra_name,
             )
             for r in rows[:page_size]
         )

@@ -158,7 +158,7 @@ describe("Categories page: saving", () => {
     expect(seen.puts).toEqual([
       {
         token: TOKEN,
-        body: { version: 3, generalInstructions: LIST.generalInstructions, categories: [{ ...V2(INVOICES), name: "Bills" }, V2(NEWS)] },
+        body: { version: 3, generalInstructions: LIST.generalInstructions, archiveLabel: LIST.archiveLabel, categories: [{ ...V2(INVOICES), name: "Bills" }, V2(NEWS)] },
       },
     ]);
     expect(screen.getByRole("button", { name: "Edit Bills" })).toBeInTheDocument();
@@ -548,5 +548,100 @@ describe("Categories page: keyboard only (AC-23)", () => {
     await userEvent.keyboard("{Escape}");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(saveButton()).toHaveFocus();
+  });
+});
+
+describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)", () => {
+  it("given the page, then the field shows the stored name with its sentence word for word", async () => {
+    wire();
+    await loaded();
+    const field = screen.getByLabelText("Archive label");
+    expect(field).toHaveValue("Assistant/Archive");
+    expect(field).toHaveClass("min-h-11");
+    expect(
+      screen.getByText("Mail in this label is never sorted or moved. Renaming it renames the Gmail label, nothing else."),
+    ).toBeInTheDocument();
+    expect(field).toHaveAccessibleDescription(/never sorted or moved/);
+  });
+
+  it("given a list save without touching it, then the stored name is sent back so the save is not refused", async () => {
+    const seen = wire({ get: () => json({ ...LIST, archiveLabel: "Bewaard" }) });
+    await loaded();
+    const view = await edit("Invoices");
+    await replace(view.getByLabelText("Description"), "Bills only");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await confirm();
+
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(seen.puts[0]?.body.archiveLabel).toBe("Bewaard");
+  });
+
+  it("given a new name, when saved, then it is sent, the summary names the change and the save bar counts it", async () => {
+    const seen = wire();
+    await loaded();
+    await replace(screen.getByLabelText("Archive label"), "Bewaard");
+    expect(screen.getByText("1 change not saved")).toBeInTheDocument();
+
+    await userEvent.click(saveButton());
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Change the archive label")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(seen.puts[0]?.body.archiveLabel).toBe("Bewaard");
+  });
+
+  it("given a refused name, then the field shows the reason, is invalid, described and focused", async () => {
+    wire({ put: () => problem422([{ rule: "archive_system_label", field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    await loaded();
+    await replace(screen.getByLabelText("Archive label"), "INBOX");
+    await confirm();
+
+    const field = await screen.findByLabelText("Archive label");
+    const reason = await screen.findByText("This is a Gmail label of its own and cannot be your archive label.");
+    expect(field).toBeInvalid();
+    expect(field).toHaveAccessibleDescription(/Gmail label of its own/);
+    expect(reason.closest("[role=alert]")).not.toBeNull();
+    await waitFor(() => {
+      expect(field).toHaveFocus();
+    });
+  });
+
+  it.each([
+    ["archive_invalid", "This is not a valid label name."],
+    ["archive_inside_assistant", "Use a name outside Assistant/, or exactly Assistant/Archive."],
+    ["archive_category_label", "A category already uses this label, or lies below it. Choose another name."],
+  ])("given the rule %s, then the reason reads %j", async (rule, text) => {
+    wire({ put: () => problem422([{ rule, field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    await loaded();
+    await replace(screen.getByLabelText("Archive label"), "Whatever");
+    await confirm();
+    expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+
+  it("given a reason is shown, when the user edits the name, then the reason goes away", async () => {
+    wire({ put: () => problem422([{ rule: "archive_invalid", field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    await loaded();
+    await replace(screen.getByLabelText("Archive label"), "Bad");
+    await confirm();
+    await screen.findByText("This is not a valid label name.");
+
+    await userEvent.type(screen.getByLabelText("Archive label"), "x");
+
+    expect(screen.queryByText("This is not a valid label name.")).not.toBeInTheDocument();
+  });
+
+  it("given a save is on its way, then the field is read-only", async () => {
+    wire({ put: () => new Promise<Response>(() => undefined) });
+    await loaded();
+    await replace(screen.getByLabelText("Archive label"), "Bewaard");
+    await confirm();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Archive label")).toHaveAttribute("readonly");
+    });
   });
 });

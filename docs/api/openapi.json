@@ -78,6 +78,34 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "AutoSummary": {
+        "additionalProperties": false,
+        "description": "What the sibling ``auto`` plan of the request did on its own (ADR-0056); all zero when there is none.",
+        "properties": {
+          "moved": {
+            "minimum": 0.0,
+            "title": "Moved",
+            "type": "integer"
+          },
+          "scheduled": {
+            "minimum": 0.0,
+            "title": "Scheduled",
+            "type": "integer"
+          },
+          "skipped": {
+            "minimum": 0.0,
+            "title": "Skipped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "moved",
+          "scheduled",
+          "skipped"
+        ],
+        "title": "AutoSummary",
+        "type": "object"
+      },
       "CategoryConflict409": {
         "additionalProperties": false,
         "description": "The 409 body of the write route: ``version`` (the list changed) or ``not-ready`` (no seed yet), and the list.",
@@ -219,6 +247,10 @@
         "additionalProperties": false,
         "description": "What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1.",
         "properties": {
+          "archiveLabel": {
+            "title": "Archivelabel",
+            "type": "string"
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/CategoryItem"
@@ -255,6 +287,7 @@
           "ready",
           "categories",
           "generalInstructions",
+          "archiveLabel",
           "other",
           "olderCategories"
         ],
@@ -265,6 +298,10 @@
         "additionalProperties": false,
         "description": "The body of the write route: the whole list and the version it is based on.",
         "properties": {
+          "archiveLabel": {
+            "title": "Archivelabel",
+            "type": "string"
+          },
           "categories": {
             "items": {
               "$ref": "#/components/schemas/CategoryInput"
@@ -285,7 +322,8 @@
         "required": [
           "version",
           "categories",
-          "generalInstructions"
+          "generalInstructions",
+          "archiveLabel"
         ],
         "title": "CategoryListUpdate",
         "type": "object"
@@ -301,7 +339,8 @@
               "id",
               "list",
               "senders",
-              "instructions"
+              "instructions",
+              "archive_label"
             ],
             "title": "Field",
             "type": "string"
@@ -947,6 +986,19 @@
         "additionalProperties": false,
         "description": "One mail of the plan. Sender and subject are text (ADR-0044); the Gmail message id is never exposed.",
         "properties": {
+          "confidencePct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidencepct"
+          },
           "decision": {
             "enum": [
               "pending",
@@ -965,6 +1017,50 @@
             "minimum": 1.0,
             "title": "Id",
             "type": "integer"
+          },
+          "newExtra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newextra"
+          },
+          "newTopic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newtopic"
+          },
+          "oldExtra": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldextra"
+          },
+          "oldTopic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldtopic"
           },
           "reason": {
             "anyOf": [
@@ -1001,6 +1097,17 @@
             "title": "Subject",
             "type": "string"
           },
+          "tip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tip"
+          },
           "to": {
             "format": "uuid",
             "title": "To",
@@ -1016,7 +1123,13 @@
           "to",
           "decision",
           "state",
-          "reason"
+          "reason",
+          "oldTopic",
+          "oldExtra",
+          "newTopic",
+          "newExtra",
+          "confidencePct",
+          "tip"
         ],
         "title": "PlanItem",
         "type": "object"
@@ -1175,6 +1288,9 @@
             ],
             "title": "Applythreshold"
           },
+          "auto": {
+            "$ref": "#/components/schemas/AutoSummary"
+          },
           "counts": {
             "$ref": "#/components/schemas/PlanCounts"
           },
@@ -1230,6 +1346,19 @@
               }
             ],
             "title": "State"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 50.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
           }
         },
         "required": [
@@ -1241,7 +1370,9 @@
           "applyAfter",
           "applyThreshold",
           "applyDelayMinutes",
-          "lastPlan"
+          "lastPlan",
+          "threshold",
+          "auto"
         ],
         "title": "PlanView",
         "type": "object"
@@ -1351,6 +1482,66 @@
           "resendAfterSeconds"
         ],
         "title": "RequestCodeResponse",
+        "type": "object"
+      },
+      "ResortLatest": {
+        "additionalProperties": false,
+        "description": "The value the threshold field shows: 50 on the first visit, else the latest request's threshold.",
+        "properties": {
+          "threshold": {
+            "description": "How sure the agent must be, in percent, for a move to be approved without review.",
+            "maximum": 100.0,
+            "minimum": 50.0,
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threshold"
+        ],
+        "title": "ResortLatest",
+        "type": "object"
+      },
+      "ResortRequestCreate": {
+        "additionalProperties": false,
+        "description": "The body of a sort-again request.",
+        "properties": {
+          "threshold": {
+            "description": "How sure the agent must be, in percent, for a move to be approved without review.",
+            "maximum": 100.0,
+            "minimum": 50.0,
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "threshold"
+        ],
+        "title": "ResortRequestCreate",
+        "type": "object"
+      },
+      "ResortRequested": {
+        "additionalProperties": false,
+        "description": "The answer to a stored request: its id and the threshold it holds.",
+        "properties": {
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          },
+          "threshold": {
+            "description": "How sure the agent must be, in percent, for a move to be approved without review.",
+            "maximum": 100.0,
+            "minimum": 50.0,
+            "title": "Threshold",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requestId",
+          "threshold"
+        ],
+        "title": "ResortRequested",
         "type": "object"
       },
       "RestoreRequest": {
@@ -1602,6 +1793,11 @@
             "title": "Added",
             "type": "integer"
           },
+          "archiveLabelChanged": {
+            "description": "True when the file gives a different archive label; absent keeps the stored one.",
+            "title": "Archivelabelchanged",
+            "type": "boolean"
+          },
           "baseVersion": {
             "minimum": 1.0,
             "title": "Baseversion",
@@ -1653,7 +1849,8 @@
           "changed",
           "removed",
           "removedCategories",
-          "instructionsChanged"
+          "instructionsChanged",
+          "archiveLabelChanged"
         ],
         "title": "UploadPreview",
         "type": "object"
@@ -2567,6 +2764,87 @@
         "summary": "Post Move Back",
         "tags": [
           "plan"
+        ]
+      }
+    },
+    "/api/resort-requests": {
+      "post": {
+        "description": "Ask the agent to sort the mail again with a threshold; one request while no plan or request is open.\n\nArgs:\n    body: The threshold, a JSON integer from 50 to 100.\n    request: The request, whose app holds the database access, the settings and the clock.\n\nReturns:\n    The id of the request and its threshold, or a 409 with nothing stored.\n\nRaises:\n    RateLimited: The hourly limit is used up.",
+        "operationId": "create_resort_request_api_resort_requests_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResortRequestCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResortRequested"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "A plan is open, or the latest request has not become a plan yet; nothing was stored"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "description": "The threshold is not a JSON integer from 50 to 100"
+          },
+          "429": {
+            "description": "Too many requests in an hour (the limit of list saves); see Retry-After"
+          },
+          "500": {
+            "description": "The request could not be stored"
+          }
+        },
+        "summary": "Create Resort Request",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/resort-requests/latest": {
+      "get": {
+        "description": "Return the value the threshold field shows: 50 on the first visit, else the latest request's threshold.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The threshold.",
+        "operationId": "read_latest_resort_request_api_resort_requests_latest_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResortLatest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Latest Resort Request",
+        "tags": [
+          "categories"
         ]
       }
     },

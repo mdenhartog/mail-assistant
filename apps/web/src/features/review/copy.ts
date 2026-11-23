@@ -45,3 +45,39 @@ export const DECISION_TEXT = {
   rejected: "Stays in place",
   pending: "Not decided yet",
 } as const;
+
+export const TIP_LABEL = "This is a suggestion, nothing was changed.";
+
+/** What the pair of a mail is: the old or new topic and extra label, as full names, or "none" when it has no such label. */
+export function pairText(side: "From" | "To", topic: string | null, extra: string | null): string {
+  return `${side} topic ${topic ?? "none"}, extra ${extra ?? "none"}`;
+}
+
+export function confidenceText(pct: number): string {
+  return `Model confidence ${String(pct)} %`;
+}
+
+export interface AutoCounts {
+  moved: number;
+  scheduled: number;
+  skipped: number;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return count === 1 ? one : many;
+}
+
+/** "5 mails were already moved on their own, 12 are scheduled and 1 was skipped."; null when all three are 0. */
+export function autoText({ moved, scheduled, skipped }: AutoCounts): string | null {
+  const parts = [
+    { count: moved, text: plural(moved, "was already moved on its own", "were already moved on their own") },
+    { count: scheduled, text: plural(scheduled, "is scheduled", "are scheduled") },
+    { count: skipped, text: plural(skipped, "was skipped", "were skipped") },
+  ].filter((part) => part.count > 0);
+  const words = parts.map((part, index) => `${String(part.count)} ${index === 0 ? `${plural(part.count, "mail", "mails")} ` : ""}${part.text}`);
+  const last = words.pop();
+  if (last === undefined) {
+    return null;
+  }
+  return `${words.length === 0 ? last : `${words.join(", ")} and ${last}`}.`;
+}

@@ -6,9 +6,10 @@ import type { PlanView } from "@/api/plan/plan.types";
 import { Banner } from "@/components/Banner";
 import { ActionBar } from "@/features/review/ActionBar";
 import { ApproveDialog } from "@/features/review/ApproveDialog";
+import { autoText } from "@/features/review/copy";
 import { ReviewGroup } from "@/features/review/ReviewGroup";
 import { SelectionLive } from "@/features/review/SelectionLive";
-import { groupKey, groupTitle } from "@/features/review/text";
+import { categoryName, groupKey, groupTitle } from "@/features/review/text";
 import { selectionOf, useReviewDecisions } from "@/features/review/useReviewDecisions";
 import type { ReviewFailure } from "@/features/review/useReviewDecisions";
 
@@ -40,8 +41,10 @@ function FailureBanner({ failure, onReload }: { failure: ReviewFailure; onReload
 
 function Notes({ plan }: { plan: PlanView }): ReactElement {
   const { checked, unclear, notLookedAt } = plan.progress;
+  const auto = autoText(plan.auto);
   return (
     <>
+      {auto === null ? null : <p className="mt-4 text-text">{auto}</p>}
       {notLookedAt > 0 ? (
         <div className="mt-4">
           <Banner kind="info" title="Older mail was not looked at.">
@@ -94,6 +97,7 @@ export function ReadyReview({ plan, categories }: ReadyReviewProps): ReactElemen
             onDecideSelected={decisions.decideSelected}
             onSelection={decisions.onSelection}
             selected={selectionOf(decisions.selection, groupKey(group))}
+            target={{ id: categories.some((category) => category.id === group.to) ? group.to : null, name: categoryName(group.to, categories) }}
             title={groupTitle(group, categories)}
           />
         ))}

@@ -94,6 +94,15 @@ def test_given_a_valid_file_when_parsed_then_the_list_is_the_expected_one():
     assert parsed(load(FIXTURES / "valid" / "small.yaml")) == EXPECTED_SMALL
 
 
+def test_given_a_file_with_and_without_an_archive_label_when_parsed_then_it_says_whether_it_was_given():
+    absent = parse_category_file(as_bytes(doc("categories: []")))
+    given = parse_category_file(as_bytes(doc("archiveLabel: Assistant/Archive\ncategories: []")))
+
+    assert isinstance(absent, ParsedList)
+    assert isinstance(given, ParsedList)
+    assert (absent.archive_label_given, given.archive_label_given) == (False, True)
+
+
 def test_given_a_parsed_list_when_dumped_and_parsed_again_then_the_list_is_the_same():
     assert parsed(dump_category_file(EXPECTED_SMALL)) == EXPECTED_SMALL
 

@@ -407,6 +407,11 @@ def test_given_the_compose_file_when_read_then_a_one_shot_migrate_service_uses_t
     assert "app:${POSTGRES_PASSWORD" in migrate["environment"]["DATABASE_OWNER_URL"]  # the bootstrap owner of the db
 
 
+def test_given_the_compose_file_when_read_then_the_agent_has_no_archive_label_variable() -> None:
+    # ADR-0059: the name lives in the list; only the migrate job reads the variable, once
+    assert "ARCHIVE_LABEL" not in compose_services()["mail-triage"]["environment"]
+
+
 def test_given_the_compose_file_when_read_then_the_agent_waits_for_the_migration_and_runs_as_the_runtime_role() -> None:
     agent = compose_services()["mail-triage"]
     database_url = agent["environment"]["DATABASE_URL"]

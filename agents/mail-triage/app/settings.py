@@ -10,42 +10,21 @@ from __future__ import annotations
 
 import os
 import re
-import unicodedata
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from app.core.pinned import PinnedSenders
+from app.core.scope import usable_archive_name
 from app.db.engine import DatabaseTls
+from category_policy import ARCHIVE_LABEL_DEFAULT
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
 
 _DOMAIN = re.compile(r"(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
-
-
-_ARCHIVE_LABEL_MAX = 225  # the length Gmail allows for a label name
-_SYSTEM_LABELS = frozenset(
-    {"inbox", "spam", "trash", "draft", "sent", "starred", "unread", "important", "chat", "snoozed", "scheduled"}
-)
-_DEFAULT_ARCHIVE_LABEL = "Assistant/Archive"
-
-
-def _usable_archive_label(name: str) -> bool:
-    """The rules of ADR-0052 point 3: outside ``Assistant/`` or exactly ``Assistant/Archive``; never a system label."""
-    key = name.casefold()
-    return (
-        0 < len(name) <= _ARCHIVE_LABEL_MAX
-        and name == name.strip()
-        and ".." not in name
-        and all(name.split("/"))  # no empty part: no leading, trailing or double slash
-        and not any(unicodedata.category(char) in {"Cc", "Cf", "Zl", "Zp"} for char in name)
-        and key not in _SYSTEM_LABELS
-        and not key.startswith("category_")
-        and (not key.startswith("assistant/") or name == _DEFAULT_ARCHIVE_LABEL)
-    )
 
 
 def _clean_domains(raw: str) -> list[str]:
@@ -118,15 +97,6 @@ class Settings(DatabaseTlsSettings):
     google_security_sender_domains: str = Field(default="accounts.google.com", max_length=2000)
     # The sender domains of the app's own sign-in code mail: pinned and silent. Deployment configuration, no default.
     sign_in_mail_domains: str = Field(default="", max_length=2000)
-    # The protected label (spec C-14, ADR-0052): mail in it is never re-sorted and the agent never files mail in it.
-    archive_label: str = Field(default="Assistant/Archive")
-
-    @field_validator("archive_label")
-    @classmethod
-    def _archive_label(cls, name: str) -> str:
-        if not _usable_archive_label(name):
-            raise ValueError("the name of the archive label is not usable")  # the value is never repeated
-        return name
 
     @field_validator("google_security_sender_domains")
     @classmethod
@@ -182,12 +152,12 @@ class MigrateSettings(DatabaseTlsSettings):
     web_role_password: SecretStr = Field(min_length=1)  # password of web_settings_runtime (ADR-0033)
     # Read once, when the migration creates the list settings of the existing versions (ADR-0059); afterwards the name
     # lives in the database and the variable is ignored.
-    archive_label: str = _DEFAULT_ARCHIVE_LABEL
+    archive_label: str = ARCHIVE_LABEL_DEFAULT
 
     @field_validator("archive_label")
     @classmethod
     def _archive_label_usable(cls, value: str) -> str:
-        if not _usable_archive_label(value):
+        if not usable_archive_name(value):
             raise ValueError("not a usable archive label")  # the value is never echoed
         return value
 

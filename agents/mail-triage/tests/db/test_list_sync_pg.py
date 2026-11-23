@@ -10,11 +10,13 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.adapters.gmail_resort import GmailResort
+from app.core.scope import ArchiveLabel
 from app.db.models import OTHER_ID
 from app.db.pg_list_sync import PgListSyncStore
-from app.usecases.list_sync import ListSync, StoredLabel
+from app.usecases.list_sync import ArchiveNames, ListSync, StoredLabel
 from tests.db.agent_engine import create_agent_engine
 from tests.db.conftest import AGENT_ROLE
+from tests.db.plan_support import seed_plan
 from tests.fakes.fake_gmail import FakeGmail
 
 if TYPE_CHECKING:
@@ -106,15 +108,52 @@ async def test_given_a_first_start_when_the_sync_runs_on_postgres_then_the_list_
     gmail.add_label("Assistant/Bills")
     gmail.add_mail(labels=(gmail.label_id("Assistant/Bills"),))
 
-    result = await ListSync(GmailResort(gmail, "Archive", sleep=lambda _s: None), store, "Archive").run()
+    ref = ArchiveLabel("Assistant/Archive")  # the default name: the list has no settings row yet
+    result = await ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref).run()
 
     assert (result.version, result.seeded, await store.cursor()) == (1, True, 1)
-    assert gmail.label_names().count("Archive") == 1
+    assert gmail.label_names().count("Assistant/Archive") == 1
     names = {r["name"] for r in await cat_api.fetch("select name from categories.gmail_label")}
-    assert names == {"Assistant/Bills", "Assistant/Other"}
+    assert names == {"Assistant/Bills", "Assistant/Other", "Assistant/Archive"}
     assert isinstance(next(iter(await store.stored_labels())), uuid.UUID)
 
 
 async def test_given_the_test_engine_when_it_connects_then_it_acts_as_the_agent_role(engine: AsyncEngine) -> None:
     async with engine.connect() as connection:
         assert (await connection.exec_driver_sql("select session_user")).scalar_one() == AGENT_ROLE
+
+
+async def test_given_list_settings_and_a_cursor_when_the_archive_names_are_read_then_wanted_and_applied_come_back(
+    store: PgListSyncStore, cat_owner: asyncpg.Connection
+) -> None:
+    await store.seed(("Bills",))
+    assert await store.archive_names() == ArchiveNames("Assistant/Archive", None)  # no settings row, no cursor
+
+    # a settings row may only join a list version made in the same transaction
+    for version, name in ((2, "Bewaard"), (3, "Mail/Done")):
+        async with cat_owner.transaction():
+            await cat_owner.execute(
+                "insert into categories.list_version (mailbox_id, version) values ($1, $2)", MAILBOX, version
+            )
+            await cat_owner.execute(
+                "insert into categories.list_settings (mailbox_id, version, archive_label) values ($1, $2, $3)",
+                MAILBOX,
+                version,
+                name,
+            )
+        if version == 2:
+            await store.advance_cursor(2)
+
+    assert await store.archive_names() == ArchiveNames(wanted="Mail/Done", applied="Bewaard")
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"), [("ready", False), ("scheduled", True), ("applying", True), ("applied", False)]
+)
+async def test_given_a_plan_when_asked_if_one_is_in_flight_then_only_scheduled_and_applying_count(
+    store: PgListSyncStore, cat_owner: asyncpg.Connection, state: str, expected: bool
+) -> None:
+    await store.seed(("Bills",))
+    await seed_plan(cat_owner, MAILBOX, state=state)
+
+    assert await store.plan_in_flight() is expected

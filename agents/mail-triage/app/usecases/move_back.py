@@ -20,9 +20,10 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.core.resort_plan import PlanState
 from app.core.scope import Scope, classify
-from app.usecases.resort_apply import AuditMove, MailFailed, MailGone, held_label_ids
+from app.usecases.resort_apply import AuditMove, MailFailed, MailGone, held_label_ids, label_ids
 
 if TYPE_CHECKING:
+    from app.core.scope import ArchiveLabel
     from app.usecases.resort_apply import ApplyLock, ApplyMailbox, ApplyNotifier
 
 __all__ = ["BATCH_SIZE", "MoveBack", "MoveBackJob", "MoveBackStore"]
@@ -61,6 +62,10 @@ class MoveBackStore(Protocol):
         """The apply rows of the plan (not rows written by a move back)."""
         ...
 
+    async def extra_label_names(self) -> frozenset[str]:
+        """The Gmail label names (``Assistant/...``) of the extra-label categories of the current list."""
+        ...
+
     async def record_restore(self, plan_id: uuid.UUID, move: AuditMove, channel: str) -> None:
         """Insert an audit row for a restore (old and new swapped) with the channel and actor of the request."""
         ...
@@ -80,7 +85,7 @@ class MoveBack:
         store: MoveBackStore,
         lock: ApplyLock,
         notifier: ApplyNotifier,
-        archive_label: str,  # the protected label (C-14, ADR-0052)
+        archive: ArchiveLabel,  # the protected label (C-14, ADR-0059)
         batch_size: int = BATCH_SIZE,
     ) -> None:
         """Wire the ports."""
@@ -88,7 +93,7 @@ class MoveBack:
         self._store = store
         self._lock = lock
         self._notifier = notifier
-        self._archive = archive_label
+        self._archive = archive
         self._batch = batch_size
 
     async def run_once(self) -> None:
@@ -110,8 +115,9 @@ class MoveBack:
             if not await self._store.renew_request(job.plan_id, run_id):
                 return
             names = await asyncio.to_thread(self._mail.label_names)
+            extras = await self._store.extra_label_names()
             for move in moves[start : start + self._batch]:
-                if await self._restore_one(job, move, names):
+                if await self._restore_one(job, move, names, extras):
                     restored += 1
                 else:
                     skipped += 1
@@ -121,27 +127,35 @@ class MoveBack:
                 f"Move back done: {restored} restored, {skipped} skipped because they changed meanwhile."
             )
 
-    async def _restore_one(self, job: MoveBackJob, move: AuditMove, names: dict[str, str]) -> bool:
-        """True when the mail carries its old label afterwards; false when it was changed and is left alone."""
+    async def _restore_one(
+        self, job: MoveBackJob, move: AuditMove, names: dict[str, str], extras: frozenset[str]
+    ) -> bool:
+        """True when the mail carries its old pair afterwards; false when it was changed and is left alone.
+
+        The audit row holds the labels of the whole pair before and after. The swap adds the labels the old pair
+        regains and removes the ones the apply added, so a crash between the two leaves both and a retry finishes it.
+        """
         mail = await asyncio.to_thread(self._mail.fetch, move.message_id)
         if mail is None:
             return False
         held = held_label_ids(mail, names)
-        old = move.old_label
-        if move.new_label not in held:
-            return held == ({old} if old else set())  # already back (a retry, or the user did it)
-        if held - {move.new_label, old}:
-            return False  # another label as well: changed meanwhile
-        if (
-            old not in held
-            and classify({names[i] for i in mail.labels if i in names}, self._archive) is not Scope.IN_SCOPE
+        old, new = label_ids(move.old_label), label_ids(move.new_label)
+        if frozenset(held) == old:
+            return True  # already back (a retry, or the user did it)
+        if not new - old <= held or held - (new | old):
+            return False  # not as the apply left it, or another label as well: changed meanwhile
+        if not (old and old <= held) and (
+            classify({names[i] for i in mail.labels if i in names}, self._archive.name, extras) is not Scope.IN_SCOPE
         ):
             return False  # archived, trashed or out of the inbox meanwhile
         try:
-            if old and old not in held:
-                await asyncio.to_thread(self._mail.add_label, move.message_id, old)
-            await asyncio.to_thread(self._mail.remove_label, move.message_id, move.new_label)
+            for label_id in sorted(old - held):
+                await asyncio.to_thread(self._mail.add_label, move.message_id, label_id)
+            for label_id in sorted((new - old) & held):
+                await asyncio.to_thread(self._mail.remove_label, move.message_id, label_id)
         except (MailGone, MailFailed):
             return False  # gone, or Gmail keeps refusing this one: the request must still finish
-        await self._store.record_restore(job.plan_id, AuditMove(move.message_id, move.new_label, old), job.channel)
+        await self._store.record_restore(
+            job.plan_id, AuditMove(move.message_id, move.new_label, move.old_label), job.channel
+        )
         return True

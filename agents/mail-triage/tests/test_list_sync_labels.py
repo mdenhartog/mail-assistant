@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 import pytest
 
 from app.adapters.gmail_resort import GmailResort
+from app.core.scope import ArchiveLabel
 from app.db.models import OTHER_ID
-from app.usecases.list_sync import ListSync
+from app.usecases.list_sync import ArchiveNames, ListSync
 from category_policy import MAX_CATEGORIES
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.list_store import FakeListStore
@@ -18,7 +19,8 @@ if TYPE_CHECKING:
 
 
 def make(gmail: FakeGmail, store: FakeListStore) -> ListSync:
-    return ListSync(GmailResort(gmail, "Archive", sleep=lambda _s: None), store, "Archive")
+    ref = ArchiveLabel("Archive")
+    return ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref)
 
 
 def modifies(gmail: FakeGmail) -> list[str]:
@@ -273,7 +275,9 @@ async def test_given_a_configured_archive_label_when_the_sync_runs_then_that_lab
 ) -> None:
     gmail = FakeGmail()
     store = FakeListStore()
-    sync = ListSync(GmailResort(gmail, archive, sleep=lambda _s: None), store, archive)
+    store.archive = ArchiveNames(wanted=archive, applied=None)
+    ref = ArchiveLabel(archive)
+    sync = ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref)
 
     await sync.run()
     await sync.run()
@@ -288,7 +292,9 @@ async def test_given_the_default_archive_label_exists_when_the_list_is_seeded_th
     gmail.add_label("Assistant/Archive")
     gmail.add_label("Assistant/Travel")
     store = FakeListStore()
+    store.archive = ArchiveNames(wanted="Assistant/Archive", applied=None)
+    ref = ArchiveLabel("Assistant/Archive")
 
-    await ListSync(GmailResort(gmail, "Assistant/Archive", sleep=lambda _s: None), store, "Assistant/Archive").run()
+    await ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref).run()
 
     assert store.seeded == [("Travel",)]
