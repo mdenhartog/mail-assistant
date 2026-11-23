@@ -151,9 +151,22 @@ def problems_of(
     Returns:
         Every problem with the rule, the field and the position; no value. Empty when the list is valid.
     """
+    found = _list_problems(items, instructions, stored)
+    found.extend(_sender_problems(items))
+    found.extend(
+        CategoryProblem(rule=problem.rule, field="archive_label", index=None, position=None, other_index=None)
+        for problem in validate_archive_label(
+            archive_label, [Category(item.name, item.description, item.kind) for item in items]
+        )
+    )
+    found.extend(_id_problems(items, stored))
+    return found
+
+
+def _list_problems(items: list[CategoryInput], instructions: str, stored: StoredList) -> list[CategoryProblem]:
     own = _labels_in_use(items, stored)
     existing = [label for label in stored.labels if normalise_name(label) not in own]
-    found = [
+    return [
         CategoryProblem(
             rule=problem.rule,
             field=problem.field,  # pyright: ignore[reportArgumentType]
@@ -168,15 +181,12 @@ def problems_of(
             *validate_instructions(instructions),
         ]
     ]
-    found.extend(_sender_problems(items))
-    found.extend(
-        CategoryProblem(rule=problem.rule, field="archive_label", index=None, position=None, other_index=None)
-        for problem in validate_archive_label(
-            archive_label, [Category(item.name, item.description, item.kind) for item in items]
-        )
-    )
+
+
+def _id_problems(items: list[CategoryInput], stored: StoredList) -> list[CategoryProblem]:
     known = {category.id for category in stored.categories}
     seen: set[uuid.UUID] = set()
+    found: list[CategoryProblem] = []
     for index, item in enumerate(items):
         if item.id is None:
             continue
