@@ -14,7 +14,9 @@ later run takes the work over.
 from __future__ import annotations
 
 import hashlib
+import uuid
 from datetime import UTC, datetime, timedelta
+from email.utils import parseaddr
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import and_, func, literal, or_, select, update
@@ -30,6 +32,7 @@ from app.db.models import (
     ApplyAudit,
     Category,
     ListVersion,
+    MailItem,
     MoveBackRequest,
     Plan,
     PlanApproval,
@@ -40,18 +43,17 @@ from app.db.models import (
     ResortRequest as ResortRequestRow,
 )
 from app.usecases.move_back import MoveBackJob
+from app.usecases.plan_tips import TipRow
 from app.usecases.resort_apply import ApplyItem, AuditMove, DuePlan
 from app.usecases.resort_build import BuildList, ItemDraft, PlanRecord, ResortRequest
 
 if TYPE_CHECKING:
-    import uuid
-
     from sqlalchemy import ColumnElement
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from app.usecases.resort_apply import SkipReason
 
-__all__ = ["LEASE", "PgApplyStore", "PgBuildStore", "channel_of"]
+__all__ = ["LEASE", "PgApplyStore", "PgBuildStore", "PgTipStore", "channel_of"]
 
 LEASE: Final = timedelta(minutes=5)  # how long a run holds a plan or a request before another may take it over
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
@@ -320,6 +322,68 @@ class PgBuildStore:
                 .on_conflict_do_nothing(constraint="uq_plan_item_message")  # a mail listed twice stays one item
             )
         return True
+
+
+class PgTipStore:
+    """``TipStore`` on the items of a ``review`` plan: the agent may read them and update only ``tip`` (migration 0029).
+
+    The tip is a column of the item, so whatever deletes the item (replace, apply, the purge) deletes the tip.
+    """
+
+    def __init__(self, sessions: async_sessionmaker[AsyncSession], mailbox_id: str) -> None:
+        """Keep the session factory and the mailbox."""
+        self._sessions = sessions
+        self._mailbox = mailbox_id
+
+    async def below_threshold(self, plan_id: uuid.UUID) -> list[TipRow]:
+        """The items of the ``review`` plan with their new topic, sender domain, subject and verified domain.
+
+        Every item of a ``review`` plan is below the threshold of its request. The verified domain is stored with
+        the filed mail (``mail_item``); an item without a stored mail, or one Gmail did not vouch for, has ``None``.
+        """
+        statement = (
+            select(PlanItem.new_topic_id, PlanItem.sender_address, PlanItem.subject, MailItem.verified_domain)
+            .join(Plan, and_(Plan.mailbox_id == PlanItem.mailbox_id, Plan.id == PlanItem.plan_id))
+            .outerjoin(MailItem, MailItem.gmail_message_id == PlanItem.message_id)
+            .where(
+                PlanItem.mailbox_id == self._mailbox,
+                PlanItem.plan_id == plan_id,
+                Plan.kind == PlanKind.REVIEW.value,
+                PlanItem.new_topic_id.is_not(None),
+            )
+            .order_by(PlanItem.id)
+        )
+        async with self._sessions() as session:
+            rows = (await session.execute(statement)).all()
+        return [
+            TipRow(str(topic), _domain_of(address), subject, verified) for topic, address, subject, verified in rows
+        ]
+
+    async def store_tip(self, plan_id: uuid.UUID, category_id: str, tip: str) -> None:
+        """Write the tip on the items of the category while the plan is still ``ready``; later it changes nothing."""
+        ready = (
+            select(Plan.id)
+            .where(Plan.mailbox_id == PlanItem.mailbox_id, Plan.id == PlanItem.plan_id)
+            .where(Plan.state == PlanState.READY.value)
+            .exists()
+        )
+        statement = (
+            update(PlanItem)
+            .where(
+                PlanItem.mailbox_id == self._mailbox,
+                PlanItem.plan_id == plan_id,
+                PlanItem.new_topic_id == uuid.UUID(category_id),
+                ready,
+            )
+            .values(tip=tip)
+        )
+        async with self._sessions.begin() as session:
+            await session.execute(statement)
+
+
+def _domain_of(address: str) -> str:
+    """The lower-case domain of a stored sender; ``unknown`` when there is none."""
+    return parseaddr(address)[1].rpartition("@")[2].lower() or "unknown"
 
 
 class PgApplyStore:

@@ -51,6 +51,7 @@ __all__ = [
     "BuildList",
     "BuildResult",
     "BuildStatus",
+    "BuildTips",
     "Candidate",
     "ItemDraft",
     "PlanNumbers",
@@ -254,6 +255,14 @@ class BuildNotifier(Protocol):
         ...
 
 
+class BuildTips(Protocol):
+    """The tips of a ready ``review`` plan (``PlanTips``)."""
+
+    async def write(self, plan_id: uuid.UUID, categories: Sequence[ListedCategory]) -> int:
+        """Store a tip per category with items below the threshold; how many were stored."""
+        ...
+
+
 class BudgetView(Protocol):
     """A read-only look at today's model budget."""
 
@@ -289,6 +298,7 @@ class ResortBuild:
         judge: BuildJudge,
         store: BuildStore,
         notifier: BuildNotifier,
+        tips: BuildTips,
         budget: BudgetView,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
@@ -301,6 +311,7 @@ class ResortBuild:
         self._judge = judge
         self._store = store
         self._notifier = notifier
+        self._tips = tips
         self._budget = budget
         self._now = now
         self._pinned = pinned
@@ -368,6 +379,7 @@ class ResortBuild:
             not_looked_at,
         )
         await self._notifier.say(plan_ready_text(numbers))
+        await self._tips.write(plan.plan_id, current.categories)  # after the notice: a help, never part of the plan
         return BuildResult(BuildStatus.READY, numbers)
 
     async def _scan(self, plan: PlanRecord, current: BuildList) -> tuple[int, int, int, int, str | None]:

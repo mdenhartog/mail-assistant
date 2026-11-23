@@ -12,6 +12,7 @@ from app.core.scope import ArchiveLabel
 from app.db.engine import DatabaseTls, make_engine
 from app.db.pg_policy_source import PgPolicySource
 from app.settings import load_settings
+from app.usecases.catchup import BUDGET_RESERVE
 from app.usecases.settings_dialog import SettingsDialog
 from app.usecases.web_notice_actions import WebNoticeActions
 from app.wiring import build_runner
@@ -109,3 +110,11 @@ def test_given_the_wiring_when_built_then_every_component_shares_the_one_archive
     ]
 
     assert all(item is archive for item in protected)
+
+
+def test_given_the_wiring_when_built_then_the_tip_call_spends_from_the_one_daily_budget_above_the_reserve() -> None:
+    build = _runner()._resort_build
+    model = vars(vars(build)["_tips"])["_model"]
+
+    assert vars(model)["_budget"] is vars(build)["_budget"]
+    assert vars(model)["_reserve"] == BUDGET_RESERVE

@@ -27,6 +27,7 @@ from app.adapters.gmail_send import GmailSender
 from app.adapters.judge_anthropic import AnthropicJudge, DailyBudget
 from app.adapters.telegram_inbox import TelegramInbox
 from app.adapters.telegram_outbox import TelegramOutbox
+from app.adapters.tip_anthropic import AnthropicTips
 from app.adapters.token_store import TokenCipher, TokenDecryptError, TokenStore
 from app.adapters.urgency_anthropic import AnthropicUrgency
 from app.core.scope import ArchiveLabel
@@ -48,7 +49,7 @@ from app.db.pg_list_sync import PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_refile import PgRefileStore
-from app.db.pg_resort import PgApplyStore, PgBuildStore
+from app.db.pg_resort import PgApplyStore, PgBuildStore, PgTipStore
 from app.db.pg_security_events import PgSecurityEvents
 from app.db.pg_settings_store import PgSettingsStore
 from app.db.pg_store import PgStore
@@ -66,6 +67,7 @@ from app.usecases.list_notice import ListNotice, ListNoticeActions
 from app.usecases.list_sync import ListSync
 from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
+from app.usecases.plan_tips import PlanTips
 from app.usecases.policy_notice import PolicyNotice
 from app.usecases.refile_report import RefileReportService
 from app.usecases.reply import ReplyService
@@ -269,6 +271,16 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             judge=judge,
             store=PgBuildStore(sessions, settings.mailbox_id),
             notifier=notifier,
+            tips=PlanTips(
+                model=AnthropicTips(
+                    client=client,
+                    api_key=settings.anthropic_api_key,
+                    model=settings.model_small,
+                    budget=budget,
+                    reserve=BUDGET_RESERVE,
+                ),
+                store=PgTipStore(sessions, settings.mailbox_id),
+            ),
             budget=budget,
             now=now,
             pinned=settings.pinned_senders,
