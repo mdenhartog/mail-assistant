@@ -6,12 +6,13 @@ import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { countText } from "@/features/review/copy";
 import { GroupPanel } from "@/features/review/GroupPanel";
-import type { SelectionUpdate } from "@/features/review/GroupPanel";
+import type { SelectionUpdate, TipTarget } from "@/features/review/GroupPanel";
 import { cleanText, groupKey } from "@/features/review/text";
 
 export interface ReviewGroupProps {
   group: PlanGroup;
   title: string;
+  target: TipTarget;
   selected: ReadonlySet<number>;
   busy: boolean;
   onSelection: (key: string, update: SelectionUpdate) => void;

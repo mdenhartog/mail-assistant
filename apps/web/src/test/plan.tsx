@@ -40,6 +40,8 @@ export const READY = {
   applyThreshold: 50,
   applyDelayMinutes: 30,
   lastPlan: null,
+  threshold: 80,
+  auto: { moved: 0, scheduled: 0, skipped: 0 },
 };
 
 export const NO_PLAN = {
@@ -60,6 +62,12 @@ export interface ItemRow {
   decision: "pending" | "approved" | "rejected";
   state: "pending" | "approved" | "rejected" | "applied" | "skipped" | "failed";
   reason: string | null;
+  oldTopic: string | null;
+  oldExtra: string | null;
+  newTopic: string | null;
+  newExtra: string | null;
+  confidencePct: number | null;
+  tip: string | null;
 }
 
 export function item(id: number, patch: Partial<ItemRow> = {}): ItemRow {
@@ -73,6 +81,12 @@ export function item(id: number, patch: Partial<ItemRow> = {}): ItemRow {
     decision: "pending",
     state: "pending",
     reason: null,
+    oldTopic: null,
+    oldExtra: null,
+    newTopic: "Finance/Invoices",
+    newExtra: null,
+    confidencePct: null,
+    tip: null,
     ...patch,
   };
 }

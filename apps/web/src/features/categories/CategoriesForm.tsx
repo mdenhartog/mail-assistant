@@ -12,6 +12,7 @@ import { useCategoriesFlow } from "@/features/categories/useCategoriesFlow";
 import { useCategoriesSave } from "@/features/categories/useCategoriesSave";
 import { useEditing } from "@/features/categories/useEditing";
 import { useListView } from "@/features/categories/useListView";
+import { useOpenFromLink } from "@/features/categories/useOpenFromLink";
 
 /** The loaded list: the collapsed list, or the full-screen edit view of one category, and the save and leave questions. */
 export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
@@ -19,6 +20,7 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
   const save = useCategoriesSave(list, flow.rows, flow.settings);
   const view = useListView();
   const edit = useEditing({ list, flow, save, view });
+  useOpenFromLink(flow.rows, edit.open);
   const changes = changesOf(flow.rows, list, flow.settings);
   const open = edit.editing === null ? undefined : flow.rows.find((row) => row.key === edit.editing?.key);
   return (

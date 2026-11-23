@@ -192,10 +192,15 @@ export const PLAN = {
   applyThreshold: 50,
   applyDelayMinutes: 30,
   lastPlan: null,
+  threshold: 80,
+  auto: { moved: 5, scheduled: 12, skipped: 1 },
 } as const;
 
 /** `GET /api/plan` while no plan is open. */
 export const NO_PLAN = { ...PLAN, id: null, state: null, groups: [], counts: { items: 0, pending: 0, approved: 0, rejected: 0 } } as const;
+
+/** Untrusted model text: markup and a link inside it must stay text. */
+export const TIP = 'Add billing@acme.example (4 mails) as a sender of Invoices. <a href="https://evil.example">not a link</a> https://evil.example/' + "x".repeat(60);
 
 export function planItems(first: number, size: number, hasMore: boolean, page = 1): unknown {
   return {
@@ -211,6 +216,12 @@ export function planItems(first: number, size: number, hasMore: boolean, page = 
       decision: "pending",
       state: "pending",
       reason: null,
+      oldTopic: index % 3 === 0 ? null : "Household/Energy and utilities/Yearly statements",
+      oldExtra: index % 2 === 0 ? null : "Household/Energy and utilities/Yearly statements/Acme",
+      newTopic: "Finance/Invoices",
+      newExtra: index % 4 === 0 ? "Finance/Invoices/Acme" : null,
+      confidencePct: index % 6 === 0 ? null : 40 + index,
+      tip: TIP,
     })),
   };
 }
