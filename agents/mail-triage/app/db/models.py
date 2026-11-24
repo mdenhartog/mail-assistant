@@ -31,7 +31,7 @@ from sqlalchemy import (
     false,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -189,6 +189,9 @@ class Schedule(Base):
         ),
         CheckConstraint("zone ~ '^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$'", name="ck_schedule_zone_pattern"),
         CheckConstraint("updated_via IN ('telegram', 'web')", name="ck_schedule_updated_via"),
+        CheckConstraint("label_wait_minutes BETWEEN 5 AND 720", name="ck_schedule_label_wait"),
+        CheckConstraint("label_protection_days BETWEEN 1 AND 30", name="ck_schedule_label_protection"),
+        CheckConstraint("label_retention_days BETWEEN 7 AND 90", name="ck_schedule_label_retention"),
         {"schema": "settings"},
     )
 
@@ -202,6 +205,10 @@ class Schedule(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     updated_via: Mapped[str] = mapped_column(String(16))
     updated_by: Mapped[str] = mapped_column(String(64))
+    # Label cleanup (0030, ADR-0060 point 6); the bounds are those of ``category_policy.settings``.
+    label_wait_minutes: Mapped[int] = mapped_column(SmallInteger, server_default="720")
+    label_protection_days: Mapped[int] = mapped_column(SmallInteger, server_default="7")
+    label_retention_days: Mapped[int] = mapped_column(SmallInteger, server_default="30")
 
 
 class SettingsChange(Base):
@@ -850,13 +857,15 @@ class ListSettings(Base):
         ),
         CheckConstraint("char_length(general_instructions) <= 4000", name="ck_list_settings_instructions"),
         CheckConstraint("char_length(archive_label) BETWEEN 1 AND 225", name="ck_list_settings_archive_label"),
+        CheckConstraint("char_length(other_label) BETWEEN 1 AND 225", name="ck_list_settings_other_label"),
         {"schema": "categories"},
     )
 
     mailbox_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     general_instructions: Mapped[str] = mapped_column(Text, server_default="")
-    archive_label: Mapped[str] = mapped_column(Text)
+    archive_label: Mapped[str] = mapped_column(Text, server_default="Archive")  # rows from before 0030 keep their value
+    other_label: Mapped[str] = mapped_column(Text, server_default="Other")  # 0030
 
 
 class UploadPreview(Base):
@@ -878,3 +887,135 @@ class UploadPreview(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --- The label boundary (INT-010, ADR-0060, ADR-0061): migration 0030 -----
+
+
+class ManagedLabel(Base):
+    """A Gmail label the agent may change, by id: a category of the list, "other" or the archive label."""
+
+    __tablename__ = "managed_label"
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "category_id", name="uq_managed_label_category"),
+        ForeignKeyConstraint(
+            ["mailbox_id", "category_id"],
+            ["categories.category_identity.mailbox_id", "categories.category_identity.id"],
+            name="fk_managed_label_identity",
+        ),
+        CheckConstraint("role IN ('category', 'other', 'archive')", name="ck_managed_label_role"),
+        CheckConstraint("(role = 'category') = (category_id IS NOT NULL)", name="ck_managed_label_category"),
+        Index("uq_managed_label_role", "mailbox_id", "role", unique=True, postgresql_where=text("role <> 'category'")),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    label_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    role: Mapped[str] = mapped_column(String(16))
+    category_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    label_name: Mapped[str] = mapped_column(Text)
+
+
+class LabelMigration(Base):
+    """The per-mailbox state of the one-off rename (``pending``, ``confirmed``, ``done``); it gates label writes."""
+
+    __tablename__ = "label_migration"
+    __table_args__ = (
+        CheckConstraint("state IN ('pending', 'confirmed', 'done')", name="ck_label_migration_state"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    state: Mapped[str] = mapped_column(String(12))
+    plan_hash: Mapped[str | None] = mapped_column(CHAR(64))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class LabelRenameItem(Base):
+    """One label of the rename plan, and the backup of its old name."""
+
+    __tablename__ = "label_rename_item"
+    __table_args__ = (
+        CheckConstraint("action IN ('rename', 'merge')", name="ck_label_rename_item_action"),
+        CheckConstraint("state IN ('planned', 'skipped', 'done', 'kept')", name="ck_label_rename_item_state"),
+        CheckConstraint("mail_count >= 0", name="ck_label_rename_item_count"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    label_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    old_name: Mapped[str] = mapped_column(Text)
+    new_name: Mapped[str] = mapped_column(Text)
+    mail_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    action: Mapped[str] = mapped_column(String(8))
+    state: Mapped[str] = mapped_column(String(8), server_default="planned")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class LabelEmptySince(Base):
+    """The persistent timer of the delayed delete, per label id."""
+
+    __tablename__ = "label_empty_since"
+    __table_args__ = (
+        CheckConstraint("last_seen_empty >= empty_since", name="ck_label_empty_since_order"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    label_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    empty_since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_empty: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class DeletedLabel(Base):
+    """A label the agent deleted: the hash of its id and its name, shown as "recently deleted" for the retention."""
+
+    __tablename__ = "deleted_label"
+    __table_args__ = (
+        CheckConstraint("label_id_hash ~ '^[0-9a-f]{64}$'", name="ck_deleted_label_hash"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    label_id_hash: Mapped[str] = mapped_column(CHAR(64), primary_key=True)
+    name: Mapped[str] = mapped_column(Text)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class LabelConfirmation(Base):
+    """Insert-only confirmation of the rename plan; written by ``confirm_label_rename`` alone."""
+
+    __tablename__ = "label_confirmation"
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", name="uq_label_confirmation_mailbox"),
+        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_label_confirmation_channel"),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text("gen_random_uuid()"))
+    plan_hash: Mapped[str] = mapped_column(CHAR(64))
+    skipped_ids: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
+    channel: Mapped[str] = mapped_column(String(16), server_default="operator")
+    actor_digest: Mapped[str] = mapped_column(CHAR(64), server_default=text("repeat('0', 64)"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+
+
+class LabelRestoreRequest(Base):
+    """Insert-only request to give the old label names back; written by ``request_label_restore`` alone."""
+
+    __tablename__ = "label_restore_request"
+    __table_args__ = (
+        CheckConstraint("channel IN ('telegram', 'web', 'operator')", name="ck_label_restore_request_channel"),
+        Index(
+            "uq_label_restore_request_open", "mailbox_id", unique=True, postgresql_where=text("processed_at IS NULL")
+        ),
+        {"schema": "categories"},
+    )
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, server_default=text("gen_random_uuid()"))
+    channel: Mapped[str] = mapped_column(String(16), server_default="operator")
+    actor_digest: Mapped[str] = mapped_column(CHAR(64), server_default=text("repeat('0', 64)"))
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

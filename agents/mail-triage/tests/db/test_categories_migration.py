@@ -35,7 +35,24 @@ REPORT_TABLES = {"refile_report"}  # 0019
 CONTRACT_V2_TABLES = {"category_sender", "list_settings", "upload_preview"}  # 0024
 SENDER_SKIP_TABLES = {"sender_skip"}  # 0027
 RESORT_REQUEST_TABLES = {"resort_request"}  # 0029
-ALL_TABLES = LIST_TABLES | PLAN_TABLES | REPORT_TABLES | CONTRACT_V2_TABLES | SENDER_SKIP_TABLES | RESORT_REQUEST_TABLES
+LABEL_BOUNDARY_TABLES = {  # 0030
+    "managed_label",
+    "label_migration",
+    "label_rename_item",
+    "label_empty_since",
+    "deleted_label",
+    "label_confirmation",
+    "label_restore_request",
+}
+ALL_TABLES = (
+    LIST_TABLES
+    | PLAN_TABLES
+    | REPORT_TABLES
+    | CONTRACT_V2_TABLES
+    | SENDER_SKIP_TABLES
+    | RESORT_REQUEST_TABLES
+    | LABEL_BOUNDARY_TABLES
+)
 
 
 def _plain(url: str) -> str:

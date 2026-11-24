@@ -201,3 +201,24 @@ GRANT INSERT (old_topic_id, old_extra_id, new_topic_id, new_extra_id, confidence
 GRANT UPDATE (tip) ON categories.plan_item TO mail_triage_runtime;
 GRANT EXECUTE ON FUNCTION categories.request_resort(text, numeric) TO web_settings_runtime;
 GRANT EXECUTE ON FUNCTION categories.approve_system_plan(uuid) TO mail_triage_runtime;
+
+-- The label boundary (INT-010, U-label-prefix-removal-02, ADR-0060, ADR-0061). The agent writes its own tables: the
+-- managed labels, the plan, the timers and the record of deleted labels. It starts and finishes the state of the rename
+-- plan, but only confirm_label_rename moves it to confirmed (a trigger refuses the agent). The api reads the state, the
+-- plan items and the deleted labels and writes nothing here except through the two functions: it has no right on
+-- managed_label, label_empty_since, the confirmation or the restore table.
+GRANT SELECT, INSERT, UPDATE, DELETE ON categories.managed_label, categories.label_rename_item,
+    categories.label_empty_since, categories.deleted_label TO mail_triage_runtime;
+GRANT SELECT ON categories.label_migration, categories.label_confirmation, categories.label_restore_request
+    TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, state, plan_hash), UPDATE (state, plan_hash) ON categories.label_migration
+    TO mail_triage_runtime;
+GRANT UPDATE (processed_at) ON categories.label_restore_request TO mail_triage_runtime;
+GRANT SELECT ON categories.label_migration, categories.label_rename_item, categories.deleted_label
+    TO web_settings_runtime;
+GRANT EXECUTE ON FUNCTION categories.label_plan_hash(text) TO mail_triage_runtime;
+GRANT EXECUTE ON FUNCTION categories.confirm_label_rename(text, text, text[]) TO web_settings_runtime;
+GRANT EXECUTE ON FUNCTION categories.request_label_restore(text) TO web_settings_runtime;
+-- The Settings page saves the label cleanup values with the rest of the schedule; the CHECK constraints hold the bounds.
+GRANT UPDATE (label_wait_minutes, label_protection_days, label_retention_days) ON settings.schedule
+    TO web_settings_runtime;
