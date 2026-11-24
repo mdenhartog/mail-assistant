@@ -28,11 +28,11 @@ def test_given_any_name_when_normalised_twice_then_the_result_is_stable(name: st
 
 
 @given(name=TEXT)
-def test_given_any_name_when_labelled_then_the_label_starts_with_the_prefix_and_is_stable(name: str):
+def test_given_any_name_when_labelled_then_the_label_is_stable_and_has_no_prefix(name: str):
     label = label_for(name)
 
-    assert label.startswith("Assistant/")
-    assert label_for(label.removeprefix("Assistant/")) == label
+    assert label_for(label) == label
+    assert label == "/".join(part.strip() for part in label.split("/"))
 
 
 @given(name=TEXT, padding=st.sampled_from(["", " ", "\t", "  "]))

@@ -32,12 +32,12 @@ def _rules(
 
 
 def test_given_the_limits_when_read_then_they_match_the_spec():
-    assert (SEGMENT_MAX, LABEL_MAX, DESCRIPTION_MAX, INSTRUCTIONS_MAX, MAX_CATEGORIES) == (40, 225, 1500, 4000, 100)
+    assert (SEGMENT_MAX, LABEL_MAX, DESCRIPTION_MAX, INSTRUCTIONS_MAX, MAX_CATEGORIES) == (40, 255, 1500, 4000, 100)
 
 
 def test_given_huis_energie_when_validated_then_it_is_accepted_and_the_label_is_nested():
     assert _rules("Huis/Energie") == []
-    assert label_for("Huis/Energie") == "Assistant/Huis/Energie"
+    assert label_for("Huis/Energie") == "Huis/Energie"
 
 
 def test_given_the_kinds_when_read_then_they_are_topic_and_extra():
@@ -56,11 +56,11 @@ def test_given_surrounding_spaces_when_the_length_is_measured_then_they_do_not_c
     assert _rules("Huis / " + "a" * 40) == []
 
 
-def test_given_a_label_of_225_and_226_characters_when_validated_then_only_226_is_refused():
-    name_225 = "/".join(["a" * 40] * 5 + ["a" * 10])
-    assert len(label_for(name_225)) == LABEL_MAX
-    assert _rules(name_225) == []
-    assert _rules(name_225 + "a") == ["name_label_too_long"]
+def test_given_a_label_of_255_and_256_characters_when_validated_then_only_226_is_refused():
+    name_255 = "/".join(["a" * 40] * 6 + ["a" * 9])
+    assert len(label_for(name_255)) == LABEL_MAX
+    assert _rules(name_255) == []
+    assert _rules(name_255 + "a") == ["name_label_too_long"]
 
 
 def test_given_a_description_with_surrounding_spaces_when_measured_then_they_do_not_count():
@@ -93,11 +93,11 @@ def test_given_an_ambiguous_case_fold_when_normalised_then_the_key_is_stable():
 
 
 def test_given_a_label_that_is_an_older_category_when_validated_then_the_name_adopts_it():
-    assert _rules("Invoices", labels=["Assistant/Invoices"], adoptable=["Assistant/Invoices"]) == []
+    assert _rules("Invoices", labels=["Invoices"], adoptable=["Invoices"]) == []
 
 
 def test_given_a_label_that_is_not_adoptable_when_validated_then_the_name_is_refused():
-    assert _rules("Invoices", labels=["Assistant/Invoices"], adoptable=["Assistant/Other"]) == ["name_label_exists"]
+    assert _rules("Invoices", labels=["Invoices"], adoptable=["Receipts"]) == ["name_label_exists"]
 
 
 def test_given_a_category_or_a_problem_when_changed_then_it_is_frozen_and_has_no_instance_dict():
