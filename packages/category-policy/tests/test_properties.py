@@ -10,7 +10,7 @@ TEXT = st.text(max_size=80)
 
 @given(name=TEXT, description=TEXT)
 def test_given_any_unicode_when_validated_then_it_never_raises_and_returns_known_rules(name: str, description: str):
-    problems = validate_category(name, description, [], [], [])
+    problems = validate_category(name, description, [], ("Other", "Archive"))
 
     assert {p.rule for p in problems} <= set(RULES)
 
@@ -41,6 +41,6 @@ def test_given_equal_normalised_names_when_one_is_on_the_list_then_the_other_col
     if normalise_name(variant) != normalise_name(name):
         return
 
-    rules = [p.rule for p in validate_category(variant, "x", [name], [], [])]
+    rules = [p.rule for p in validate_category(variant, "x", [name], ("Other", "Archive"))]
 
     assert "name_duplicate" in rules or "name_empty" in rules

@@ -96,9 +96,9 @@ FILE_RULE_TEXT: Final[dict[str, str]] = {
     "name_segment_too_long": "a part of the name is longer than 40 characters",
     "name_label_too_long": "the label for this name is too long",
     "name_forbidden_char": "the name has a forbidden character",
-    "name_reserved": "the first part of the name is reserved",
+    "name_reserved": "this name is reserved",
     "name_duplicate": "another category has this name",
-    "name_label_exists": "a label of this name exists already",
+    "name_setting_clash": "this name is the name of the Other label or the archive label",
     "description_empty": "the description is empty",
     "description_too_long": "the description is too long",
     "instructions_too_long": "the general instructions are too long",
@@ -515,15 +515,15 @@ class _Reader:
         archive: tuple[str, int],
     ) -> None:
         categories = [Category(d.name, d.description, d.kind) for d in drafts]
-        self._list_problems(drafts, categories)
+        self._list_problems(drafts, categories, archive[0])
         self._sender_problems(drafts)
         for _ in validate_instructions(instructions[0]):
             self.problems.add("instructions_too_long", instructions[1], "generalInstructions")
-        for problem in validate_label_setting_name(archive[0], categories, OTHER_LABEL_DEFAULT):
+        for problem in validate_label_setting_name(archive[0], categories, OTHER_LABEL_DEFAULT, ARCHIVE_LABEL_DEFAULT):
             self.problems.add(problem.rule, archive[1], _POLICY_FIELDS[problem.field])
 
-    def _list_problems(self, drafts: list[_Draft], categories: list[Category]) -> None:
-        for problem in validate_list(categories, (), ()):
+    def _list_problems(self, drafts: list[_Draft], categories: list[Category], archive_name: str) -> None:
+        for problem in validate_list(categories, (OTHER_LABEL_DEFAULT, archive_name)):
             if problem.index is None:
                 self.problems.add(problem.rule, self.categories_line, _POLICY_FIELDS[problem.field])
                 continue

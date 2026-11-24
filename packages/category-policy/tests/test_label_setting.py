@@ -14,9 +14,17 @@ from category_policy import (
 CATEGORIES = [Category("Aankopen/Marktplaats", "x"), Category("Invoices", "x")]
 
 
-def _rules(name: str, counterpart: str = "Archive", categories: list[Category] | None = None) -> list[str]:
+def _rules(
+    name: str,
+    counterpart: str = "Archive",
+    categories: list[Category] | None = None,
+    own_default: str = "Other",
+) -> list[str]:
     return [
-        p.rule for p in validate_label_setting_name(name, CATEGORIES if categories is None else categories, counterpart)
+        p.rule
+        for p in validate_label_setting_name(
+            name, CATEGORIES if categories is None else categories, counterpart, own_default
+        )
     ]
 
 
@@ -29,7 +37,7 @@ def test_given_a_nested_list_name_when_mapped_then_the_label_is_the_name_without
 def test_given_the_defaults_when_read_then_they_have_no_prefix_and_are_valid():
     assert (OTHER_LABEL_DEFAULT, ARCHIVE_LABEL_DEFAULT) == ("Other", "Archive")
     assert _rules(OTHER_LABEL_DEFAULT, ARCHIVE_LABEL_DEFAULT) == []
-    assert _rules(ARCHIVE_LABEL_DEFAULT, OTHER_LABEL_DEFAULT) == []
+    assert _rules(ARCHIVE_LABEL_DEFAULT, OTHER_LABEL_DEFAULT, own_default=ARCHIVE_LABEL_DEFAULT) == []
 
 
 def test_given_255_and_256_characters_when_validated_then_the_limit_counts_characters_not_bytes():
@@ -81,7 +89,9 @@ def test_given_a_list_category_when_the_name_equals_or_lies_below_it_then_it_is_
 
 
 def test_given_a_refusal_when_returned_then_it_is_one_problem_for_the_setting_field():
-    assert validate_label_setting_name("INBOX", [], "Other") == [Problem("setting_name_system_label", "setting_name")]
+    assert validate_label_setting_name("INBOX", [], "Other", "Archive") == [
+        Problem("setting_name_system_label", "setting_name")
+    ]
 
 
 def test_given_a_lone_surrogate_when_validated_then_it_does_not_raise():
@@ -92,3 +102,14 @@ def test_given_the_package_when_searched_then_the_prefix_and_old_archive_helpers
     for gone in ("LABEL_PREFIX", "validate_archive_label", "validate_archive_name"):
         assert not hasattr(category_policy, gone)
         assert gone not in category_policy.__all__
+
+
+def test_given_the_reserved_names_when_a_setting_is_named_so_then_only_its_own_default_is_allowed():
+    assert _rules("Other", counterpart="Bewaard", own_default="Other") == []
+    assert _rules("Archive", counterpart="Overig", own_default="Archive") == []
+    assert _rules("Archive", counterpart="Bewaard", own_default="Other") == ["setting_name_reserved"]
+    assert _rules("other", counterpart="Overig", own_default="Archive") == ["setting_name_reserved"]
+    assert _rules("ARCHIVE/Old", counterpart="Other", own_default="Other") == ["setting_name_reserved"]
+    assert _rules("Archive/Old", counterpart="Other", own_default="Archive") == ["setting_name_reserved"]
+    assert _rules("Other/Mail", counterpart="Archive", own_default="Other") == ["setting_name_reserved"]
+    assert _rules("INBOX", counterpart="Archive", own_default="Other") == ["setting_name_system_label"]

@@ -1,5 +1,5 @@
 {
- "description": "Contract cases for the category list, version 3 (INT-010, ADR-0060, AC 1, 13, 32, 33, 34). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name, which is the canonical list name without any prefix. 'category' rows validate one category: 'existing' are the names already on the list, 'labels' the Gmail labels that exist (the caller's view) and 'adoptable' the subset of them that belongs to an older category, which a new category of the same name adopts instead of clashing; 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name of N characters (segments of 40 letters); the limit counts Unicode characters, not bytes, slashes included. A description of the form __N__ stands for N letters. 'list' rows validate a whole list; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. 'label_setting' rows validate the name of the Other label or the archive label: 'counterpart' is the current name of the other setting, 'categories' the list names, 'rules' the exact refusal rule ids (at most one); a row with 'repeat' stands for 'fill' repeated that many times instead of 'name'. 'bounds' rows validate one agent setting by 'setting' (wait_minutes 5 to 720, protection_days 1 to 30, retention_days 7 to 90) with a whole number 'value'. Invisible characters and look-alikes use unicode escapes.",
+ "description": "Contract cases for the category list, version 3 (INT-010, ADR-0060, AC 1, 13, 19, 32, 33, 34). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name, which is the canonical list name without any prefix. 'category' rows validate one category: 'existing' are the names already on the list and 'settings' the current names of the \"Other\" label and the archive label, in that order; a label that exists already is never a reason to refuse a name (it is adopted), so no row lists labels. A first segment Other or Archive and a Gmail system label (any case, CATEGORY_* too) are reserved names; a name equal to a setting name is a clash. 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name of N characters (segments of 40 letters); the limit counts Unicode characters, not bytes, slashes included. A description of the form __N__ stands for N letters. 'list' rows validate a whole list with the same 'settings'; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. 'label_setting' rows validate the name of the Other label or the archive label: 'counterpart' is the current name of the other setting, 'own_default' the default name of the setting being checked (Other or Archive; a setting may equal its own default, no other reserved name), 'categories' the list names, 'rules' the exact refusal rule ids (at most one); a row with 'repeat' stands for 'fill' repeated that many times instead of 'name'. 'bounds' rows validate one agent setting by 'setting' (wait_minutes 5 to 720, protection_days 1 to 30, retention_days 7 to 90) with a whole number 'value'. Invisible characters and look-alikes use unicode escapes.",
  "normalise": [
   {
    "id": "plain",
@@ -95,8 +95,10 @@
    "name": "Invoices",
    "description": "Bills and receipts",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -104,8 +106,10 @@
    "name": "Huis/Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -113,8 +117,10 @@
    "name": "Huis/Energie/Gas",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -124,8 +130,10 @@
    "existing": [
     "Huis/Energie"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -135,8 +143,10 @@
    "existing": [
     "Huis"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -146,8 +156,10 @@
    "existing": [
     "Invoices"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -155,8 +167,10 @@
    "name": "Huis / Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -164,8 +178,10 @@
    "name": "Huis\u2215Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -173,8 +189,10 @@
    "name": "Huis\uff0fEnergie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -182,8 +200,10 @@
    "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -191,8 +211,10 @@
    "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_too_long"
    ]
@@ -202,8 +224,10 @@
    "name": "Huis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_too_long"
    ]
@@ -213,8 +237,10 @@
    "name": "__label_len_254__",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -222,8 +248,10 @@
    "name": "__label_len_255__",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -231,8 +259,10 @@
    "name": "__label_len_256__",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_label_too_long"
    ]
@@ -242,8 +272,10 @@
    "name": "",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_empty"
    ]
@@ -253,8 +285,10 @@
    "name": "   ",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_empty"
    ]
@@ -264,8 +298,10 @@
    "name": "/",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -275,8 +311,10 @@
    "name": "/Huis",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -286,8 +324,10 @@
    "name": "Huis/",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -297,8 +337,10 @@
    "name": "Huis//Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -308,8 +350,10 @@
    "name": "Huis/ /Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -319,8 +363,10 @@
    "name": "\u2215Huis",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -330,8 +376,10 @@
    "name": "Huis\uff0f",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -341,8 +389,10 @@
    "name": "Inv\u0007oices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -352,8 +402,10 @@
    "name": "Huis/Inv\u0007oices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -363,8 +415,10 @@
    "name": "Inv..oices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -374,8 +428,10 @@
    "name": "..",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -385,8 +441,10 @@
    "name": "Inv\uff0e\uff0eoices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -396,8 +454,10 @@
    "name": "Inv\noices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -407,8 +467,10 @@
    "name": "Inv\u200boices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -418,8 +480,10 @@
    "name": "Inv\u202eoices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -429,8 +493,10 @@
    "name": "Other",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -440,8 +506,10 @@
    "name": "archive",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -451,8 +519,10 @@
    "name": "ARCHIVE",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -462,8 +532,10 @@
    "name": "  OTHER  ",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -473,8 +545,10 @@
    "name": "\uff2f\uff54\uff48\uff45\uff52",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -484,8 +558,10 @@
    "name": "Archive/Old",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -495,8 +571,10 @@
    "name": "Other/Things",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -506,8 +584,10 @@
    "name": "Huis/Archive",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -515,8 +595,10 @@
    "name": "Other things",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -524,8 +606,10 @@
    "name": "Other//x",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty",
     "name_reserved"
@@ -538,8 +622,10 @@
    "existing": [
     "Invoices"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
@@ -551,8 +637,10 @@
    "existing": [
     "Invoices"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
@@ -564,8 +652,10 @@
    "existing": [
     "Huis/Energie"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
@@ -577,126 +667,325 @@
    "existing": [
     "Huis/Energie"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
   },
   {
-   "id": "label_exists_not_on_list",
+   "id": "label_that_exists_is_adopted_not_refused",
    "name": "Invoices",
    "description": "x",
    "existing": [],
-   "labels": [
-    "Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
-   "adoptable": [],
-   "rules": [
-    "name_label_exists"
-   ]
+   "rules": []
   },
   {
-   "id": "nested_label_exists_not_on_list",
+   "id": "nested_label_that_exists_is_adopted",
    "name": "Huis/Energie",
    "description": "x",
    "existing": [],
-   "labels": [
-    "Huis/Energie"
-   ],
-   "adoptable": [],
-   "rules": [
-    "name_label_exists"
-   ]
-  },
-  {
-   "id": "label_is_an_older_category_is_adopted",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Invoices"
-   ],
-   "adoptable": [
-    "Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
    "rules": []
   },
   {
-   "id": "label_is_an_older_category_other_case",
-   "name": "invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "INVOICES"
-   ],
-   "adoptable": [
-    "Invoices"
-   ],
-   "rules": []
-  },
-  {
-   "id": "label_of_another_older_category_does_not_adopt",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Invoices",
-    "Receipts"
-   ],
-   "adoptable": [
-    "Receipts"
-   ],
-   "rules": [
-    "name_label_exists"
-   ]
-  },
-  {
-   "id": "label_exists_other_case",
-   "name": "invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "INVOICES"
-   ],
-   "adoptable": [],
-   "rules": [
-    "name_label_exists"
-   ]
-  },
-  {
-   "id": "label_for_another_name",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Receipts"
-   ],
-   "adoptable": [],
-   "rules": []
-  },
-  {
-   "id": "duplicate_wins_over_label",
+   "id": "duplicate_still_refused",
    "name": "Invoices",
    "description": "x",
    "existing": [
     "invoices"
    ],
-   "labels": [
-    "Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
-   "adoptable": [],
    "rules": [
     "name_duplicate"
    ]
+  },
+  {
+   "id": "reserved_archive_taxes",
+   "name": "archive/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "reserved_other_upper_case",
+   "name": "OTHER",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_inbox",
+   "name": "Inbox",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_inbox_case2",
+   "name": "INBOX",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_spam",
+   "name": "spam",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_trash",
+   "name": "Trash",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_sent",
+   "name": "SENT",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_draft",
+   "name": "Draft",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_starred",
+   "name": "STARRED",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_unread",
+   "name": "Unread",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_important",
+   "name": "important",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_chat",
+   "name": "CHAT",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_category_personal",
+   "name": "CATEGORY_PERSONAL",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_category_social",
+   "name": "category_social",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_\uff49\uff4e\uff42\uff4f\uff58",
+   "name": "\uff29\uff2e\uff22\uff2f\uff38",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_with_child_is_fine",
+   "name": "INBOX/Old",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "category_without_underscore_is_fine",
+   "name": "Category",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "clash_with_renamed_other",
+   "name": "overig",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Overig",
+    "Archive"
+   ],
+   "rules": [
+    "name_setting_clash"
+   ]
+  },
+  {
+   "id": "clash_with_renamed_archive_nested",
+   "name": "BEWAARD / 2026",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Bewaard/2026"
+   ],
+   "rules": [
+    "name_setting_clash"
+   ]
+  },
+  {
+   "id": "below_a_renamed_setting_is_fine",
+   "name": "Bewaard/Sub",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Bewaard"
+   ],
+   "rules": []
+  },
+  {
+   "id": "renamed_setting_is_not_the_default_name_is_free",
+   "name": "Overig",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Bewaard"
+   ],
+   "rules": []
   },
   {
    "id": "description_empty",
    "name": "Invoices",
    "description": "",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "description_empty"
    ]
@@ -706,8 +995,10 @@
    "name": "Invoices",
    "description": "  \n ",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "description_empty"
    ]
@@ -717,8 +1008,10 @@
    "name": "Invoices",
    "description": "__1500__",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -726,8 +1019,10 @@
    "name": "Invoices",
    "description": "__1501__",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "description_too_long"
    ]
@@ -737,8 +1032,10 @@
    "name": "",
    "description": "",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_empty",
     "description_empty"
@@ -749,8 +1046,10 @@
   {
    "id": "empty_list",
    "categories": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
@@ -761,8 +1060,10 @@
      "description": "x"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
@@ -777,8 +1078,10 @@
      "description": "x"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
@@ -793,8 +1096,10 @@
      "description": "y"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      1,
@@ -814,8 +1119,10 @@
      "description": "x"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      1,
@@ -835,8 +1142,10 @@
      "description": ""
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      1,
@@ -849,52 +1158,58 @@
    ]
   },
   {
-   "id": "label_not_on_list_refused",
+   "id": "label_that_exists_is_adopted",
    "categories": [
     {
      "name": "Invoices",
      "description": "x"
     }
    ],
-   "labels": [
-    "Invoices"
-   ],
-   "adoptable": [],
-   "problems": [
-    [
-     0,
-     "name_label_exists"
-    ]
-   ]
-  },
-  {
-   "id": "label_older_category_adopted",
-   "categories": [
-    {
-     "name": "Invoices",
-     "description": "x"
-    }
-   ],
-   "labels": [
-    "Invoices"
-   ],
-   "adoptable": [
-    "Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
    "problems": []
   },
   {
+   "id": "clash_with_a_setting_flags_its_index",
+   "categories": [
+    {
+     "name": "Invoices",
+     "description": "x"
+    },
+    {
+     "name": "Overig",
+     "description": "x"
+    }
+   ],
+   "settings": [
+    "Overig",
+    "Archive"
+   ],
+   "problems": [
+    [
+     1,
+     "name_setting_clash"
+    ]
+   ]
+  },
+  {
    "id": "hundred_categories",
    "generate": 100,
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
    "id": "hundred_and_one_categories",
    "generate": 101,
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      null,
@@ -927,6 +1242,7 @@
    "id": "default_other",
    "name": "Other",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -937,6 +1253,7 @@
    "id": "default_archive",
    "name": "Archive",
    "counterpart": "Other",
+   "own_default": "Archive",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -947,6 +1264,7 @@
    "id": "nested",
    "name": "Bewaard/2026",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -957,6 +1275,7 @@
    "id": "characters_255",
    "name": "",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -969,6 +1288,7 @@
    "id": "characters_256",
    "name": "",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -983,6 +1303,7 @@
    "id": "multibyte_255_characters",
    "name": "",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -995,6 +1316,7 @@
    "id": "multibyte_256_characters",
    "name": "",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1009,6 +1331,7 @@
    "id": "empty",
    "name": "",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1021,6 +1344,7 @@
    "id": "leading_space",
    "name": " Bewaard",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1033,6 +1357,7 @@
    "id": "trailing_space",
    "name": "Bewaard ",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1045,6 +1370,7 @@
    "id": "space_around_segment",
    "name": "Bewaard / 2026",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1057,6 +1383,7 @@
    "id": "dot_dot",
    "name": "Bew..aard",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1069,6 +1396,7 @@
    "id": "control_character",
    "name": "Bew\u0007aard",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1081,6 +1409,7 @@
    "id": "format_character",
    "name": "Bew\u200baard",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1093,6 +1422,7 @@
    "id": "leading_slash",
    "name": "/Bewaard",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1105,6 +1435,7 @@
    "id": "trailing_slash",
    "name": "Bewaard/",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1117,6 +1448,7 @@
    "id": "double_slash",
    "name": "Bewaard//2024",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1129,6 +1461,7 @@
    "id": "slash_look_alike",
    "name": "Bewaard\u22152024",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1141,6 +1474,7 @@
    "id": "system_inbox",
    "name": "INBOX",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1153,6 +1487,7 @@
    "id": "system_inbox_lower_case",
    "name": "inbox",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1165,6 +1500,7 @@
    "id": "system_spam_mixed_case",
    "name": "SpAm",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1177,6 +1513,7 @@
    "id": "system_trash",
    "name": "TRASH",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1189,6 +1526,7 @@
    "id": "system_category_personal",
    "name": "CATEGORY_PERSONAL",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1201,6 +1539,7 @@
    "id": "system_category_lower_case",
    "name": "category_social",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1213,6 +1552,7 @@
    "id": "system_label_fullwidth",
    "name": "\uff29\uff2e\uff22\uff2f\uff38",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1225,6 +1565,7 @@
    "id": "category_prefix_without_underscore_is_fine",
    "name": "Category",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1235,6 +1576,7 @@
    "id": "system_label_with_child_is_fine",
    "name": "INBOX/Old",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1245,6 +1587,7 @@
    "id": "other_for_the_archive_label",
    "name": "other",
    "counterpart": "Other",
+   "own_default": "Archive",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1257,6 +1600,7 @@
    "id": "archive_for_the_other_label",
    "name": "ARCHIVE",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1269,6 +1613,7 @@
    "id": "equals_a_category",
    "name": "Invoices",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1281,6 +1626,7 @@
    "id": "equals_a_category_other_case",
    "name": "INVOICES",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1293,6 +1639,7 @@
    "id": "equals_a_nested_category_case_only",
    "name": "aankopen/marktplaats",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1305,6 +1652,7 @@
    "id": "below_a_category",
    "name": "Invoices/Old",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1317,6 +1665,7 @@
    "id": "below_a_nested_category",
    "name": "Aankopen/Marktplaats/Oud",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1329,6 +1678,7 @@
    "id": "above_a_category_is_fine",
    "name": "Aankopen",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1339,6 +1689,7 @@
    "id": "category_prefix_text_is_fine",
    "name": "Invoices 2",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [
     "Invoices",
     "Aankopen/Marktplaats"
@@ -1349,12 +1700,87 @@
    "id": "too_long_wins_over_clash",
    "name": "",
    "counterpart": "Archive",
+   "own_default": "Other",
    "categories": [],
    "rules": [
     "setting_name_too_long"
    ],
    "repeat": 256,
    "fill": "a"
+  },
+  {
+   "id": "other_default_with_a_renamed_archive",
+   "name": "Other",
+   "counterpart": "Bewaard",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "archive_default_with_a_renamed_other",
+   "name": "Archive",
+   "counterpart": "Overig",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "archive_for_the_other_label_renamed_archive",
+   "name": "Archive",
+   "counterpart": "Bewaard",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "other_for_the_archive_label_renamed_other",
+   "name": "other",
+   "counterpart": "Overig",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "archive_child_for_the_archive_label",
+   "name": "ARCHIVE/Old",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "other_child_for_the_other_label",
+   "name": "Other/Mail",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
   }
  ],
  "bounds": [
