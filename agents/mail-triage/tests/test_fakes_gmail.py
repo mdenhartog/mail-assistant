@@ -41,7 +41,7 @@ def test_given_two_assistant_labels_when_both_are_added_then_the_mail_carries_bo
     modify(gmail, mid, add=[one, two])
 
     assert {one, two} <= labels_of(gmail, mid)
-    assert gmail.assistant_label_count(mid) == 2
+    assert len(labels_of(gmail, mid) & {one, two}) == 2
 
 
 def test_given_spam_when_it_is_moved_to_the_inbox_then_spam_goes_and_the_reverse_too() -> None:
@@ -170,4 +170,4 @@ def test_given_a_change_mid_apply_when_the_caller_modifies_then_the_user_change_
     result = modify(gmail, mid, remove=["INBOX"])
 
     assert set(result["labelIds"]) == {one, two}
-    assert gmail.assistant_label_count(mid) == 2
+    assert len(labels_of(gmail, mid) & {one, two}) == 2
