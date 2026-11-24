@@ -1,5 +1,5 @@
 {
- "description": "Contract cases for the category list, version 2 (INT-008, AC-1, AC-2, AC-6, AC-42, C-1, C-3, C-6, C-11, C-16). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name. 'category' rows validate one category: 'existing' are the names already on the list, 'labels' the Gmail labels that exist (the caller's view) and 'adoptable' the subset of them that belongs to an older category, which a new category of the same name adopts instead of clashing; 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name whose label (Assistant/ plus the name) has N characters; a description of the form __N__ stands for N letters. 'list' rows validate a whole list; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. Invisible characters and look-alikes use unicode escapes.",
+ "description": "Contract cases for the category list, version 3 (INT-010, ADR-0060, AC 1, 13, 32, 33, 34). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name, which is the canonical list name without any prefix. 'category' rows validate one category: 'existing' are the names already on the list, 'labels' the Gmail labels that exist (the caller's view) and 'adoptable' the subset of them that belongs to an older category, which a new category of the same name adopts instead of clashing; 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name of N characters (segments of 40 letters); the limit counts Unicode characters, not bytes, slashes included. A description of the form __N__ stands for N letters. 'list' rows validate a whole list; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. 'label_setting' rows validate the name of the Other label or the archive label: 'counterpart' is the current name of the other setting, 'categories' the list names, 'rules' the exact refusal rule ids (at most one); a row with 'repeat' stands for 'fill' repeated that many times instead of 'name'. 'bounds' rows validate one agent setting by 'setting' (wait_minutes 5 to 720, protection_days 1 to 30, retention_days 7 to 90) with a whole number 'value'. Invisible characters and look-alikes use unicode escapes.",
  "normalise": [
   {
    "id": "plain",
@@ -61,32 +61,32 @@
   {
    "id": "plain",
    "name": "Invoices",
-   "expected": "Assistant/Invoices"
+   "expected": "Invoices"
   },
   {
    "id": "nested",
    "name": "Huis/Energie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   },
   {
    "id": "padded",
    "name": "  Invoices ",
-   "expected": "Assistant/Invoices"
+   "expected": "Invoices"
   },
   {
    "id": "spaces_around_segments",
    "name": "Huis / Energie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   },
   {
    "id": "division_slash_folds",
    "name": "Huis\u2215Energie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   },
   {
    "id": "fullwidth_slash_folds",
    "name": "Huis\uff0fEnergie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   }
  ],
  "category": [
@@ -209,8 +209,8 @@
    ]
   },
   {
-   "id": "label_224_characters",
-   "name": "__label_len_224__",
+   "id": "label_254_characters",
+   "name": "__label_len_254__",
    "description": "x",
    "existing": [],
    "labels": [],
@@ -218,8 +218,8 @@
    "rules": []
   },
   {
-   "id": "label_225_characters",
-   "name": "__label_len_225__",
+   "id": "label_255_characters",
+   "name": "__label_len_255__",
    "description": "x",
    "existing": [],
    "labels": [],
@@ -227,8 +227,8 @@
    "rules": []
   },
   {
-   "id": "label_226_characters",
-   "name": "__label_len_226__",
+   "id": "label_256_characters",
+   "name": "__label_len_256__",
    "description": "x",
    "existing": [],
    "labels": [],
@@ -589,7 +589,7 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "adoptable": [],
    "rules": [
@@ -602,7 +602,7 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/Huis/Energie"
+    "Huis/Energie"
    ],
    "adoptable": [],
    "rules": [
@@ -615,10 +615,10 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "adoptable": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "rules": []
   },
@@ -628,10 +628,10 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/INVOICES"
+    "INVOICES"
    ],
    "adoptable": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "rules": []
   },
@@ -641,11 +641,11 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/Invoices",
-    "Assistant/Receipts"
+    "Invoices",
+    "Receipts"
    ],
    "adoptable": [
-    "Assistant/Receipts"
+    "Receipts"
    ],
    "rules": [
     "name_label_exists"
@@ -657,7 +657,7 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/INVOICES"
+    "INVOICES"
    ],
    "adoptable": [],
    "rules": [
@@ -670,18 +670,7 @@
    "description": "x",
    "existing": [],
    "labels": [
-    "Assistant/Receipts"
-   ],
-   "adoptable": [],
-   "rules": []
-  },
-  {
-   "id": "label_outside_assistant_is_ignored",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Invoices"
+    "Receipts"
    ],
    "adoptable": [],
    "rules": []
@@ -694,7 +683,7 @@
     "invoices"
    ],
    "labels": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "adoptable": [],
    "rules": [
@@ -868,7 +857,7 @@
     }
    ],
    "labels": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "adoptable": [],
    "problems": [
@@ -887,10 +876,10 @@
     }
    ],
    "labels": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "adoptable": [
-    "Assistant/Invoices"
+    "Invoices"
    ],
    "problems": []
   },
@@ -933,57 +922,656 @@
    ]
   }
  ],
- "archive": [
-  {"id": "default_name", "name": "Assistant/Archive", "categories": ["Invoices"], "rules": []},
-  {"id": "outside_assistant", "name": "Bewaard", "categories": ["Invoices"], "rules": []},
-  {"id": "outside_assistant_nested", "name": "Bewaard/2024", "categories": [], "rules": []},
-  {"id": "label_225_characters", "name": "__len_225__", "categories": [], "rules": []},
-  {"id": "label_226_characters", "name": "__len_226__", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "empty", "name": "", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "leading_space", "name": " Bewaard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "trailing_space", "name": "Bewaard ", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "dot_dot", "name": "Bew..aard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "control_character", "name": "Bew\u0007aard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "format_character", "name": "Bew​aard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "leading_slash", "name": "/Bewaard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "trailing_slash", "name": "Bewaard/", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "empty_segment", "name": "Bewaard//2024", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "slash_look_alike", "name": "Bewaard∕2024", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "system_inbox", "name": "INBOX", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_inbox_lower_case", "name": "inbox", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_spam_mixed_case", "name": "SpAm", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_trash", "name": "TRASH", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_category_label", "name": "CATEGORY_PROMOTIONS", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_category_label_lower_case", "name": "category_social", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_label_fullwidth", "name": "ＩＮＢＯＸ", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "category_prefix_without_underscore_is_fine", "name": "Category", "categories": [], "rules": []},
-  {"id": "system_label_with_child_is_fine", "name": "INBOX/Old", "categories": [], "rules": []},
-  {"id": "inside_assistant", "name": "Assistant/Other", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "inside_assistant_below_archive", "name": "Assistant/Archive/Old", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "inside_assistant_other_case", "name": "assistant/archive", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "inside_assistant_fullwidth", "name": "Ａssistant/Huis", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "assistant_itself", "name": "Assistant", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "assistant_prefix_is_fine", "name": "Assistants", "categories": [], "rules": []},
-  {"id": "equal_to_a_category_label", "name": "Assistant/Huis", "categories": ["Huis"], "rules": ["archive_category_label"]},
-  {"id": "equal_to_a_category_label_other_case", "name": "ASSISTANT/HUIS", "categories": ["Huis"], "rules": ["archive_category_label"]},
-  {"id": "below_a_category_label", "name": "Assistant/Huis/Energie", "categories": ["Huis"], "rules": ["archive_category_label"]},
-  {"id": "below_a_nested_category_label", "name": "Assistant/Huis/Energie/Gas", "categories": ["Huis/Energie"], "rules": ["archive_category_label"]},
-  {"id": "parent_of_a_category_label", "name": "Assistant/Huis", "categories": ["Huis/Energie"], "rules": ["archive_inside_assistant"]},
-  {"id": "sibling_with_same_prefix", "name": "Assistant/Huisje", "categories": ["Huis"], "rules": ["archive_inside_assistant"]}
+ "label_setting": [
+  {
+   "id": "default_other",
+   "name": "Other",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "default_archive",
+   "name": "Archive",
+   "counterpart": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "nested",
+   "name": "Bewaard/2026",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "characters_255",
+   "name": "",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [],
+   "repeat": 255,
+   "fill": "a"
+  },
+  {
+   "id": "characters_256",
+   "name": "",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_too_long"
+   ],
+   "repeat": 256,
+   "fill": "a"
+  },
+  {
+   "id": "multibyte_255_characters",
+   "name": "",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [],
+   "repeat": 255,
+   "fill": "\u00e9"
+  },
+  {
+   "id": "multibyte_256_characters",
+   "name": "",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_too_long"
+   ],
+   "repeat": 256,
+   "fill": "\u00e9"
+  },
+  {
+   "id": "empty",
+   "name": "",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "leading_space",
+   "name": " Bewaard",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "trailing_space",
+   "name": "Bewaard ",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "space_around_segment",
+   "name": "Bewaard / 2026",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "dot_dot",
+   "name": "Bew..aard",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "control_character",
+   "name": "Bew\u0007aard",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "format_character",
+   "name": "Bew\u200baard",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "leading_slash",
+   "name": "/Bewaard",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "trailing_slash",
+   "name": "Bewaard/",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "double_slash",
+   "name": "Bewaard//2024",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "slash_look_alike",
+   "name": "Bewaard\u22152024",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "system_inbox",
+   "name": "INBOX",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_inbox_lower_case",
+   "name": "inbox",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_spam_mixed_case",
+   "name": "SpAm",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_trash",
+   "name": "TRASH",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_category_personal",
+   "name": "CATEGORY_PERSONAL",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_category_lower_case",
+   "name": "category_social",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_label_fullwidth",
+   "name": "\uff29\uff2e\uff22\uff2f\uff38",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "category_prefix_without_underscore_is_fine",
+   "name": "Category",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "system_label_with_child_is_fine",
+   "name": "INBOX/Old",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "other_for_the_archive_label",
+   "name": "other",
+   "counterpart": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "archive_for_the_other_label",
+   "name": "ARCHIVE",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "equals_a_category",
+   "name": "Invoices",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "equals_a_category_other_case",
+   "name": "INVOICES",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "equals_a_nested_category_case_only",
+   "name": "aankopen/marktplaats",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "below_a_category",
+   "name": "Invoices/Old",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "below_a_nested_category",
+   "name": "Aankopen/Marktplaats/Oud",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "above_a_category_is_fine",
+   "name": "Aankopen",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "category_prefix_text_is_fine",
+   "name": "Invoices 2",
+   "counterpart": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "too_long_wins_over_clash",
+   "name": "",
+   "counterpart": "Archive",
+   "categories": [],
+   "rules": [
+    "setting_name_too_long"
+   ],
+   "repeat": 256,
+   "fill": "a"
+  }
+ ],
+ "bounds": [
+  {
+   "id": "wait_minutes_-1",
+   "setting": "wait_minutes",
+   "value": -1,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "wait_minutes_0",
+   "setting": "wait_minutes",
+   "value": 0,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "wait_minutes_4",
+   "setting": "wait_minutes",
+   "value": 4,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "wait_minutes_5",
+   "setting": "wait_minutes",
+   "value": 5,
+   "rules": []
+  },
+  {
+   "id": "wait_minutes_6",
+   "setting": "wait_minutes",
+   "value": 6,
+   "rules": []
+  },
+  {
+   "id": "wait_minutes_720",
+   "setting": "wait_minutes",
+   "value": 720,
+   "rules": []
+  },
+  {
+   "id": "wait_minutes_721",
+   "setting": "wait_minutes",
+   "value": 721,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "protection_days_-1",
+   "setting": "protection_days",
+   "value": -1,
+   "rules": [
+    "protection_days_out_of_range"
+   ]
+  },
+  {
+   "id": "protection_days_0",
+   "setting": "protection_days",
+   "value": 0,
+   "rules": [
+    "protection_days_out_of_range"
+   ]
+  },
+  {
+   "id": "protection_days_1",
+   "setting": "protection_days",
+   "value": 1,
+   "rules": []
+  },
+  {
+   "id": "protection_days_30",
+   "setting": "protection_days",
+   "value": 30,
+   "rules": []
+  },
+  {
+   "id": "protection_days_31",
+   "setting": "protection_days",
+   "value": 31,
+   "rules": [
+    "protection_days_out_of_range"
+   ]
+  },
+  {
+   "id": "retention_days_0",
+   "setting": "retention_days",
+   "value": 0,
+   "rules": [
+    "retention_days_out_of_range"
+   ]
+  },
+  {
+   "id": "retention_days_6",
+   "setting": "retention_days",
+   "value": 6,
+   "rules": [
+    "retention_days_out_of_range"
+   ]
+  },
+  {
+   "id": "retention_days_7",
+   "setting": "retention_days",
+   "value": 7,
+   "rules": []
+  },
+  {
+   "id": "retention_days_90",
+   "setting": "retention_days",
+   "value": 90,
+   "rules": []
+  },
+  {
+   "id": "retention_days_91",
+   "setting": "retention_days",
+   "value": 91,
+   "rules": [
+    "retention_days_out_of_range"
+   ]
+  }
  ],
  "confidence": [
-  {"id": "below_half", "confidence": 0.494, "pct": 49, "threshold": 50, "at_or_above": false},
-  {"id": "half_boundary_rounds_up", "confidence": 0.495, "pct": 50, "threshold": 50, "at_or_above": true},
-  {"id": "exactly_half", "confidence": 0.5, "pct": 50, "threshold": 50, "at_or_above": true},
-  {"id": "below_eighty", "confidence": 0.794, "pct": 79, "threshold": 80, "at_or_above": false},
-  {"id": "eighty_boundary_rounds_up", "confidence": 0.795, "pct": 80, "threshold": 80, "at_or_above": true},
-  {"id": "exactly_eighty", "confidence": 0.8, "pct": 80, "threshold": 80, "at_or_above": true},
-  {"id": "half_boundary_against_eighty", "confidence": 0.495, "pct": 50, "threshold": 80, "at_or_above": false},
-  {"id": "zero", "confidence": 0.0, "pct": 0, "threshold": 50, "at_or_above": false},
-  {"id": "one", "confidence": 1.0, "pct": 100, "threshold": 80, "at_or_above": true},
-  {"id": "smallest_half_up", "confidence": 0.005, "pct": 1, "threshold": 1, "at_or_above": true},
-  {"id": "below_smallest_half_up", "confidence": 0.004, "pct": 0, "threshold": 1, "at_or_above": false},
-  {"id": "float_trap_0_295", "confidence": 0.295, "pct": 30, "threshold": 30, "at_or_above": true},
-  {"id": "float_trap_0_145", "confidence": 0.145, "pct": 15, "threshold": 15, "at_or_above": true}
+  {
+   "id": "below_half",
+   "confidence": 0.494,
+   "pct": 49,
+   "threshold": 50,
+   "at_or_above": false
+  },
+  {
+   "id": "half_boundary_rounds_up",
+   "confidence": 0.495,
+   "pct": 50,
+   "threshold": 50,
+   "at_or_above": true
+  },
+  {
+   "id": "exactly_half",
+   "confidence": 0.5,
+   "pct": 50,
+   "threshold": 50,
+   "at_or_above": true
+  },
+  {
+   "id": "below_eighty",
+   "confidence": 0.794,
+   "pct": 79,
+   "threshold": 80,
+   "at_or_above": false
+  },
+  {
+   "id": "eighty_boundary_rounds_up",
+   "confidence": 0.795,
+   "pct": 80,
+   "threshold": 80,
+   "at_or_above": true
+  },
+  {
+   "id": "exactly_eighty",
+   "confidence": 0.8,
+   "pct": 80,
+   "threshold": 80,
+   "at_or_above": true
+  },
+  {
+   "id": "half_boundary_against_eighty",
+   "confidence": 0.495,
+   "pct": 50,
+   "threshold": 80,
+   "at_or_above": false
+  },
+  {
+   "id": "zero",
+   "confidence": 0.0,
+   "pct": 0,
+   "threshold": 50,
+   "at_or_above": false
+  },
+  {
+   "id": "one",
+   "confidence": 1.0,
+   "pct": 100,
+   "threshold": 80,
+   "at_or_above": true
+  },
+  {
+   "id": "smallest_half_up",
+   "confidence": 0.005,
+   "pct": 1,
+   "threshold": 1,
+   "at_or_above": true
+  },
+  {
+   "id": "below_smallest_half_up",
+   "confidence": 0.004,
+   "pct": 0,
+   "threshold": 1,
+   "at_or_above": false
+  },
+  {
+   "id": "float_trap_0_295",
+   "confidence": 0.295,
+   "pct": 30,
+   "threshold": 30,
+   "at_or_above": true
+  },
+  {
+   "id": "float_trap_0_145",
+   "confidence": 0.145,
+   "pct": 15,
+   "threshold": 15,
+   "at_or_above": true
+  }
  ]
 }

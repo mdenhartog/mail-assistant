@@ -37,9 +37,10 @@ import yaml
 from category_policy.kinds import Kind
 from category_policy.policy import (
     ARCHIVE_LABEL_DEFAULT,
+    OTHER_LABEL_DEFAULT,
     Category,
-    validate_archive_label,
     validate_instructions,
+    validate_label_setting_name,
     validate_list,
 )
 from category_policy.senders import SenderCategory, SenderEntry, validate_entries
@@ -61,7 +62,7 @@ _BOM: Final = "﻿"
 _EXPORT_HEADER: Final = (
     "# Mail categories, schema 1. Edit this file and upload it again; see the template for every field.\n"
 )
-_POLICY_FIELDS: Final = {"instructions": "generalInstructions", "archive_label": "archiveLabel", "list": "categories"}
+_POLICY_FIELDS: Final = {"instructions": "generalInstructions", "setting_name": "archiveLabel", "list": "categories"}
 
 FILE_RULE_TEXT: Final[dict[str, str]] = {
     "file_too_large": "the file is larger than 256 KiB",
@@ -102,10 +103,11 @@ FILE_RULE_TEXT: Final[dict[str, str]] = {
     "description_too_long": "the description is too long",
     "instructions_too_long": "the general instructions are too long",
     "list_too_many": "the list has more categories than allowed",
-    "archive_invalid": "the archive label is not a valid label name",
-    "archive_system_label": "the archive label is a Gmail system label",
-    "archive_inside_assistant": "the archive label may not lie inside Assistant/",
-    "archive_category_label": "the archive label is a category label",
+    "setting_name_invalid": "the archive label is not a valid label name",
+    "setting_name_too_long": "the archive label is too long",
+    "setting_name_system_label": "the archive label is a Gmail system label",
+    "setting_name_reserved": "the archive label is the name of the Other label",
+    "setting_name_category_clash": "the archive label is a category label",
     "sender_invalid": "this is not a valid address or domain",
     "sender_too_many": "the category has more senders than allowed",
     "sender_duplicate": "this sender is listed twice",
@@ -517,7 +519,7 @@ class _Reader:
         self._sender_problems(drafts)
         for _ in validate_instructions(instructions[0]):
             self.problems.add("instructions_too_long", instructions[1], "generalInstructions")
-        for problem in validate_archive_label(archive[0], categories):
+        for problem in validate_label_setting_name(archive[0], categories, OTHER_LABEL_DEFAULT):
             self.problems.add(problem.rule, archive[1], _POLICY_FIELDS[problem.field])
 
     def _list_problems(self, drafts: list[_Draft], categories: list[Category]) -> None:

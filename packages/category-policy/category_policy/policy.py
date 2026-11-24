@@ -13,13 +13,14 @@ from decimal import ROUND_HALF_UP, Decimal
 from category_policy.kinds import Kind
 
 SEGMENT_MAX = 40
-LABEL_MAX = 225
+# Longest label name in Unicode characters (code points) of the stored form, slashes included; bytes do not count.
+LABEL_MAX = 255
 DESCRIPTION_MAX = 1500
 INSTRUCTIONS_MAX = 4000
 MAX_CATEGORIES = 100
-LABEL_PREFIX = "Assistant/"
 SEPARATOR = "/"
-ARCHIVE_LABEL_DEFAULT = "Assistant/Archive"
+OTHER_LABEL_DEFAULT = "Other"
+ARCHIVE_LABEL_DEFAULT = "Archive"
 RESERVED_NAMES = frozenset({"other", "archive"})
 GMAIL_SYSTEM_LABELS = frozenset({"inbox", "spam", "trash", "sent", "draft", "starred", "unread", "important", "chat"})
 GMAIL_SYSTEM_LABEL_PREFIX = "category_"
@@ -38,17 +39,20 @@ RULES = (
     "description_too_long",
     "instructions_too_long",
     "list_too_many",
-    "archive_invalid",
-    "archive_system_label",
-    "archive_inside_assistant",
-    "archive_category_label",
+)
+
+SETTING_NAME_RULES = (
+    "setting_name_invalid",
+    "setting_name_too_long",
+    "setting_name_system_label",
+    "setting_name_reserved",
+    "setting_name_category_clash",
 )
 
 _FORBIDDEN_CATEGORIES = frozenset({"Cc", "Cf"})
 # Look-alikes of "/" that NFKC leaves alone (U+FF0F is folded by NFKC; U+2215 is not). Both fold before the rules run.
 _SLASH_LOOK_ALIKE_CHARS = (chr(0x2215), chr(0xFF0F))  # DIVISION SLASH, FULLWIDTH SOLIDUS
 _SLASH_LOOK_ALIKES = str.maketrans(dict.fromkeys(_SLASH_LOOK_ALIKE_CHARS, SEPARATOR))
-_ASSISTANT_ROOT = LABEL_PREFIX.rstrip(SEPARATOR).casefold()
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +107,7 @@ def normalise_name(raw: str) -> str:
 
 
 def label_for(name: str) -> str:
-    """Return the Gmail label of a category: ``Assistant/<name>`` with the stored form of the name.
+    """Return the Gmail label of a category: the canonical list name, without any prefix (ADR-0060).
 
     Args:
         name: The category name, nested with ``/``.
@@ -111,7 +115,7 @@ def label_for(name: str) -> str:
     Returns:
         The label name.
     """
-    return f"{LABEL_PREFIX}{_canonical(name)}"
+    return _canonical(name)
 
 
 def _name_rules(canonical: str, segments: list[str]) -> list[str]:
@@ -120,7 +124,7 @@ def _name_rules(canonical: str, segments: list[str]) -> list[str]:
         rules.append("name_segment_empty")
     if any(len(segment) > SEGMENT_MAX for segment in segments):
         rules.append("name_segment_too_long")
-    if len(LABEL_PREFIX) + len(canonical) > LABEL_MAX:
+    if len(canonical) > LABEL_MAX:
         rules.append("name_label_too_long")
     if ".." in canonical or any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in canonical):
         rules.append("name_forbidden_char")
@@ -202,62 +206,49 @@ def at_or_above(confidence_percent: int, threshold: int) -> bool:
     return confidence_percent >= threshold
 
 
-def _archive_label_invalid(name: str) -> bool:
-    """Whether the archive label name is malformed: size, characters, spaces, ``..`` or empty segments."""
+def _setting_name_invalid(name: str) -> bool:
+    """Whether a setting name is malformed: empty, padded, ``..``, empty segment, control character or look-alike."""
     return (
         not name
-        or len(name) > LABEL_MAX
-        or name != name.strip()
         or ".." in name
         or any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in name)
         or any(char in name for char in _SLASH_LOOK_ALIKE_CHARS)
-        or not all(name.split(SEPARATOR))
+        or any(segment != segment.strip() or not segment for segment in name.split(SEPARATOR))
     )
 
 
-def validate_archive_label(name: str, categories: Sequence[Category]) -> list[Problem]:
-    """Check the name of the archive label (C-11, ADR-0059, AC-42).
+def validate_label_setting_name(name: str, categories: Sequence[Category], counterpart: str) -> list[Problem]:
+    """Check the name of the "Other" label or of the archive label (ADR-0060, AC 13 and 32).
 
-    A valid name has 1 to 225 characters, no control or format characters, no leading or trailing space, no
-    ``..``, no empty segment and no look-alike of ``/``. It lies outside ``Assistant/`` or is exactly
-    ``Assistant/Archive``, is not a Gmail system label (any letter case) and is never equal to or below the label
-    of a category. Exactly one problem is reported, the most specific one.
+    A valid name has 1 to ``LABEL_MAX`` (255) Unicode characters (code points, not bytes; slashes count), no control
+    or format characters, no ``..``, no look-alike of ``/``, no space around a segment and no empty segment (so no
+    leading, trailing or double slash). It is not a Gmail system label (any letter case; ``CATEGORY_*`` too), not the
+    name of the other setting, and not equal to or below the name of a list category (any letter case). Exactly one
+    problem is reported, the most specific one.
 
     Args:
-        name: The proposed archive label name, as typed (it is not trimmed).
+        name: The proposed name, as typed (it is not trimmed).
         categories: The categories of the list.
+        counterpart: The current name of the other setting ("Archive" when checking "Other" and the reverse), so
+            the two cannot be the same label.
 
     Returns:
-        The problems, all with field ``archive_label``; empty when the name is valid.
+        The problems, all with field ``setting_name``; empty when the name is valid.
     """
-    if _archive_label_invalid(name):
-        return [Problem("archive_invalid", "archive_label")]
+    if _setting_name_invalid(name):
+        return [Problem("setting_name_invalid", "setting_name")]
+    if len(name) > LABEL_MAX:
+        return [Problem("setting_name_too_long", "setting_name")]
     key = normalise_name(name)
     if key in GMAIL_SYSTEM_LABELS or key.startswith(GMAIL_SYSTEM_LABEL_PREFIX):
-        return [Problem("archive_system_label", "archive_label")]
+        return [Problem("setting_name_system_label", "setting_name")]
+    if key == normalise_name(counterpart):
+        return [Problem("setting_name_reserved", "setting_name")]
     for category in categories:
         category_key = normalise_name(label_for(category.name))
         if key == category_key or key.startswith(f"{category_key}{SEPARATOR}"):
-            return [Problem("archive_category_label", "archive_label")]
-    inside = key == _ASSISTANT_ROOT or key.startswith(f"{_ASSISTANT_ROOT}{SEPARATOR}")
-    if inside and name != ARCHIVE_LABEL_DEFAULT:
-        return [Problem("archive_inside_assistant", "archive_label")]
+            return [Problem("setting_name_category_clash", "setting_name")]
     return []
-
-
-def validate_archive_name(name: str) -> list[Problem]:
-    """Check the name of the archive label on its own, for callers that have no categories at hand.
-
-    The same rules as :func:`validate_archive_label`, without the check against the category labels; it is that
-    function with an empty list, so there is one set of rules (ADR-0059).
-
-    Args:
-        name: The proposed archive label name, as typed (it is not trimmed).
-
-    Returns:
-        The problems, all with field ``archive_label``; empty when the name is valid.
-    """
-    return validate_archive_label(name, ())
 
 
 def validate_category(
@@ -274,8 +265,8 @@ def validate_category(
         description: The proposed description.
         existing: Names of the other categories on the list (compared after normalisation).
         labels: The Gmail labels that exist, as the caller knows them.
-        adoptable: The subset of ``labels`` that belongs to an older category (an ``Assistant/`` label that is not
-            on the stored list and whose first segment is not reserved). A new category of that name adopts the
+        adoptable: The subset of ``labels`` that belongs to an older category (a label that is not on the
+            stored list and whose first segment is not reserved). A new category of that name adopts the
             label and its mail instead of clashing. Compared after the same normalisation as names.
 
     Returns:
