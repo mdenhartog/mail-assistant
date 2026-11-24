@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 
     from app.usecases.policy_notice import PolicySource
 
-LABEL_PREFIX = "Assistant/"
 UNSURE_LISTED = 10
 SENDER_CHARS = 60
 SUBJECT_CHARS = 80
@@ -88,19 +87,15 @@ def _safe(value: str, cap: int) -> str:
     return html.escape(" ".join(value[:cap].split()), quote=False)
 
 
-def _name(label: str) -> str:
-    return label.removeprefix(LABEL_PREFIX)
-
-
 def _line(mail: FiledMail, *, with_label: bool) -> str:
     who, what = _safe(mail.sender, SENDER_CHARS), _safe(mail.subject, SUBJECT_CHARS)
-    return f"• {who}: {what} ({_safe(_name(mail.label), 40)})" if with_label else f"• {who}: {what}"
+    return f"• {who}: {what} ({_safe(mail.label, 40)})" if with_label else f"• {who}: {what}"
 
 
 def _text(mails: list[FiledMail], security: list[SecurityMail], listed: int) -> str:
     lines: list[str] = []
     if mails:
-        counts = Counter(_name(mail.label) for mail in mails).most_common()
+        counts = Counter(mail.label for mail in mails).most_common()
         lines += [
             f"<b>Today I filed {len(mails)} mails</b>",
             *(f"• {_safe(name, 40)}: {count}" for name, count in counts),
