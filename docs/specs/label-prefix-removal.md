@@ -40,7 +40,7 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 2. The mail that sat on `Assistant/...` labels is on the renamed labels afterwards; nothing is lost or moved.
 3. The agent adds, removes and renames labels only for the list, "Other" and the archive label; it deletes only an empty label, never a Gmail system label.
 4. An empty label that is not in the list is removed by the agent after the waiting time, and only then.
-5. The user sets the name of "Other" and of the archive label on the Categories page.
+5. The user sets the name of "Other" and of the archive label on the Categories page, and the waiting time, the protection period and the retention on the Settings page, in a tile of their own ("Label cleanup").
 
 ## Non-goals
 
@@ -71,7 +71,7 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 | D8 | A list name that equals an existing label (with or without mail) is **adopted**: the label keeps its name and its mail, and the agent uses it from then on. The same holds in the rename plan: when the new name is an existing label, the mail of the old label is **merged** onto it (idempotent: add the existing label, remove the old one; running it twice changes nothing). Replaces the "stop on a clash" of P2. |
 | D9 | The old `Assistant/` labels of categories that are no longer in the list are part of the rename preview, with a skip per label. After the rename they are the user's own labels outside the list. |
 | D10 | The user hears about deleted labels in **one Telegram message per day** with counts only; the names are on the Categories page. |
-| D11 | The numbers of this feature are settings the user can change in the web UI, each with a default, a visible range and an inline error: the waiting time before a delete (default 12 hours, 5 minutes to 12 hours), the protection after a label leaves the list (default 7 days, 1 to 30 days), how long "recently deleted" and the rename backup are kept (default 30 days, 7 to 90 days), and the names of "Other" and the archive label. The safety gap of 3 cycles between two empty checks stays a constant in code. |
+| D11 | The numbers of this feature are settings the user can change in the web UI (the three numbers in an extra tile "Label cleanup" on the Settings page, next to the existing settings; the two names on the Categories page), each with a default, a visible range and an inline error: the waiting time before a delete (default 12 hours, 5 minutes to 12 hours), the protection after a label leaves the list (default 7 days, 1 to 30 days), how long "recently deleted" and the rename backup are kept (default 30 days, 7 to 90 days), and the names of "Other" and the archive label. The safety gap of 3 cycles between two empty checks stays a constant in code. |
 
 ## Decisions proposed here (to be confirmed by the user)
 
@@ -96,7 +96,7 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 | R5 | The plan hash covers each label's (id, old name, new name). At run time each id is read again and an entry whose name changed by hand is skipped and reported. The user can skip a label in the preview and restore the old names from the backup (by id). The backup is deleted after 30 days. | security M2, QA 5 |
 | R6 | A label that left the list less than the protection period (default 7 days, a setting) ago is not deleted, so a chain "adopt, drain, delete" cannot erase a label of the user in minutes. (This is a proposal; D8 already lets the user adopt without a confirmation.) | security H1 |
 | R7 | The page shows "recently deleted" (label name, 30 days). The audit keeps counts and a hash of the id; no log, notice or error holds a label name. Exceptions carry codes only; Gmail errors are logged as status and reason. | security M3, L1 |
-| R8 | The waiting time, the protection period and the retention are agent settings in the `settings` schema, not list content (the placement guide), changed on the Categories page (D11), with their bounds checked in code and in the database. | architect 6 |
+| R8 | The waiting time, the protection period and the retention are agent settings in the `settings` schema, not list content (the placement guide), changed in the "Label cleanup" tile on the Settings page (D11), with their bounds checked in code and in the database. | architect 6 |
 | R9 | One writer: a lease so that two agent cycles never delete the same label twice. The final re-check and the delete call are adjacent. | security H3, QA 2 |
 | R10 | The Categories page shows a first-run empty state ("load your YAML first; the list is no longer read from Gmail"), the preview works at 375 px as cards, the wait setting is an hours-and-minutes field with its range and an inline error, and the notice mentions that Gmail apps may show old names for a while. | QA 5 |
 
