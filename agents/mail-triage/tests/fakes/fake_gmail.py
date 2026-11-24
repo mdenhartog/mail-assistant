@@ -8,9 +8,14 @@ It speaks the same resource chain as ``googleapiclient`` (``users().labels().lis
 - "Archive" is a user label named ``Archive``; a mail with no ``INBOX`` label is out of the inbox.
 - Label names are unique ignoring case (409 "Label name exists or conflicts").
 - A deleted mail answers 404; an unknown label id in a change answers 400; deleting a label removes it from mails.
+- A label read has ``type`` (``user`` or ``system``), ``messagesTotal`` and ``threadsTotal``. Like the counters of
+  Gmail, they leave out mail in spam and trash; ``messages().list`` leaves those out too unless ``includeSpamTrash``.
+- ``labels().delete`` answers 404 for an unknown id and 400 for a system label. Nested names are plain names.
+- ``users().settings().filters().list`` answers the filters seeded with ``add_filter`` (``{}`` without any).
+- A query ``q`` is not modelled: every mail matches it.
 
 Fault hooks fire once per call (or ``times`` calls): see ``fail_after_next_change``, ``fail_next``,
-``race_on_create`` and ``change_before_next_modify``.
+``race_on_create``, ``change_before_next_modify`` and ``inject_mail_before_next``.
 """
 
 from __future__ import annotations
@@ -24,7 +29,7 @@ from googleapiclient.errors import HttpError
 
 SYSTEM_LABELS = ("INBOX", "SPAM", "TRASH", "UNREAD", "SENT")
 _EXCLUSIVE = ("INBOX", "SPAM", "TRASH")
-ASSISTANT_PREFIX = "Assistant/"
+_HIDDEN = frozenset({"SPAM", "TRASH"})  # mail the counters and an ordinary list leave out
 
 
 def http_error(status: int, message: str, reason: str = "") -> HttpError:
@@ -39,6 +44,7 @@ class _Mail:
     labels: set[str]
     headers: dict[str, str]
     text: str
+    thread: str
 
 
 @dataclass
@@ -48,6 +54,8 @@ class _Faults:
     racing_creates: set[str] = field(default_factory=set)
     refused_names: dict[str, int] = field(default_factory=dict)
     before_modify: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
+    before_call: dict[str, list[list[Any]]] = field(default_factory=dict)  # name -> [skip, hook] pairs
+    failing: dict[str, list[int]] = field(default_factory=dict)  # name -> statuses for the next calls
 
 
 class _Request:
@@ -63,6 +71,8 @@ class FakeGmail:
 
     def __init__(self) -> None:
         self.label_table: dict[str, str] = {name: name for name in SYSTEM_LABELS}  # id -> name
+        self.system_ids: set[str] = set(SYSTEM_LABELS)
+        self.filter_table: list[dict[str, Any]] = []
         self.mail_table: dict[str, _Mail] = {}
         self.faults = _Faults()
         self._label_seq = 0
@@ -79,6 +89,18 @@ class FakeGmail:
         self.label_table[label_id] = name
         return label_id
 
+    def add_system_label(self, label_id: str) -> str:
+        """Seed a system label such as ``CATEGORY_PERSONAL`` (its id is its name) and return the id."""
+        self.label_table[label_id] = label_id
+        self.system_ids.add(label_id)
+        return label_id
+
+    def add_filter(self, add_label_ids: list[str]) -> None:
+        """The user has a Gmail filter that adds these labels."""
+        number = len(self.filter_table) + 1
+        action = {"addLabelIds": list(add_label_ids)}
+        self.filter_table.append({"id": f"filter_{number}", "criteria": {"from": "x@example.test"}, "action": action})
+
     def add_mail(  # noqa: PLR0913
         self,
         labels: tuple[str, ...] = ("INBOX",),
@@ -88,6 +110,7 @@ class FakeGmail:
         text: str = "test-body",
         auth_results: str | None = None,
         mid: str | None = None,
+        thread: str | None = None,
     ) -> str:
         """Add a mail and return its id. ``auth_results`` becomes the ``Authentication-Results`` header."""
         if mid is None:
@@ -96,7 +119,7 @@ class FakeGmail:
         headers = {"From": sender, "Subject": subject, "Message-ID": f"<{mid}@example.test>"}
         if auth_results is not None:
             headers["Authentication-Results"] = auth_results
-        self.mail_table[mid] = _Mail(mid, set(labels), headers, text)
+        self.mail_table[mid] = _Mail(mid, set(labels), headers, text, thread or f"t-{mid}")
         return mid
 
     def delete_mail(self, mid: str) -> None:
@@ -117,10 +140,6 @@ class FakeGmail:
         """Id of the label ``name`` (exact match)."""
         return next(i for i, n in self.label_table.items() if n == name)
 
-    def assistant_label_count(self, mid: str) -> int:
-        """How many ``Assistant/`` labels the mail carries (AC-52)."""
-        return sum(1 for i in self.mail_table[mid].labels if self.label_table[i].startswith(ASSISTANT_PREFIX))
-
     # --- fault hooks --------------------------------------------------------------------------------------------
 
     def fail_after_next_change(self) -> None:
@@ -139,6 +158,17 @@ class FakeGmail:
         """Gmail refuses ``name`` for ``labels().create`` and for a rename to it (400 by default)."""
         self.faults.refused_names[name] = status
 
+    def inject_mail_before_next(self, call: str, labels: tuple[str, ...], skip: int = 0) -> None:
+        """A mail with ``labels`` arrives just before the next ``call`` (such as ``labels.delete``) runs.
+
+        ``skip`` lets that many calls of that name pass first (``skip=1``: the second one).
+        """
+        self.faults.before_call.setdefault(call, []).append([skip, lambda: self.add_mail(labels=labels)])
+
+    def fail_call(self, call: str, status: int, times: int = 1) -> None:
+        """The next ``times`` calls named ``call`` (such as ``labels.get``) fail with HTTP ``status``."""
+        self.faults.failing.setdefault(call, []).extend([status] * times)
+
     def check_name_allowed(self, name: str) -> None:
         status = self.faults.refused_names.get(name)
         if status is not None:
@@ -155,6 +185,10 @@ class FakeGmail:
     def users(self) -> FakeGmail:
         """``service.users()``."""
         return self
+
+    def settings(self) -> _Settings:
+        """``users().settings()``."""
+        return _Settings(self)
 
     def getProfile(self, **kw: Any) -> _Request:  # noqa: N802
         """``users().getProfile``: a fixed history position."""
@@ -173,36 +207,29 @@ class FakeGmail:
     def request(self, name: str, action: Any) -> _Request:
         def run() -> Any:
             self.calls.append(name)
-            if self.faults.transient:
-                status = self.faults.transient.pop(0)
-                raise http_error(status, "injected fault", "rateLimitExceeded" if status == 429 else "backendError")
+            waiting = self.faults.before_call.pop(name, [])
+            for entry in waiting:
+                if entry[0] == 0:
+                    entry[1]()
+                else:
+                    entry[0] -= 1
+                    self.faults.before_call.setdefault(name, []).append(entry)
+            named = self.faults.failing.get(name)
+            if named or self.faults.transient:
+                status = named.pop(0) if named else self.faults.transient.pop(0)
+                reasons = {429: "rateLimitExceeded", 403: "forbidden"}
+                raise http_error(status, "injected fault", reasons.get(status, "backendError"))
             return action()
 
         return _Request(run)
+
+    def kind(self, label_id: str) -> str:
+        return "system" if label_id in self.system_ids else "user"
 
     def check_name_free(self, name: str, except_id: str | None = None) -> None:
         taken = {n.lower() for i, n in self.label_table.items() if i != except_id}
         if name.lower() in taken:
             raise http_error(409, "Label name exists or conflicts", "labelNameExists")
-
-    def matches_query(self, query: str, mail: _Mail) -> bool:
-        """The plan build's search, ``(in:inbox OR label:assistant) -in:sent`` (spam and trash are never searched).
-
-        Any other query is not modelled and matches everything, as the double always did.
-        """
-        exclude_sent = query.endswith(" -in:sent")
-        core = query.removesuffix(" -in:sent").removeprefix("(").removesuffix(")") if exclude_sent else query
-        terms = [term.strip() for term in core.split(" OR ")]
-        if not set(terms) <= {"in:inbox", "label:assistant"}:
-            return True
-        if {"SPAM", "TRASH"} & mail.labels or (exclude_sent and "SENT" in mail.labels):
-            return False
-        names = {self.label_table[i] for i in mail.labels}
-        tests = {
-            "in:inbox": "INBOX" in mail.labels,
-            "label:assistant": any(n.startswith(ASSISTANT_PREFIX) for n in names),
-        }
-        return any(tests[term] for term in terms)
 
     def get_mail(self, mid: str) -> _Mail:
         try:
@@ -223,7 +250,7 @@ class FakeGmail:
     def payload_of(self, mail: _Mail) -> dict[str, Any]:
         return {
             "id": mail.mid,
-            "threadId": f"t-{mail.mid}",
+            "threadId": mail.thread,
             "labelIds": sorted(mail.labels),
             "payload": {
                 "mimeType": "text/plain",
@@ -245,7 +272,10 @@ class _Labels:
 
     def list(self, **kw: Any) -> _Request:
         g = self._g
-        return g.request("labels.list", lambda: {"labels": [{"id": i, "name": n} for i, n in g.label_table.items()]})
+        return g.request(
+            "labels.list",
+            lambda: {"labels": [{"id": i, "name": n, "type": g.kind(i)} for i, n in g.label_table.items()]},
+        )
 
     def get(self, *, id: str, **kw: Any) -> _Request:  # noqa: A002
         g = self._g
@@ -253,8 +283,14 @@ class _Labels:
         def action() -> dict[str, Any]:
             if id not in g.label_table:
                 raise http_error(404, "Requested entity was not found.", "notFound")
-            total = sum(1 for m in g.mail_table.values() if id in m.labels)
-            return {"id": id, "name": g.label_table[id], "messagesTotal": total}
+            counted = [m for m in g.mail_table.values() if id in m.labels and not _HIDDEN & m.labels]
+            return {
+                "id": id,
+                "name": g.label_table[id],
+                "type": g.kind(id),
+                "messagesTotal": len(counted),
+                "threadsTotal": len({m.thread for m in counted}),
+            }
 
         return g.request("labels.get", action)
 
@@ -271,6 +307,19 @@ class _Labels:
             return {"id": g.add_label(name), "name": name}
 
         return g.request("labels.create", action)
+
+    def delete(self, *, id: str, **kw: Any) -> _Request:  # noqa: A002
+        g = self._g
+
+        def action() -> dict[str, Any]:
+            if id not in g.label_table:
+                raise http_error(404, "Requested entity was not found.", "notFound")
+            if id in g.system_ids:
+                raise http_error(400, "Invalid label", "invalidArgument")
+            g.delete_label(id)
+            return {}
+
+        return g.request("labels.delete", action)
 
     def patch(self, *, id: str, body: dict[str, Any], **kw: Any) -> _Request:  # noqa: A002
         g = self._g
@@ -297,10 +346,11 @@ class _Messages:
         def action() -> dict[str, Any]:
             wanted = set(kw.get("labelIds", []))
             query = kw.get("q")
+            hidden = frozenset() if kw.get("includeSpamTrash") else _HIDDEN - wanted
             found = [
-                {"id": m.mid, "threadId": f"t-{m.mid}"}
+                {"id": m.mid, "threadId": m.thread}
                 for m in reversed(g.mail_table.values())
-                if wanted <= m.labels and (query is None or g.matches_query(str(query), m))
+                if wanted <= m.labels and not hidden & m.labels
             ]
             size, start = kw.get("maxResults"), int(kw.get("pageToken", 0))
             page = found[start : start + size] if size else found
@@ -329,6 +379,23 @@ class _Messages:
             if g.faults.after_change:
                 g.faults.after_change -= 1
                 raise ConnectionResetError("injected: the change is made, the answer is lost")
-            return {"id": mail.mid, "threadId": f"t-{mail.mid}", "labelIds": sorted(mail.labels)}
+            return {"id": mail.mid, "threadId": mail.thread, "labelIds": sorted(mail.labels)}
 
         return g.request("messages.modify", action)
+
+
+class _Settings:
+    def __init__(self, gmail: FakeGmail) -> None:
+        self._g = gmail
+
+    def filters(self) -> _Filters:
+        return _Filters(self._g)
+
+
+class _Filters:
+    def __init__(self, gmail: FakeGmail) -> None:
+        self._g = gmail
+
+    def list(self, **kw: Any) -> _Request:
+        g = self._g
+        return g.request("settings.filters.list", lambda: {"filter": list(g.filter_table)} if g.filter_table else {})

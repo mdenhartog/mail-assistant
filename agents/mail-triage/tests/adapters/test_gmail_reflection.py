@@ -1,8 +1,8 @@
 """U-label-prefix-removal-04, criterion 6 (AC 11, ADR-0060): the Gmail methods the agent may call, by reflection.
 
 The allow-list lives in this test on purpose: a new Gmail call in an adapter fails here until a person changes the
-list, with the ADR in hand. Exactly one delete is reserved, ``labels.delete`` by id; unit 07 implements it. There is
-no trash, no delete of mail and no send in the label and mail adapters.
+list, with the ADR in hand. Exactly one delete is allowed, ``labels.delete`` by id, in ``gmail_label_delete``
+(unit 07). There is no trash, no delete of mail and no send in the label and mail adapters.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from app.adapters import gmail_read
+from app.adapters.gmail_label_delete import GmailLabelDelete
 from app.adapters.gmail_resort import GmailResort
 from app.core.managed import ManagedLabel, ManagedSet, Role
 from tests.fakes.fake_gmail import FakeGmail
@@ -26,10 +27,11 @@ ALLOWED_CALLS = {
     "messages.list",
     "messages.get",
     "messages.modify",
+    "settings.filters",  # users.settings.filters.list, read only: the filters that add a label (unit 07)
     "history.list",
     "getProfile",
 }
-RESERVED_DELETE = "labels.delete"  # by id, one place only; unit 07 adds the use case and its adapter method
+RESERVED_DELETE = "labels.delete"  # by id, one place only: GmailLabelDelete.delete (unit 07)
 ALLOWED_METHODS = {
     "list_labels": "list",
     "list_mail": "list",
@@ -42,11 +44,18 @@ ALLOWED_METHODS = {
     "rename_label": "rename label by id",
     "set_managed": "replace the managed set of the run",
 }
+# The public surface of the delete adapter (unit 07): three reads and the one delete by id.
+DELETE_METHODS = {
+    "read_label": "type, counts and children",
+    "labels_in_filters": "the label ids that Gmail filters add",
+    "has_mail_including_trash": "one mail on the label, spam and trash included",
+    "delete": "labels.delete by id after the checks",
+}
 ADAPTERS = Path(inspect.getsourcefile(gmail_read) or "").parent
 # gmail_apply is read as text: importing it needs the re-sort use case, which unit 18 repairs.
 SOURCES = {
     name: (ADAPTERS / f"{name}.py").read_text(encoding="utf-8")
-    for name in ("gmail_read", "gmail_resort", "gmail_apply")
+    for name in ("gmail_read", "gmail_resort", "gmail_apply", "gmail_label_delete")
 }
 CHAIN = re.compile(r"users\(\)\.(?:(\w+)\(\)\.)?(\w+)\(")
 
@@ -100,3 +109,25 @@ def test_given_the_adapter_when_used_then_the_gmail_service_only_sees_allowed_ca
     adapter.rename_label(bills, "Invoices")
 
     assert set(gmail.calls) <= ALLOWED_CALLS
+
+
+def test_given_the_delete_adapter_when_its_public_operations_are_listed_then_they_equal_the_allow_list() -> None:
+    public = {name for name, _ in inspect.getmembers(GmailLabelDelete, callable) if not name.startswith("_")}
+
+    assert public == set(DELETE_METHODS)
+
+
+def test_given_the_sources_when_scanned_then_labels_delete_is_called_in_the_delete_adapter_only() -> None:
+    owners = [name for name, source in SOURCES.items() if RESERVED_DELETE in called_in(source)]
+
+    assert owners == ["gmail_label_delete"]
+
+
+def test_given_the_delete_adapter_when_it_runs_then_the_gmail_service_only_sees_allowed_calls() -> None:
+    gmail = FakeGmail()
+    bills = gmail.add_label("Bills")
+
+    GmailLabelDelete(gmail, sleep=lambda _seconds: None).delete(bills)
+
+    assert {call for call in gmail.calls if "delete" in call} == {RESERVED_DELETE}
+    assert set(gmail.calls) <= {"labels.list", "labels.get", "messages.list", "settings.filters.list", RESERVED_DELETE}
