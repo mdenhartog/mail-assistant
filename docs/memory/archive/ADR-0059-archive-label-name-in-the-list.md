@@ -1,7 +1,8 @@
 ---
 id: ADR-0059
 title: "The archive label name is part of the list; the agent adopts, creates or renames it"
-status: accepted
+status: superseded
+superseded_by: ADR-0060
 area: product
 tags: [label-structure, mail-triage, gmail, configuration]
 date: 2026-11-21

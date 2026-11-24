@@ -153,7 +153,9 @@ PostgreSQL holds everything. The agent's Alembic chain is the only migrator.
 | [ADR-0056](../memory/decisions/ADR-0056-resort-on-request-threshold-and-two-plans.md) | Sort again on request, threshold and two plans (R2) |
 | [ADR-0057](../memory/decisions/ADR-0057-always-notify-alert.md) | The always-notify alert |
 | [ADR-0058](../memory/decisions/ADR-0058-yaml-upload-input-boundary.md) | YAML upload as an input boundary |
-| [ADR-0059](../memory/decisions/ADR-0059-archive-label-name-in-the-list.md) | Archive label name in the list (R2) |
+| [ADR-0059](../memory/archive/ADR-0059-archive-label-name-in-the-list.md) | Archive label name in the list (R2; superseded by ADR-0060) |
+| [ADR-0060](../memory/decisions/ADR-0060-list-is-the-label-boundary.md) | The category list is the label boundary; delayed delete of empty labels |
+| [ADR-0061](../memory/decisions/ADR-0061-one-time-label-rename-plan.md) | One-time label rename plan and its agent-api seam |
 
 ## Components
 

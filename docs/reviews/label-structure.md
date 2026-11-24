@@ -202,7 +202,7 @@ The design (ADR-0056, ADR-0059) fixed the components; no dependency changed. The
 - The agent: two plans, tips and the archive label sync (ADR-0059: the environment setting `ARCHIVE_LABEL` is gone, the name lives in `list_settings`).
 - The api: the sort-again request and `archiveLabel`; it still never approves system items.
 
-ADRs: [ADR-0056](../memory/decisions/ADR-0056-resort-on-request-threshold-and-two-plans.md) (re-sort on request, two plans, system approval; supersedes decisions 1 to 4 of ADR-0046) and [ADR-0059](../memory/decisions/ADR-0059-archive-label-name-in-the-list.md) (archive label name in the list; supersedes ADR-0052).
+ADRs: [ADR-0056](../memory/decisions/ADR-0056-resort-on-request-threshold-and-two-plans.md) (re-sort on request, two plans, system approval; supersedes decisions 1 to 4 of ADR-0046) and [ADR-0059](../memory/archive/ADR-0059-archive-label-name-in-the-list.md) (archive label name in the list; supersedes ADR-0052).
 
 ## R2 approvals and deploy
 
