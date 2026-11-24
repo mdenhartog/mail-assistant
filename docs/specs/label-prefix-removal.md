@@ -1,9 +1,10 @@
 ---
 feature: label-prefix-removal
 intent: INT-010
-status: draft
-revision: 1
+status: approved
+revision: 2 (decisions D1 to D7 and P1 to P7 approved by the user, 2026-11-24)
 date: 2026-11-24
+approved: 2026-11-24 (the user, phase 1 gate)
 approver: the user
 depends_on: label-structure, mail-categories, mail-triage, web-settings
 ---
