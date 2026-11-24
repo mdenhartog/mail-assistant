@@ -1,10 +1,10 @@
 ---
 feature: label-prefix-removal
 intent: INT-010
-status: approved
-revision: 2 (decisions D1 to D7 and P1 to P7 approved by the user, 2026-11-24)
+status: draft
+revision: 3 (round table of phase 2 added, 2026-11-24; D8 to D10 decided by the user; R1 to R10 await the user)
 date: 2026-11-24
-approved: 2026-11-24 (the user, phase 1 gate)
+approved: 2026-11-24 (revision 2, the user, phase 1 gate; revision 3 awaits approval)
 approver: the user
 depends_on: label-structure, mail-categories, mail-triage, web-settings
 ---
@@ -68,18 +68,36 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 | D5 | "Other" and the archive label have default names (`Other`, `Archive`) without `Assistant/`, always used as the base; the user can change them. |
 | D6 | The agent may delete every empty label that is not in the list and is not a Gmail system label, also a label the user made by hand. |
 | D7 | A delete always waits: a label must stay empty for a waiting time the user sets, from a minimum up to 12 hours, before it is deleted. |
+| D8 | A list name that equals an existing label (with or without mail) is **adopted**: the label keeps its name and its mail, and the agent uses it from then on. The same holds in the rename plan: when the new name is an existing label, the mail of the old label is **merged** onto it (idempotent: add the existing label, remove the old one; running it twice changes nothing). Replaces the "stop on a clash" of P2. |
+| D9 | The old `Assistant/` labels of categories that are no longer in the list are part of the rename preview, with a skip per label. After the rename they are the user's own labels outside the list. |
+| D10 | The user hears about deleted labels in **one Telegram message per day** with counts only; the names are on the Categories page. |
 
 ## Decisions proposed here (to be confirmed by the user)
 
 | # | Proposal | Why |
 |---|---|---|
 | P1 | The rename runs once, as a prepared plan: a preview (old name, new name, mails on it), a backup of the label table, and a Telegram notice when it is done. Nothing is renamed before the user presses the button on the Categories page. | A rename touches the real mailbox; the user sees what will change. |
-| P2 | On a name clash (the new name is also a label the user made, with or without mail) the rename of that label **stops** (an empty clashing label is not deleted to make room; the normal waiting time rules apply), the rest continues, and the user decides on the page: keep both under a different list name, or merge. The agent never merges by itself. | Anti-goal 1. |
+| P2 | (replaced by D8) A name clash during the rename is a merge, never a stop. The merge is a step of the rename plan that moves mail between two labels by id through the narrow adapter (add the target, remove the source); it is shown in the preview as "merge N mails into an existing label". | D8. |
 | P3 | A label is deleted only when (a) it is not a Gmail system label, (b) it is in no current list or setting, (c) Gmail reports `messagesTotal = 0` and `threadsTotal = 0`, (d) it has no child label, and (e) it has been seen empty in every check for the whole waiting time, checked again just before the delete. A parent whose children are empty goes after them, one level per cycle. | Deleting a parent in Gmail would turn its children into top-level labels; the double check and the waiting time make a late mail or a re-sort safe. |
 | P7 | The waiting time is a list-level setting (like the archive name), default 12 hours, minimum 5 minutes, maximum 12 hours, versioned and audited. | D7: it always waits; the user sets it. |
 | P4 | The first list is no longer seeded from Gmail labels: it comes from the uploaded YAML. A mailbox without a list does nothing, as before version 1 exists. | Without the prefix, managed labels cannot be told from the user's own. |
 | P5 | The name of "Other" is a list-level field next to the archive label (ADR-0059), versioned and audited like the list. | Same mechanism, no new place. |
 | P6 | Matching by name keeps working until the label id is stored: a hand-renamed label is found by id afterwards. The label id is stored per category (the known limit "a hand-renamed archive label is not found by id" is closed for all labels). | The id is the stable link once the prefix no longer marks ownership. |
+
+## Round table result (phase 2): safeguards proposed for the user's approval
+
+| # | Safeguard | From |
+|---|---|---|
+| R1 | Labels that a Gmail filter puts mail into (`addLabelIds` of `users.settings.filters`) are never deleted. | security-architect H2 |
+| R2 | "Empty" means: the label is of Gmail `type = user`; `messagesTotal` and `threadsTotal` are 0; and a second check `messages.list(labelIds=[id], includeSpamTrash=true, maxResults=1)` returns nothing. A label whose only mail is in trash or spam is **not** empty. Any error or unclear answer counts as not empty. | security-architect H3, QA 4 |
+| R3 | The delete timer is stored per label id in the agent's database and survives a restart. A gap of more than 3 cycles between two empty checks resets it. Lowering the waiting time applies only to timers that start afterwards. | QA 1, security M1 |
+| R4 | A per-mailbox migration state (`pending`, `confirmed`, `done`) stops all label writes by `list_sync`, cleanup and re-sort until the rename plan is done, so the sync never renames labels before the user confirms (AC 5). Scope and the allow-list work on label ids (the list, "Other" and archive ids), so they are correct before and after the rename. | architect 1, 2 |
+| R5 | The plan hash covers each label's (id, old name, new name). At run time each id is read again and an entry whose name changed by hand is skipped and reported. The user can skip a label in the preview and restore the old names from the backup (by id). The backup is deleted after 30 days. | security M2, QA 5 |
+| R6 | A label that left the list less than 7 days ago is not deleted, so a chain "adopt, drain, delete" cannot erase a label of the user in minutes. (This is a proposal; D8 already lets the user adopt without a confirmation.) | security H1 |
+| R7 | The page shows "recently deleted" (label name, 30 days). The audit keeps counts and a hash of the id; no log, notice or error holds a label name. Exceptions carry codes only; Gmail errors are logged as status and reason. | security M3, L1 |
+| R8 | The waiting time is an agent setting in the `settings` schema, not list content (the placement guide), with bounds 5 minutes to 12 hours checked in code and in the database. | architect 6 |
+| R9 | One writer: a lease so that two agent cycles never delete the same label twice. The final re-check and the delete call are adjacent. | security H3, QA 2 |
+| R10 | The Categories page shows a first-run empty state ("load your YAML first; the list is no longer read from Gmail"), the preview works at 375 px as cards, the wait setting is an hours-and-minutes field with its range and an inline error, and the notice mentions that Gmail apps may show old names for a while. | QA 5 |
 
 ## Constraints
 
@@ -96,7 +114,7 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 3. **Rename plan (once).** The page lists the old `Assistant/...` labels with the new name and the count of mail; on confirmation the agent renames them by id, one at a time, stores the ids, and reports the result.
 4. **New names.** A new category creates its label (by the list name), a renamed category renames it (by id), as today without the prefix.
 5. **Delete.** Each cycle the agent looks at the labels that are not system labels and not in the list. A label with no mail and no child starts a timer; when it is empty again at every check and the waiting time has passed, it is deleted (one per cycle, with a notice of counts). A mail arriving or a label coming back into the list resets the timer.
-6. **Clash.** See P2.
+6. **Clash.** See D8: adopt or merge, never stop.
 
 ## Architecture fit
 
@@ -131,8 +149,23 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 17. Given the plan page, When it is used with the keyboard and a screen reader, Then every control has a name and the focus moves to the result (a11y).
 18. Given logs and notices, When a rename or a delete happens, Then they carry counts only, never mail data (security).
 
+19. Given a list name that equals a label the user made with mail, When the list is saved, Then the label is adopted and keeps its mail and name, and saving twice changes nothing (D8).
+20. Given the rename of `Assistant/Amerika` and an existing `Amerika`, When the plan runs, Then the mail of the old label is on `Amerika`, the old label is removed from them, and a second run changes nothing (D8).
+21. Given an empty label that a Gmail filter adds to mail, When the agent runs, Then it is not deleted (R1).
+22. Given a label whose only mail is in trash, When the agent runs, Then it is not deleted (R2).
+23. Given a timer started at T0 and an agent restart at T0 plus 3 hours, When the agent runs again, Then the timer is kept; Given a gap of more than 3 cycles, Then it resets (R3).
+24. Given running timers, When the user lowers the waiting time, Then those timers keep their length (R3).
+25. Given the migration state is not `done`, When `list_sync` runs, Then it makes no label write (R4).
+26. Given a label renamed by hand after the preview, When the plan runs, Then that entry is skipped and reported (R5).
+27. Given a completed rename, When the user presses Restore, Then the old names return and the mail is intact (R5).
+28. Given a label that left the list 3 days ago and is empty after the waiting time, When the agent runs, Then it is not deleted (R6).
+29. Given a delete, Then the page lists the name for 30 days and a canary label name is absent from every log, audit row, notice and error (R7).
+30. Given a mail that arrives between the final check and the delete, When the test injects it, Then the window is the single adjacent call and the outcome is recorded (accepted risk A2).
+31. Given a label deleted by hand while its id is stored, When the agent runs, Then it is recreated once and the id updated, without a crash (edge).
+32. Given names of 255 and 256 characters, a multibyte name, a leading slash, a double slash and a case-only difference, When the list or the "Other" and archive names are saved, Then the boundary is enforced as the policy defines (unit).
+
 ## Open points for the user
 
-1. Is the default waiting time of 12 hours (P7) right, or do you want a shorter default?
-2. P1 (rename once, with a preview and your button), P2 (stop on a clash) and P4 (the first list only from the YAML) are not answered yet.
-3. The confirmed intent says "it must not touch any label that is not in my category list". D6 allows deleting such a label when it is empty. The intent wording needs your amendment.
+1. Approve the safeguards R1 to R10, especially R6 (7 days of protection after a label leaves the list), which limits how fast a dropped category's label goes.
+2. Is the default waiting time of 12 hours right?
+3. D8 reverses the reviewers' advice ("never adopt silently") on purpose; the risk is recorded in the threat model (T4, T13).
