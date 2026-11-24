@@ -6,7 +6,7 @@ spec: docs/specs/label-prefix-removal.md
 
 # Gmail labels without the Assistant prefix
 
-The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-0060, ADR-0061 and the threat model `docs/security/label-prefix-removal-threat-model.md`. Sixteen units: fifteen in one release and one contract migration that ships after the rename is `done` in production.
+The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-0060, ADR-0061 and the threat model `docs/security/label-prefix-removal-threat-model.md`. Eighteen units: seventeen in one release and one contract migration that ships after the rename is `done` in production.
 
 ## Units
 
@@ -22,6 +22,8 @@ The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-00
 | [U-label-prefix-removal-05](U-label-prefix-removal-05.md) | list_sync rebuilt: no seed from Gmail, "Other" and archive by id, the migration gate | backend | U-label-prefix-removal-02, U-label-prefix-removal-03, U-label-prefix-removal-04 | no | 4 |
 | [U-label-prefix-removal-07](U-label-prefix-removal-07.md) | Gmail label delete adapter: delete by id with the filter, type and spam/trash checks | backend | U-label-prefix-removal-04 | yes | 4 |
 | [U-label-prefix-removal-11](U-label-prefix-removal-11.md) | Api: the rename preview, the confirmation, the restore and the recently deleted record | backend | U-label-prefix-removal-02, U-label-prefix-removal-10 | yes | 4 |
+| [U-label-prefix-removal-17](U-label-prefix-removal-17.md) | Agent mail path follows the managed set: triage and catch-up | backend | U-label-prefix-removal-03, U-label-prefix-removal-04 | yes | 4 |
+| [U-label-prefix-removal-18](U-label-prefix-removal-18.md) | Agent re-sort path follows the managed set: build, apply, move back, report | backend | U-label-prefix-removal-03, U-label-prefix-removal-04 | yes | 4 |
 | [U-label-prefix-removal-06](U-label-prefix-removal-06.md) | Rename plan runner: build, rename, merge, skip, restore, notice | backend | U-label-prefix-removal-05 | yes | 5 |
 | [U-label-prefix-removal-09](U-label-prefix-removal-09.md) | Cleanup use case: the cycle, the lease, the daily notice and the deleted-label record | backend | U-label-prefix-removal-05, U-label-prefix-removal-07, U-label-prefix-removal-08 | no | 5 |
 | [U-label-prefix-removal-12](U-label-prefix-removal-12.md) | Web: the Label cleanup tile on the Settings page and the two names on the Categories page | web | U-label-prefix-removal-10 | yes | 5 |
@@ -34,7 +36,7 @@ The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-00
 1. Wave 1 — one unit: U-label-prefix-removal-01
 2. Wave 2 — three units, at most two build agents at a time: U-label-prefix-removal-02, U-label-prefix-removal-03, U-label-prefix-removal-16
 3. Wave 3 — three units, at most two build agents at a time: U-label-prefix-removal-04, U-label-prefix-removal-08, U-label-prefix-removal-10
-4. Wave 4 — three units, at most two build agents at a time: U-label-prefix-removal-05, U-label-prefix-removal-07, U-label-prefix-removal-11
+4. Wave 4 — five units, at most two build agents at a time: U-label-prefix-removal-05, U-label-prefix-removal-07, U-label-prefix-removal-11, U-label-prefix-removal-17, U-label-prefix-removal-18
 5. Wave 5 — three units, at most two build agents at a time: U-label-prefix-removal-06, U-label-prefix-removal-09, U-label-prefix-removal-12
 6. Wave 6 — one unit: U-label-prefix-removal-13
 7. Wave 7 — one unit: U-label-prefix-removal-14
