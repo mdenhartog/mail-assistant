@@ -60,9 +60,7 @@ def test_given_a_label_case_when_mapped_then_the_label_is_the_expected_one(case:
 
 @pytest.mark.parametrize("case", FILE["category"], ids=[c["id"] for c in FILE["category"]])
 def test_given_a_category_case_when_validated_then_the_rules_match_the_file(case: dict[str, Any]):
-    problems = validate_category(
-        _name(case["name"]), _fill(case["description"]), case["existing"], case["labels"], case["adoptable"]
-    )
+    problems = validate_category(_name(case["name"]), _fill(case["description"]), case["existing"], case["settings"])
 
     assert [p.rule for p in problems] == case["rules"]
 
@@ -74,7 +72,7 @@ def test_given_a_list_case_when_validated_then_the_problems_match_the_file(case:
     else:
         categories = [Category(name=c["name"], description=c["description"]) for c in case["categories"]]
 
-    problems = validate_list(categories, case["labels"], case["adoptable"])
+    problems = validate_list(categories, case["settings"])
 
     assert [[p.index, p.rule] for p in problems] == case["problems"]
 
@@ -92,7 +90,7 @@ def test_given_a_label_setting_case_when_validated_then_the_rules_match_the_file
     name = case["fill"] * case["repeat"] if "repeat" in case else raw
     categories = [Category(name=n, description="x") for n in case["categories"]]
 
-    problems = validate_label_setting_name(name, categories, case["counterpart"])
+    problems = validate_label_setting_name(name, categories, case["counterpart"], case["own_default"])
 
     assert [p.rule for p in problems] == case["rules"]
     assert all(p.field == "setting_name" for p in problems)
@@ -141,3 +139,11 @@ def test_given_the_exported_rules_when_compared_with_the_cases_then_every_rule_h
     assert set(RULES) == covered
     assert set(SETTING_NAME_RULES) == covered_settings
     assert set(SETTING_BOUND_RULES) == covered_bounds
+
+
+def test_given_the_contract_cases_when_read_then_no_row_knows_about_existing_labels():
+    for section in ("category", "list"):
+        for case in FILE[section]:
+            assert "labels" not in case
+            assert "adoptable" not in case
+            assert len(case["settings"]) == 2

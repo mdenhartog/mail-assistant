@@ -21,6 +21,8 @@ MAX_CATEGORIES = 100
 SEPARATOR = "/"
 OTHER_LABEL_DEFAULT = "Other"
 ARCHIVE_LABEL_DEFAULT = "Archive"
+# One list of reserved names for list categories and setting names alike: a first segment Other or Archive and the
+# Gmail system labels below. A setting may still equal its own default.
 RESERVED_NAMES = frozenset({"other", "archive"})
 GMAIL_SYSTEM_LABELS = frozenset({"inbox", "spam", "trash", "sent", "draft", "starred", "unread", "important", "chat"})
 GMAIL_SYSTEM_LABEL_PREFIX = "category_"
@@ -34,7 +36,7 @@ RULES = (
     "name_forbidden_char",
     "name_reserved",
     "name_duplicate",
-    "name_label_exists",
+    "name_setting_clash",
     "description_empty",
     "description_too_long",
     "instructions_too_long",
@@ -118,6 +120,10 @@ def label_for(name: str) -> str:
     return _canonical(name)
 
 
+def _is_system_label(key: str) -> bool:
+    return key in GMAIL_SYSTEM_LABELS or key.startswith(GMAIL_SYSTEM_LABEL_PREFIX)
+
+
 def _name_rules(canonical: str, segments: list[str]) -> list[str]:
     rules: list[str] = []
     if not all(segments):
@@ -128,25 +134,22 @@ def _name_rules(canonical: str, segments: list[str]) -> list[str]:
         rules.append("name_label_too_long")
     if ".." in canonical or any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in canonical):
         rules.append("name_forbidden_char")
-    if normalise_name(segments[0]) in RESERVED_NAMES:
+    if normalise_name(segments[0]) in RESERVED_NAMES or _is_system_label(normalise_name(canonical)):
         rules.append("name_reserved")
     return rules
 
 
-def _name_problems(
-    name: str, existing: Collection[str], labels: Collection[str], adoptable: Collection[str]
-) -> list[Problem]:
+def _name_problems(name: str, existing: Collection[str], settings: Collection[str]) -> list[Problem]:
     segments = _segments(name)
     canonical = SEPARATOR.join(segments)
     if not canonical:
         return [Problem("name_empty", "name")]
     rules = _name_rules(canonical, segments)
-    if normalise_name(name) in {normalise_name(other) for other in existing}:
+    key = normalise_name(name)
+    if key in {normalise_name(other) for other in existing}:
         rules.append("name_duplicate")
-    else:
-        label_key = normalise_name(label_for(name))
-        if label_key in {normalise_name(label) for label in labels} - {normalise_name(label) for label in adoptable}:
-            rules.append("name_label_exists")
+    elif "name_reserved" not in rules and key in {normalise_name(setting) for setting in settings}:
+        rules.append("name_setting_clash")
     return [Problem(rule, "name") for rule in rules]
 
 
@@ -217,20 +220,24 @@ def _setting_name_invalid(name: str) -> bool:
     )
 
 
-def validate_label_setting_name(name: str, categories: Sequence[Category], counterpart: str) -> list[Problem]:
+def validate_label_setting_name(
+    name: str, categories: Sequence[Category], counterpart: str, own_default: str
+) -> list[Problem]:
     """Check the name of the "Other" label or of the archive label (ADR-0060, AC 13 and 32).
 
     A valid name has 1 to ``LABEL_MAX`` (255) Unicode characters (code points, not bytes; slashes count), no control
     or format characters, no ``..``, no look-alike of ``/``, no space around a segment and no empty segment (so no
-    leading, trailing or double slash). It is not a Gmail system label (any letter case; ``CATEGORY_*`` too), not the
-    name of the other setting, and not equal to or below the name of a list category (any letter case). Exactly one
-    problem is reported, the most specific one.
+    leading, trailing or double slash). It is not a Gmail system label (any letter case; ``CATEGORY_*`` too), not a
+    reserved name (``Other``, ``Archive`` or a first segment of either: the one list that list categories use too)
+    unless it is exactly the default of the setting being checked, not the name of the other setting, and not equal
+    to or below the name of a list category (any letter case). Exactly one problem is reported, the most specific.
 
     Args:
         name: The proposed name, as typed (it is not trimmed).
         categories: The categories of the list.
-        counterpart: The current name of the other setting ("Archive" when checking "Other" and the reverse), so
-            the two cannot be the same label.
+        counterpart: The current name of the other setting, so the two cannot be the same label.
+        own_default: The default name of the setting being checked (``Other`` or ``Archive``); the only reserved
+            name that setting may take.
 
     Returns:
         The problems, all with field ``setting_name``; empty when the name is valid.
@@ -240,9 +247,10 @@ def validate_label_setting_name(name: str, categories: Sequence[Category], count
     if len(name) > LABEL_MAX:
         return [Problem("setting_name_too_long", "setting_name")]
     key = normalise_name(name)
-    if key in GMAIL_SYSTEM_LABELS or key.startswith(GMAIL_SYSTEM_LABEL_PREFIX):
+    if _is_system_label(key):
         return [Problem("setting_name_system_label", "setting_name")]
-    if key == normalise_name(counterpart):
+    reserved = normalise_name(_segments(name)[0]) in RESERVED_NAMES and key != normalise_name(own_default)
+    if reserved or key == normalise_name(counterpart):
         return [Problem("setting_name_reserved", "setting_name")]
     for category in categories:
         category_key = normalise_name(label_for(category.name))
@@ -252,36 +260,30 @@ def validate_label_setting_name(name: str, categories: Sequence[Category], count
 
 
 def validate_category(
-    name: str,
-    description: str,
-    existing: Collection[str],
-    labels: Collection[str],
-    adoptable: Collection[str],
+    name: str, description: str, existing: Collection[str], settings: Collection[str]
 ) -> list[Problem]:
     """Check one category against the name and description rules.
+
+    A label that exists already never refuses a name: the caller adopts it (ADR-0060); the package does not read Gmail.
 
     Args:
         name: The proposed name, nested with ``/``.
         description: The proposed description.
         existing: Names of the other categories on the list (compared after normalisation).
-        labels: The Gmail labels that exist, as the caller knows them.
-        adoptable: The subset of ``labels`` that belongs to an older category (a label that is not on the
-            stored list and whose first segment is not reserved). A new category of that name adopts the
-            label and its mail instead of clashing. Compared after the same normalisation as names.
+        settings: The current names of the "Other" label and the archive label; a category of that name clashes.
 
     Returns:
         The problems in rule order; empty when the category is valid.
     """
-    return [*_name_problems(name, existing, labels, adoptable), *_description_problems(description)]
+    return [*_name_problems(name, existing, settings), *_description_problems(description)]
 
 
-def validate_list(categories: Sequence[Category], labels: Collection[str], adoptable: Collection[str]) -> list[Problem]:
+def validate_list(categories: Sequence[Category], settings: Collection[str]) -> list[Problem]:
     """Check a whole list: every category (a later duplicate is the one flagged) and the cap.
 
     Args:
         categories: The list in order.
-        labels: The Gmail labels that exist, as the caller knows them.
-        adoptable: The subset of ``labels`` that belongs to an older category and may be adopted.
+        settings: The current names of the "Other" label and the archive label.
 
     Returns:
         The problems with the index of their category; empty when the list is valid.
@@ -291,7 +293,7 @@ def validate_list(categories: Sequence[Category], labels: Collection[str], adopt
         earlier = [other.name for other in categories[:index]]
         problems.extend(
             Problem(problem.rule, problem.field, index)
-            for problem in validate_category(category.name, category.description, earlier, labels, adoptable)
+            for problem in validate_category(category.name, category.description, earlier, settings)
         )
     if len(categories) > MAX_CATEGORIES:
         problems.append(Problem("list_too_many", "list"))
