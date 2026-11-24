@@ -2,7 +2,7 @@
 id: INT-010
 title: Gmail labels without the Assistant prefix
 originator: the user
-status: draft
+status: confirmed
 date: 2026-11-24
 ---
 
