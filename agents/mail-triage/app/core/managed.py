@@ -59,3 +59,7 @@ class ManagedSet:
     def find(self, ref: LabelRef) -> ManagedLabel | None:
         """The managed label ``ref`` is, or ``None`` when it is not managed."""
         return self._by_id.get(ref.label_id) or self._by_name.get(ref.name.casefold())
+
+    def labels(self) -> tuple[ManagedLabel, ...]:
+        """Every managed label of the set, with or without a stored id."""
+        return (*self._by_id.values(), *self._by_name.values())

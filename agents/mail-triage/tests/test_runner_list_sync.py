@@ -8,10 +8,10 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from app.adapters.gmail_resort import GmailResort
-from app.core.scope import ArchiveLabel
+from app.core.managed import ManagedSet
 from app.runner import Runner
 from app.settings import load_settings
-from app.usecases.list_sync import ListSync, SyncResult
+from app.usecases.list_sync import ListSync, MigrationState, SyncResult
 from app.usecases.triage import RunSummary
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.list_store import FakeListStore
@@ -69,7 +69,7 @@ class CountingSync:
         self.runs += 1
         if self.runs <= self.fail_times:
             raise RuntimeError("gmail said: Subject: very private")
-        return SyncResult(1, seeded=False, created=0, renamed=0, failed=0)
+        return SyncResult(1, created=0, renamed=0, failed=0)
 
 
 def make_runner(tmp_path: Path, clock: Clock, sync: object, pipeline: object | None = None) -> Runner:
@@ -102,44 +102,43 @@ def make_runner(tmp_path: Path, clock: Clock, sync: object, pipeline: object | N
 
 
 def real_sync(gmail: FakeGmail, store: FakeListStore) -> ListSync:
-    ref = ArchiveLabel("Archive")
-    return ListSync(GmailResort(gmail, ref, sleep=lambda _s: None), store, ref)
+    return ListSync(GmailResort(gmail, ManagedSet(()), sleep=lambda _s: None), store)
 
 
-async def test_given_a_first_start_without_a_list_when_the_first_cycle_runs_then_version_one_exists_before_judging(
+async def test_given_a_first_start_without_a_list_when_the_first_cycle_runs_then_nothing_is_seeded_before_judging(
     tmp_path: Path,
 ) -> None:
     gmail = FakeGmail()
-    gmail.add_label("Assistant/Bills")
-    store = FakeListStore()
+    gmail.add_label("Bills")
+    store = FakeListStore(migration=MigrationState.DONE)
     pipeline = JudgingPipeline(store)
     run = make_runner(tmp_path, Clock(), real_sync(gmail, store), pipeline)
 
     await run.mail_cycle()
 
-    assert pipeline.versions == [1]
-    assert [c.name for c in store.categories] == ["Bills"]
+    assert pipeline.versions == [0]  # the list comes from the upload, never from the labels
+    assert store.categories == ()
 
 
 async def test_given_a_name_only_change_when_one_cadence_has_passed_then_the_gmail_label_is_renamed_by_id(
     tmp_path: Path,
 ) -> None:
     gmail = FakeGmail()
-    store = FakeListStore()
+    store = FakeListStore(migration=MigrationState.DONE)
     ids = store.save_list(["Bills"])
     clock = Clock()
     run = make_runner(tmp_path, clock, real_sync(gmail, store))
     await run.mail_cycle()
-    label = store.labels[ids["Bills"]].label_id
+    label = store.stored(ids["Bills"]).label_id  # type: ignore[union-attr]
     store.save_list(["Invoices"], keep={"Invoices": ids["Bills"]})
 
     clock.now += timedelta(seconds=CADENCE - 1)
     await run.mail_cycle()
-    assert gmail.label_table[label] == "Assistant/Bills"  # not yet: the cadence has not passed
+    assert gmail.label_table[label] == "Bills"  # not yet: the cadence has not passed
     clock.now += timedelta(seconds=1)
     await run.mail_cycle()
 
-    assert gmail.label_table[label] == "Assistant/Invoices"
+    assert gmail.label_table[label] == "Invoices"
 
 
 async def test_given_a_cycle_inside_the_cadence_when_it_runs_then_the_sync_is_not_run_again(tmp_path: Path) -> None:
@@ -175,18 +174,16 @@ async def test_given_a_failing_sync_when_cycles_run_then_triage_continues_and_th
 
 async def test_given_two_agents_at_once_when_both_sync_then_the_result_is_the_same_as_one(tmp_path: Path) -> None:
     gmail = FakeGmail()
-    gmail.add_label("Assistant/Bills")
-    store = FakeListStore()
+    store = FakeListStore(migration=MigrationState.DONE)
+    store.save_list(["Bills"])
     first = make_runner(tmp_path, Clock(), real_sync(gmail, store))
     second = make_runner(tmp_path, Clock(), real_sync(gmail, store))
 
     await asyncio.gather(first.mail_cycle(), second.mail_cycle())
 
     assert store.version == 1
-    assert [c.name for c in store.categories] == ["Bills"]
-    assert gmail.label_names().count("Assistant/Bills") == 1
-    assert gmail.label_names().count("Assistant/Other") == 1
-    assert gmail.label_names().count("Archive") == 1
+    for name in ("Bills", "Other", "Archive"):
+        assert gmail.label_names().count(name) == 1
 
 
 def test_given_the_configuration_when_loaded_then_the_mailbox_id_and_the_cadence_come_from_settings() -> None:

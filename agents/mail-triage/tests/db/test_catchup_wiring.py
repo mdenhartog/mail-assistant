@@ -11,10 +11,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.adapters.gmail_read import FetchedMail
-from app.core.scope import ArchiveLabel
+from app.adapters.gmail_resort import GmailResort
+from app.core.managed import ManagedSet
 from app.settings import load_settings
 from app.wiring import build_runner
 from tests.db.test_end_to_end import FakeGmail, FakeInternet
+from tests.fakes.fake_gmail import FakeGmail as GmailDouble
 from tests.test_settings import VALID
 
 if TYPE_CHECKING:
@@ -73,10 +75,9 @@ def _runner(engine: AsyncEngine, gmail: FakeGmail, internet: FakeInternet, tmp_p
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
-        labels=object(),  # type: ignore[arg-type]
+        labels=GmailResort(GmailDouble(), ManagedSet(()), sleep=lambda _s: None),
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
-        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=tmp_path / "heartbeat",
         now=lambda: NOW,
