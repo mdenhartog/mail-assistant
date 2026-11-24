@@ -68,6 +68,7 @@ def mail(sender: str = "info@julianahoeve.nl", auth: tuple[str, ...] = (GOOD,), 
         text="hello",
         has_attachment=False,
         headers={},
+        labels=frozenset({"INBOX"}),
         auth_results=auth,
     )
     return replace(base, **overrides)  # type: ignore[arg-type]
@@ -86,7 +87,7 @@ async def test_given_a_listed_authenticated_sender_in_an_unticked_category_then_
     mailbox, store = await run(mail(), model)
 
     assert [call.kind for call in model.calls] == ["urgency"]
-    assert mailbox.filed == [("m1", "id:Assistant/Huis")]
+    assert mailbox.filed == [("m1", "id:Huis")]
     outcome = store.outcomes["m1"]
     assert (outcome.urgent, outcome.alert) == (False, None)
     assert outcome.filing == replace(RULE_FILING)
@@ -107,7 +108,7 @@ async def test_given_a_ticked_category_then_no_model_call_at_all() -> None:
     mailbox, store = await run(mail(), model, ticked)
 
     assert model.calls == []
-    assert mailbox.filed == [("m1", "id:Assistant/Huis")]
+    assert mailbox.filed == [("m1", "id:Huis")]
     assert store.outcomes["m1"].filing == RULE_FILING
 
 
@@ -130,7 +131,7 @@ async def test_given_a_category_without_senders_then_the_model_judges_the_mail_a
     mailbox, store = await run(mail(), model, no_rules)
 
     assert [call.kind for call in model.calls] == ["category"]
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
+    assert mailbox.filed == [("m1", "id:Finance")]
     assert store.outcomes["m1"].filing == FilingEntry(FINANCE_ID, 3, None, FilingSource.MODEL, None)
 
 
@@ -142,8 +143,8 @@ async def test_given_a_topic_and_an_extra_label_listing_the_sender_then_both_are
     mailbox, store = await run(mail(), model, WITH_EXTRA)
 
     assert [call.kind for call in model.calls] == ["urgency"]
-    assert mailbox.filed == [("m1", "id:Assistant/Huis")]
-    assert mailbox.extra == [("m1", "id:Assistant/Belangrijk")]
+    assert mailbox.filed == [("m1", "id:Huis")]
+    assert mailbox.extra == [("m1", "id:Belangrijk")]
     filing = store.outcomes["m1"].filing
     assert filing == FilingEntry(HOUSE_ID, 3, IMPORTANT_ID, FilingSource.SENDER_RULE, "julianahoeve.nl")
 
@@ -154,7 +155,7 @@ async def test_given_a_refused_extra_label_name_then_the_mail_is_still_filed_und
 
     mailbox, store = await run(mail(), model, JudgingList(3, (HOUSE, FINANCE, odd)))
 
-    assert mailbox.filed == [("m1", "id:Assistant/Huis")]
+    assert mailbox.filed == [("m1", "id:Huis")]
     assert mailbox.extra == []
     assert store.outcomes["m1"].filing == RULE_FILING
 
@@ -165,7 +166,7 @@ async def test_given_a_listed_sender_that_is_not_authenticated_then_the_model_ju
     mailbox, store = await run(mail(auth=("example.test; dmarc=pass header.from=julianahoeve.nl",)), model)
 
     assert [call.kind for call in model.calls] == ["category"]
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
+    assert mailbox.filed == [("m1", "id:Finance")]
     filing = store.outcomes["m1"].filing
     assert filing == FilingEntry(FINANCE_ID, 3, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
 
@@ -198,7 +199,7 @@ async def test_given_the_listed_domain_only_in_display_name_reply_to_subject_and
     mailbox, store = await run(lookalike, model)
 
     assert [call.kind for call in model.calls] == ["category"]
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
+    assert mailbox.filed == [("m1", "id:Finance")]
     assert store.outcomes["m1"].filing == FilingEntry(FINANCE_ID, 3, None, FilingSource.MODEL, None)
 
 
