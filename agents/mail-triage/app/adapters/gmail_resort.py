@@ -1,75 +1,53 @@
-"""The narrow Gmail adapter for category labels and re-sort plans (ADR-0046 item 6, spec AC-28).
+"""The narrow Gmail adapter for category labels and re-sort plans (ADR-0046 item 6, ADR-0060, spec AC-28).
 
 The public operations are exactly: list (labels, mail of a label), read (one mail's labels, the size of a label),
-add label, remove label, create label, rename a label by id, and create or rename the archive label by id (ADR-0059).
-Nothing else about a mailbox can be changed through it. A test holds the allow-list and scans this source.
+add label, remove label, create label, ensure label, rename a label by id, and replace the managed set. Nothing else
+about a mailbox can be changed through it. A reflection test holds the allow-list and reads this source.
 
 Rules the adapter enforces itself, whatever the caller asks:
 
-- Mail may only get or lose a label under ``Assistant/``; the archive label, system labels and other labels are
-  refused, so the agent never files mail in the archive label (AC-25, ADR-0052).
-- A rename needs a category label as its source and a category label name as its target; ``Assistant/Other`` never
-  changes name. The archive label is renamed only through ``rename_archive_label``, by its id, to a usable name.
-- Names under ``Assistant/`` and a usable archive label name are the only labels it creates.
+- A label is changed only when the ``ManagedSet`` of the run knows it: its id is the id of a category of the list, of
+  "Other" or of the archive label (a label without a stored id is matched by name until the id is known). Anything
+  else raises ``LabelRefused`` and Gmail is not called.
+- Mail never gets or loses the archive label through it, so the agent never files mail there (AC-25).
+- A label is created by its list name; an existing label of that name is adopted and its mail is left alone (D8).
+- A rename patches the one given id. A label deleted by hand while its id is stored is created again once; the
+  caller stores the id that comes back.
+- Errors and logs carry a code, a status and a reason, never a label name (AC-29).
 
-The guards use label names from the latest listing; call ``list_labels`` at the start of a run.
+The guards use label names from the latest listing only for labels without a stored id; call ``list_labels`` at the
+start of a run.
 """
 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from googleapiclient.errors import HttpError
-
-from app.adapters.gmail_read import BACKOFF_SECONDS, MAX_ATTEMPTS, retryable
-from app.core.scope import usable_archive_name
-from category_policy import label_for, validate_category
+from app.adapters.gmail_read import (
+    ME,
+    GmailLabelError,
+    Label,
+    LabelNameRejected,
+    LabelNameTaken,
+    LabelRefused,
+    ManagedLabels,
+    execute,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from app.core.scope import ArchiveLabel
+    from app.core.managed import ManagedLabel, ManagedSet
 
-LABEL_PREFIX = "Assistant/"
-OTHER_LABEL = f"{LABEL_PREFIX}Other"
-ME = "me"
-HTTP_CONFLICT = 409
-HTTP_BAD_REQUEST = 400
-_PLACEHOLDER_DESCRIPTION = "x"  # validate_category checks a description too; only the name problems matter here
-
-
-class LabelRefused(ValueError):  # noqa: N818  # a refusal, not a failure of Gmail
-    """The operation is outside what the adapter may do."""
-
-
-class LabelNameTaken(RuntimeError):  # noqa: N818
-    """Gmail already has a label with that name."""
-
-
-class LabelNameRejected(RuntimeError):  # noqa: N818
-    """Gmail refused the label name (HTTP 400): the name cannot be used as it is. The error text is not kept."""
-
-
-@dataclass(frozen=True, slots=True)
-class Label:
-    """A Gmail label: its stable id and its name."""
-
-    id: str
-    name: str
-
-
-def is_category_label(name: str) -> bool:
-    """True for ``Assistant/<name>`` when ``category-policy`` accepts ``<name>`` and the label is in its stored form."""
-    if not name.startswith(LABEL_PREFIX):
-        return False
-    base = name[len(LABEL_PREFIX) :]
-    return label_for(base) == name and not validate_category(base, _PLACEHOLDER_DESCRIPTION, (), (), ())
-
-
-def _under_prefix(name: str) -> bool:
-    return name.startswith(LABEL_PREFIX) and len(name) > len(LABEL_PREFIX) and ".." not in name
+__all__ = [
+    "GmailLabelError",
+    "GmailResort",
+    "Label",
+    "LabelNameRejected",
+    "LabelNameTaken",
+    "LabelRefused",
+]
 
 
 class GmailResort:
@@ -78,31 +56,24 @@ class GmailResort:
     def __init__(
         self,
         service: Any,  # noqa: ANN401
-        archive: ArchiveLabel,
+        managed: ManagedSet,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        """Keep the service, the shared archive label, the sleep used between retries and the latest label names."""
+        """Keep the service, the managed labels of this run and the sleep used between retries."""
         self._service = service
-        self._archive = archive
         self._sleep = sleep
-        self._names: dict[str, str] = {}
+        self._labels = ManagedLabels(service, managed, self._run)
 
     def _run(self, request: Any) -> Any:  # noqa: ANN401
-        for attempt in range(MAX_ATTEMPTS):
-            try:
-                return request.execute()
-            except HttpError as error:
-                if attempt == MAX_ATTEMPTS - 1 or not retryable(error):
-                    raise
-                self._sleep(BACKOFF_SECONDS * 2**attempt)
-        raise AssertionError("unreachable")  # pragma: no cover
+        return execute(request, self._sleep)
+
+    def set_managed(self, managed: ManagedSet) -> None:
+        """Use the managed labels of a new run (read from the database by the caller)."""
+        self._labels.set_managed(managed)
 
     def list_labels(self) -> list[Label]:
         """All labels of the mailbox, system labels included; refreshes the names the guards use."""
-        listing = self._run(self._service.users().labels().list(userId=ME))
-        labels = [Label(str(item["id"]), str(item["name"])) for item in listing.get("labels", [])]
-        self._names = {label.id: label.name for label in labels}
-        return labels
+        return self._labels.list_labels()
 
     def count_mail(self, label_id: str) -> int:
         """The number of mails that carry the label."""
@@ -128,86 +99,22 @@ class GmailResort:
         mail = self._run(self._service.users().messages().get(userId=ME, id=message_id, fields="id,labelIds"))
         return frozenset(mail.get("labelIds", []))
 
-    def _name_of(self, label_id: str) -> str | None:
-        if label_id not in self._names:
-            self.list_labels()
-        return self._names.get(label_id)
-
-    def _require_category_label(self, label_id: str) -> None:
-        name = self._name_of(label_id)
-        if (
-            name is None
-            or not _under_prefix(name)
-            or name.casefold() == self._archive.name.casefold()
-            or label_id == self._archive.label_id
-        ):
-            raise LabelRefused("only labels under Assistant/ may be added to or removed from mail")
-
-    def add_label(self, message_id: str, label_id: str) -> None:
-        """Add one ``Assistant/`` label to a mail; nothing else about the mail changes."""
-        self._require_category_label(label_id)
-        body = {"addLabelIds": [label_id]}
-        self._run(self._service.users().messages().modify(userId=ME, id=message_id, body=body))
+    def add_label(self, message_id: str, label_id: str) -> str:
+        """Add one managed label to a mail; nothing else about the mail changes. Returns the label id used."""
+        return self._labels.add_to_mail(message_id, label_id)
 
     def remove_label(self, message_id: str, label_id: str) -> None:
-        """Remove one ``Assistant/`` label from a mail; nothing else about the mail changes."""
-        self._require_category_label(label_id)
-        body = {"removeLabelIds": [label_id]}
-        self._run(self._service.users().messages().modify(userId=ME, id=message_id, body=body))
+        """Remove one managed label from a mail; nothing else about the mail changes."""
+        self._labels.remove_from_mail(message_id, label_id)
 
-    def create_label(self, name: str) -> Label:
-        """Create a label under ``Assistant/``; when Gmail says it exists, return the existing one."""
-        if not _under_prefix(name):
-            raise LabelRefused(f"only labels under {LABEL_PREFIX} may be created")
-        return self._create(name)
+    def create_label(self, label: ManagedLabel) -> Label:
+        """Create a managed label by its list name; when Gmail says the name exists, adopt the existing label."""
+        return self._labels.create(label)
 
-    def create_archive_label(self, name: str) -> Label:
-        """Create the archive label under a usable name; when Gmail says it exists, return the existing one."""
-        if not usable_archive_name(name):
-            raise LabelRefused("the name is not a usable archive label name")
-        return self._create(name)
+    def ensure_label(self, label: ManagedLabel) -> Label:
+        """The label as Gmail has it now; created again (once) when its stored id was deleted by hand."""
+        return self._labels.ensure(label)
 
-    def _create(self, name: str) -> Label:
-        body = {"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"}
-        try:
-            made = self._run(self._service.users().labels().create(userId=ME, body=body))
-        except HttpError as error:
-            if error.resp.status == HTTP_BAD_REQUEST:
-                raise LabelNameRejected(name) from None  # the text of Gmail's answer can name the label: drop it
-            if error.resp.status != HTTP_CONFLICT:
-                raise
-            existing = next((x for x in self.list_labels() if x.name.casefold() == name.casefold()), None)
-            if existing is None:
-                raise
-            return existing
-        label = Label(str(made["id"]), str(made["name"]))
-        self._names[label.id] = label.name
-        return label
-
-    def rename_label(self, label_id: str, new_name: str) -> None:
-        """Rename a category label by id; the id, the mail and the other settings stay."""
-        current = self._name_of(label_id)
-        if current is None or not is_category_label(current):
-            raise LabelRefused("only a category label under Assistant/ can be renamed")
-        if not is_category_label(new_name):
-            raise LabelRefused("the new name must be a category label name under Assistant/")
-        self._patch_name(label_id, new_name)
-
-    def rename_archive_label(self, label_id: str, new_name: str) -> None:
-        """Rename the archive label by its id to a usable name; the id and the mail in it stay."""
-        if label_id != self._archive.label_id or self._name_of(label_id) is None:
-            raise LabelRefused("only the archive label can be renamed this way")
-        if not usable_archive_name(new_name):
-            raise LabelRefused("the new name is not a usable archive label name")
-        self._patch_name(label_id, new_name)
-
-    def _patch_name(self, label_id: str, new_name: str) -> None:
-        try:
-            self._run(self._service.users().labels().patch(userId=ME, id=label_id, body={"name": new_name}))
-        except HttpError as error:
-            if error.resp.status == HTTP_CONFLICT:
-                raise LabelNameTaken(new_name) from error
-            if error.resp.status == HTTP_BAD_REQUEST:
-                raise LabelNameRejected(new_name) from None
-            raise
-        self._names[label_id] = new_name
+    def rename_label(self, label_id: str, new_name: str) -> Label:
+        """Rename a managed label by id; the id, the mail and the other settings stay."""
+        return self._labels.rename(label_id, new_name)
