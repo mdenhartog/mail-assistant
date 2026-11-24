@@ -56,5 +56,6 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - ADR-0056 · Re-sort on request: a typed confidence threshold, two plans and system approval · area:architecture · tags:label-structure,mail-triage,postgresql,plans,security · decisions/ADR-0056-resort-on-request-threshold-and-two-plans.md
 - ADR-0057 · Always notify: a tick per category raises one alert next to the urgency alert · area:product · tags:label-structure,mail-triage,telegram,alerts · decisions/ADR-0057-always-notify-alert.md
 - ADR-0058 · YAML upload and export: a hardened input boundary with a bound preview · area:security · tags:label-structure,api,yaml,input-validation,csrf · decisions/ADR-0058-yaml-upload-input-boundary.md
-- ADR-0059 · The archive label name is part of the list; the agent adopts, creates or renames it · area:product · tags:label-structure,mail-triage,gmail,configuration · decisions/ADR-0059-archive-label-name-in-the-list.md
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
+- ADR-0060 · The category list is the label boundary; managed labels by id; delayed delete of empty labels · area:architecture · tags:label-prefix-removal,mail-triage,gmail,security · decisions/ADR-0060-list-is-the-label-boundary.md
+- ADR-0061 · One-time label rename plan and its agent-api seam · area:architecture · tags:label-prefix-removal,mail-triage,api,postgresql · decisions/ADR-0061-one-time-label-rename-plan.md

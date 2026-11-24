@@ -3,8 +3,8 @@ feature: label-prefix-removal
 intent: INT-010
 spec: docs/specs/label-prefix-removal.md
 extends: label-structure-threat-model, mail-triage-threat-model
-status: draft
-revision: 2 (after the phase 2 round table, 2026-11-24)
+status: approved
+revision: 2 (after the phase 2 round table, 2026-11-24; approved by the user)
 date: 2026-11-24
 asvs: "5.0"
 ---

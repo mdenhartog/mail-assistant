@@ -1,10 +1,10 @@
 ---
 feature: label-prefix-removal
 intent: INT-010
-status: draft
-revision: 3 (round table of phase 2 added, 2026-11-24; D8 to D10 decided by the user; R1 to R10 await the user)
+status: approved
+revision: 3 (round table of phase 2 added; D1 to D10, P1 to P7 and R1 to R10 approved by the user, 2026-11-24)
 date: 2026-11-24
-approved: 2026-11-24 (revision 2, the user, phase 1 gate; revision 3 awaits approval)
+approved: 2026-11-24 (revision 3, the user, phase 1 and 2 gates)
 approver: the user
 depends_on: label-structure, mail-categories, mail-triage, web-settings
 ---
@@ -71,6 +71,7 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 | D8 | A list name that equals an existing label (with or without mail) is **adopted**: the label keeps its name and its mail, and the agent uses it from then on. The same holds in the rename plan: when the new name is an existing label, the mail of the old label is **merged** onto it (idempotent: add the existing label, remove the old one; running it twice changes nothing). Replaces the "stop on a clash" of P2. |
 | D9 | The old `Assistant/` labels of categories that are no longer in the list are part of the rename preview, with a skip per label. After the rename they are the user's own labels outside the list. |
 | D10 | The user hears about deleted labels in **one Telegram message per day** with counts only; the names are on the Categories page. |
+| D11 | The numbers of this feature are settings the user can change in the web UI, each with a default, a visible range and an inline error: the waiting time before a delete (default 12 hours, 5 minutes to 12 hours), the protection after a label leaves the list (default 7 days, 1 to 30 days), how long "recently deleted" and the rename backup are kept (default 30 days, 7 to 90 days), and the names of "Other" and the archive label. The safety gap of 3 cycles between two empty checks stays a constant in code. |
 
 ## Decisions proposed here (to be confirmed by the user)
 
@@ -93,9 +94,9 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 | R3 | The delete timer is stored per label id in the agent's database and survives a restart. A gap of more than 3 cycles between two empty checks resets it. Lowering the waiting time applies only to timers that start afterwards. | QA 1, security M1 |
 | R4 | A per-mailbox migration state (`pending`, `confirmed`, `done`) stops all label writes by `list_sync`, cleanup and re-sort until the rename plan is done, so the sync never renames labels before the user confirms (AC 5). Scope and the allow-list work on label ids (the list, "Other" and archive ids), so they are correct before and after the rename. | architect 1, 2 |
 | R5 | The plan hash covers each label's (id, old name, new name). At run time each id is read again and an entry whose name changed by hand is skipped and reported. The user can skip a label in the preview and restore the old names from the backup (by id). The backup is deleted after 30 days. | security M2, QA 5 |
-| R6 | A label that left the list less than 7 days ago is not deleted, so a chain "adopt, drain, delete" cannot erase a label of the user in minutes. (This is a proposal; D8 already lets the user adopt without a confirmation.) | security H1 |
+| R6 | A label that left the list less than the protection period (default 7 days, a setting) ago is not deleted, so a chain "adopt, drain, delete" cannot erase a label of the user in minutes. (This is a proposal; D8 already lets the user adopt without a confirmation.) | security H1 |
 | R7 | The page shows "recently deleted" (label name, 30 days). The audit keeps counts and a hash of the id; no log, notice or error holds a label name. Exceptions carry codes only; Gmail errors are logged as status and reason. | security M3, L1 |
-| R8 | The waiting time is an agent setting in the `settings` schema, not list content (the placement guide), with bounds 5 minutes to 12 hours checked in code and in the database. | architect 6 |
+| R8 | The waiting time, the protection period and the retention are agent settings in the `settings` schema, not list content (the placement guide), changed on the Categories page (D11), with their bounds checked in code and in the database. | architect 6 |
 | R9 | One writer: a lease so that two agent cycles never delete the same label twice. The final re-check and the delete call are adjacent. | security H3, QA 2 |
 | R10 | The Categories page shows a first-run empty state ("load your YAML first; the list is no longer read from Gmail"), the preview works at 375 px as cards, the wait setting is an hours-and-minutes field with its range and an inline error, and the notice mentions that Gmail apps may show old names for a while. | QA 5 |
 
@@ -163,8 +164,10 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 30. Given a mail that arrives between the final check and the delete, When the test injects it, Then the window is the single adjacent call and the outcome is recorded (accepted risk A2).
 31. Given a label deleted by hand while its id is stored, When the agent runs, Then it is recreated once and the id updated, without a crash (edge).
 32. Given names of 255 and 256 characters, a multibyte name, a leading slash, a double slash and a case-only difference, When the list or the "Other" and archive names are saved, Then the boundary is enforced as the policy defines (unit).
+33. Given the settings form, When the user changes the waiting time, the protection period, the retention or the names, Then each is saved with its range checked, shown with its default, and a value outside the range is refused with an inline message tied to the field (D11).
+34. Given a changed protection period, When labels are checked, Then the new value applies from the next check, and a value below 1 day is refused (D11, R3).
 
-## Open points for the user
+## Open points (closed on 2026-11-24)
 
 1. Approve the safeguards R1 to R10, especially R6 (7 days of protection after a label leaves the list), which limits how fast a dropped category's label goes.
 2. Is the default waiting time of 12 hours right?
