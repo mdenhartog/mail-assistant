@@ -7,8 +7,8 @@ feature: label-prefix-removal
 
 - Component: mail-triage agent
 - Layer: backend
-- Contract: `list_sync` no longer seeds version 1 from `Assistant/` labels; it resolves managed ids (creating or adopting by list name) for categories, "Other" and the archive, refreshes counts and the label names for the api, and makes no label write while `label_migration` is not `done`.
-- Files: `agents/mail-triage/app/usecases/list_sync.py`, `agents/mail-triage/app/db/pg_list_sync.py`, `agents/mail-triage/app/db/pg_store.py`, tests under `agents/mail-triage/tests/`
+- Contract: `list_sync` no longer seeds version 1 from `Assistant/` labels; it resolves managed ids (creating or adopting by list name) for categories, "Other" and the archive, refreshes counts and the label names for the api, and makes no label write while `label_migration` is not `done`. It also wires the new adapter signatures (`GmailResort(service, managed)`, `GmailApply(service, managed)`, `GmailReader(..., managed=)`) in `wiring.py`, and passes `own_default` to `validate_label_setting_name` in `scope.usable_archive_name` (unit 16 added the fourth argument).
+- Files: `agents/mail-triage/app/wiring.py`, `agents/mail-triage/app/core/scope.py`, `agents/mail-triage/app/usecases/list_sync.py`, `agents/mail-triage/app/db/pg_list_sync.py`, `agents/mail-triage/app/db/pg_store.py`, tests under `agents/mail-triage/tests/`
 - Depends on: U-label-prefix-removal-02, U-label-prefix-removal-03, U-label-prefix-removal-04
 - Parallel: no
 - Guardrails: guardrail-gmail, guardrail-python, guardrail-pytest

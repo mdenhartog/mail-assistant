@@ -8,7 +8,7 @@ feature: label-prefix-removal
 - Component: mail-triage agent
 - Layer: backend
 - Contract: `adapters/gmail_label_delete.py`: `read_label(id)` returns type, counts and children; `labels_in_filters()` returns every id in `addLabelIds` of the user's Gmail filters; `has_mail_including_trash(id)` runs `messages.list(labelIds=[id], includeSpamTrash=true, maxResults=1)`; `delete(id)` re-reads the label and refuses unless the checks hold, then deletes by id and nothing else.
-- Files: `agents/mail-triage/app/adapters/gmail_label_delete.py`, `agents/mail-triage/app/usecases/ports.py`, `agents/mail-triage/tests/fakes/fake_gmail.py`, tests under `agents/mail-triage/tests/adapters/`
+- Files: `agents/mail-triage/app/adapters/gmail_label_delete.py`, `agents/mail-triage/app/usecases/ports.py`, `agents/mail-triage/tests/fakes/fake_gmail.py` (it still has `ASSISTANT_PREFIX` and a `label:assistant` query matcher that must go), `agents/mail-triage/tests/adapters/test_gmail_reflection.py` (add `delete_label` to `ALLOWED_METHODS`), tests under `agents/mail-triage/tests/adapters/`
 - Depends on: U-label-prefix-removal-04
 - Parallel: yes
 - Guardrails: guardrail-gmail, guardrail-python, guardrail-pytest
