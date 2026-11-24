@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from category_policy import label_for
 from category_policy.kinds import Kind
 
 if TYPE_CHECKING:
@@ -22,8 +23,6 @@ if TYPE_CHECKING:
 
     from category_policy.senders import SenderEntry
 
-LABEL_PREFIX = "Assistant/"
-OTHER_LABEL = f"{LABEL_PREFIX}Other"
 OTHER_ID = "00000000-0000-0000-0000-000000000000"  # the nil UUID stands for the built-in "Other" (ADR-0043)
 LOW_CONFIDENCE = 0.6
 ID_MAX_CHARS = 1000  # a longer id in the answer is invalid
@@ -121,18 +120,21 @@ def parse_judgement(raw: object) -> Judgement:
 
 def category_label(category: ListedCategory) -> str:
     """The Gmail label name of a category."""
-    return f"{LABEL_PREFIX}{category.name.strip()}"
+    return label_for(category.name.strip())
 
 
-def resolve(judgement: Judgement, categories: Sequence[ListedCategory]) -> Filing | NeedsAttention:
-    """Turn a valid judgement into labels: a topic of the list by exact id, otherwise "Other" without an extra label."""
+def resolve(judgement: Judgement, categories: Sequence[ListedCategory], *, other_label: str) -> Filing | NeedsAttention:
+    """Turn a valid judgement into labels: a topic of the list by exact id, otherwise ``other_label`` (no extra)."""
     if judgement.confidence < LOW_CONFIDENCE:
         return NeedsAttention("low_confidence")
-    return file_under(judgement, categories)
+    return file_under(judgement, categories, other_label=other_label)
 
 
-def file_under(judgement: Judgement, categories: Sequence[ListedCategory]) -> Filing:
-    """The topic and extra label the answer names, whatever its confidence (the plan build keeps the number itself)."""
+def file_under(judgement: Judgement, categories: Sequence[ListedCategory], *, other_label: str) -> Filing:
+    """The topic and extra label the answer names, whatever its confidence (the plan build keeps the number itself).
+
+    ``other_label`` is the name of the "Other" label from the settings; a topic that is not in the list goes there.
+    """
     for category in categories:
         if (
             category.category_id == judgement.topic_id
@@ -140,7 +142,7 @@ def file_under(judgement: Judgement, categories: Sequence[ListedCategory]) -> Fi
             and category.category_id != OTHER_ID
         ):
             return Filing(category_label(category), category.category_id, judgement, _extra(judgement, categories))
-    return Filing(OTHER_LABEL, OTHER_ID, judgement)
+    return Filing(other_label, OTHER_ID, judgement)
 
 
 def _extra(judgement: Judgement, categories: Sequence[ListedCategory]) -> ListedCategory | None:
@@ -151,9 +153,9 @@ def _extra(judgement: Judgement, categories: Sequence[ListedCategory]) -> Listed
     return None
 
 
-def decide(raw: object, categories: Sequence[ListedCategory]) -> Filing | NeedsAttention:
+def decide(raw: object, categories: Sequence[ListedCategory], *, other_label: str) -> Filing | NeedsAttention:
     """Parse and resolve in one step; output outside the schema is needs-attention, never ignorable."""
     try:
-        return resolve(parse_judgement(raw), categories)
+        return resolve(parse_judgement(raw), categories, other_label=other_label)
     except JudgementError:
         return NeedsAttention("invalid_output")
