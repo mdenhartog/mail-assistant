@@ -18,8 +18,19 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
-from app.core.judgement import OTHER_LABEL, NeedsAttention
-from app.usecases.triage import MAX_ATTEMPTS, Claim, RunSummary, decide_outcome, pinned_mail_kind, pinned_outcome
+from app.core.judgement import NeedsAttention
+from app.core.scope import Scope
+from app.usecases.triage import (
+    MAX_ATTEMPTS,
+    Claim,
+    RunSummary,
+    decide_outcome,
+    file_under_label,
+    label_of,
+    mail_scope,
+    pinned_mail_kind,
+    pinned_outcome,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -27,9 +38,10 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import Judgement, JudgingList, ListedCategory
+    from app.core.managed import ManagedLabel
     from app.core.pinned import PinnedSenders
     from app.usecases.policy_notice import PolicySource
-    from app.usecases.triage import FailureNotifier, Outcome
+    from app.usecases.triage import FailureNotifier, LabelBook, Outcome
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +78,12 @@ class CatchUpMailbox(Protocol):
         """Headers, text and labels of one mail."""
         ...
 
-    def ensure_label(self, name: str) -> str:
-        """Id of the label, created when missing."""
+    def ensure_label(self, label: ManagedLabel) -> str:
+        """Id of the managed label, created when missing."""
         ...
 
-    def file(self, message_id: str, label_id: str) -> None:
-        """Add the category label and remove the inbox label."""
+    def file(self, message_id: str, label_id: str) -> str:
+        """Add the managed label and remove the inbox label; the id used comes back (new when it was recreated)."""
         ...
 
 
@@ -146,8 +158,10 @@ class CatchUp:
         now: Callable[[], datetime],
         policy: PolicySource,
         pinned: PinnedSenders,
+        labels: LabelBook,
     ) -> None:
-        """Wire the ports, the budget view, the clock, the policy source and the allow-list of security domains."""
+        """Wire the ports, the budget view, the clock, the policy source, the security domains and the labels."""
+        self._labels = labels
         self._pinned = pinned
         self._mail = mailbox
         self._judge = judge
@@ -215,6 +229,8 @@ class CatchUp:
     async def _file_one(self, mail: FetchedMail, summary: RunSummary) -> _Step:
         if not {INBOX, UNREAD} <= mail.labels:  # read or moved since the listing: not ours to touch (AC-B2)
             return _Step.SKIPPED
+        if await mail_scope(mail, self._labels) is not Scope.IN_SCOPE:  # archived, excluded or unclear: not ours
+            return _Step.SKIPPED
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return _Step.SKIPPED
         kind = pinned_mail_kind(mail, self._pinned)  # pinned mail stays in the inbox, whatever its age (AC-39)
@@ -229,10 +245,10 @@ class CatchUp:
         if isinstance(verdict, NeedsAttention) and verdict.reason == "budget":
             return _Step.STOP  # an old mail is never filed as "needs attention" only because the budget ended
         policy = await self._policy.current()  # one snapshot for this mail
-        outcome = decide_outcome(verdict, mail, current, self._now(), policy)
+        other = await self._labels.other()
+        outcome = decide_outcome(verdict, mail, current, self._now(), policy, other_label=other.name)
         outcome = await self._capped(outcome)
-        label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
-        await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
+        await file_under_label(self._mail, self._labels, mail.message_id, await label_of(outcome, self._labels))
         await self._store.complete_backlog(mail.message_id, outcome)
         summary.filed += 1
         summary.alerts += outcome.alert is not None
