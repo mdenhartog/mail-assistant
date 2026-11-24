@@ -23,14 +23,15 @@ from sqlalchemy import and_, func, literal, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
-from app.core.judgement import ListedCategory
+from app.core.judgement import OTHER_ID, ListedCategory
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from app.core.resort_plan import ItemState, PlanKind, PlanState
-from app.core.scope import LABEL_PREFIX
 from app.db import pg_categories
 from app.db.migrate import RUNTIME_ROLE, WEB_ROLE
 from app.db.models import (
     ApplyAudit,
     Category,
+    ListSettings,
     ListVersion,
     MailItem,
     MoveBackRequest,
@@ -40,11 +41,14 @@ from app.db.models import (
     Rejection,
 )
 from app.db.models import (
+    ManagedLabel as ManagedLabelRow,
+)
+from app.db.models import (
     ResortRequest as ResortRequestRow,
 )
 from app.usecases.move_back import MoveBackJob
 from app.usecases.plan_tips import TipRow
-from app.usecases.resort_apply import ApplyItem, AuditMove, DuePlan
+from app.usecases.resort_apply import ApplyItem, AuditMove, DuePlan, ResortLabels
 from app.usecases.resort_build import BuildList, ItemDraft, PlanRecord, ResortRequest
 
 if TYPE_CHECKING:
@@ -53,7 +57,7 @@ if TYPE_CHECKING:
 
     from app.usecases.resort_apply import SkipReason
 
-__all__ = ["LEASE", "PgApplyStore", "PgBuildStore", "PgTipStore", "channel_of"]
+__all__ = ["LEASE", "PgApplyStore", "PgBuildStore", "PgTipStore", "channel_of", "read_managed_labels"]
 
 LEASE: Final = timedelta(minutes=5)  # how long a run holds a plan or a request before another may take it over
 _EPOCH: Final = datetime(1970, 1, 1, tzinfo=UTC)
@@ -66,6 +70,42 @@ _DIGESTS: Final = {
 def channel_of(actor_digest: str) -> str:
     """The channel of a request from the digest of the login that wrote it (the database derives both the same way)."""
     return _DIGESTS.get(actor_digest.strip(), "operator")
+
+
+async def read_managed_labels(sessions: async_sessionmaker[AsyncSession], mailbox_id: str) -> ResortLabels:
+    """The managed labels of the latest list version (ADR-0060): the categories, "Other" and the archive label.
+
+    The names come from the list and the two settings; the Gmail label ids come from ``managed_label`` and are
+    ``None`` until the label sync stored them. A stored label of a category that left the list is not managed.
+    """
+    latest = select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == mailbox_id).scalar_subquery()
+    categories = select(Category.id, Category.name, Category.kind).where(
+        Category.mailbox_id == mailbox_id, Category.version == latest
+    )
+    settings = select(ListSettings.other_label, ListSettings.archive_label).where(
+        ListSettings.mailbox_id == mailbox_id, ListSettings.version == latest
+    )
+    stored = select(ManagedLabelRow.role, ManagedLabelRow.category_id, ManagedLabelRow.label_id).where(
+        ManagedLabelRow.mailbox_id == mailbox_id
+    )
+    async with sessions() as session:
+        listed = (await session.execute(categories)).all()
+        names = (await session.execute(settings)).first()
+        rows = (await session.execute(stored)).all()
+    ids = {(row.role, None if row.category_id is None else str(row.category_id)): row.label_id for row in rows}
+    by_category = {
+        str(row.id): ManagedLabel(
+            row.name.strip(), ids.get(("category", str(row.id))), Role.EXTRA if row.kind == "extra" else Role.TOPIC
+        )
+        for row in listed
+    }
+    by_category[OTHER_ID] = ManagedLabel(
+        "Other" if names is None else names.other_label, ids.get(("other", None)), Role.OTHER
+    )
+    archive = ManagedLabel(
+        "Archive" if names is None else names.archive_label, ids.get(("archive", None)), Role.ARCHIVE
+    )
+    return ResortLabels(ManagedSet([*by_category.values(), archive]), by_category)
 
 
 def _record(plan: Plan, items: int, auto_items: int = 0) -> PlanRecord:
@@ -94,6 +134,10 @@ class PgBuildStore:
 
     def _mine(self, plan_id: uuid.UUID) -> tuple[ColumnElement[bool], ColumnElement[bool]]:
         return Plan.mailbox_id == self._mailbox, Plan.id == plan_id
+
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels of the latest list version (the categories, "Other" and the archive label)."""
+        return await read_managed_labels(self._sessions, self._mailbox)
 
     async def current_list(self) -> BuildList:
         """The latest list version with its categories (kind, ticks, sender entries) in order; version 0 when none."""
@@ -477,23 +521,9 @@ class PgApplyStore:
         async with self._sessions.begin() as session:
             return (await session.execute(statement)).first() is not None
 
-    async def current_categories(self) -> dict[str, str]:
-        """Category id to name of the latest list version."""
-        latest = select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == self._mailbox).scalar_subquery()
-        statement = select(Category.id, Category.name).where(
-            Category.mailbox_id == self._mailbox, Category.version == latest
-        )
-        async with self._sessions() as session:
-            return {str(row.id): row.name for row in await session.execute(statement)}
-
-    async def extra_label_names(self) -> frozenset[str]:
-        """The Gmail label names of the extra-label categories of the latest list version."""
-        latest = select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == self._mailbox).scalar_subquery()
-        statement = select(Category.name).where(
-            Category.mailbox_id == self._mailbox, Category.version == latest, Category.kind == "extra"
-        )
-        async with self._sessions() as session:
-            return frozenset(f"{LABEL_PREFIX}{name.strip()}" for name in (await session.execute(statement)).scalars())
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels of the latest list version (the categories, "Other" and the archive label)."""
+        return await read_managed_labels(self._sessions, self._mailbox)
 
     async def target_ids(self, plan_id: uuid.UUID) -> frozenset[str]:
         """The ids of the categories the items still ``approved`` move mail into (the new topic and the new extra)."""

@@ -10,8 +10,10 @@ import pytest
 
 from app.adapters.gmail_read import FetchedMail
 from app.core.judgement import OTHER_ID
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from app.usecases.refile_report import Filed, RefileReport, RefileReportService
 from app.usecases.report import SuccessCounts
+from app.usecases.resort_apply import ResortLabels
 
 NOW = datetime(2026, 12, 1, 6, 0, tzinfo=UTC)
 CAP = 1000
@@ -19,7 +21,7 @@ FINANCE_ID = "11111111-1111-1111-1111-111111111111"
 TRAVEL_ID = "22222222-2222-2222-2222-222222222222"
 CANARY_SENDER = "canary-sender@example.invalid"
 CANARY_SUBJECT = "canary-subject-4711"
-NAMES = {"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel", "L_OTH": "Assistant/Other", "INBOX": "INBOX"}
+NAMES = {"L_FIN": "Finance", "L_TRV": "Travel", "L_OTH": "Other", "L_X": "Amerika", "INBOX": "INBOX"}
 COUNTS = SuccessCounts(
     days=14,
     filed=40,
@@ -30,7 +32,17 @@ COUNTS = SuccessCounts(
     system_applied=0,
     system_moved_back=0,
 )
-LABEL_OF = {FINANCE_ID: "L_FIN", TRAVEL_ID: "L_TRV", OTHER_ID: "L_OTH"}
+
+
+def _labels(other: ManagedLabel | None = None) -> ResortLabels:
+    """The managed labels of the list: Finance, Travel, "Other" (by the Other setting) and the archive label."""
+    by_category = {
+        FINANCE_ID: ManagedLabel("Finance", "L_FIN", Role.TOPIC),
+        TRAVEL_ID: ManagedLabel("Travel", "L_TRV", Role.EXTRA),
+        OTHER_ID: other or ManagedLabel("Other", "L_OTH", Role.OTHER),
+    }
+    archive = ManagedLabel("Archive", "L_ARC", Role.ARCHIVE)
+    return ResortLabels(ManagedSet([*by_category.values(), archive]), by_category)
 
 
 def _mail(message_id: str, labels: set[str]) -> FetchedMail:
@@ -53,6 +65,7 @@ class FakeStore:
     reports: list[RefileReport] = field(default_factory=list)
     asked_since: list[datetime] = field(default_factory=list)
     counts: SuccessCounts = COUNTS
+    labels: ResortLabels = field(default_factory=_labels)
 
     async def success_counts(self, since: datetime) -> SuccessCounts:
         assert since == NOW - timedelta(days=14)
@@ -62,8 +75,8 @@ class FakeStore:
         self.asked_since.append(since)
         return list(self.filed)
 
-    async def category_labels(self) -> dict[str, str]:
-        return dict(LABEL_OF)
+    async def managed_labels(self) -> ResortLabels:
+        return self.labels
 
     async def record_report(self, report: RefileReport) -> None:
         self.reports.append(report)
@@ -242,3 +255,47 @@ async def test_the_log_carries_the_success_numbers_of_the_period(caplog: pytest.
     assert "At least 2.0 model calls per day (filing calls only)" in caplog.text
     assert "Always-notify alerts per day: 1.0" in caplog.text
     assert "Filed under Other: 10.0% of 40 new mails" in caplog.text
+
+
+async def test_other_is_counted_by_the_other_setting_and_not_by_the_old_name() -> None:
+    renamed = ManagedLabel("Everything else", "L_OTH", Role.OTHER)  # the setting changed; the label kept its id
+    store = FakeStore(filed=[Filed("a", FINANCE_ID, None), Filed("b", FINANCE_ID, None)], labels=_labels(renamed))
+    gmail = FakeGmail({"a": {"INBOX", "L_OTH"}, "b": {"INBOX", "L_FIN"}})
+    service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
+
+    report = await service.run_once()
+
+    assert report.in_other == 1
+
+
+async def test_a_label_that_is_not_the_other_label_is_not_counted_as_other_even_with_its_name() -> None:
+    lookalike = ManagedLabel("Misc", "L_MISC", Role.OTHER)  # "Other" is now Misc; a label named Other is only a label
+    store = FakeStore(filed=[Filed("a", FINANCE_ID, None)], labels=_labels(lookalike))
+    gmail = FakeGmail({"a": {"INBOX", "L_OTH"}})  # L_OTH is named Other in Gmail but is not managed any more
+    service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
+
+    report = await service.run_once()
+
+    assert report.in_other == 0
+
+
+async def test_a_label_of_the_user_on_the_mail_does_not_make_it_refiled() -> None:
+    store = FakeStore(filed=[Filed("a", FINANCE_ID, None)])
+    gmail = FakeGmail({"a": {"INBOX", "L_FIN", "L_X"}})  # the user's own label next to the filed one
+    service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
+
+    report = await service.run_once()
+
+    assert report.refiled == 0
+
+
+async def test_archiving_a_mail_is_not_refiling_it() -> None:
+    store = FakeStore(filed=[Filed("a", FINANCE_ID, None)])
+    gmail = FakeGmail({"a": {"L_FIN", "L_ARC"}})  # the user archived it; the filed label is still there
+    gmail_names = {**NAMES, "L_ARC": "Archive"}
+    gmail.label_names = lambda: dict(gmail_names)  # type: ignore[method-assign]
+    service = RefileReportService(store, gmail, now=lambda: NOW, max_checked=CAP)
+
+    report = await service.run_once()
+
+    assert report.refiled == 0

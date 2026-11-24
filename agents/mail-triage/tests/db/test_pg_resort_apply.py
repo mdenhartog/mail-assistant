@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+from app.core.judgement import OTHER_ID
 from app.core.resort_plan import ItemState, PlanState
 from app.db.pg_resort import PgApplyStore, channel_of
 from app.usecases.resort_apply import AuditMove, SkipReason
@@ -254,14 +255,18 @@ async def test_given_an_applied_plan_when_applied_items_are_removed_then_skipped
     ]
 
 
-async def test_given_two_list_versions_when_the_current_categories_are_read_then_they_are_the_latest(
+async def test_given_two_list_versions_when_the_managed_labels_are_read_then_they_are_those_of_the_latest(
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     store = PgApplyStore(agent_sessions, MAILBOX)
     await seed_list(cat_owner, ["Old"], version=1)
     ids = await seed_list(cat_owner, ["Finance", "Travel"], version=2)
 
-    assert await store.current_categories() == {ids[0]: "Finance", ids[1]: "Travel"}
+    labels = await store.managed_labels()
+    assert {cid: label.name for cid, label in labels.by_category.items() if cid != OTHER_ID} == {
+        ids[0]: "Finance",
+        ids[1]: "Travel",
+    }
 
 
 # --- move back ---------------------------------------------------------------------------------------------------
