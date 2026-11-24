@@ -231,6 +231,10 @@ class FakeGmail:
         if name.lower() in taken:
             raise http_error(409, "Label name exists or conflicts", "labelNameExists")
 
+    def answers_query(self, query: str, mail: _Mail) -> bool:
+        """Whether ``mail`` answers the search ``query``; the base double matches everything, a subclass may model it."""
+        return True
+
     def get_mail(self, mid: str) -> _Mail:
         try:
             return self.mail_table[mid]
@@ -350,7 +354,7 @@ class _Messages:
             found = [
                 {"id": m.mid, "threadId": m.thread}
                 for m in reversed(g.mail_table.values())
-                if wanted <= m.labels and not hidden & m.labels
+                if wanted <= m.labels and not hidden & m.labels and (query is None or g.answers_query(query, m))
             ]
             size, start = kw.get("maxResults"), int(kw.get("pageToken", 0))
             page = found[start : start + size] if size else found

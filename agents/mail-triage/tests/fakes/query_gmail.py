@@ -22,7 +22,7 @@ class QueryGmail(FakeGmail):
         super().__init__()
         self.queries: list[str] = []
 
-    def matches_query(self, query: str, mail: Any) -> bool:
+    def answers_query(self, query: str, mail: Any) -> bool:
         self.queries.append(query)
         if {"SPAM", "TRASH"} & mail.labels or ("SENT" in mail.labels and "-in:sent" in query):
             return False
