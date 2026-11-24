@@ -243,6 +243,10 @@ async def test_given_the_web_role_when_its_table_privileges_are_listed_then_only
         ("categories", "move_back_request"),
         # the review page names the wait of a big move (U-mail-categories-32): read-only, test_plan_grants.py
         ("categories", "apply_config"),
+        # the label boundary (0030): the state, the plan items and the deleted labels, read only
+        ("categories", "label_migration"),
+        ("categories", "label_rename_item"),
+        ("categories", "deleted_label"),
     }
 
 
