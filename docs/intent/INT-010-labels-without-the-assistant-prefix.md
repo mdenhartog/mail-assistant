@@ -2,7 +2,7 @@
 id: INT-010
 title: Gmail labels without the Assistant prefix
 originator: the user
-status: confirmed
+status: draft
 date: 2026-11-24
 ---
 
@@ -12,7 +12,9 @@ date: 2026-11-24
 
 All the labels in my Gmail mailbox that the assistant manages show the prefix `Assistant/` (for example `Assistant/Aankopen/Marktplaats`). I do not want that. I want the prefix gone, so the labels carry the names of my category list (`Aankopen/Marktplaats`).
 
-The assistant may delete a label once all mail has been moved out of it, the label holds no mail any more and it is not in my list.
+The assistant may delete every label that holds no mail and is not in my list, except the standard Gmail labels. It always waits first: a label must stay empty for a time I set, up to 12 hours.
+
+The label "Other" and the archive label have default names (`Other`, `Archive`) without the prefix; I can change them.
 
 The labels that exist today under `Assistant/` are renamed by label id, so the mail on them stays where it is.
 
@@ -28,8 +30,8 @@ I have the problem in my own mailbox, every time I open Gmail: the prefix adds a
 
 ## What it must not do
 
-- It must not touch any label that is not in my category list (for example `Amerika` or `Aiden Auto`), other than the archive label.
-- It must not remove a label that still holds mail, or that is still in my list.
+- It must not rename or change the mail on any label that is not in my category list (for example `Amerika` or `Aiden Auto`), other than the archive label and "Other". An empty one may be deleted after the waiting time.
+- It must not remove a label that still holds mail, that is still in my list or that is a standard Gmail label, and it must not remove one before the waiting time has passed.
 - It must not lose or move mail when the labels are renamed.
 - When a new name would clash with a label I made myself, it must stop and ask me, not choose.
 
@@ -48,3 +50,5 @@ I have the problem in my own mailbox, every time I open Gmail: the prefix adds a
 "Alle labels mag de assistent verwijderen nadat alle mail daaruit verplaatst is en het label geen mail meer bevat en niet in de lijst staat."
 
 "Hernoemen op id" (his choice for the labels that exist today).
+
+"Hij mag alle labels weggooien behalve de standaard labels van Gmail. Wanneer deze leeg zijn. [...] hij daar altijd een tijd overheen moet gaan. En die tijd kan je zetten tot 12 uur." / "de naam other, dat is gewoon een default naam van de default archiefbak. Dus die moet je altijd gewoon als basis neerzetten en gebruiken. En iemand kan dat veranderen."
