@@ -1,19 +1,22 @@
-"""Keep Gmail in step with the category list (INT-004, spec C-14, C-15, D11, D14, D18; ADR-0046).
+"""Keep Gmail in step with the category list (spec C-14, C-15, AC 12, 14, 19, 25; ADR-0046, ADR-0060, ADR-0061).
 
-Each run, in this order, with Gmail effects first and the cursor last:
+The list is the label boundary. A label is *managed* when its Gmail id is the id of a category of the list, of "Other"
+or of the archive label; the ids live in ``managed_label``. Each run, in this order, with Gmail effects first and the
+cursor last:
 
-1. The archive label (ADR-0059): the name comes from the list settings. The first time it is set, an existing label of
-   that name is adopted, else it is made. A later change renames the label by id, once no plan is ``scheduled`` or
-   ``applying``; until then the old name stays the protected one and the run is not done. It is never given mail or
-   made twice (AC-25). When Gmail refuses the name, the run goes on without it.
-2. No list yet: version 1 is seeded from the ``Assistant/`` labels that exist (AC-49).
-3. Every category and "Other" has its Gmail label; a label is found by the id kept in ``category_label``, then by
-   name, then made. A name-only change renames the label by id: no plan, no model call, no mail touched (AC-40).
-4. The mail counts and the names of all ``Assistant/`` labels are refreshed for the api, so a label that is not on
-   the list shows as an older category and its mail keeps it (AC-53). No label is ever deleted (D18).
-5. ``list_cursor`` moves to the list version, only when nothing failed. A crash before this step repeats the run;
-   every step looks at what Gmail has now, so nothing is done twice. A category label that Gmail refuses is counted as
-   failed and the others are still made.
+1. The one-off rename plan: a mailbox without a state gets ``pending`` when an old ``Assistant/`` label exists, else
+   ``done``. While the state is not ``done`` the run makes no label write at all (AC 25): it only reads, refreshes the
+   counts of the labels it already knows and leaves the cursor where it is.
+2. No list yet: nothing is seeded from Gmail (AC 14); "Other" and the archive label are still made.
+3. Every category, "Other" and the archive label has its Gmail label: found by the stored id, else an existing label of
+   the list name is adopted (any letter case, its name and mail stay), else it is made (AC 12, AC 19). A name that
+   changed in the list renames the label by id: the id, the mail and the other settings stay. A rename onto the name of
+   another label adopts that label instead.
+4. The mail counts (by category id, "Other" under the nil id) and the names of the managed labels are refreshed for the
+   api. No mail is read for a count.
+5. ``list_cursor`` moves to the list version, only when nothing failed. A crash before this step repeats the run; every
+   step looks at what Gmail has now, so nothing is done twice. A name that Gmail or the policy refuses is counted as
+   failed and the other labels are still made.
 
 Logs hold counts only, never label names or mail.
 """
@@ -23,36 +26,60 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import TYPE_CHECKING, Literal, Protocol
 
-from app.adapters.gmail_resort import (
-    LABEL_PREFIX,
-    OTHER_LABEL,
-    Label,
-    LabelNameRejected,
-    LabelNameTaken,
-    is_category_label,
+from app.adapters.gmail_resort import Label, LabelNameRejected, LabelNameTaken, LabelRefused
+from app.core.managed import ManagedLabel, ManagedSet, Role
+from category_policy import (
+    ARCHIVE_LABEL_DEFAULT,
+    OTHER_LABEL_DEFAULT,
+    Category,
+    validate_label_setting_name,
 )
-from category_policy import MAX_CATEGORIES, Category, normalise_name, validate_archive_label
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from app.core.scope import ArchiveLabel
-    from app.db.pg_categories import CurrentList
+    from app.db.pg_categories import CategoryRow, CurrentList
 
 logger = logging.getLogger(__name__)
 
 OTHER_ID = uuid.UUID(int=0)  # the nil UUID stands for "Other" in ``category_count``
+_LEGACY_PREFIX = "assistant" + "/"  # the label prefix of the releases before INT-010; only the rename plan looks for it
+
+
+class MigrationState(StrEnum):
+    """Where the one-off rename of the old labels stands (ADR-0061); label writes wait for ``done``."""
+
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    DONE = "done"
+
+
+@dataclass(frozen=True, slots=True)
+class LabelKey:
+    """What a managed label stands for: a category (with its id), "Other" or the archive label."""
+
+    kind: Literal["category", "other", "archive"]
+    category_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class StoredLabel:
-    """The Gmail label of a category as the database remembers it."""
+    """The Gmail id of a managed label and the list name it was last synced to."""
 
     label_id: str
     label_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class LabelSettings:
+    """The names of "Other" and the archive label in the latest list version."""
+
+    other: str = OTHER_LABEL_DEFAULT
+    archive: str = ARCHIVE_LABEL_DEFAULT
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,22 +87,21 @@ class SyncResult:
     """What one run did, as counts."""
 
     version: int
-    seeded: bool
     created: int
     renamed: int
     failed: int
-    waiting: bool = False  # the archive label rename waits for a plan to finish
+    held: bool = False  # the rename plan is not done: the run only read
 
 
-@dataclass(frozen=True, slots=True)
-class ArchiveNames:
-    """The archive label name the list wants, and the one whose Gmail effects are done (``None``: the first time)."""
+class ManagedSink(Protocol):
+    """Anything that must know the managed labels of the moment (an adapter with a guard)."""
 
-    wanted: str
-    applied: str | None
+    def set_managed(self, managed: ManagedSet) -> None:
+        """Use these managed labels from now on."""
+        ...
 
 
-class LabelGmail(Protocol):
+class LabelGmail(ManagedSink, Protocol):
     """The part of ``GmailResort`` the sync uses. Blocking calls; run in a thread."""
 
     def list_labels(self) -> list[Label]:
@@ -86,20 +112,12 @@ class LabelGmail(Protocol):
         """The number of mails under a label."""
         ...
 
-    def create_label(self, name: str) -> Label:
-        """Make a label, or return the one that exists."""
+    def ensure_label(self, label: ManagedLabel) -> Label:
+        """The label as Gmail has it: by stored id, else adopted by name, else made."""
         ...
 
-    def rename_label(self, label_id: str, new_name: str) -> None:
-        """Rename a label by id."""
-        ...
-
-    def create_archive_label(self, name: str) -> Label:
-        """Make the archive label, or return the one that exists."""
-        ...
-
-    def rename_archive_label(self, label_id: str, new_name: str) -> None:
-        """Rename the archive label by id."""
+    def rename_label(self, label_id: str, new_name: str) -> Label:
+        """Rename a managed label by id."""
         ...
 
 
@@ -114,28 +132,28 @@ class ListSyncStore(Protocol):
         """The last version whose Gmail effects are done."""
         ...
 
-    async def stored_labels(self) -> dict[uuid.UUID, StoredLabel]:
-        """The label of each category by category id."""
+    async def migration_state(self) -> MigrationState | None:
+        """The state of the rename plan; ``None`` when the mailbox has none yet."""
         ...
 
-    async def archive_names(self) -> ArchiveNames:
-        """The archive label name of the current list version and the one of the cursor version."""
+    async def start_migration(self, state: MigrationState) -> MigrationState:
+        """Write the first state when there is none; return the state that stands (an overlapping run may be first)."""
         ...
 
-    async def plan_in_flight(self) -> bool:
-        """True while a plan is ``scheduled`` or ``applying``."""
+    async def label_settings(self) -> LabelSettings:
+        """The names of "Other" and the archive label in the latest list version."""
         ...
 
-    async def seed(self, names: tuple[str, ...]) -> CurrentList:
-        """Write version 1 with these category names when no version exists yet; return the current list."""
+    async def managed_ids(self) -> dict[LabelKey, StoredLabel]:
+        """The stored Gmail label of each managed label."""
         ...
 
-    async def save_label(self, category_id: uuid.UUID, label_id: str, label_name: str) -> None:
-        """Remember the label of a category."""
+    async def save_managed(self, key: LabelKey, label_id: str, label_name: str) -> None:
+        """Remember the label of a managed key; a later call replaces the earlier one."""
         ...
 
     async def replace_derived(self, counts: dict[uuid.UUID, int], label_names: list[str]) -> None:
-        """Replace the mail counts and the ``Assistant/`` label names."""
+        """Replace the mail counts and the managed label names."""
         ...
 
     async def advance_cursor(self, version: int) -> None:
@@ -143,162 +161,159 @@ class ListSyncStore(Protocol):
         ...
 
 
-def seed_names(labels: Sequence[Label]) -> tuple[str, ...]:
-    """Category names for list version 1: the ``Assistant/`` labels that fit the policy name rules, sorted."""
-    found: dict[str, str] = {}
-    for label in sorted(labels, key=lambda item: item.name):
-        if is_category_label(label.name):
-            name = label.name[len(LABEL_PREFIX) :]
-            found.setdefault(normalise_name(name), name)
-    return tuple(found.values())[:MAX_CATEGORIES]
+@dataclass(slots=True)
+class _Pass:
+    """The state of one run: the labels Gmail has now, the ids already claimed, what was found and the counts."""
+
+    by_id: dict[str, Label]
+    by_name: dict[str, Label]
+    claimed: set[str]
+    found: dict[LabelKey, Label] = field(default_factory=dict)
+    created: int = 0
+    renamed: int = 0
+    failed: int = 0
+
+
+def _wanted(current: CurrentList, names: LabelSettings) -> list[tuple[LabelKey, ManagedLabel]]:
+    """The managed labels the list and the settings want, with the names they should have."""
+
+    def category(row: CategoryRow) -> tuple[LabelKey, ManagedLabel]:
+        role = Role.EXTRA if row.kind.value == "extra" else Role.TOPIC
+        return LabelKey("category", row.id), ManagedLabel(row.name.strip(), None, role)
+
+    return [
+        *(category(row) for row in current.categories),
+        (LabelKey("other"), ManagedLabel(names.other, None, Role.OTHER)),
+        (LabelKey("archive"), ManagedLabel(names.archive, None, Role.ARCHIVE)),
+    ]
+
+
+def _setting_refused(current: CurrentList, names: LabelSettings, key: LabelKey) -> bool:
+    """Whether the shared policy refuses the name of "Other" or of the archive label next to these categories.
+
+    A refused name is left out of the managed labels: no label is made or renamed for it, and the run is still done.
+    """
+    if key.kind == "category":
+        return False
+    categories = [Category(row.name, row.description, row.kind) for row in current.categories]
+    if key.kind == "other":
+        return bool(validate_label_setting_name(names.other, categories, names.archive, OTHER_LABEL_DEFAULT))
+    return bool(validate_label_setting_name(names.archive, categories, names.other, ARCHIVE_LABEL_DEFAULT))
 
 
 class ListSync:
     """One mailbox's label sync. ``gmail`` is blocking and is called through threads."""
 
-    def __init__(self, gmail: LabelGmail, store: ListSyncStore, archive: ArchiveLabel) -> None:
-        """Keep the Gmail adapter, the store and the shared archive label (ADR-0059)."""
+    def __init__(self, gmail: LabelGmail, store: ListSyncStore, followers: Sequence[ManagedSink] = ()) -> None:
+        """Keep the Gmail adapter, the store and the other adapters that need the managed labels of each run."""
         self._gmail = gmail
         self._store = store
-        self._archive = archive
+        self._sinks: tuple[ManagedSink, ...] = (gmail, *followers)
 
     async def run(self) -> SyncResult:
         """Do one pass; see the module text for the order."""
         labels = await asyncio.to_thread(self._gmail.list_labels)
-        by_name = {label.name.casefold(): label for label in labels}
-        by_id = {label.id: label for label in labels}
         current = await self._store.current_list()
-        failed_archive, waiting = await self._ensure_archive(by_name, by_id, current)
-        seeded = current.version == 0
-        if seeded:
-            current = await self._store.seed(seed_names(labels))
-        stored = await self._store.stored_labels()
-        created = renamed = 0
-        failed = failed_archive
-        counts: dict[uuid.UUID, int] = {}
-        wanted = [(row.id, f"{LABEL_PREFIX}{row.name}") for row in current.categories] + [(OTHER_ID, OTHER_LABEL)]
-        for category_id, name in wanted:
-            known = stored.get(category_id)
-            label, made, renamed_now, clash = await self._ensure(name, known, by_id, by_name)
-            created += made
-            renamed += renamed_now
-            failed += clash
-            if label is None:
-                continue  # Gmail refused the name: this category has no label yet, the others go on
-            if category_id != OTHER_ID and known != StoredLabel(label.id, label.name):
-                await self._store.save_label(category_id, label.id, label.name)
-            counts[category_id] = await asyncio.to_thread(self._gmail.count_mail, label.id)
-        names = [label.name for label in by_id.values() if label.name.startswith(LABEL_PREFIX)]
-        await self._store.replace_derived(counts, names)
-        if failed == 0 and not waiting and await self._store.cursor() != current.version:
+        state = await self._migration(labels)
+        names = await self._store.label_settings()
+        wanted = [item for item in _wanted(current, names) if not _setting_refused(current, names, item[0])]
+        stored = await self._store.managed_ids()
+        self._share(ManagedSet(self._labelled(wanted, stored)))
+        by_id = {label.id: label for label in labels}
+        run = _Pass(by_id, {label.name.casefold(): label for label in labels}, {k.label_id for k in stored.values()})
+        if state is MigrationState.DONE:
+            await self._resolve(run, wanted, stored)
+        else:
+            run.found = {key: by_id[known.label_id] for key, known in stored.items() if known.label_id in by_id}
+        counts = await self._counts(run.found)
+        await self._store.replace_derived(counts, sorted({label.name for label in run.found.values()}))
+        held = state is not MigrationState.DONE
+        if run.failed == 0 and not held and await self._store.cursor() != current.version:
             await self._store.advance_cursor(current.version)
-        logger.info("list sync: version=%d created=%d renamed=%d failed=%d", current.version, created, renamed, failed)
-        return SyncResult(current.version, seeded, created, renamed, failed, waiting)
+        logger.info(
+            "list sync: version=%d created=%d renamed=%d failed=%d held=%s",
+            current.version,
+            run.created,
+            run.renamed,
+            run.failed,
+            held,
+        )
+        return SyncResult(current.version, run.created, run.renamed, run.failed, held)
 
-    async def _ensure(
-        self, name: str, known: StoredLabel | None, by_id: dict[str, Label], by_name: dict[str, Label]
-    ) -> tuple[Label | None, int, int, int]:
-        """The label for ``name``: found by its stored id, then by name, else made; renamed by id when it differs.
+    async def _migration(self, labels: list[Label]) -> MigrationState:
+        """The state of the rename plan; a mailbox without one starts ``pending`` when an old label exists."""
+        state = await self._store.migration_state()
+        if state is not None:
+            return state
+        legacy = any(label.name.casefold().startswith(_LEGACY_PREFIX) for label in labels)
+        return await self._store.start_migration(MigrationState.PENDING if legacy else MigrationState.DONE)
 
-        Returns the label and the counts of created, renamed and failed. A name that another label already has, or
-        that Gmail refuses, counts as failed; when Gmail refuses to make the label there is no label (``None``).
-        """
-        label = (by_id.get(known.label_id) if known else None) or by_name.get(name.casefold())
-        created = 1 if label is None else 0
-        if label is None:
-            try:
-                label = await asyncio.to_thread(self._gmail.create_label, name)
-            except LabelNameRejected:
-                logger.warning("list sync: Gmail refused the name of a label it was asked to make")
-                return None, 0, 0, 1
-        renamed = failed = 0
-        if label.name != name:
-            try:
-                await asyncio.to_thread(self._gmail.rename_label, label.id, name)
-            except (LabelNameTaken, LabelNameRejected):
-                failed = 1
-            else:
-                renamed = 1
-                label = Label(label.id, name)
-        by_id[label.id] = label
-        by_name[label.name.casefold()] = label
-        return label, created, renamed, failed
+    def _share(self, managed: ManagedSet) -> None:
+        for sink in self._sinks:
+            sink.set_managed(managed)
 
-    async def _ensure_archive(
-        self, by_name: dict[str, Label], by_id: dict[str, Label], current: CurrentList
-    ) -> tuple[int, bool]:
-        """Adopt, make or rename the archive label; return the failed count and whether a rename waits (ADR-0059).
+    @staticmethod
+    def _labelled(
+        wanted: list[tuple[LabelKey, ManagedLabel]], stored: dict[LabelKey, StoredLabel]
+    ) -> list[ManagedLabel]:
+        """The wanted labels with the stored ids filled in."""
+        return [
+            ManagedLabel(label.name, known.label_id if (known := stored.get(key)) else None, label.role)
+            for key, label in wanted
+        ]
 
-        Matching is by name without regard to case (C-14). The shared ``ArchiveLabel`` takes the name the label has in
-        Gmail, so the old name protects mail until a rename is done. A label is only made or renamed under a name the
-        shared policy accepts next to the categories of the list (ADR-0059); otherwise the sync goes on without it.
-        """
-        names = await self._store.archive_names()
-        categories = [Category(row.name, row.description, row.kind) for row in current.categories]
-        refused = bool(validate_archive_label(names.wanted, categories))
-        target = by_name.get(names.wanted.casefold())
-        old = by_name.get(names.applied.casefold()) if names.applied is not None else None
-        if old is not None and (target is None or target.id == old.id):
-            if names.wanted in (names.applied, old.name):
-                self._adopt(old, by_name, by_id)
-                return 0, False
-            if refused:
-                return self._refuse_archive(old, by_name, by_id)
-            return await self._rename(old, names.wanted, by_name, by_id)
-        if old is not None:  # another label already has the new name: the old label stays the archive label
-            self._adopt(old, by_name, by_id)
-            logger.warning("list sync: the new archive label name is taken by another label; no rename")
-            return 1, False
-        if target is not None:  # the first time, or a rename that an earlier run did before it crashed
-            self._adopt(target, by_name, by_id)
-            return 0, False
-        await self._make_archive(names.wanted, refused, by_name, by_id)
-        return 0, False
-
-    async def _make_archive(
-        self, wanted: str, refused: bool, by_name: dict[str, Label], by_id: dict[str, Label]
+    async def _resolve(
+        self, run: _Pass, wanted: list[tuple[LabelKey, ManagedLabel]], stored: dict[LabelKey, StoredLabel]
     ) -> None:
-        if refused:
-            self._refuse_archive(None, by_name, by_id)
-            return
-        try:
-            label = await asyncio.to_thread(self._gmail.create_archive_label, wanted)
-        except LabelNameRejected:
-            # The archive label is the user's own place for mail that must stay where it is. Without it the sync of the
-            # categories goes on, and a missing archive label does not keep the run from being done.
-            logger.warning("list sync: Gmail refused to make the archive label; the sync goes on without it")
-            self._archive.name = wanted
-            self._archive.label_id = None
-            return
-        self._adopt(label, by_name, by_id)
+        """Find, adopt, make or rename the Gmail label of each wanted managed label and remember its id."""
+        for key, label in wanted:
+            known = stored.get(key)
+            managed = ManagedLabel(label.name, known.label_id if known else None, label.role)
+            try:
+                resolved = await self._one(run, managed, known)
+            except (LabelNameRejected, LabelNameTaken, LabelRefused):
+                logger.warning("list sync: Gmail or the policy refused the name of a label; the others go on")
+                run.failed += 1
+                continue
+            run.found[key] = resolved
+            run.claimed.add(resolved.id)
+            run.by_id[resolved.id] = resolved
+            run.by_name[resolved.name.casefold()] = resolved
+            if known != StoredLabel(resolved.id, label.name):
+                await self._store.save_managed(key, resolved.id, label.name)
+        self._share(
+            ManagedSet(
+                ManagedLabel(label.name, run.found[key].id, label.role) if key in run.found else label
+                for key, label in wanted
+            )
+        )
 
-    def _refuse_archive(
-        self, old: Label | None, by_name: dict[str, Label], by_id: dict[str, Label]
-    ) -> tuple[int, bool]:
-        """The wanted name breaks the policy: keep protecting the label that is known, make and rename nothing."""
-        logger.warning("list sync: the archive label name breaks the label rules; no label is made or renamed")
-        if old is not None:
-            self._adopt(old, by_name, by_id)
-        return 0, False
+    async def _one(self, run: _Pass, label: ManagedLabel, known: StoredLabel | None) -> Label:
+        """The Gmail label of one managed label: by id, adopted by name, or made; renamed when the list name moved."""
+        current = run.by_id.get(known.label_id) if known else None
+        if current is None:
+            existing = run.by_name.get(label.name.casefold())
+            if existing is not None and existing.id in run.claimed:
+                raise LabelNameTaken("label_claimed")  # the label of this name is another managed label's
+            made = await asyncio.to_thread(self._gmail.ensure_label, label)
+            run.created += existing is None
+            return made
+        if known is None or known.label_name == label.name or current.name.casefold() == label.name.casefold():
+            return current
+        taken = run.by_name.get(label.name.casefold())
+        if taken is not None and taken.id != current.id:  # the new name is a label that exists: adopt it, no rename
+            if taken.id in run.claimed:
+                raise LabelNameTaken("label_claimed")
+            return taken
+        renamed = await asyncio.to_thread(self._gmail.rename_label, current.id, label.name)
+        run.renamed += 1
+        return renamed
 
-    async def _rename(
-        self, old: Label, wanted: str, by_name: dict[str, Label], by_id: dict[str, Label]
-    ) -> tuple[int, bool]:
-        self._adopt(old, by_name, by_id)  # the old name protects the mail until Gmail has the new one
-        if await self._store.plan_in_flight():
-            logger.info("list sync: the archive label rename waits for the plan to finish")
-            return 0, True
-        try:
-            await asyncio.to_thread(self._gmail.rename_archive_label, old.id, wanted)
-        except (LabelNameTaken, LabelNameRejected):
-            return 1, False
-        self._adopt(Label(old.id, wanted), by_name, by_id)
-        return 0, False
-
-    def _adopt(self, label: Label, by_name: dict[str, Label], by_id: dict[str, Label]) -> None:
-        for known in [n for n, item in by_name.items() if item.id == label.id]:
-            del by_name[known]
-        by_name[label.name.casefold()] = label
-        by_id[label.id] = label
-        self._archive.name = label.name
-        self._archive.label_id = label.id
+    async def _counts(self, found: dict[LabelKey, Label]) -> dict[uuid.UUID, int]:
+        """The mail count of each category label and of "Other" (not of the archive label), by managed id."""
+        counts: dict[uuid.UUID, int] = {}
+        for key, label in found.items():
+            if key.kind == "archive":
+                continue
+            counts[key.category_id or OTHER_ID] = await asyncio.to_thread(self._gmail.count_mail, label.id)
+        return counts

@@ -20,7 +20,6 @@ from app.adapters.judge_anthropic import (
 )
 from app.core.judgement import (
     OTHER_ID,
-    OTHER_LABEL,
     Filing,
     Judgement,
     ListedCategory,
@@ -513,6 +512,6 @@ async def test_given_a_model_that_obeys_the_hostile_instructions_when_resolved_t
     result = await make_judge(model).judge(MAIL, LIST, HOSTILE_INSTRUCTION)
 
     assert isinstance(result, Judgement)
-    filing = resolve(result, LIST)
+    filing = resolve(result, LIST, other_label="Other")
     assert isinstance(filing, Filing)
-    assert (filing.label, filing.category_id, filing.extra) == (OTHER_LABEL, OTHER_ID, None)
+    assert (filing.label, filing.category_id, filing.extra) == ("Other", OTHER_ID, None)

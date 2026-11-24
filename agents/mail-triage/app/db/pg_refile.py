@@ -1,7 +1,7 @@
 """The database side of the daily re-file report (INT-004, AC-46, ADR-0043).
 
 One store per mailbox: every statement filters on ``mailbox_id``. The agent role reads ``filing``,
-``category_label``, ``plan`` and ``apply_audit`` and writes the report only through
+``managed_label``, ``plan`` and ``apply_audit`` and writes the report only through
 ``categories.record_refile_report``; it has no right on the report table itself
 (``app/db/grants.sql``). No statement here is built from a string.
 """
@@ -16,7 +16,8 @@ from sqlalchemy.dialects.postgresql import distinct_on
 
 from app.core.judgement import OTHER_ID
 from app.core.resort_plan import PlanKind
-from app.db.models import Alert, ApplyAudit, CategoryLabel, Filing, Plan
+from app.db.models import Alert, ApplyAudit, Filing, Plan
+from app.db.pg_resort import read_managed_labels
 from app.usecases.refile_report import PERIOD, Filed
 from app.usecases.report import SuccessCounts
 
@@ -26,6 +27,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
     from app.usecases.refile_report import RefileReport
+    from app.usecases.resort_apply import ResortLabels
 
 __all__ = ["PgRefileStore"]
 
@@ -58,15 +60,9 @@ class PgRefileStore:
                 for row in rows
             ]
 
-    async def category_labels(self) -> dict[str, str]:
-        """Category id to the Gmail label id recorded for it; the nil id of "Other" is in the map."""
-        async with self._sessions() as session:
-            rows = await session.execute(
-                select(CategoryLabel.category_id, CategoryLabel.label_id).where(
-                    CategoryLabel.mailbox_id == self._mailbox
-                )
-            )
-            return {str(row.category_id): row.label_id for row in rows}
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels of the latest list version, "Other" and the archive label with their stored ids."""
+        return await read_managed_labels(self._sessions, self._mailbox)
 
     async def record_report(self, report: RefileReport) -> None:
         """Append the counts; the database sets the time."""

@@ -24,7 +24,13 @@ from typing import TYPE_CHECKING, Any
 from googleapiclient.errors import HttpError
 
 from app.core.managed import LabelRef, ManagedLabel, ManagedSet, Role
-from category_policy import label_for, validate_category, validate_label_setting_name
+from category_policy import (
+    ARCHIVE_LABEL_DEFAULT,
+    OTHER_LABEL_DEFAULT,
+    label_for,
+    validate_category,
+    validate_label_setting_name,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
@@ -205,14 +211,20 @@ def _inbox_ids(page: dict[str, Any]) -> list[str]:
 
 _PLACEHOLDER_DESCRIPTION = "x"  # validate_category checks a description too; only the name problems matter here
 _CATEGORY_ROLES = frozenset({Role.TOPIC, Role.EXTRA})
+_OWN_DEFAULT = {
+    Role.OTHER: OTHER_LABEL_DEFAULT,
+    Role.ARCHIVE: ARCHIVE_LABEL_DEFAULT,
+}  # the one reserved name a role may take
 
 
 def _usable_name(role: Role, name: str) -> bool:
     """Whether ``name`` may be the name of a managed label of ``role`` (the shared category policy)."""
-    if validate_label_setting_name(name, (), ""):  # the length, character and Gmail system label rules
+    if validate_label_setting_name(
+        name, (), "", _OWN_DEFAULT.get(role, "")
+    ):  # the length, character and Gmail system label rules
         return False
     if role in _CATEGORY_ROLES:
-        return label_for(name) == name and not validate_category(name, _PLACEHOLDER_DESCRIPTION, (), (), ())
+        return label_for(name) == name and not validate_category(name, _PLACEHOLDER_DESCRIPTION, (), ())
     return True
 
 

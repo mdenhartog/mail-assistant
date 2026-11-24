@@ -14,7 +14,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from app.core.managed import Role
-from category_policy import OTHER_LABEL_DEFAULT, validate_label_setting_name
+from category_policy import ARCHIVE_LABEL_DEFAULT, OTHER_LABEL_DEFAULT, validate_label_setting_name
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -22,11 +22,9 @@ if TYPE_CHECKING:
     from app.core.managed import LabelRef, ManagedSet
 
 __all__ = [
-    "ArchiveLabel",
     "Scope",
     "classify",
     "clean_display",
-    "is_archive_label",
     "usable_archive_name",
 ]
 
@@ -43,29 +41,9 @@ class Scope(StrEnum):
     OUT = "out"
 
 
-class ArchiveLabel:
-    """The protected archive label as the agent knows it now (ADR-0059): the name it has in Gmail and its id.
-
-    One object is shared by every component, so a rename done by the label sync is seen by the plan build, the apply
-    and the move back at once. The name stays the old one until Gmail has the new one.
-    """
-
-    __slots__ = ("label_id", "name")
-
-    def __init__(self, name: str, label_id: str | None = None) -> None:
-        """Start with the name the database holds; the sync fills the id."""
-        self.name = name
-        self.label_id = label_id
-
-
 def usable_archive_name(name: str) -> bool:
     """The name rules of ADR-0060 from the shared policy (without the check against the categories)."""
-    return not validate_label_setting_name(name, (), OTHER_LABEL_DEFAULT)
-
-
-def is_archive_label(name: str, archive: str) -> bool:
-    """Whether ``name`` is the configured archive label; case does not matter (C-14, ADR-0052)."""
-    return name.casefold() == archive.casefold()
+    return not validate_label_setting_name(name, (), OTHER_LABEL_DEFAULT, ARCHIVE_LABEL_DEFAULT)
 
 
 def classify(labels: Iterable[LabelRef], managed: ManagedSet) -> Scope:

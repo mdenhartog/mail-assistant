@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from app.adapters.gmail_read import FetchedMail
+from app.core.managed import LabelRef
 from app.db.pg_refile import PgRefileStore
 from app.usecases.refile_report import Filed, RefileReport, RefileReportService
 from app.usecases.report import SuccessCounts
@@ -45,17 +46,23 @@ async def _file(owner: asyncpg.Connection, message_id: str, category: str, versi
 
 
 async def _label(owner: asyncpg.Connection, category: str, label_id: str, name: str, mailbox: str = MAILBOX) -> None:
+    """The stored Gmail id of a managed label: of a category, or of "Other" (the nil id, which has no category)."""
+    if category == OTHER_ID:
+        role, category_id = "other", None
+    else:
+        role, category_id = "category", category
+        await owner.execute(
+            "insert into categories.category_identity (mailbox_id, id) values ($1, $2::uuid) on conflict do nothing",
+            mailbox,
+            category,
+        )
     await owner.execute(
-        "insert into categories.category_identity (mailbox_id, id) values ($1, $2::uuid) on conflict do nothing",
+        "insert into categories.managed_label (mailbox_id, label_id, role, category_id, label_name) "
+        "values ($1, $2, $3, $4::uuid, $5)",
         mailbox,
-        category,
-    )
-    await owner.execute(
-        "insert into categories.category_label (mailbox_id, category_id, label_id, label_name) "
-        "values ($1, $2::uuid, $3, $4)",
-        mailbox,
-        category,
         label_id,
+        role,
+        category_id,
         name,
     )
 
@@ -123,17 +130,24 @@ async def test_given_a_filing_with_an_extra_label_when_asked_then_the_extra_id_i
     assert found == [Filed("a", finance, travel)]
 
 
-async def test_given_labels_when_asked_then_the_map_holds_every_category_and_other_for_this_mailbox_only(
+async def test_given_stored_ids_when_asked_then_the_managed_labels_are_this_mailboxs_list_other_and_archive(
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     finance = (await seed_list(cat_owner, ["Finance"]))[0]
-    await _label(cat_owner, finance, "L_FIN", "Assistant/Finance")
-    await _label(cat_owner, OTHER_ID, "L_OTH", "Assistant/Other")
+    await _label(cat_owner, finance, "L_FIN", "Finance")
+    await _label(cat_owner, OTHER_ID, "L_OTH", "Other")
     await seed_list(cat_owner, ["Elsewhere"], mailbox="mb2")
-    await _label(cat_owner, str(uuid.uuid4()), "L_X", "Assistant/Elsewhere", mailbox="mb2")
+    await _label(cat_owner, str(uuid.uuid4()), "L_X", "Elsewhere", mailbox="mb2")
     store = PgRefileStore(agent_sessions, MAILBOX)
 
-    assert await store.category_labels() == {finance: "L_FIN", OTHER_ID: "L_OTH"}
+    labels = await store.managed_labels()
+
+    assert {cid: (label.name, label.label_id) for cid, label in labels.by_category.items()} == {
+        finance: ("Finance", "L_FIN"),
+        OTHER_ID: ("Other", "L_OTH"),
+    }
+    assert labels.managed.archive is not None
+    assert labels.managed.find(LabelRef("L_X", "Elsewhere")) is None
 
 
 async def test_given_filings_in_14_days_when_the_report_runs_as_the_agent_then_it_reports_and_records_the_shares(
@@ -142,12 +156,10 @@ async def test_given_filings_in_14_days_when_the_report_runs_as_the_agent_then_i
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     finance, travel = await seed_list(cat_owner, ["Finance", "Travel"])
-    await _label(cat_owner, finance, "L_FIN", "Assistant/Finance")
-    await _label(cat_owner, travel, "L_TRV", "Assistant/Travel")
-    await _label(cat_owner, OTHER_ID, "L_OTH", "Assistant/Other")
-    gmail = Gmail(
-        {"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel", "L_OTH": "Assistant/Other", "INBOX": "INBOX"}
-    )
+    await _label(cat_owner, finance, "L_FIN", "Finance")
+    await _label(cat_owner, travel, "L_TRV", "Travel")
+    await _label(cat_owner, OTHER_ID, "L_OTH", "Other")
+    gmail = Gmail({"L_FIN": "Finance", "L_TRV": "Travel", "L_OTH": "Other", "INBOX": "INBOX"})
     plan = [("kept", finance, "L_FIN")] * 6 + [("moved", finance, "L_TRV")] * 2 + [("other", OTHER_ID, "L_OTH")] * 2
     for index, (kind, category, now_label) in enumerate(plan):
         message_id = f"{kind}{index}"
@@ -180,8 +192,8 @@ async def test_given_more_filings_than_the_cap_when_the_report_runs_then_gmail_i
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any]
 ) -> None:
     finance = (await seed_list(cat_owner, ["Finance"]))[0]
-    await _label(cat_owner, finance, "L_FIN", "Assistant/Finance")
-    gmail = Gmail({"L_FIN": "Assistant/Finance"})
+    await _label(cat_owner, finance, "L_FIN", "Finance")
+    gmail = Gmail({"L_FIN": "Finance"})
     for index in range(30):
         await _file(cat_owner, f"m{index:02d}", finance, 1, index / 10)  # m00 is the newest
         gmail.mails[f"m{index:02d}"] = {"L_FIN"}
@@ -202,8 +214,8 @@ async def test_given_canary_strings_when_the_report_runs_then_no_sender_or_subje
     cat_owner: asyncpg.Connection, agent_sessions: async_sessionmaker[Any], caplog: pytest.LogCaptureFixture
 ) -> None:
     finance = (await seed_list(cat_owner, ["Finance"]))[0]
-    await _label(cat_owner, finance, "L_FIN", "Assistant/Finance")
-    gmail = Gmail({"L_FIN": "Assistant/Finance", "L_TRV": "Assistant/Travel"})
+    await _label(cat_owner, finance, "L_FIN", "Finance")
+    gmail = Gmail({"L_FIN": "Finance", "L_TRV": "Travel"})
     for index, now_label in enumerate(["L_FIN", "L_TRV", "L_TRV"]):
         await _file(cat_owner, f"canary-msg-{index}", finance, 1, 1)
         gmail.mails[f"canary-msg-{index}"] = {now_label}
@@ -297,7 +309,7 @@ async def _applied_plan(owner: asyncpg.Connection, kind: str) -> uuid.UUID:
 async def _audit(owner: asyncpg.Connection, plan_id: uuid.UUID, message_id: str, kind: str, age_days: float) -> None:
     await owner.execute(
         "insert into categories.apply_audit (mailbox_id, plan_id, message_id, old_label, new_label, channel, kind) "
-        "values ($1, $2, $3, 'Assistant/A', 'Assistant/B', 'telegram', $4)",
+        "values ($1, $2, $3, 'A', 'B', 'telegram', $4)",
         MAILBOX,
         plan_id,
         message_id,

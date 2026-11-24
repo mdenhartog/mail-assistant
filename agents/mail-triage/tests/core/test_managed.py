@@ -33,3 +33,10 @@ def test_given_a_role_then_the_set_answers_by_role() -> None:
     managed = ManagedSet([FINANCE, archive])
     assert managed.archive == archive
     assert ManagedSet([FINANCE]).archive is None
+
+
+def test_given_a_managed_set_when_its_labels_are_listed_then_those_with_and_without_an_id_are_both_there() -> None:
+    with_id = ManagedLabel("Bills", "L1", Role.TOPIC)
+    without = ManagedLabel("Travel", None, Role.TOPIC)
+
+    assert set(ManagedSet([with_id, without]).labels()) == {with_id, without}
