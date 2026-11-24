@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 from googleapiclient.errors import HttpError
 
-from app.adapters.gmail_resort import GmailResort
-from app.core.judgement import OTHER_ID
+from app.adapters.gmail_resort import GmailResort, LabelRefused
+from app.core.judgement import OTHER_ID, ListedCategory
+from app.core.managed import ManagedLabel, ManagedSet
 from app.core.resort_plan import ItemState, PlanState
-from app.core.scope import ArchiveLabel
 from app.usecases.move_back import MoveBack, MoveBackJob
 from app.usecases.resort_apply import (
     ApplyItem,
@@ -22,19 +22,28 @@ from app.usecases.resort_apply import (
     MailGone,
     Offer,
     ResortApply,
+    ResortLabels,
     SkipReason,
 )
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_gmail import FakeGmail
 from tests.fakes.fake_telegram import FakeTelegram
-from tests.resort_build_support import CATEGORIES, FINANCE, PINNED, START, TRAVEL, GmailBuildMailbox
+from tests.resort_build_support import (
+    CATEGORIES,
+    FINANCE,
+    OTHER_NAME,
+    PINNED,
+    START,
+    TRAVEL,
+    GmailBuildMailbox,
+    resort_labels,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from app.adapters.gmail_read import FetchedMail
 
-ARCHIVE = ArchiveLabel("Archive")
 NEWSLETTER = "00000000-0000-0000-0000-0000000000e1"  # an extra-label category of the apply tests
 RECEIPT = "00000000-0000-0000-0000-0000000000e2"
 
@@ -65,11 +74,14 @@ class PlanRow:
 class FakeApplyStore:
     """Plan, items, audit and move-back requests in memory, with the compare-and-set rules of the real tables."""
 
-    def __init__(self, clock: FakeClock) -> None:
+    def __init__(self, clock: FakeClock, gmail: FakeGmail) -> None:
         self._clock = clock
+        self._gmail = gmail
         self.categories: dict[str, str] = {c.category_id: c.name for c in CATEGORIES}
         self.categories |= {NEWSLETTER: "Newsletter", RECEIPT: "Receipt"}
-        self.extras: frozenset[str] = frozenset({"Assistant/Newsletter", "Assistant/Receipt"})
+        self.extras: frozenset[str] = frozenset({NEWSLETTER, RECEIPT})  # the extra-label categories
+        self.stored_ids: dict[str, str] = {}  # category id (or "archive") -> the Gmail label id the database stored
+        self.other_name = OTHER_NAME
         self.plans: dict[uuid.UUID, PlanRow] = {}
         self.intents: dict[tuple[uuid.UUID, str], AuditMove] = {}
         self.restores: list[tuple[uuid.UUID, AuditMove, str]] = []
@@ -125,11 +137,9 @@ class FakeApplyStore:
         self._set_state(plan_id, PlanState.CANCELLED)
         return True
 
-    async def current_categories(self) -> dict[str, str]:
-        return dict(self.categories)
-
-    async def extra_label_names(self) -> frozenset[str]:
-        return self.extras
+    async def managed_labels(self) -> ResortLabels:
+        listed = [ListedCategory(cid, name, "") for cid, name in self.categories.items()]
+        return resort_labels(self._gmail, listed, stored=self.stored_ids, other=self.other_name, extras=self.extras)
 
     async def target_ids(self, plan_id: uuid.UUID) -> frozenset[str]:
         found: set[str] = set()
@@ -224,7 +234,8 @@ class GmailApplyMailbox(GmailBuildMailbox):
 
     def __init__(self, gmail: FakeGmail) -> None:
         super().__init__(gmail)
-        self.resort = GmailResort(gmail, ARCHIVE, sleep=lambda _seconds: None)
+        self.resort = GmailResort(gmail, ManagedSet([]), sleep=lambda _seconds: None)
+        self.writes: list[tuple[str, str, str]] = []  # (what, message id, label id) of every label write
         self.on_add: Callable[[str], None] | None = None
         self.on_remove: Callable[[str], None] | None = None
         self.failing_adds: dict[str, int] = {}  # message id -> failures left (-1: always), as Gmail refusing the change
@@ -238,32 +249,38 @@ class GmailApplyMailbox(GmailBuildMailbox):
             raise MailFailed
         return super().fetch(message_id)
 
-    def ensure_label(self, name: str) -> str:
-        return self.resort.create_label(name).id
+    def set_managed(self, managed: ManagedSet) -> None:
+        self.resort.set_managed(managed)
 
-    def add_label(self, message_id: str, label_id: str) -> None:
+    def ensure_label(self, label: ManagedLabel) -> str:
+        return self.resort.ensure_label(label).id
+
+    def add_label(self, message_id: str, label_id: str) -> str:
         left = self.failing_adds.get(message_id, 0)
         if left:
             self.failing_adds[message_id] = max(left - 1, -1) if left > 0 else -1
             raise MailFailed
-        self._guard(lambda: self.resort.add_label(message_id, label_id))
+        self.writes.append(("add", message_id, label_id))
+        used = self._guard(lambda: self.resort.add_label(message_id, label_id))
         if self.on_add is not None:
             self.on_add(message_id)
+        return str(used)
 
     def remove_label(self, message_id: str, label_id: str) -> None:
         if self.on_remove is not None:
             self.on_remove(message_id)
+        self.writes.append(("remove", message_id, label_id))
         self._guard(lambda: self.resort.remove_label(message_id, label_id))
 
     def count_mail(self, label_id: str) -> int:
         return self.resort.count_mail(label_id)
 
     @staticmethod
-    def _guard(call: Callable[[], None]) -> None:
+    def _guard(call: Callable[[], object]) -> object:
         try:
-            call()
-        except HttpError as error:
-            if error.resp.status == 404:
+            return call()
+        except (HttpError, LabelRefused) as error:
+            if isinstance(error, HttpError) and error.resp.status == 404:
                 raise MailGone from error
             raise MailFailed from error
 
@@ -304,12 +321,12 @@ class ApplyRig:
     def __init__(self, *, batch_size: int = 50) -> None:
         self.clock = FakeClock(START)
         self.gmail = FakeGmail()
-        self.finance = self.gmail.add_label("Assistant/Finance")
-        self.travel = self.gmail.add_label("Assistant/Travel")
-        self.newsletter = self.gmail.add_label("Assistant/Newsletter")
-        self.receipt = self.gmail.add_label("Assistant/Receipt")
+        self.finance = self.gmail.add_label("Finance")
+        self.travel = self.gmail.add_label("Travel")
+        self.newsletter = self.gmail.add_label("Newsletter")
+        self.receipt = self.gmail.add_label("Receipt")
         self.mailbox = GmailApplyMailbox(self.gmail)
-        self.store = FakeApplyStore(self.clock)
+        self.store = FakeApplyStore(self.clock, self.gmail)
         self.lock = FakeLock()
         self.telegram = FakeTelegram()
         self.notifier = FakeNotifier(self.telegram)
@@ -323,7 +340,6 @@ class ApplyRig:
             notifier=self.notifier,
             now=self.clock,
             pinned=PINNED,
-            archive=ARCHIVE,
             batch_size=self.batch_size,
         )
 
@@ -333,7 +349,6 @@ class ApplyRig:
             store=self.store,
             lock=self.lock,
             notifier=self.notifier,
-            archive=ARCHIVE,
             batch_size=self.batch_size,
         )
 

@@ -15,7 +15,7 @@ from googleapiclient.errors import HttpError
 
 from app.adapters.gmail_read import HTTP_NOT_FOUND, GmailLabelError, GmailReader
 from app.adapters.gmail_resort import GmailResort, LabelNameRejected, LabelNameTaken, LabelRefused
-from app.usecases.resort_apply import MailFailed, MailGone
+from app.core.mail_errors import MailFailed, MailGone
 
 if TYPE_CHECKING:
     from collections.abc import Callable
