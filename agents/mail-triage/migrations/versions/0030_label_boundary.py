@@ -7,12 +7,18 @@ New tables in schema ``categories`` (every key starts with ``mailbox_id``):
 
 - ``managed_label(label_id, role category|other|archive, category_id, label_name)``: the Gmail labels the agent may
   change, by id. Filled from ``category_label``; "other" and the archive label are written by the agent once their ids
-  are known.
+  are known. The old "Other" and archive labels have no stored id anywhere in the database (``gmail_label`` holds names
+  only, ``category_label`` only categories), so no id can be copied for them: while the state is not ``done`` the
+  adapters never create, adopt or rename a label, so nothing is made under the new names before the plan (RED-002).
 - ``label_migration(state pending|confirmed|done, plan_hash)``: gates every label write. ``pending`` when a label
   named ``Assistant/...`` is known (``category_label`` or ``gmail_label``), else ``done``. Only the confirmation
   function moves ``pending`` to ``confirmed`` (a trigger refuses any other writer); ``confirmed`` goes to ``done``.
 - ``label_rename_item(label_id, old_name, new_name, mail_count, action rename|merge, state)``: the plan, and the
   backup of the old names that a restore reads.
+- ``managed_label_released(label_id, released_at)``: written by the agent whenever a managed row of any role is
+  replaced or deleted (a category renamed onto another label, the Other or archive setting swapped away). The cleanup
+  reads the latest time per label id as "left management", so protection (R6) also covers a label that left
+  management without leaving the list (RED-001). No access for the api.
 - ``label_empty_since(label_id, empty_since, last_seen_empty, wait_minutes)``: the persistent timers of the delayed
   delete; ``wait_minutes`` (5 to 720) is the waiting time the timer started with, so a lowered setting leaves running
   timers on their own length (spec R3, AC 24).
@@ -32,7 +38,10 @@ Functions (``SECURITY DEFINER``, owned by ``categories_definer``, search path pi
   and the hash of the items now; inserts the confirmation and moves the state to ``confirmed``. A repeat with the same
   arguments returns the same id and writes nothing.
 - ``request_label_restore(mailbox)`` (the api): needs a confirmed or done plan; one open request per mailbox.
-- ``purge_label_records()`` (the agent, the caller's own rights, no parameters, the database clock): removes
+- ``label_rename_item_guard`` (trigger): once the state is not ``pending`` no item changes its label id, names, count or
+  action, and a ``confirmed`` plan keeps all its items. The agent has INSERT and UPDATE (state) on the items only.
+- ``purge_label_records()`` (the agent; ``SECURITY DEFINER`` because the agent has no DELETE on the items; no
+  parameters, the database clock; mailboxes whose plan is not ``done`` are left alone): removes
   ``deleted_label`` rows (``deleted_at``) and finished ``label_rename_item`` rows (``created_at``) that are strictly
   older than ``settings.schedule.label_retention_days`` (30 days while there is no row) and returns the counts. An item
   that is still ``planned`` is never removed: the hash of the plan covers it. Spec R7, ADR-0061 point 4.
@@ -99,6 +108,15 @@ _TABLES = (
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS categories.managed_label_released (
+        mailbox_id varchar(64) NOT NULL,
+        label_id text NOT NULL,
+        released_at timestamptz NOT NULL DEFAULT now(),
+        CONSTRAINT pk_managed_label_released PRIMARY KEY (mailbox_id, label_id, released_at),
+        CONSTRAINT fk_managed_label_released_mailbox FOREIGN KEY (mailbox_id) REFERENCES categories.mailbox (id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS categories.label_empty_since (
         mailbox_id varchar(64) NOT NULL,
         label_id text NOT NULL,
@@ -155,6 +173,7 @@ _TABLE_NAMES = (
     "managed_label",
     "label_migration",
     "label_rename_item",
+    "managed_label_released",
     "label_empty_since",
     "deleted_label",
     "label_confirmation",
@@ -261,6 +280,31 @@ END
 $$
 """
 
+# Once the plan is confirmed the items are what the user saw: no id, name, count or action changes (the hash covers
+# them), and a confirmed plan keeps every item. Only the state of an item settles afterwards (SEC-001, RED-006).
+_ITEM_GUARD = """
+CREATE OR REPLACE FUNCTION categories.label_rename_item_guard() RETURNS trigger
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    v_state text;
+BEGIN
+    SELECT m.state INTO v_state FROM categories.label_migration m WHERE m.mailbox_id = OLD.mailbox_id;
+    IF TG_OP = 'DELETE' THEN
+        IF v_state = 'confirmed' THEN
+            RAISE EXCEPTION 'a confirmed plan keeps its items' USING ERRCODE = 'MC409';
+        END IF;
+        RETURN OLD;
+    END IF;
+    IF v_state IS NOT NULL AND v_state <> 'pending'
+       AND (NEW.mailbox_id, NEW.label_id, NEW.old_name, NEW.new_name, NEW.mail_count, NEW.action)
+           IS DISTINCT FROM (OLD.mailbox_id, OLD.label_id, OLD.old_name, OLD.new_name, OLD.mail_count, OLD.action) THEN
+        RAISE EXCEPTION 'the plan is fixed' USING ERRCODE = 'MC409';
+    END IF;
+    RETURN NEW;
+END
+$$
+"""
+
 _PLAN_HASH = """
 CREATE OR REPLACE FUNCTION categories.label_plan_hash(p_mailbox text) RETURNS text
 LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
@@ -337,7 +381,7 @@ $$
 
 _PURGE = """
 CREATE OR REPLACE FUNCTION categories.purge_label_records() RETURNS jsonb
-LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE
     v_days integer;
     v_cutoff timestamptz;
@@ -348,7 +392,10 @@ BEGIN
     v_cutoff := now() - make_interval(days => coalesce(v_days, 30));
     DELETE FROM categories.deleted_label WHERE deleted_at < v_cutoff;
     GET DIAGNOSTICS v_deleted = ROW_COUNT;
-    DELETE FROM categories.label_rename_item WHERE created_at < v_cutoff AND state <> 'planned';
+    DELETE FROM categories.label_rename_item i
+     WHERE i.created_at < v_cutoff AND i.state <> 'planned'
+       AND NOT EXISTS (SELECT 1 FROM categories.label_migration m
+                        WHERE m.mailbox_id = i.mailbox_id AND m.state <> 'done');
     GET DIAGNOSTICS v_items = ROW_COUNT;
     RETURN jsonb_build_object('deleted_label', v_deleted, 'label_rename_item', v_items);
 END
@@ -359,19 +406,24 @@ _FUNCTIONS = (
     "categories.purge_label_records()",
     "categories.label_request_derive()",
     "categories.label_migration_guard()",
+    "categories.label_rename_item_guard()",
     "categories.label_plan_hash(text)",
     "categories.confirm_label_rename(text, text, text[])",
     "categories.request_label_restore(text)",
 )
 _TRIGGERS = (
     ("label_migration_guard", "BEFORE INSERT OR UPDATE ON categories.label_migration", "label_migration_guard"),
+    ("label_rename_item_guard", "BEFORE UPDATE OR DELETE ON categories.label_rename_item", "label_rename_item_guard"),
     ("label_confirmation_derive", "BEFORE INSERT ON categories.label_confirmation", "label_request_derive"),
     ("label_restore_derive", "BEFORE INSERT ON categories.label_restore_request", "label_request_derive"),
 )
 # What the definer functions need, nothing else (the owner role keeps its rights through grants.sql as well).
 _DEFINER_RIGHTS = (
     "GRANT SELECT, UPDATE ON categories.label_migration TO categories_definer",
-    "GRANT SELECT ON categories.label_rename_item TO categories_definer",
+    "GRANT SELECT, DELETE ON categories.label_rename_item TO categories_definer",
+    "GRANT SELECT, DELETE ON categories.deleted_label TO categories_definer",
+    "GRANT USAGE ON SCHEMA settings TO categories_definer",
+    "GRANT SELECT ON settings.schedule TO categories_definer",
     "GRANT SELECT, INSERT ON categories.label_confirmation, categories.label_restore_request TO categories_definer",
     "GRANT UPDATE (processed_at) ON categories.label_restore_request TO categories_definer",
 )
@@ -383,7 +435,7 @@ def upgrade() -> None:
         op.execute(statement)
     for table, constraint, expression, _old in _LIMITS:
         _set_limit(table, constraint, expression.format(n=_LABEL_MAX))
-    for function_sql in (_REQUEST_DERIVE, _GUARD, _PLAN_HASH, _CONFIRM, _RESTORE, _PURGE):
+    for function_sql in (_REQUEST_DERIVE, _GUARD, _ITEM_GUARD, _PLAN_HASH, _CONFIRM, _RESTORE, _PURGE):
         op.execute(function_sql)
     for name, when, function in _TRIGGERS:
         op.execute(f"DROP TRIGGER IF EXISTS {name} ON {when.rsplit(' ON ', 1)[1]}")

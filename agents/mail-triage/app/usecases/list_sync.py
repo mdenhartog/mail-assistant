@@ -218,7 +218,7 @@ class ListSync:
         names = await self._store.label_settings()
         wanted = [item for item in _wanted(current, names) if not _setting_refused(current, names, item[0])]
         stored = await self._store.managed_ids()
-        self._share(ManagedSet(self._labelled(wanted, stored)))
+        self._share(ManagedSet(self._labelled(wanted, stored), writes_held=state is not MigrationState.DONE))
         by_id = {label.id: label for label in labels}
         run = _Pass(by_id, {label.name.casefold(): label for label in labels}, {k.label_id for k in stored.values()})
         if state is MigrationState.DONE:

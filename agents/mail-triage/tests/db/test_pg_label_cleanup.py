@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.core.label_cleanup import Timer
 from app.db.pg_label_cleanup import CleanupSettings, PgLabelCleanupStore, StoredTimer
+from app.db.pg_list_sync import PgListSyncStore
+from app.usecases.list_sync import LabelKey
 from tests.db.agent_engine import create_agent_engine
 from tests.db.conftest import insert_list, write_list
 from tests.db.plan_support import seed_plan
@@ -356,3 +358,76 @@ async def test_given_open_plans_when_asked_then_only_the_labels_of_open_items_of
     await seed_plan(cat_owner, MAILBOX, state="applied", moves=((ids["applied_plan"], ids["applied_plan"]),), tag="b")
 
     assert await store.resort_label_ids() == frozenset({"L_dropped", "L_moved_to", "L_other"})
+
+
+# --- RED-001: a label that left management without leaving the list is protected too ------------------------------
+
+
+def _list_store(engine: AsyncEngine) -> PgListSyncStore:
+    return PgListSyncStore(async_sessionmaker(engine, expire_on_commit=False), MAILBOX)
+
+
+async def test_given_a_category_that_is_pointed_at_another_label_when_asked_then_the_old_label_left_just_now(
+    store: PgLabelCleanupStore, engine: AsyncEngine, cat_owner: asyncpg.Connection
+) -> None:
+    await write_list(cat_owner, MAILBOX, 1, ["Bills"])
+    bills = LabelKey("category", (await _category_ids(cat_owner, 1))["Bills"])
+    sync = _list_store(engine)
+    await sync.save_managed(bills, "Label_old", "Bills")
+    assert await store.left_list() == {}
+
+    await sync.save_managed(bills, "Label_new", "Bills")  # the category is renamed onto another, existing label
+
+    found = await store.left_list()
+    assert set(found) == {"Label_old"}  # still in the list, but the old label is no longer managed
+    assert datetime.now(UTC) - found["Label_old"] < timedelta(minutes=1)
+
+
+async def test_given_the_other_setting_swapped_away_when_asked_then_the_old_label_is_protected(
+    store: PgLabelCleanupStore, engine: AsyncEngine, cat_owner: asyncpg.Connection
+) -> None:
+    await write_list(cat_owner, MAILBOX, 1, ["Bills"])
+    sync = _list_store(engine)
+    await sync.save_managed(LabelKey("other"), "Label_o1", "Other")
+    await sync.save_managed(LabelKey("archive"), "Label_a1", "Archive")
+
+    await sync.save_managed(LabelKey("other"), "Label_o2", "Rest")
+    await sync.save_managed(LabelKey("archive"), "Label_a2", "Old things")
+
+    assert set(await store.left_list()) == {"Label_o1", "Label_a1"}
+
+
+async def test_given_the_same_label_saved_again_when_asked_then_nothing_was_released(
+    store: PgLabelCleanupStore, engine: AsyncEngine, cat_owner: asyncpg.Connection
+) -> None:
+    await write_list(cat_owner, MAILBOX, 1, ["Bills"])
+    bills = LabelKey("category", (await _category_ids(cat_owner, 1))["Bills"])
+    sync = _list_store(engine)
+
+    await sync.save_managed(bills, "Label_1", "Bills")
+    await sync.save_managed(bills, "Label_1", "Bills v2")
+
+    assert await store.left_list() == {}
+
+
+async def test_given_a_released_label_that_is_managed_again_when_asked_then_it_is_not_released(
+    store: PgLabelCleanupStore, engine: AsyncEngine, cat_owner: asyncpg.Connection
+) -> None:
+    await write_list(cat_owner, MAILBOX, 1, ["Bills"])
+    bills = LabelKey("category", (await _category_ids(cat_owner, 1))["Bills"])
+    sync = _list_store(engine)
+    await sync.save_managed(bills, "Label_old", "Bills")
+    await sync.save_managed(bills, "Label_new", "Bills")
+    await sync.save_managed(bills, "Label_old", "Bills")  # back again
+
+    assert await store.left_list() == {"Label_new": (await store.left_list())["Label_new"]}
+
+
+async def test_given_a_label_released_without_any_list_version_when_asked_then_it_is_still_reported(
+    store: PgLabelCleanupStore, engine: AsyncEngine
+) -> None:
+    sync = _list_store(engine)
+    await sync.save_managed(LabelKey("other"), "Label_o1", "Other")
+    await sync.save_managed(LabelKey("other"), "Label_o2", "Rest")
+
+    assert set(await store.left_list()) == {"Label_o1"}

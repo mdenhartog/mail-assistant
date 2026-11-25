@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from googleapiclient.errors import HttpError
 
+from app.core.mail_errors import LabelWritesHeld
 from app.core.managed import LabelRef, ManagedLabel, ManagedSet, Role
 from category_policy import (
     ARCHIVE_LABEL_DEFAULT,
@@ -282,14 +283,23 @@ class ManagedLabels:
         A label deleted by hand while its id is stored comes back as a new label; the caller stores the new id.
         """
         member = self._member(label)
+        if member.label_id is None:
+            self._check_writes()
         listed = self.list_labels()
         by_id = {item.id: item for item in listed}
         if member.label_id in by_id:
             return self._confirm(member, by_id[member.label_id])
+        self._check_writes()  # an id that is gone is not made again, and a name is not adopted, before the plan is done
         existing = next((item for item in listed if item.name.casefold() == member.name.casefold()), None)
         return self._confirm(member, existing) if existing is not None else self._create(member)
 
+    def _check_writes(self) -> None:
+        """The one guard of the rename plan (R4): refuse every label write that is not by a stored id."""
+        if self._managed.writes_held:
+            raise LabelWritesHeld("label_writes_held")
+
     def _create(self, label: ManagedLabel) -> Label:
+        self._check_writes()
         body = {"name": label.name, "labelListVisibility": "labelShow", "messageListVisibility": "show"}
         try:
             made = self._run(self._service.users().labels().create(userId=ME, body=body))
@@ -312,6 +322,7 @@ class ManagedLabels:
         When the id no longer exists in Gmail the label is created again under the new name (once); the caller
         stores the returned id.
         """
+        self._check_writes()
         label = self._managed_label(label_id)
         if not _usable_name(label.role, new_name):
             raise LabelRefused("new_name_not_usable")

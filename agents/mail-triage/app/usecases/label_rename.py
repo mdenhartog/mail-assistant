@@ -167,6 +167,10 @@ class RenameStore(Protocol):
         """The name of the archive label in the latest list version."""
         ...
 
+    async def protected_ids(self) -> frozenset[str]:
+        """The stored Gmail label ids of "Other" and the archive label: never the target of a merge."""
+        ...
+
 
 class _Retry(Exception):  # noqa: N818 - control flow inside this module: the item stays planned
     """Gmail failed in a way that may pass; the item is tried again in the next pass."""
@@ -237,13 +241,14 @@ class LabelRename:
         if skipped_ids is None:
             return result  # no confirmation row: nothing is renamed (AC 5)
         archive = (await self._store.archive_name()).casefold()
+        protected = await self._store.protected_ids()
         failed = 0
         for item in [i for i in await self._store.items() if i.state is ItemState.PLANNED]:
             if item.label_id in skipped_ids:
                 await self._store.settle(item.label_id, ItemState.SKIPPED, was=ItemState.PLANNED)
                 continue
             try:
-                outcome = await self._item(item, archive)
+                outcome = await self._item(item, archive, protected)
             except _Retry:
                 failed += 1
                 continue
@@ -266,10 +271,10 @@ class LabelRename:
             )
         return result
 
-    async def _item(self, item: StoredItem, archive: str) -> ItemState:
+    async def _item(self, item: StoredItem, archive: str, protected: frozenset[str]) -> ItemState:
         """Do one item; ``DONE`` or ``KEPT``. Raises ``_Retry`` when Gmail failed in a way that may pass."""
         labels = await asyncio.to_thread(self._gmail.list_labels)  # read again, by id, just before the change
-        verdict = _check(item, labels, archive)
+        verdict = _check(item, labels, archive, protected)
         if isinstance(verdict, ItemState):
             return verdict
         old, target = verdict
@@ -367,7 +372,9 @@ def _legacy(label: Label | None) -> list[ManagedLabel]:
     return [] if label is None else [ManagedLabel(label.name, label.id, Role.LEGACY)]
 
 
-def _check(item: StoredItem, labels: Sequence[Label], archive: str) -> ItemState | tuple[Label, Label | None]:
+def _check(
+    item: StoredItem, labels: Sequence[Label], archive: str, protected: frozenset[str]
+) -> ItemState | tuple[Label, Label | None]:
     """The verdict before any change: a final state, or the old label and (for a merge) the target to work with."""
     current = next((label for label in labels if label.id == item.label_id), None)
     if current is None:
@@ -379,8 +386,8 @@ def _check(item: StoredItem, labels: Sequence[Label], archive: str) -> ItemState
     target = next((x for x in labels if x.id != item.label_id and x.name.casefold() == item.new_name.casefold()), None)
     if item.action == "rename":
         return ItemState.KEPT if target is not None else (current, None)  # a taken name: not what the user saw
-    if target is None or target.id == target.name or target.name.casefold() == archive:
-        return ItemState.KEPT  # no target any more, a system label, or the archive label
+    if target is None or target.id == target.name or target.id in protected or target.name.casefold() == archive:
+        return ItemState.KEPT  # no target any more, a system label, or the archive or Other label (by id, then by name)
     return current, target
 
 

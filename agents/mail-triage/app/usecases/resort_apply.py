@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.core import approval_text
 from app.core.judgement import OTHER_ID
-from app.core.mail_errors import MailFailed, MailGone
+from app.core.mail_errors import LabelWritesHeld, MailFailed, MailGone
 from app.core.managed import LabelRef, ManagedLabel, ManagedSet, Role
 from app.core.pinned import pinned_kind
 from app.core.resort_plan import ItemState, Plan, PlanNotDueError, PlanState, start_apply
@@ -442,6 +442,9 @@ class ResortApply:
         """
         try:
             await self._move_item(plan_id, one, view)
+        except LabelWritesHeld:  # the rename plan is not done: wait, no attempt is counted and no label is made (R4)
+            logger.info("item waits for the rename plan plan=%s", plan_id)
+            return False
         except MailFailed:
             attempts = await self._store.count_attempt(plan_id, one.message_id)
             logger.warning("item failed plan=%s attempts=%d", plan_id, attempts)

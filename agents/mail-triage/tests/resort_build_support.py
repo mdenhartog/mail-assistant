@@ -56,13 +56,15 @@ def resort_labels(  # noqa: PLR0913
     other: str = OTHER_NAME,
     archive: str = ARCHIVE_NAME,
     extras: frozenset[str] = frozenset(),
+    writes_held: bool = False,
 ) -> ResortLabels:
     """The managed labels as the database would hold them: a stored id wins, else the Gmail label of that name.
 
     ``stored`` maps a category id (``OTHER_ID`` for "Other", ``"archive"`` for the archive label) to the label id
-    the database stored for it. ``extras`` lists category ids that are extra labels.
+    the database stored for it. ``extras`` lists category ids that are extra labels. ``writes_held`` is the rename
+    plan that is not done: the set carries the hold and only a stored id counts (no label is found by its name).
     """
-    ids = {name: label_id for label_id, name in gmail.label_table.items()}
+    ids = {} if writes_held else {name: label_id for label_id, name in gmail.label_table.items()}
     kept = stored or {}
     by_category: dict[str, ManagedLabel] = {}
     for category in categories:
@@ -71,7 +73,7 @@ def resort_labels(  # noqa: PLR0913
         by_category[category.category_id] = ManagedLabel(name, kept.get(category.category_id) or ids.get(name), role)
     by_category[OTHER_ID] = ManagedLabel(other, kept.get(OTHER_ID) or ids.get(other), Role.OTHER)
     archive_label = ManagedLabel(archive, kept.get("archive") or ids.get(archive), Role.ARCHIVE)
-    return ResortLabels(ManagedSet([*by_category.values(), archive_label]), by_category)
+    return ResortLabels(ManagedSet([*by_category.values(), archive_label], writes_held=writes_held), by_category)
 
 
 class FakeBuildStore:
@@ -82,6 +84,7 @@ class FakeBuildStore:
         self._gmail = FakeGmail() if gmail is None else gmail
         self.stored_ids: dict[str, str] = {}
         self.other_name = OTHER_NAME
+        self.writes_held = False  # the rename plan is not done (R4)
         self.list = BuildList(version=1, changed_at=clock(), categories=CATEGORIES)
         self.plans: list[PlanRecord] = []
         self.items: dict[uuid.UUID, list[ItemDraft]] = {}
@@ -118,7 +121,13 @@ class FakeBuildStore:
         return self.list
 
     async def managed_labels(self) -> ResortLabels:
-        return resort_labels(self._gmail, self.list.categories, stored=self.stored_ids, other=self.other_name)
+        return resort_labels(
+            self._gmail,
+            self.list.categories,
+            stored=self.stored_ids,
+            other=self.other_name,
+            writes_held=self.writes_held,
+        )
 
     async def latest_plan(self) -> PlanRecord | None:
         return self.plans[-1] if self.plans else None

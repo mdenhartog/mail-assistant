@@ -131,3 +131,16 @@ async def test_given_a_restore_request_when_closed_then_it_is_no_longer_open(
 
 async def test_given_no_settings_row_when_the_archive_name_is_read_then_it_is_the_default(store: PgRenameStore) -> None:
     assert await store.archive_name() == "Archive"
+
+
+async def test_given_stored_other_archive_and_category_labels_when_asked_then_only_other_and_archive_ids_are_protected(
+    store: PgRenameStore, cat_owner: asyncpg.Connection
+) -> None:
+    await cat_owner.execute("insert into categories.mailbox (id) values ($1) on conflict do nothing", MAILBOX)
+    await cat_owner.execute(
+        "insert into categories.managed_label (mailbox_id, label_id, role, label_name) "
+        "values ($1, 'L_O', 'other', 'Other'), ($1, 'L_A', 'archive', 'Archive')",
+        MAILBOX,
+    )
+
+    assert await store.protected_ids() == frozenset({"L_O", "L_A"})

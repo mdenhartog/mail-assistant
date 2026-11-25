@@ -26,6 +26,7 @@ from app.db.models import (
     ListCursor,
     ListSettings,
     ListVersion,
+    ManagedLabelReleased,
 )
 from app.db.models import ManagedLabel as ManagedLabelTable
 from app.db.pg_categories import CurrentList, current_list
@@ -122,13 +123,19 @@ class PgListSyncStore:
         """Remember the Gmail label of a managed key; a later call replaces the earlier one, in one transaction."""
         async with self._sessions.begin() as session:
             await session.execute(insert(CategoryMailbox).values(id=self._mailbox).on_conflict_do_nothing())
-            await session.execute(
-                delete(ManagedLabelTable).where(
-                    ManagedLabelTable.mailbox_id == self._mailbox,
-                    ManagedLabelTable.role == key.kind,
-                    ManagedLabelTable.category_id.is_not_distinct_from(key.category_id),
-                )
+            same_key = (
+                ManagedLabelTable.mailbox_id == self._mailbox,
+                ManagedLabelTable.role == key.kind,
+                ManagedLabelTable.category_id.is_not_distinct_from(key.category_id),
             )
+            replaced = (await session.execute(select(ManagedLabelTable.label_id).where(*same_key))).scalars().all()
+            await session.execute(delete(ManagedLabelTable).where(*same_key))
+            # A label that stops being managed is recorded with the time, so protection (R6) counts from it (RED-001).
+            if released := [label for label in replaced if label != label_id]:
+                await session.execute(
+                    insert(ManagedLabelReleased),
+                    [{"mailbox_id": self._mailbox, "label_id": label} for label in released],
+                )
             statement = insert(ManagedLabelTable).values(
                 mailbox_id=self._mailbox,
                 label_id=label_id,

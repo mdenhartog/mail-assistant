@@ -25,6 +25,7 @@ class FakeRenameStore:
     def __init__(self, state: MigrationState | None = MigrationState.PENDING, archive: str = "Archive") -> None:
         self.state = state
         self.archive = archive
+        self.protected: frozenset[str] = frozenset()  # the stored label ids of "Other" and the archive label
         self.stored: dict[str, StoredItem] = {}
         self.confirmation: frozenset[str] | None = None
         self.restore_open: str | None = None
@@ -98,3 +99,6 @@ class FakeRenameStore:
 
     async def archive_name(self) -> str:
         return self.archive
+
+    async def protected_ids(self) -> frozenset[str]:
+        return self.protected
