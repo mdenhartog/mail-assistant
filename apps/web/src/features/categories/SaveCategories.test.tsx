@@ -324,6 +324,22 @@ describe("Categories page: invalid fields (AC-2)", () => {
     expect(view.getByLabelText("Name")).toHaveFocus();
   });
 
+  it("given a typed name equal to the archive label, when saving, then name_setting_clash shows as plain text tied to the field and nothing is sent (AC 13, AC 17)", async () => {
+    const seen = wire({ get: () => json({ ...LIST, archiveLabel: "Bewaard" }) });
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
+    const view = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(view.getByLabelText("Name"), "bewaard");
+    await userEvent.type(view.getByLabelText("Description"), "Old mail");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+
+    const reason = view.getByText("This name is already used for your Other or archive label. Choose another name.");
+    expect(view.getByLabelText("Name")).toBeInvalid();
+    expect(view.getByLabelText("Name")).toHaveAccessibleDescription(/already used for your Other or archive label/);
+    expect(reason.innerHTML).not.toContain("<");
+    expect(seen.puts).toHaveLength(0);
+  });
+
   it("given a typed name that is an older category, when saving, then the page does not refuse it and the save is asked for", async () => {
     const seen = wire();
     await loaded();
@@ -336,18 +352,18 @@ describe("Categories page: invalid fields (AC-2)", () => {
     await userEvent.click(saveButton());
 
     expect(await screen.findByRole("alertdialog", { name: "Save 1 change?" })).toBeInTheDocument();
-    expect(screen.queryByText("A Gmail label with this name already exists.")).not.toBeInTheDocument();
+    expect(screen.queryByText("This name is already used for your Other or archive label. Choose another name.")).not.toBeInTheDocument();
     expect(seen.puts).toHaveLength(0);
   });
 
   it("given the api refuses a name (422), then the edit view of that category opens with the error and focus on the field", async () => {
-    wire({ put: () => problem422([{ rule: "name_label_exists", field: "name", index: 1, position: null, otherIndex: null }]) });
+    wire({ put: () => problem422([{ rule: "name_setting_clash", field: "name", index: 1, position: null, otherIndex: null }]) });
     await loaded();
     await rename("Newsletters", "Trips");
     await confirm();
 
     const view = within(await screen.findByRole("region", { name: "Edit category" }));
-    expect(view.getByText("A Gmail label with this name already exists.")).toBeInTheDocument();
+    expect(view.getByText("This name is already used for your Other or archive label. Choose another name.")).toBeInTheDocument();
     await waitFor(() => {
       expect(view.getByLabelText("Name")).toHaveFocus();
     });
@@ -556,7 +572,7 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
     wire();
     await loaded();
     const field = screen.getByLabelText("Archive label");
-    expect(field).toHaveValue("Assistant/Archive");
+    expect(field).toHaveValue("Archive");
     expect(field).toHaveClass("min-h-11");
     expect(
       screen.getByText("Mail in this label is never sorted or moved. Renaming it renames the Gmail label, nothing else."),
@@ -596,13 +612,13 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
   });
 
   it("given a refused name, then the field shows the reason, is invalid, described and focused", async () => {
-    wire({ put: () => problem422([{ rule: "archive_system_label", field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    wire({ put: () => problem422([{ rule: "setting_name_system_label", field: "archive_label", index: null, position: null, otherIndex: null }]) });
     await loaded();
     await replace(screen.getByLabelText("Archive label"), "INBOX");
     await confirm();
 
     const field = await screen.findByLabelText("Archive label");
-    const reason = await screen.findByText("This is a Gmail label of its own and cannot be your archive label.");
+    const reason = await screen.findByText("This is a Gmail label of its own and cannot be used here.");
     expect(field).toBeInvalid();
     expect(field).toHaveAccessibleDescription(/Gmail label of its own/);
     expect(reason.closest("[role=alert]")).not.toBeNull();
@@ -612,9 +628,10 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
   });
 
   it.each([
-    ["archive_invalid", "This is not a valid label name."],
-    ["archive_inside_assistant", "Use a name outside Assistant/, or exactly Assistant/Archive."],
-    ["archive_category_label", "A category already uses this label, or lies below it. Choose another name."],
+    ["setting_name_invalid", "This is not a valid label name."],
+    ["setting_name_too_long", "Use at most 255 characters for the label name."],
+    ["setting_name_reserved", "This name is kept for the assistant, or the other setting already uses it. Choose another name."],
+    ["setting_name_category_clash", "A category already uses this label, or lies below it. Choose another name."],
   ])("given the rule %s, then the reason reads %j", async (rule, text) => {
     wire({ put: () => problem422([{ rule, field: "archive_label", index: null, position: null, otherIndex: null }]) });
     await loaded();
@@ -624,7 +641,7 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
   });
 
   it("given a reason is shown, when the user edits the name, then the reason goes away", async () => {
-    wire({ put: () => problem422([{ rule: "archive_invalid", field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    wire({ put: () => problem422([{ rule: "setting_name_invalid", field: "archive_label", index: null, position: null, otherIndex: null }]) });
     await loaded();
     await replace(screen.getByLabelText("Archive label"), "Bad");
     await confirm();

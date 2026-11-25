@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { classifySaveError } from "@/api/categories/categories.api";
 import { useSaveCategories } from "@/api/categories/categories.queries";
 import type { CategoryInput, CategoryList } from "@/api/categories/categories.types";
-import { MAX_INSTRUCTIONS, validateList } from "@/features/categories/policy";
+import { MAX_INSTRUCTIONS, OTHER_LABEL_DEFAULT, validateList } from "@/features/categories/policy";
 import { problemText } from "@/features/categories/problemText";
 import type { ListSettings, Row } from "@/features/categories/rows";
 import { draftErrors, rowErrors } from "@/features/categories/saveErrors";
@@ -92,27 +92,28 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
   const [asking, setAsking] = useState(false);
   const feedback = useFeedback(list.version);
   const { send, saving } = useSender(list, rows, settings, feedback);
-  // Every label this page knows is an older category: a card of that name adopts it (AC-53). The api knows the rest.
-  const labels = list.olderCategories.map((older) => older.labelName);
+  // The current names of the "Other" label and the archive label; a category of such a name clashes. An existing
+  // label never refuses a name: it is adopted (ADR-0060).
+  const names = [OTHER_LABEL_DEFAULT, settings.archiveLabel];
 
   const submit = (): void => {
     if (saving) {
       return;
     }
-    const errors = draftErrors(rows, labels);
+    const errors = draftErrors(rows, names);
     const tooLong = Array.from(settings.instructions).length > MAX_INSTRUCTIONS ? problemText("instructions_too_long") : undefined;
     if (Object.keys(errors).length === 0 && tooLong === undefined) {
       feedback.setResult(null);
       setAsking(true);
     } else {
-      feedback.setResult(validateList(rows, labels, labels).some((problem) => problem.field === "list") ? "refused" : null);
+      feedback.setResult(validateList(rows, names).some((problem) => problem.field === "list") ? "refused" : null);
       feedback.show(errors, tooLong);
     }
   };
 
   const checkRow = (key: string): boolean => {
     const row = rows.find((other) => other.key === key);
-    const errors = row === undefined ? {} : rowErrors(rows, row, labels);
+    const errors = row === undefined ? {} : rowErrors(rows, row, names);
     const fine = Object.keys(errors).length === 0;
     if (!fine) {
       feedback.show(errors);

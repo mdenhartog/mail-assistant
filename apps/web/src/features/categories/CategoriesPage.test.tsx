@@ -339,7 +339,7 @@ describe("Categories page: text is text (criterion 7)", () => {
         json({
           ...LIST,
           categories: [{ ...INVOICES, name: markup, description: "<b>bold</b><script>alert(1)</script>" }],
-          olderCategories: [{ labelName: "Assistant/<i>old</i>", mailCount: 3 }],
+          olderCategories: [{ labelName: "<i>old</i>", mailCount: 3 }],
         }),
     });
     const container = renderPage();

@@ -118,7 +118,7 @@ const CATEGORY_LIST = {
   version: 3,
   ready: true,
   generalInstructions: "",
-  archiveLabel: "Assistant/Archive",
+  archiveLabel: "Archive",
   categories: [INVOICES, NEWS],
   other: { mailCount: 7 },
   olderCategories: [],

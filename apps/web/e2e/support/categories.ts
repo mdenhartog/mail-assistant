@@ -112,12 +112,12 @@ function sortAgainStates(): UiState[] {
       await expect(page.getByText(/already open or being prepared/)).toBeVisible();
     }),
     state("categories: archive label refused", async (page) => {
-      const problem = { type: "about:blank", title: "Unprocessable content", status: 422, problems: [{ rule: "archive_system_label", field: "archive_label", index: null, position: null, otherIndex: null }] };
+      const problem = { type: "about:blank", title: "Unprocessable content", status: 422, problems: [{ rule: "setting_name_system_label", field: "archive_label", index: null, position: null, otherIndex: null }] };
       await toLoaded(page, { putCategories: reply(422, problem, { "Content-Type": "application/problem+json" }) });
       await page.getByLabel("Archive label").fill("INBOX");
       await page.getByRole("button", { name: "Save changes" }).click();
       await page.getByRole("alertdialog").getByRole("button", { name: "Save changes" }).click();
-      await expect(page.getByText("This is a Gmail label of its own and cannot be your archive label.")).toBeVisible();
+      await expect(page.getByText("This is a Gmail label of its own and cannot be used here.")).toBeVisible();
     }),
   ];
 }

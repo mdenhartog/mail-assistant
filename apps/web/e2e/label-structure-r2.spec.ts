@@ -236,10 +236,10 @@ test("the archive label is saved with the list, is there after a reload and is i
     await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   }
 
-  // A name inside Assistant/ other than Assistant/Archive is refused with the reason, and nothing is stored.
-  await field.fill("Assistant/Oud");
+  // A Gmail system label is refused with the reason, and nothing is stored.
+  await field.fill("INBOX");
   await saveChanges();
-  await expect(page.getByText("Use a name outside Assistant/, or exactly Assistant/Archive.")).toBeVisible();
+  await expect(page.getByText("This is a Gmail label of its own and cannot be used here.")).toBeVisible();
   await expect(field).toHaveAttribute("aria-invalid", "true");
   expect(versions(), "the refused name stored no new version").toEqual(["1|operator"]);
 
