@@ -221,6 +221,9 @@ GRANT EXECUTE ON FUNCTION categories.label_plan_hash(text) TO mail_triage_runtim
 GRANT EXECUTE ON FUNCTION categories.purge_label_records() TO mail_triage_runtime;
 GRANT EXECUTE ON FUNCTION categories.confirm_label_rename(text, text, text[]) TO web_settings_runtime;
 GRANT EXECUTE ON FUNCTION categories.request_label_restore(text) TO web_settings_runtime;
--- The Settings page saves the label cleanup values with the rest of the schedule; the CHECK constraints hold the bounds.
+-- The Settings page creates (the first save inserts the row) and saves the label cleanup values with the rest of the
+-- schedule; the CHECK constraints hold the bounds.
+GRANT INSERT (label_wait_minutes, label_protection_days, label_retention_days) ON settings.schedule
+    TO web_settings_runtime;
 GRANT UPDATE (label_wait_minutes, label_protection_days, label_retention_days) ON settings.schedule
     TO web_settings_runtime;
