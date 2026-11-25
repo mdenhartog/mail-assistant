@@ -64,6 +64,7 @@ def _runner(steps: Steps, tmp_path: Path, notice: ListNoticeStep) -> Runner:
         router=Router(),
         list_sync=ListSyncStep(),
         label_rename=ResortIdle(),
+        label_cleanup=ResortIdle(),
         list_notice=notice,
         approval_notice=ResortIdle(),
         resort_build=ResortIdle(),
@@ -153,6 +154,7 @@ def _wired() -> Any:
         mailbox=object(),
         sender=object(),
         labels=object(),  # type: ignore[arg-type]
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",

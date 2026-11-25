@@ -105,6 +105,7 @@ async def agent(engine: AsyncEngine) -> Agent:
         mailbox=gmail,
         sender=gmail,
         labels=GmailResort(GmailDouble(), ManagedSet(()), sleep=lambda _s: None),
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",

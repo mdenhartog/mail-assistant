@@ -76,6 +76,7 @@ def _runner(engine: AsyncEngine, gmail: FakeGmail, internet: FakeInternet, tmp_p
         mailbox=gmail,
         sender=gmail,
         labels=GmailResort(GmailDouble(), ManagedSet(()), sleep=lambda _s: None),
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",

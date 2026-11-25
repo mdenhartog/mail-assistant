@@ -118,8 +118,23 @@ def test_given_a_label_that_left_exactly_the_protection_period_ago_when_decided_
     assert run(replace(EMPTY, left_list_at=NOW - PROTECTION), ripe()) is Action.DELETE
 
 
-def test_given_no_known_time_of_leaving_when_decided_then_keep() -> None:
-    assert run(replace(EMPTY, left_list_at=None), ripe()) is Action.KEEP
+def test_given_a_label_that_never_was_in_the_list_when_decided_then_nothing_protects_it_and_the_timer_rules() -> None:
+    never = replace(EMPTY, left_list_at=None)  # a hand-made empty label, the root "Assistant" (D6)
+
+    assert run(never, None) is Action.START_TIMER
+    assert run(never, ripe()) is Action.DELETE
+    assert run(never, Timer(NOW - timedelta(hours=1), NOW - CYCLE, WAIT)) is Action.WAIT
+
+
+def test_given_a_label_that_never_was_in_the_list_when_it_has_another_blocker_then_keep() -> None:
+    for blocked in (
+        replace(EMPTY, left_list_at=None, label_type="system"),
+        replace(EMPTY, left_list_at=None, in_list=True),
+        replace(EMPTY, left_list_at=None, filter_target=True),
+        replace(EMPTY, left_list_at=None, has_child=True),
+        replace(EMPTY, left_list_at=None, messages_total=1),
+    ):
+        assert run(blocked, ripe()) is not Action.DELETE
 
 
 def test_given_a_leaving_time_in_the_future_when_decided_then_keep() -> None:
@@ -174,8 +189,7 @@ def test_property_a_blocker_never_yields_delete(item: LabelFacts, timer: Timer |
         or item.in_list
         or item.filter_target
         or item.has_child
-        or item.left_list_at is None
-        or NOW - item.left_list_at < PROTECTION
+        or (item.left_list_at is not None and NOW - item.left_list_at < PROTECTION)
     )
     if blocked:
         assert decision.action is not Action.DELETE

@@ -8,7 +8,9 @@ Rules, in this order:
 
 1. A label is kept (``KEEP``) when it is not of type ``user`` (the exact string, so an unknown type is not deletable),
    is in the current list or a setting (a category, "Other", the archive label), is the target of a Gmail filter, has a
-   child, left the list less than the protection period ago, or has no known time of leaving. Parents therefore go after
+   child, or left the list less than the protection period ago. A label that never was in the list (``left_list_at`` is
+   ``None``: a hand-made empty label, the root ``Assistant``) is not protected: the protection is for labels that LEFT
+   the list (D6, R6). Parents therefore go after
    children: a label with a child is never deleted, and its own timer starts the check after the child is gone.
    ``KEEP`` never touches a stored timer; the timer ends by the gap rule below.
 2. A label with mail (messages or threads above 0) resets a running timer (``RESET_TIMER``) or is kept (``KEEP``).
@@ -45,7 +47,10 @@ class Action(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class LabelFacts:
-    """What is known about one label at this check; ``left_list_at`` is when it left the list, ``None`` when unknown."""
+    """What is known about one label at this check.
+
+    ``left_list_at`` is when it left the list; ``None`` when it never was in it.
+    """
 
     label_type: str
     in_list: bool
@@ -89,7 +94,7 @@ def _blocked(facts: LabelFacts, now: datetime, protection: timedelta) -> bool:
     """Whether anything but mail and time forbids a delete."""
     if facts.label_type != USER_TYPE or facts.in_list or facts.filter_target or facts.has_child:
         return True
-    return facts.left_list_at is None or now - facts.left_list_at < protection
+    return facts.left_list_at is not None and now - facts.left_list_at < protection
 
 
 def decide(facts: LabelFacts, timer: Timer | None, *, now: datetime, rules: Rules) -> Decision:

@@ -13,7 +13,9 @@ New tables in schema ``categories`` (every key starts with ``mailbox_id``):
   function moves ``pending`` to ``confirmed`` (a trigger refuses any other writer); ``confirmed`` goes to ``done``.
 - ``label_rename_item(label_id, old_name, new_name, mail_count, action rename|merge, state)``: the plan, and the
   backup of the old names that a restore reads.
-- ``label_empty_since(label_id, empty_since, last_seen_empty)``: the persistent timers of the delayed delete.
+- ``label_empty_since(label_id, empty_since, last_seen_empty, wait_minutes)``: the persistent timers of the delayed
+  delete; ``wait_minutes`` (5 to 720) is the waiting time the timer started with, so a lowered setting leaves running
+  timers on their own length (spec R3, AC 24).
 - ``deleted_label(label_id_hash, name, deleted_at)``: the record the page shows as "recently deleted".
 - ``label_confirmation`` and ``label_restore_request``: insert-only records written through the two functions below.
 
@@ -30,6 +32,10 @@ Functions (``SECURITY DEFINER``, owned by ``categories_definer``, search path pi
   and the hash of the items now; inserts the confirmation and moves the state to ``confirmed``. A repeat with the same
   arguments returns the same id and writes nothing.
 - ``request_label_restore(mailbox)`` (the api): needs a confirmed or done plan; one open request per mailbox.
+- ``purge_label_records()`` (the agent, the caller's own rights, no parameters, the database clock): removes
+  ``deleted_label`` rows (``deleted_at``) and finished ``label_rename_item`` rows (``created_at``) that are strictly
+  older than ``settings.schedule.label_retention_days`` (30 days while there is no row) and returns the counts. An item
+  that is still ``planned`` is never removed: the hash of the plan covers it. Spec R7, ADR-0061 point 4.
 
 The whole revision is idempotent (``IF NOT EXISTS``, ``ON CONFLICT DO NOTHING``, ``CREATE OR REPLACE``): a rerun after
 a crash completes the data and changes nothing that is complete. The downgrade removes every new object.
@@ -168,6 +174,11 @@ _COPY = (
 )
 
 _SETTINGS = (
+    # The wait a timer started with. The table is new, so the default only serves a database that has a half-made
+    # table; it is dropped again so that the writer must always say the length (NOT NULL, no default).
+    "ALTER TABLE categories.label_empty_since ADD COLUMN IF NOT EXISTS wait_minutes smallint NOT NULL DEFAULT 720 "
+    "CONSTRAINT ck_label_empty_since_wait CHECK (wait_minutes BETWEEN 5 AND 720)",
+    "ALTER TABLE categories.label_empty_since ALTER COLUMN wait_minutes DROP DEFAULT",
     "ALTER TABLE settings.schedule ADD COLUMN IF NOT EXISTS label_wait_minutes smallint NOT NULL DEFAULT 720 "
     "CONSTRAINT ck_schedule_label_wait CHECK (label_wait_minutes BETWEEN 5 AND 720)",
     "ALTER TABLE settings.schedule ADD COLUMN IF NOT EXISTS label_protection_days smallint NOT NULL DEFAULT 7 "
@@ -305,7 +316,28 @@ END
 $$
 """
 
+_PURGE = """
+CREATE OR REPLACE FUNCTION categories.purge_label_records() RETURNS jsonb
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+DECLARE
+    v_days integer;
+    v_cutoff timestamptz;
+    v_deleted integer;
+    v_items integer;
+BEGIN
+    SELECT s.label_retention_days INTO v_days FROM settings.schedule s LIMIT 1;
+    v_cutoff := now() - make_interval(days => coalesce(v_days, 30));
+    DELETE FROM categories.deleted_label WHERE deleted_at < v_cutoff;
+    GET DIAGNOSTICS v_deleted = ROW_COUNT;
+    DELETE FROM categories.label_rename_item WHERE created_at < v_cutoff AND state <> 'planned';
+    GET DIAGNOSTICS v_items = ROW_COUNT;
+    RETURN jsonb_build_object('deleted_label', v_deleted, 'label_rename_item', v_items);
+END
+$$
+"""
+
 _FUNCTIONS = (
+    "categories.purge_label_records()",
     "categories.label_request_derive()",
     "categories.label_migration_guard()",
     "categories.label_plan_hash(text)",
@@ -330,7 +362,7 @@ def upgrade() -> None:
     """Create the tables, copy the data, add the settings, then the guard, the functions and the rights."""
     for statement in (*_TABLES, *_COPY, *_SETTINGS):
         op.execute(statement)
-    for function_sql in (_REQUEST_DERIVE, _GUARD, _PLAN_HASH, _CONFIRM, _RESTORE):
+    for function_sql in (_REQUEST_DERIVE, _GUARD, _PLAN_HASH, _CONFIRM, _RESTORE, _PURGE):
         op.execute(function_sql)
     for name, when, function in _TRIGGERS:
         op.execute(f"DROP TRIGGER IF EXISTS {name} ON {when.rsplit(' ON ', 1)[1]}")
