@@ -63,6 +63,7 @@ def _runner(steps: Steps, tmp_path: Path, notice: ListNoticeStep) -> Runner:
         inbox=Inbox([]),
         router=Router(),
         list_sync=ListSyncStep(),
+        label_rename=ResortIdle(),
         list_notice=notice,
         approval_notice=ResortIdle(),
         resort_build=ResortIdle(),

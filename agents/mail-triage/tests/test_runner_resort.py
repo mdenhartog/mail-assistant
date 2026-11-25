@@ -98,6 +98,7 @@ def _runner(
         inbox=Inbox([]),
         router=Router(),
         list_sync=ListSyncStep(),
+        label_rename=ResortIdle(),
         list_notice=ListNoticeIdle(),
         approval_notice=announce or Announce(steps),
         resort_build=Build(steps),

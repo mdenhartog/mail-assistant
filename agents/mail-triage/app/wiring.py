@@ -44,6 +44,7 @@ from app.db.migrate import (
 )
 from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_label_rename import PgRenameStore
 from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
 from app.db.pg_list_sync import PgLabelBook, PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
@@ -63,8 +64,9 @@ from app.usecases.catchup import BUDGET_RESERVE, CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
+from app.usecases.label_rename import LabelRename, RenameGmail
 from app.usecases.list_notice import ListNotice, ListNoticeActions
-from app.usecases.list_sync import ListSync
+from app.usecases.list_sync import LabelGmail, ListSync
 from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
 from app.usecases.plan_tips import PlanTips
@@ -91,7 +93,7 @@ if TYPE_CHECKING:
     from app.core.managed import ManagedLabel
     from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
-    from app.usecases.list_sync import LabelGmail, ManagedSink
+    from app.usecases.list_sync import ManagedSink
     from app.usecases.resort_apply import ApplyMailbox
     from app.usecases.resort_build import BuildMailbox
 
@@ -157,6 +159,10 @@ class MailPorts:
         return self._sender.send_reply(original, draft)
 
 
+class SyncAndRenameGmail(LabelGmail, RenameGmail, Protocol):
+    """The label adapter of the list sync and of the one-off rename (``GmailResort``): both run one after the other."""
+
+
 def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is read from the environment
     settings: Settings,
     *,
@@ -164,7 +170,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     client: httpx.AsyncClient,
     mailbox: object,
     sender: object,
-    labels: LabelGmail,
+    labels: SyncAndRenameGmail,
     build_mailbox: BuildMailbox,
     apply_mailbox: ApplyMailbox,
     own_address: str,
@@ -281,6 +287,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         inbox=inbox,
         router=router,
         list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id), managed_sinks),
+        label_rename=LabelRename(labels, PgRenameStore(sessions, settings.mailbox_id), outbox),
         list_notice=ListNotice(list_store, outbox, list_actions, chat_id=settings.telegram_allowed_chat_id),
         approval_notice=approval_notice,
         resort_build=ResortBuild(

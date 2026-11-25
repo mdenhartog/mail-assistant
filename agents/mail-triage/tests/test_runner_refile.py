@@ -71,6 +71,7 @@ def _runner(steps: Steps, tmp_path: Path, clock: Clock, hour: int = HOUR) -> Run
         inbox=Inbox([]),
         router=Router(),
         list_sync=ListSyncStep(),
+        label_rename=ResortIdle(),
         list_notice=ListNoticeIdle(),
         approval_notice=ResortIdle(),
         resort_build=ResortIdle(),

@@ -164,6 +164,8 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
     now: datetime = NOW,
     web_notice: WebNoticeStep | None = None,
     code_alert: CodeAlertStep | None = None,
+    list_sync: object | None = None,
+    label_rename: object | None = None,
 ) -> tuple[Runner, Store]:
     store = Store(steps)
     web_notice = web_notice or WebNoticeStep(steps)
@@ -179,7 +181,8 @@ def runner(  # noqa: PLR0913 - every part of the runner is a keyword here
             store=store,
             inbox=inbox or Inbox([]),
             router=router or Router(),
-            list_sync=ListSyncStep(),
+            list_sync=list_sync or ListSyncStep(),  # type: ignore[arg-type]
+            label_rename=label_rename or ResortIdle(),  # type: ignore[arg-type]
             list_notice=ListNoticeIdle(),
             approval_notice=ResortIdle(),
             resort_build=ResortIdle(),
