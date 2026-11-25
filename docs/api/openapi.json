@@ -262,13 +262,6 @@
             "title": "Generalinstructions",
             "type": "string"
           },
-          "olderCategories": {
-            "items": {
-              "$ref": "#/components/schemas/OlderCategory"
-            },
-            "title": "Oldercategories",
-            "type": "array"
-          },
           "other": {
             "$ref": "#/components/schemas/OtherItem"
           },
@@ -293,8 +286,7 @@
           "generalInstructions",
           "archiveLabel",
           "otherLabel",
-          "other",
-          "olderCategories"
+          "other"
         ],
         "title": "CategoryList",
         "type": "object"
@@ -833,34 +825,6 @@
           "processed"
         ],
         "title": "MoveBackResult",
-        "type": "object"
-      },
-      "OlderCategory": {
-        "additionalProperties": false,
-        "description": "Kept for the web contract; always empty since no label has a prefix (ADR-0060).",
-        "properties": {
-          "labelName": {
-            "title": "Labelname",
-            "type": "string"
-          },
-          "mailCount": {
-            "anyOf": [
-              {
-                "minimum": 0.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Mailcount"
-          }
-        },
-        "required": [
-          "labelName",
-          "mailCount"
-        ],
-        "title": "OlderCategory",
         "type": "object"
       },
       "OtherItem": {

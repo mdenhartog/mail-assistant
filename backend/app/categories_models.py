@@ -62,15 +62,6 @@ class OtherItem(BaseModel):
     mail_count: Annotated[int, Field(ge=0)]
 
 
-class OlderCategory(BaseModel):
-    """Kept for the web contract; always empty since no label has a prefix (ADR-0060)."""
-
-    model_config = _CONFIG
-
-    label_name: str
-    mail_count: Annotated[int, Field(ge=0)] | None
-
-
 class CategoryList(BaseModel):
     """What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1."""
 
@@ -83,7 +74,6 @@ class CategoryList(BaseModel):
     archive_label: str
     other_label: str
     other: OtherItem
-    older_categories: list[OlderCategory]
 
 
 class CategoryInput(BaseModel):

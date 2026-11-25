@@ -240,7 +240,7 @@ def sender(text: str, *, subdomains: bool = False) -> dict[str, Any]:
 
 
 # Criterion 1
-async def test_given_a_list_with_counts_and_labels_when_get_then_the_list_other_and_older_categories_are_returned(
+async def test_given_a_list_with_counts_and_labels_when_get_then_the_list_is_returned_without_older_categories(
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
@@ -281,7 +281,6 @@ async def test_given_a_list_with_counts_and_labels_when_get_then_the_list_other_
         "archiveLabel": ARCHIVE,
         "otherLabel": OTHER,
         "other": {"mailCount": 3},
-        "olderCategories": [],
     }
 
 
@@ -297,7 +296,6 @@ async def test_given_no_seed_yet_when_get_then_version_0_and_not_ready(api: Api)
         "archiveLabel": ARCHIVE,
         "otherLabel": OTHER,
         "other": {"mailCount": 0},
-        "olderCategories": [],
     }
 
 
