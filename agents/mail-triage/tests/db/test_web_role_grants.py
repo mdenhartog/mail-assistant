@@ -92,6 +92,37 @@ async def test_given_the_web_role_when_it_inserts_selects_and_updates_the_allowe
     assert await web.fetchval("select settings.contract_version()") == 2
 
 
+_FIRST_ROW_WITH_LABELS = (  # fixed test literals, no input
+    "insert into settings.schedule (id, zone, quiet_start, quiet_end, overview_at, remind_at, updated_via, updated_by, "
+    "label_wait_minutes, label_protection_days, label_retention_days) "
+    f"values (1, 'Europe/Amsterdam', 600, 900, 1080, 540, 'web', '{ACTOR}', 720, 7, 30)"
+)
+
+
+async def test_given_the_web_role_when_it_saves_the_first_row_and_updates_the_label_columns_then_both_work(
+    web: asyncpg.Connection,
+) -> None:
+    await web.execute(_FIRST_ROW_WITH_LABELS)
+    await web.execute(
+        "update settings.schedule set label_wait_minutes = 60, label_protection_days = 3, label_retention_days = 90, "
+        f"version = 2, updated_via = 'web', updated_by = '{ACTOR}'"
+    )
+
+    row = await web.fetchrow(
+        "select label_wait_minutes, label_protection_days, label_retention_days from settings.schedule"
+    )
+    assert row is not None
+    assert (row["label_wait_minutes"], row["label_protection_days"], row["label_retention_days"]) == (60, 3, 90)
+
+
+async def test_given_the_grants_run_twice_when_the_web_role_inserts_the_label_columns_then_it_still_works(
+    web: asyncpg.Connection, owner: asyncpg.Connection
+) -> None:
+    await owner.execute(GRANTS.read_text(encoding="utf-8"))
+
+    await web.execute(_FIRST_ROW_WITH_LABELS)
+
+
 @pytest.mark.parametrize(
     "statement",
     [
