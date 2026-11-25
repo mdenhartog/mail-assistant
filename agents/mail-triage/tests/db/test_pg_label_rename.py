@@ -94,6 +94,21 @@ async def test_given_no_confirmation_then_no_skips_and_after_the_api_confirms_th
     assert await store.migration_state() is MigrationState.CONFIRMED
 
 
+async def test_given_a_confirmation_when_the_plan_hash_is_checked_then_it_is_intact_only_after_the_api_confirmed(
+    store: PgRenameStore, cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection
+) -> None:
+    await start(cat_owner)
+    await store.write_plan(PLAN)
+    assert await store.confirmed_plan_intact() is False  # no confirmation yet
+    plan_hash = await cat_owner.fetchval("select plan_hash from categories.label_migration")
+
+    await cat_api.execute("select categories.confirm_label_rename($1, $2, $3::text[])", MAILBOX, plan_hash, [])
+
+    assert await store.confirmed_plan_intact() is True
+    await store.settle("L1", ItemState.DONE, was=ItemState.PLANNED)  # a settled state is not part of the hash
+    assert await store.confirmed_plan_intact() is True
+
+
 async def test_given_a_confirmed_plan_when_items_settle_then_done_comes_only_when_none_is_planned(
     store: PgRenameStore, cat_owner: asyncpg.Connection, cat_api: asyncpg.Connection
 ) -> None:

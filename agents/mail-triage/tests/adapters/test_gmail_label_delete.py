@@ -253,6 +253,20 @@ def test_given_the_delete_call_fails_when_deleted_then_the_error_has_status_and_
     assert PROBE_NAME not in caplog.text
 
 
+def test_given_the_delete_call_answers_not_found_when_deleted_then_it_counts_as_deleted_without_a_name_in_the_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    gmail = FakeGmail()
+    gone = gmail.add_label(PROBE_NAME)
+    gmail.fail_call("labels.delete", 404, times=1)  # deleted by hand between the checks and the call
+    caplog.set_level(logging.DEBUG)
+
+    adapter(gmail).delete(gone)  # no error: the label is gone, which is what was wanted
+
+    assert gmail.calls.count("labels.delete") == 1
+    assert PROBE_NAME not in caplog.text
+
+
 def test_given_refusals_when_logged_then_no_label_name_is_in_the_log(caplog: pytest.LogCaptureFixture) -> None:
     gmail = FakeGmail()
     bills = gmail.add_label(PROBE_NAME)

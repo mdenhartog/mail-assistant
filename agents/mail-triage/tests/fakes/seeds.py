@@ -46,8 +46,8 @@ def plan_items(count: int = PLAN_ITEMS, groups: int = PLAN_GROUPS) -> list[PlanI
             item_id=f"item-{n:05d}",
             mail_id=f"mail-{n:05d}",
             group=f"group-{n % groups:02d}",
-            from_category=f"Assistant/From {n % groups:02d}",
-            to_category=f"Assistant/To {n % groups:02d}",
+            from_category=f"From {n % groups:02d}",
+            to_category=f"To {n % groups:02d}",
         )
         for n in range(count)
     ]

@@ -119,7 +119,7 @@ def test_given_a_label_that_left_exactly_the_protection_period_ago_when_decided_
 
 
 def test_given_a_label_that_never_was_in_the_list_when_decided_then_nothing_protects_it_and_the_timer_rules() -> None:
-    never = replace(EMPTY, left_list_at=None)  # a hand-made empty label, the root "Assistant" (D6)
+    never = replace(EMPTY, left_list_at=None)  # a hand-made empty label, a parent that only holds children (D6)
 
     assert run(never, None) is Action.START_TIMER
     assert run(never, ripe()) is Action.DELETE

@@ -96,7 +96,7 @@ def test_given_the_category_factory_when_asked_for_50_or_51_then_that_many_uniqu
 
     assert len(result) == count
     assert len({c.name.casefold() for c in result}) == count
-    assert all(c.name.startswith("Assistant/") or c.name for c in result)
+    assert all(c.name and "/" not in c.name for c in result)
 
 
 def test_given_the_scope_factory_when_called_then_5001_in_scope_mails_are_in_the_fake_mailbox() -> None:

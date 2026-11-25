@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Final
 
 from googleapiclient.errors import HttpError
 
-from app.adapters.gmail_read import ME, GmailLabelError, error_reason, execute
+from app.adapters.gmail_read import HTTP_NOT_FOUND, ME, GmailLabelError, error_reason, execute
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -140,7 +140,7 @@ class GmailLabelDelete:
         """Delete the label by id, or raise ``LabelDeleteRefused`` and leave it as it is.
 
         A Gmail error while checking refuses the label (it counts as not empty); an error of the delete call itself
-        is raised as ``GmailLabelError``.
+        is raised as ``GmailLabelError``, except a 404: the label is already gone, so the delete counts as done.
         """
         try:
             self._check(label_id)
@@ -150,7 +150,12 @@ class GmailLabelDelete:
         except GmailLabelError as failure:
             logger.warning("label delete check failed: status=%s reason=%s", failure.status, failure.reason)
             raise LabelDeleteRefused(CHECK_FAILED) from None
-        self._call(self._service.users().labels().delete(userId=ME, id=label_id))
+        try:
+            self._call(self._service.users().labels().delete(userId=ME, id=label_id))
+        except GmailLabelError as failure:
+            if failure.status != HTTP_NOT_FOUND:
+                raise
+            logger.info("label delete: the label was already gone")  # idempotent: the label is gone, as wanted
 
     def _check(self, label_id: str) -> None:
         """Every check; the last step is the final re-read, so the caller deletes right after it."""

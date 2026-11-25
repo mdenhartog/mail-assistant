@@ -34,6 +34,18 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from category_policy import (
+    DESCRIPTION_MAX,
+    INSTRUCTIONS_MAX,
+    LABEL_MAX,
+    PROTECTION_DAYS_MAX,
+    PROTECTION_DAYS_MIN,
+    RETENTION_DAYS_MAX,
+    RETENTION_DAYS_MIN,
+    WAIT_MINUTES_MAX,
+    WAIT_MINUTES_MIN,
+)
+
 
 class Base(DeclarativeBase):
     """Base of all tables."""
@@ -189,9 +201,17 @@ class Schedule(Base):
         ),
         CheckConstraint("zone ~ '^[A-Za-z_]+(/[A-Za-z0-9_+-]+){0,2}$'", name="ck_schedule_zone_pattern"),
         CheckConstraint("updated_via IN ('telegram', 'web')", name="ck_schedule_updated_via"),
-        CheckConstraint("label_wait_minutes BETWEEN 5 AND 720", name="ck_schedule_label_wait"),
-        CheckConstraint("label_protection_days BETWEEN 1 AND 30", name="ck_schedule_label_protection"),
-        CheckConstraint("label_retention_days BETWEEN 7 AND 90", name="ck_schedule_label_retention"),
+        CheckConstraint(
+            f"label_wait_minutes BETWEEN {WAIT_MINUTES_MIN} AND {WAIT_MINUTES_MAX}", name="ck_schedule_label_wait"
+        ),
+        CheckConstraint(
+            f"label_protection_days BETWEEN {PROTECTION_DAYS_MIN} AND {PROTECTION_DAYS_MAX}",
+            name="ck_schedule_label_protection",
+        ),
+        CheckConstraint(
+            f"label_retention_days BETWEEN {RETENTION_DAYS_MIN} AND {RETENTION_DAYS_MAX}",
+            name="ck_schedule_label_retention",
+        ),
         {"schema": "settings"},
     )
 
@@ -399,8 +419,8 @@ class Category(Base):
         ),
         UniqueConstraint("mailbox_id", "version", "position", name="uq_category_position"),
         UniqueConstraint("mailbox_id", "version", "name", name="uq_category_name"),
-        CheckConstraint("char_length(name) BETWEEN 1 AND 255", name="ck_category_name_length"),
-        CheckConstraint("char_length(description) <= 1500", name="ck_category_description_length"),
+        CheckConstraint(f"char_length(name) BETWEEN 1 AND {LABEL_MAX}", name="ck_category_name_length"),
+        CheckConstraint(f"char_length(description) <= {DESCRIPTION_MAX}", name="ck_category_description_length"),
         CheckConstraint("position BETWEEN 0 AND 99", name="ck_category_position"),
         CheckConstraint("kind IN ('topic', 'extra')", name="ck_category_kind"),
         {"schema": "categories"},
@@ -463,7 +483,7 @@ class SenderSkip(Base):
 
 
 class GmailLabel(Base):
-    """The name of an ``Assistant/`` label that exists in Gmail (names only), replaced each cycle."""
+    """The name of a label that exists in Gmail (names only), replaced each cycle."""
 
     __tablename__ = "gmail_label"
     __table_args__ = ({"schema": "categories"},)
@@ -855,9 +875,11 @@ class ListSettings(Base):
             ["categories.list_version.mailbox_id", "categories.list_version.version"],
             name="fk_list_settings_list_version",
         ),
-        CheckConstraint("char_length(general_instructions) <= 4000", name="ck_list_settings_instructions"),
-        CheckConstraint("char_length(archive_label) BETWEEN 1 AND 255", name="ck_list_settings_archive_label"),
-        CheckConstraint("char_length(other_label) BETWEEN 1 AND 255", name="ck_list_settings_other_label"),
+        CheckConstraint(
+            f"char_length(general_instructions) <= {INSTRUCTIONS_MAX}", name="ck_list_settings_instructions"
+        ),
+        CheckConstraint(f"char_length(archive_label) BETWEEN 1 AND {LABEL_MAX}", name="ck_list_settings_archive_label"),
+        CheckConstraint(f"char_length(other_label) BETWEEN 1 AND {LABEL_MAX}", name="ck_list_settings_other_label"),
         {"schema": "categories"},
     )
 
@@ -974,7 +996,9 @@ class LabelEmptySince(Base):
     __tablename__ = "label_empty_since"
     __table_args__ = (
         CheckConstraint("last_seen_empty >= empty_since", name="ck_label_empty_since_order"),
-        CheckConstraint("wait_minutes BETWEEN 5 AND 720", name="ck_label_empty_since_wait"),
+        CheckConstraint(
+            f"wait_minutes BETWEEN {WAIT_MINUTES_MIN} AND {WAIT_MINUTES_MAX}", name="ck_label_empty_since_wait"
+        ),
         {"schema": "categories"},
     )
 

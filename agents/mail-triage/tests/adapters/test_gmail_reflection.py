@@ -15,9 +15,12 @@ import pytest
 
 from app.adapters import gmail_read
 from app.adapters.gmail_label_delete import GmailLabelDelete
+from app.adapters.gmail_read import LabelRefused
 from app.adapters.gmail_resort import GmailResort
 from app.core.managed import ManagedLabel, ManagedSet, Role
+from app.usecases.list_sync import ListSync, MigrationState
 from tests.fakes.fake_gmail import FakeGmail
+from tests.fakes.list_store import FakeListStore
 
 ALLOWED_CALLS = {
     "labels.list",
@@ -131,3 +134,42 @@ def test_given_the_delete_adapter_when_it_runs_then_the_gmail_service_only_sees_
 
     assert {call for call in gmail.calls if "delete" in call} == {RESERVED_DELETE}
     assert set(gmail.calls) <= {"labels.list", "labels.get", "messages.list", "settings.filters.list", RESERVED_DELETE}
+
+
+READ_ONLY = {"list_labels", "list_mail", "read_mail", "count_mail", "set_managed"}
+_UNMANAGED_ATTEMPTS = {
+    "add_label": lambda a, mail, label: a.add_label(mail, label),
+    "remove_label": lambda a, mail, label: a.remove_label(mail, label),
+    "create_label": lambda a, _mail, _label: a.create_label(ManagedLabel("Taxes", None, Role.TOPIC)),
+    "ensure_label": lambda a, _mail, label: a.ensure_label(ManagedLabel("Taxes", label, Role.TOPIC)),
+    "rename_label": lambda a, _mail, label: a.rename_label(label, "Taxes"),
+}
+
+
+async def test_given_the_list_chain_when_every_writing_method_is_tried_then_only_the_list_passes() -> None:
+    """List, then managed set (the sync), then the guard in the adapter, then Gmail: walked end to end.
+
+    The managed set is the one the sync hands the adapter, not one built in the test. A label of the user that is not
+    on the list is refused by every writing method before Gmail sees a call; a label of the list is accepted.
+    """
+    gmail = FakeGmail()
+    bills = gmail.add_label("Bills")
+    private = gmail.add_label("Private")  # the user's own label, not on the list
+    mail = gmail.add_mail(labels=("INBOX", bills, private))
+    store = FakeListStore(migration=MigrationState.DONE)
+    store.save_list(["Bills"])
+    adapter = GmailResort(gmail, ManagedSet(()), sleep=lambda _seconds: None)
+    await ListSync(adapter, store).run()
+    writing = set(ALLOWED_METHODS) - READ_ONLY
+
+    assert writing == set(_UNMANAGED_ATTEMPTS)  # a new writing method must be added to this walk
+    gmail.calls.clear()
+    for attempt in _UNMANAGED_ATTEMPTS.values():
+        with pytest.raises(LabelRefused):
+            attempt(adapter, mail, private)
+    assert gmail.calls == []
+    assert gmail.label_table[private] == "Private"
+
+    adapter.remove_label(mail, bills)  # the label of the list passes the guard and reaches Gmail
+    assert "messages.modify" in gmail.calls
+    assert private in gmail.mail_table[mail].labels

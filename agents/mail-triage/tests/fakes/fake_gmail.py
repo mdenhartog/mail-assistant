@@ -232,7 +232,7 @@ class FakeGmail:
             raise http_error(409, "Label name exists or conflicts", "labelNameExists")
 
     def answers_query(self, query: str, mail: _Mail) -> bool:
-        """Whether ``mail`` answers the search ``query``; the base double matches everything, a subclass may model it."""
+        """Whether ``mail`` answers the search ``query``; the base double matches all, a subclass may model it."""
         return True
 
     def get_mail(self, mid: str) -> _Mail:
