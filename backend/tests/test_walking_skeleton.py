@@ -48,6 +48,9 @@ CHANGE = {
     "quietEnd": "06:45",
     "overviewAt": "18:05",
     "remindAt": "09:15",
+    "waitingMinutes": 90,
+    "protectionDays": 10,
+    "retentionDays": 45,
 }
 DEFAULTS = {
     "timeZone": "Europe/Amsterdam",
@@ -55,6 +58,9 @@ DEFAULTS = {
     "quietEnd": "07:00",
     "overviewAt": "18:00",
     "remindAt": "09:00",
+    "waitingMinutes": 720,
+    "protectionDays": 7,
+    "retentionDays": 30,
 }
 GENERIC_401 = {"type": "about:blank", "title": "Unauthorized", "status": 401}
 

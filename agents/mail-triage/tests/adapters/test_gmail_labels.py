@@ -79,9 +79,7 @@ def test_given_a_managed_label_when_added_and_removed_then_only_that_label_chang
     assert gmail.mail_table[mail].labels == {"INBOX", "UNREAD"}
 
 
-def test_given_a_managed_label_without_a_stored_id_when_listed_then_it_is_matched_by_name_until_id_known() -> (
-    None
-):
+def test_given_a_managed_label_without_a_stored_id_when_listed_then_it_is_matched_by_name_until_id_known() -> None:
     gmail = FakeGmail()
     bills = gmail.add_label("bills")
     mail = gmail.add_mail()
