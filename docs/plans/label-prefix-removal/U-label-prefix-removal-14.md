@@ -8,7 +8,8 @@ feature: label-prefix-removal
 - Component: web
 - Layer: web
 - Contract: A Playwright journey on the prod-like stack that seeds the label state through SQL: the rename preview, the confirmation, the merge into an existing label, a delete after an injected short wait, and the recently deleted list.
-- Files: `apps/web/e2e/label-prefix-removal.spec.ts`, `apps/web/e2e/support/labelRename.ts`, `apps/web/playwright.config.ts`
+- Note: unit 20 left the e2e seed data that still names `Assistant/Invoices`, `Assistant/Travel`, `Assistant/Other` and `Assistant/Newsletters` in `apps/web/e2e/support/categoriesDb.ts` and a comment and golden file in `apps/web/e2e/label-structure-r2.spec.ts`; this unit moves them to the new label names and seeds `managed_label` and the settings instead of `gmail_label`/`category_label` where the api now reads them.
+- Files: `apps/web/e2e/label-prefix-removal.spec.ts`, `apps/web/e2e/support/labelRename.ts`, `apps/web/e2e/support/categoriesDb.ts`, `apps/web/e2e/label-structure-r2.spec.ts`, `apps/web/playwright.config.ts`
 - Depends on: U-label-prefix-removal-06, U-label-prefix-removal-09, U-label-prefix-removal-12, U-label-prefix-removal-13
 - Parallel: no
 - Guardrails: guardrail-playwright, guardrail-a11y
