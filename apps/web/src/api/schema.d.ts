@@ -901,8 +901,6 @@ export interface components {
             categories: components["schemas"]["CategoryItem"][];
             /** Generalinstructions */
             generalInstructions: string;
-            /** Oldercategories */
-            olderCategories: components["schemas"]["OlderCategory"][];
             other: components["schemas"]["OtherItem"];
             /** Otherlabel */
             otherLabel: string;
@@ -1158,16 +1156,6 @@ export interface components {
             planId: string;
             /** Processed */
             processed: boolean;
-        };
-        /**
-         * OlderCategory
-         * @description Kept for the web contract; always empty since no label has a prefix (ADR-0060).
-         */
-        OlderCategory: {
-            /** Labelname */
-            labelName: string;
-            /** Mailcount */
-            mailCount: number | null;
         };
         /**
          * OtherItem

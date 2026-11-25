@@ -308,14 +308,6 @@ describe("Categories page: states (criterion 5)", () => {
     expect(screen.getByText("You have reached the limit of 100 categories. Remove one to add another.")).toBeInTheDocument();
   });
 
-  it("given an answer that still carries olderCategories, then no older-categories section is shown (AC 19, ADR-0060)", async () => {
-    wire({ get: () => json({ ...LIST, olderCategories: [{ labelName: "Travel", mailCount: null }] }) });
-    await loaded();
-    expect(screen.queryByRole("region", { name: /Older categor/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Add to my list/ })).not.toBeInTheDocument();
-    expect(screen.queryByText("Travel")).not.toBeInTheDocument();
-  });
-
   it("given Add category, then a new category opens in the edit view with focus on its name; Cancel drops it", async () => {
     wire();
     await loaded();
