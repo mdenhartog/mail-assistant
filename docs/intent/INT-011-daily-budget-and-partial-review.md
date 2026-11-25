@@ -25,6 +25,8 @@ anything until the whole plan is built.
   shows what has been checked so far.
 - I can review and apply the part that has been checked, without waiting for the rest.
 - The next day the agent goes on with the mails that were not checked yet.
+- The budget counts model calls: 500 model calls per day, not 500 mails.
+- I get one Telegram message when the plan is paused for the daily budget (one message per day, counts only).
 
 ## What it must not do
 
@@ -35,8 +37,6 @@ anything until the whole plan is built.
 
 ## Open questions
 
-- Does "process the 500" mean the 500 mails that were checked, or the 500 model calls (one mail can take two calls)? (Marco)
-- Should a Telegram message tell me once a day that the plan is paused and will go on tomorrow? (Marco)
 - After I applied a part, does the next day's part become a new plan to review, or does it join the open one? (spec phase)
 - The budget is kept in the agent's memory and starts again on a restart; is that acceptable at 500 a day? (spec phase)
 - Raising the budget raises the cost with the model provider: is a spending limit wanted? (Marco)
