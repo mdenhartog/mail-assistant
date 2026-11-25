@@ -17,7 +17,7 @@ File format (``schema: 1``)::
 
     schema: 1
     generalInstructions: text          # optional
-    archiveLabel: Assistant/Archive    # optional; absent = the stored name is kept on an upload
+    archiveLabel: Archive    # optional; absent = the stored name is kept on an upload
     categories:
       - name: Huis/Energie
         kind: topic                    # optional: topic (default) or extra

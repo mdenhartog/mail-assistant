@@ -21,11 +21,30 @@ MAX_CATEGORIES = 100
 SEPARATOR = "/"
 OTHER_LABEL_DEFAULT = "Other"
 ARCHIVE_LABEL_DEFAULT = "Archive"
-# One list of reserved names for list categories and setting names alike: a first segment Other or Archive and the
-# Gmail system labels below. A setting may still equal its own default.
+# One list of reserved names for list categories and setting names alike (ADR-0060): a first segment Other or
+# Archive, the Gmail system labels below (whole name, any letter case) and the legacy prefix ``Assistant/``. A setting
+# may still equal its own default. All comparisons run on ``normalise_name`` (NFKC, case folding).
 RESERVED_NAMES = frozenset({"other", "archive"})
-GMAIL_SYSTEM_LABELS = frozenset({"inbox", "spam", "trash", "sent", "draft", "starred", "unread", "important", "chat"})
+GMAIL_SYSTEM_LABELS = frozenset(
+    {
+        "inbox",
+        "spam",
+        "trash",
+        "sent",
+        "sent mail",
+        "draft",
+        "drafts",
+        "all mail",
+        "starred",
+        "unread",
+        "important",
+        "chat",
+        "chats",
+        "snoozed",
+    }
+)
 GMAIL_SYSTEM_LABEL_PREFIX = "category_"
+LEGACY_PREFIX = "assistant/"
 DECISIONS = ("pending", "approved", "rejected")
 
 RULES = (
@@ -124,6 +143,11 @@ def _is_system_label(key: str) -> bool:
     return key in GMAIL_SYSTEM_LABELS or key.startswith(GMAIL_SYSTEM_LABEL_PREFIX)
 
 
+def _is_legacy_prefixed(key: str) -> bool:
+    """Whether a comparison key starts with the retired ``Assistant/`` prefix."""
+    return key.startswith(LEGACY_PREFIX)
+
+
 def _name_rules(canonical: str, segments: list[str]) -> list[str]:
     rules: list[str] = []
     if not all(segments):
@@ -134,7 +158,8 @@ def _name_rules(canonical: str, segments: list[str]) -> list[str]:
         rules.append("name_label_too_long")
     if ".." in canonical or any(unicodedata.category(char) in _FORBIDDEN_CATEGORIES for char in canonical):
         rules.append("name_forbidden_char")
-    if normalise_name(segments[0]) in RESERVED_NAMES or _is_system_label(normalise_name(canonical)):
+    key = normalise_name(canonical)
+    if normalise_name(segments[0]) in RESERVED_NAMES or _is_system_label(key) or _is_legacy_prefixed(key):
         rules.append("name_reserved")
     return rules
 
@@ -250,7 +275,7 @@ def validate_label_setting_name(
     if _is_system_label(key):
         return [Problem("setting_name_system_label", "setting_name")]
     reserved = normalise_name(_segments(name)[0]) in RESERVED_NAMES and key != normalise_name(own_default)
-    if reserved or key == normalise_name(counterpart):
+    if reserved or _is_legacy_prefixed(key) or key == normalise_name(counterpart):
         return [Problem("setting_name_reserved", "setting_name")]
     for category in categories:
         category_key = normalise_name(label_for(category.name))

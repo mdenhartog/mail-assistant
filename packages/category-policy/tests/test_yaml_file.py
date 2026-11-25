@@ -62,7 +62,7 @@ def pairs(data: bytes | str) -> list[tuple[str, str]]:
 
 EXPECTED_SMALL = ParsedList(
     general_instructions="Mail from the school is always important.",
-    archive_label="Assistant/Archive",
+    archive_label="Archive",
     categories=(
         FileCategory(
             name="Huis/Energie",
@@ -96,7 +96,7 @@ def test_given_a_valid_file_when_parsed_then_the_list_is_the_expected_one():
 
 def test_given_a_file_with_and_without_an_archive_label_when_parsed_then_it_says_whether_it_was_given():
     absent = parse_category_file(as_bytes(doc("categories: []")))
-    given = parse_category_file(as_bytes(doc("archiveLabel: Assistant/Archive\ncategories: []")))
+    given = parse_category_file(as_bytes(doc("archiveLabel: Archive\ncategories: []")))
 
     assert isinstance(absent, ParsedList)
     assert isinstance(given, ParsedList)

@@ -19,15 +19,15 @@ generalInstructions: >-
 
 # archiveLabel (optional): the name of your archive label. It is checked and stored with the list; a change
 # renames the Gmail label once no plan is running. A file without this field keeps the name you have now.
-# Default: Assistant/Archive. A name outside Assistant/ is allowed. It may not be a Gmail system label
-# (INBOX, SPAM, ...) and may not be the label of one of your categories.
-archiveLabel: Assistant/Archive
+# Default: Archive. It may not be a Gmail system label (INBOX, SPAM, Sent Mail, ...),
+# may not start with the old prefix Assistant/ and may not be the label of one of your categories.
+archiveLabel: Archive
 
 # categories (required): the list, in the order you want it. At most 100.
 # Mail that fits no category goes to the built-in "Other"; do not write a category called Other or Archive.
 categories:
 
-  # name (required): the category name. Nest with "/" (Huis/Energie gives the label Assistant/Huis/Energie).
+  # name (required): the category name. Nest with "/" (Huis/Energie gives the label Huis/Energie).
   #   Each part is at most 40 characters. Names are compared without regard to letter case.
   - name: Huis/Energie
 
