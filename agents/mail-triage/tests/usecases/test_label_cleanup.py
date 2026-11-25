@@ -20,6 +20,7 @@ from app.adapters.gmail_resort import GmailResort
 from app.core.managed import ManagedSet, Role
 from app.db.pg_label_cleanup import CleanupSettings, StoredTimer
 from app.usecases.label_cleanup import LabelCleanup, label_id_hash
+from app.usecases.resort_apply import ResortLabels
 from app.usecases.list_sync import MigrationState
 from tests.fakes.cleanup_store import FakeCleanupStore
 from tests.fakes.fake_gmail import FakeGmail
@@ -74,6 +75,51 @@ class Rig:
 
     def exists(self, label_id: str) -> bool:
         return label_id in self.gmail.label_table
+
+
+# --- the delete is idempotent and checks the managed set under the lease ----------------------------------------
+
+
+async def test_given_the_delete_call_answers_not_found_when_a_cycle_runs_then_the_label_counts_as_deleted() -> None:
+    rig = Rig()
+    label = rig.empty_label("A1")
+    rig.gmail.fail_call("labels.delete", 404)
+
+    result = await rig.step.run_once()
+
+    assert (result.deleted, result.errors, result.refused) == (1, 0, 0)
+    assert label_id_hash(label) in rig.store.deleted
+    assert label not in rig.store.timer_rows
+
+
+class ListEntersLate(FakeCleanupStore):
+    """The first read of the managed set is the scan; the label enters the list before the second (the lease)."""
+
+    def __init__(self, label: tuple[str, str, Role]) -> None:
+        super().__init__(MigrationState.DONE)
+        self._label = label
+        self.reads = 0
+
+    async def managed(self) -> ResortLabels:
+        self.reads += 1
+        if self.reads > 1:
+            self.manage(self._label)
+        return await super().managed()
+
+
+async def test_given_a_label_that_entered_the_list_after_the_scan_when_the_lease_is_held_then_it_is_not_deleted() -> None:
+    rig = Rig()
+    label = rig.empty_label("A1")
+    rig.store = ListEntersLate(("A1", label, Role.TOPIC))
+    rig.store.timer_rows[label] = StoredTimer(NOW - WAIT - CYCLE, NOW - CYCLE, WAIT)
+    step = rig.make()
+
+    result = await step.run_once()
+
+    assert rig.exists(label)
+    assert "labels.delete" not in rig.gmail.calls
+    assert result.deleted == 0
+    assert rig.store.deleted == {}
 
 
 # --- criterion 2: exactly one delete per cycle -------------------------------------------------------------------
