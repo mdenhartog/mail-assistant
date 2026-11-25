@@ -25,6 +25,7 @@ class Role(StrEnum):
     EXTRA = "extra"
     OTHER = "other"
     ARCHIVE = "archive"
+    LEGACY = "legacy"  # a label of the one-off rename plan, managed for the item in hand only (ADR-0061)
 
 
 @dataclass(frozen=True, slots=True)

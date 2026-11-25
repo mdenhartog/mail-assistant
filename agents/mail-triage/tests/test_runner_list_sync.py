@@ -86,6 +86,7 @@ def make_runner(tmp_path: Path, clock: Clock, sync: object, pipeline: object | N
         inbox=Inbox([]),
         router=Router(),
         list_sync=sync,  # type: ignore[arg-type]
+        label_rename=ResortIdle(),
         list_notice=ListNoticeIdle(),
         approval_notice=ResortIdle(),
         resort_build=ResortIdle(),

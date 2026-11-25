@@ -219,9 +219,8 @@ _OWN_DEFAULT = {
 
 def _usable_name(role: Role, name: str) -> bool:
     """Whether ``name`` may be the name of a managed label of ``role`` (the shared category policy)."""
-    if validate_label_setting_name(
-        name, (), "", _OWN_DEFAULT.get(role, "")
-    ):  # the length, character and Gmail system label rules
+    own_default = name if role is Role.LEGACY else _OWN_DEFAULT.get(role, "")  # a plan label may be "Other"/"Archive"
+    if validate_label_setting_name(name, (), "", own_default):  # the length, character and Gmail system label rules
         return False
     if role in _CATEGORY_ROLES:
         return label_for(name) == name and not validate_category(name, _PLACEHOLDER_DESCRIPTION, (), ())
