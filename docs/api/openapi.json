@@ -782,7 +782,7 @@
       },
       "OlderCategory": {
         "additionalProperties": false,
-        "description": "An ``Assistant/`` label in Gmail that is not on the list; ``mail_count`` is None while it is not counted.",
+        "description": "Kept for the web contract; always empty since no label has a prefix (ADR-0060).",
         "properties": {
           "labelName": {
             "title": "Labelname",
@@ -1793,6 +1793,12 @@
             "title": "Added",
             "type": "integer"
           },
+          "adopted": {
+            "description": "How many new or renamed categories take over a label that already exists in Gmail.",
+            "minimum": 0.0,
+            "title": "Adopted",
+            "type": "integer"
+          },
           "archiveLabelChanged": {
             "description": "True when the file gives a different archive label; absent keeps the stored one.",
             "title": "Archivelabelchanged",
@@ -1846,6 +1852,7 @@
           "baseVersion",
           "expiresAt",
           "added",
+          "adopted",
           "changed",
           "removed",
           "removedCategories",

@@ -62,7 +62,7 @@ class OtherItem(BaseModel):
 
 
 class OlderCategory(BaseModel):
-    """An ``Assistant/`` label in Gmail that is not on the list; ``mail_count`` is None while it is not counted."""
+    """Kept for the web contract; always empty since no label has a prefix (ADR-0060)."""
 
     model_config = _CONFIG
 
