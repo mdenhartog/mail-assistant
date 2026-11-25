@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 
 from app.adapters import gmail_read
-from app.adapters.gmail_read import LabelRefused
 from app.adapters.gmail_label_delete import GmailLabelDelete
+from app.adapters.gmail_read import LabelRefused
 from app.adapters.gmail_resort import GmailResort
 from app.core.managed import ManagedLabel, ManagedSet, Role
 from app.usecases.list_sync import ListSync, MigrationState
@@ -146,7 +146,7 @@ _UNMANAGED_ATTEMPTS = {
 }
 
 
-async def test_given_the_chain_from_the_list_to_the_adapter_when_every_writing_method_is_tried_then_only_the_list_passes() -> None:
+async def test_given_the_list_chain_when_every_writing_method_is_tried_then_only_the_list_passes() -> None:
     """List, then managed set (the sync), then the guard in the adapter, then Gmail: walked end to end.
 
     The managed set is the one the sync hands the adapter, not one built in the test. A label of the user that is not

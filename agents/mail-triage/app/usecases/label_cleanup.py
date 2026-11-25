@@ -12,8 +12,9 @@ One pass (``run_once``), in this order:
    If Gmail cannot say which labels the filters use (R1), nothing is judged this cycle.
 4. DELETE: of the ripe labels, at most ONE is deleted per cycle (the one that waited longest), under a single-writer
    lease (R9). The managed set is read again under the lease: a label that entered the list since the scan is
-   skipped. A 404 on the delete call counts as deleted (the label is gone). A label that a re-sort in progress targets is skipped. Before the delete the label is checked for mail
-   once more, trash and spam included, and the adapter then re-reads it itself, adjacent to the delete call. A refusal
+   skipped. A 404 on the delete call counts as deleted (the label is gone). A label that a re-sort in progress
+   targets is skipped. Before the delete the label is checked for mail once more, trash and spam included, and the
+   adapter then re-reads it itself, adjacent to the delete call. A refusal
    keeps the timer and the next ripe label is tried (at most ``MAX_ATTEMPTS`` tries); a failing Gmail stops the tries.
    On success the label is recorded (name for the retention, hash of the id) and its timer ends.
 5. NOTICE: one Telegram message per day with the count of deleted labels, never a name. The first delete is announced
@@ -381,14 +382,8 @@ class LabelCleanup:
         async with self._store.lease() as held:
             if not held:
                 return 0, 0, 0, True
-            standing = await self._store.timers()  # read under the lease: a cycle that deleted before us cleared it
-            targeted = await self._store.resort_label_ids()
-            managed = (await self._store.managed()).managed  # read again: a label that just entered the list stays
-            for _, label_id in ripe:
-                if label_id in targeted or label_id not in standing:
-                    continue
-                if managed.find(LabelRef(label_id, names[label_id])) is not None:
-                    continue
+            candidates = await self._candidates(ripe, names)
+            for label_id in candidates:
                 if attempts == MAX_ATTEMPTS:
                     break
                 attempts += 1
@@ -402,6 +397,23 @@ class LabelCleanup:
                     await self._store.clear(label_id)
                     return 1, refused, 0, False
         return 0, refused, 0, False
+
+    async def _candidates(self, ripe: list[tuple[datetime, str]], names: dict[str, str]) -> list[str]:
+        """The ripe label ids that may still go, read under the lease, in the order of their waiting time.
+
+        A cycle that deleted before us cleared its timer; a label a re-sort targets, or that entered the list since
+        the scan, stays.
+        """
+        standing = await self._store.timers()
+        targeted = await self._store.resort_label_ids()
+        managed = (await self._store.managed()).managed
+        return [
+            label_id
+            for _, label_id in ripe
+            if label_id in standing
+            and label_id not in targeted
+            and managed.find(LabelRef(label_id, names[label_id])) is None
+        ]
 
     async def _try_delete(self, label_id: str) -> _Outcome:
         """The last check for mail (trash and spam included), then the adapter's own checks and the delete call."""

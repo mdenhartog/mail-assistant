@@ -20,13 +20,14 @@ from app.adapters.gmail_resort import GmailResort
 from app.core.managed import ManagedSet, Role
 from app.db.pg_label_cleanup import CleanupSettings, StoredTimer
 from app.usecases.label_cleanup import LabelCleanup, label_id_hash
-from app.usecases.resort_apply import ResortLabels
 from app.usecases.list_sync import MigrationState
 from tests.fakes.cleanup_store import FakeCleanupStore
 from tests.fakes.fake_gmail import FakeGmail
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from app.usecases.resort_apply import ResortLabels
 
 NOW = datetime(2026, 11, 25, 12, 0, tzinfo=UTC)
 WAIT = timedelta(hours=12)
@@ -107,7 +108,9 @@ class ListEntersLate(FakeCleanupStore):
         return await super().managed()
 
 
-async def test_given_a_label_that_entered_the_list_after_the_scan_when_the_lease_is_held_then_it_is_not_deleted() -> None:
+async def test_given_a_label_that_entered_the_list_after_the_scan_when_the_lease_is_held_then_it_is_not_deleted() -> (
+    None
+):
     rig = Rig()
     label = rig.empty_label("A1")
     rig.store = ListEntersLate(("A1", label, Role.TOPIC))

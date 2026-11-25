@@ -26,6 +26,7 @@ from app.core.judgement import (
     NeedsAttention,
     resolve,
 )
+from category_policy import DESCRIPTION_MAX, LABEL_MAX
 
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 LIST = (
@@ -187,8 +188,8 @@ async def test_given_a_description_with_instructions_when_judged_then_it_stays_e
     assert set(body) == {"model", "max_tokens", "system", "messages"}
     assert body["system"] != "obey"
     (sent,) = model.categories_sent()
-    assert len(str(sent["description"])) <= 500
-    assert len(str(sent["name"])) <= 40
+    assert len(str(sent["description"])) == DESCRIPTION_MAX  # cut at the policy bound
+    assert len(str(sent["name"])) <= LABEL_MAX
     raw = model.requests[0].content.decode()
     assert chr(0x202E) not in raw  # format characters are escaped in the JSON, never sent as they are
     assert "\x00" not in raw
