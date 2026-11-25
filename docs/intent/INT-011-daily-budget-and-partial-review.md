@@ -2,7 +2,7 @@
 id: INT-011
 title: Higher daily model budget and a reviewable partial plan
 originator: Marco
-status: draft
+status: confirmed
 date: 2026-11-25
 ---
 
