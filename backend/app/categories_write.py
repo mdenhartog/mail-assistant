@@ -100,7 +100,6 @@ def to_response(stored: StoredList) -> CategoryList:
         archive_label=stored.archive_label,
         other_label=stored.other_label,
         other=OtherItem(mail_count=stored.counts.get(OTHER_ID, 0)),
-        older_categories=[],  # no label has a prefix any more (ADR-0060): nothing is "older"
     )
 
 
