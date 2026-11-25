@@ -12,7 +12,24 @@ export const MAX_INSTRUCTIONS = 4000;
 export const MAX_CATEGORIES = 100;
 const SEPARATOR = "/";
 const RESERVED_NAMES: readonly string[] = ["other", "archive"];
-const GMAIL_SYSTEM_LABELS: readonly string[] = ["inbox", "spam", "trash", "sent", "draft", "starred", "unread", "important", "chat"];
+const GMAIL_SYSTEM_LABELS: readonly string[] = [
+  "inbox",
+  "spam",
+  "trash",
+  "sent",
+  "sent mail",
+  "draft",
+  "drafts",
+  "all mail",
+  "starred",
+  "unread",
+  "important",
+  "chat",
+  "chats",
+  "snoozed",
+];
+/** The retired prefix: a name that starts with it is refused (ADR-0060). */
+const LEGACY_PREFIX = "assistant/";
 const SYSTEM_LABEL_START = "category_";
 const FORBIDDEN = /[\p{Cc}\p{Cf}]/u;
 
@@ -63,7 +80,7 @@ export function normaliseName(raw: string): string {
 }
 
 function isSystemLabel(key: string): boolean {
-  return GMAIL_SYSTEM_LABELS.includes(key) || key.startsWith(SYSTEM_LABEL_START);
+  return GMAIL_SYSTEM_LABELS.includes(key) || key.startsWith(SYSTEM_LABEL_START) || key.startsWith(LEGACY_PREFIX);
 }
 
 /** The rules about the shape of a name, in rule order. */
