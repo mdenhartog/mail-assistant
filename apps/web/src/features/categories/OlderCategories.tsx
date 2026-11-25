@@ -5,14 +5,13 @@ import type { OlderCategory } from "@/api/categories/categories.types";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 import { countText } from "@/features/categories/copy";
-import { nameOfLabel } from "@/features/categories/rows";
 
 export interface OlderCategoriesProps {
   older: readonly OlderCategory[];
   onAdopt: (labelName: string) => void;
 }
 
-/** Gmail labels under `Assistant/` that are not on the list, each with "Add to my list" (AC-53). */
+/** Gmail labels that are not on the list, shown by their list names, each with "Add to my list" (AC-53). */
 export function OlderCategories({ older, onAdopt }: OlderCategoriesProps): ReactElement | null {
   const headingId = useId();
   if (older.length === 0) {
@@ -26,7 +25,7 @@ export function OlderCategories({ older, onAdopt }: OlderCategoriesProps): React
       <p className="text-sm text-text-muted">These Gmail labels exist but are not on your list. Add one to use it for new mail. Its mails stay where they are, and you can write a description for it.</p>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {older.map((item) => {
-          const name = nameOfLabel(item.labelName);
+          const name = item.labelName;
           return (
             <li key={item.labelName}>
               <Card>

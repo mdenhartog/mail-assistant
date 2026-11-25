@@ -1,5 +1,5 @@
 import type { CategoryItem, CategoryList } from "@/api/categories/categories.types";
-import { LABEL_PREFIX, normaliseName } from "@/features/categories/policy";
+import { normaliseName } from "@/features/categories/policy";
 import { entryKey, parseSenders, textOfSenders } from "@/features/categories/senders";
 
 /** One category card as the user is editing it. `key` is local; `id` is null until the api has stored it. */
@@ -39,15 +39,10 @@ export function rowsOf(list: CategoryList): Row[] {
   }));
 }
 
-/** The name an older label gets as a card: the label without its `Assistant/` prefix. */
-export function nameOfLabel(labelName: string): string {
-  return labelName.startsWith(LABEL_PREFIX) ? labelName.slice(LABEL_PREFIX.length) : labelName;
-}
-
 /** The older labels the draft does not already carry as a card. */
 export function openOlder(list: CategoryList, rows: readonly Row[]): CategoryList["olderCategories"] {
   const taken = new Set(rows.map((row) => normaliseName(row.name)));
-  return list.olderCategories.filter((older) => !taken.has(normaliseName(nameOfLabel(older.labelName))));
+  return list.olderCategories.filter((older) => !taken.has(normaliseName(older.labelName)));
 }
 
 /** The list-level fields next to the categories: the general instructions and the archive label name. */

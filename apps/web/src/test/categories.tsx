@@ -27,12 +27,12 @@ export const NEWS = {
 
 export const LIST = {
   version: 3,
-  archiveLabel: "Assistant/Archive",
+  archiveLabel: "Archive",
   ready: true,
   generalInstructions: "Keep receipts for the tax year.",
   categories: [INVOICES, NEWS],
   other: { mailCount: 7 },
-  olderCategories: [{ labelName: "Assistant/Travel", mailCount: null }],
+  olderCategories: [{ labelName: "Travel", mailCount: null }],
 };
 
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {

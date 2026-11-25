@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 
 import type { CategoryList } from "@/api/categories/categories.types";
 import { MAX_CATEGORIES } from "@/features/categories/policy";
-import { blankRow, isDirty, nameOfLabel, openOlder, rowsOf } from "@/features/categories/rows";
+import { blankRow, isDirty, openOlder, rowsOf } from "@/features/categories/rows";
 import type { ListSettings, Row, RowPatch } from "@/features/categories/rows";
 
 interface Removed {
@@ -98,6 +98,6 @@ export function useCategoriesFlow(list: CategoryList): CategoriesFlow {
       return row;
     },
     add: () => append(""),
-    adopt: (labelName) => append(nameOfLabel(labelName)),
+    adopt: (labelName) => append(labelName),
   };
 }
