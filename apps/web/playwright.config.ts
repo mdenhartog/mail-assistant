@@ -19,6 +19,9 @@ const CATEGORIES = /categories\.spec\.ts/;
 const REVIEW = /review\.spec\.ts/;
 const LABEL_STRUCTURE = /label-structure\.spec\.ts/;
 const LABEL_STRUCTURE_R2 = /label-structure-r2\.spec\.ts/;
+const LABEL_PREFIX_REMOVAL = /label-prefix-removal\.spec\.ts/;
+// The specs that own a project of their own; the three viewport projects below leave them out.
+const OWN_PROJECT = [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE, LABEL_STRUCTURE_R2, LABEL_PREFIX_REMOVAL];
 
 // `ui-states` renders every login and settings state against a stubbed API (route.fulfill, no backend, no setup)
 // on a local preview of the built app. The web job runs it with `--project=ui-states`; the prod-like job sets
@@ -52,11 +55,11 @@ export default defineConfig({
       dependencies: ["smoke-375"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 }, storageState: STORAGE_STATE },
     },
-    { name: "mobile", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE, LABEL_STRUCTURE_R2], dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
-    { name: "tablet", testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE, LABEL_STRUCTURE_R2], dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
+    { name: "mobile", testIgnore: OWN_PROJECT, dependencies: ["setup"], use: { ...devices["Pixel 7"] } },
+    { name: "tablet", testIgnore: OWN_PROJECT, dependencies: ["setup"], use: { ...devices["Galaxy Tab S9"] } },
     {
       name: "desktop",
-      testIgnore: [GXP, SMOKE, UI_STATES, JOURNEY, CATEGORIES, REVIEW, LABEL_STRUCTURE, LABEL_STRUCTURE_R2],
+      testIgnore: OWN_PROJECT,
       dependencies: ["setup"],
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
     },
@@ -102,6 +105,15 @@ export default defineConfig({
             testMatch: LABEL_STRUCTURE_R2,
             fullyParallel: false,
             dependencies: ["setup", "label-structure"],
+            use: { ...devices["Desktop Chrome"] },
+          },
+          // `label-prefix-removal` (U-label-prefix-removal-14) seeds a rename plan, the agent's writes and the deleted labels by
+          // owner SQL and resets the same tables and the settings row, so it runs after `label-structure-r2` and by itself.
+          {
+            name: "label-prefix-removal",
+            testMatch: LABEL_PREFIX_REMOVAL,
+            fullyParallel: false,
+            dependencies: ["setup", "label-structure-r2"],
             use: { ...devices["Desktop Chrome"] },
           },
         ]),
