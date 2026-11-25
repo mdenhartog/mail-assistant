@@ -117,6 +117,20 @@ class PgRenameStore:
             ).scalar_one_or_none()
         return None if found is None else frozenset(found)
 
+    async def confirmed_plan_intact(self) -> bool:
+        """Whether the items now hash to the confirmed hash (the database computes both sides)."""
+        async with self._sessions() as session:
+            same = (
+                await session.execute(
+                    text(
+                        "SELECT c.plan_hash = categories.label_plan_hash(c.mailbox_id) "
+                        "FROM categories.label_confirmation c WHERE c.mailbox_id = :mailbox"
+                    ),
+                    {"mailbox": self._mailbox},
+                )
+            ).scalar_one_or_none()
+        return same is True
+
     async def settle(self, label_id: str, to: ItemState, *, was: ItemState) -> None:
         """Move one item from ``was`` to ``to``; an item in another state is left as it is."""
         async with self._sessions.begin() as session:

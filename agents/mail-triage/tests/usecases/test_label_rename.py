@@ -112,6 +112,20 @@ async def test_given_a_confirmed_state_without_a_confirmation_row_when_run_then_
     assert world.store.state is MigrationState.CONFIRMED
 
 
+async def test_given_items_changed_after_the_confirmation_when_run_then_nothing_is_changed() -> None:
+    world = World()
+    label = world.old_label("Bills", mails=2)
+    await world.planned_and_confirmed()
+    world.store.tamper(label, "Elsewhere")  # the plan is no longer what the user confirmed
+
+    result = await world.runner.run_once()
+
+    assert world.writes() == []
+    assert world.gmail.label_table[label] == f"{OLD}Bills"
+    assert world.store.states() == {label: ItemState.PLANNED}
+    assert (result.renamed, world.store.state) == (0, MigrationState.CONFIRMED)
+
+
 async def test_given_a_mailbox_without_a_rename_state_when_run_then_nothing_happens() -> None:
     world = World(None)
     world.old_label("Bills")

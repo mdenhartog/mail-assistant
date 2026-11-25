@@ -8,6 +8,8 @@ there is a confirmation. ``crash_after_settles`` kills the run after that many s
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import json
 from typing import TYPE_CHECKING
 
 from app.usecases.label_rename import ItemState, StoredItem
@@ -28,6 +30,7 @@ class FakeRenameStore:
         self.protected: frozenset[str] = frozenset()  # the stored label ids of "Other" and the archive label
         self.stored: dict[str, StoredItem] = {}
         self.confirmation: frozenset[str] | None = None
+        self.confirmed_hash: str | None = None
         self.restore_open: str | None = None
         self.restores_closed = 0
         self.plans_written = 0
@@ -40,7 +43,17 @@ class FakeRenameStore:
         """``confirm_label_rename``: the confirmation row and ``pending`` to ``confirmed``."""
         assert self.state is MigrationState.PENDING
         self.confirmation = frozenset(skipped)
+        self.confirmed_hash = self._plan_hash()
         self.state = MigrationState.CONFIRMED
+
+    def _plan_hash(self) -> str:
+        """The hash the database makes of the items: id, old name, new name, in id order."""
+        rows = [[i.label_id, i.old_name, i.new_name] for i in sorted(self.stored.values(), key=lambda i: i.label_id)]
+        return hashlib.sha256(json.dumps(rows).encode()).hexdigest()
+
+    def tamper(self, label_id: str, new_name: str) -> None:
+        """Change a stored item after the confirmation, as a writer outside the rules would."""
+        self.stored[label_id] = dataclasses.replace(self.stored[label_id], new_name=new_name)
 
     def request_restore(self) -> None:
         """``request_label_restore``: one open request, only for a confirmed or done plan."""
@@ -72,6 +85,9 @@ class FakeRenameStore:
 
     async def skipped_ids(self) -> frozenset[str] | None:
         return self.confirmation
+
+    async def confirmed_plan_intact(self) -> bool:
+        return self.confirmed_hash is not None and self.confirmed_hash == self._plan_hash()
 
     async def settle(self, label_id: str, to: ItemState, *, was: ItemState) -> None:
         if self.crash_after_settles is not None and self.settles >= self.crash_after_settles:

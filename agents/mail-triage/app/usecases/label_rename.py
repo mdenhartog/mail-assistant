@@ -8,7 +8,9 @@ One pass (``run_once``), in this order:
    (``kept``), every renamed label that still carries its new name gets the old name back by id, a label that changed
    since is left alone. A merge is not undone: which mail the merge moved is not recorded (a mail id is mail data), so
    the mail stays on the existing label. The request is closed when nothing is left to retry.
-3. RUN: only when the state is ``confirmed`` and a confirmation exists (AC 5). Items in ``skipped_ids`` are set
+3. RUN: only when the state is ``confirmed`` and a confirmation exists (AC 5), and the hash of the stored items
+   (``label_plan_hash``) still equals the hash that was confirmed; on a mismatch the pass refuses and changes
+   nothing, in Gmail or in the database. Items in ``skipped_ids`` are set
    ``skipped`` and never touched. For every other planned item the label is read again by id first; a label that is
    gone or no longer has the planned old name is ``kept`` (AC 26). A rename patches the name only (colour and
    visibility stay). A merge adds the existing label to every mail of the old label and then removes the old label
@@ -147,6 +149,10 @@ class RenameStore(Protocol):
         """The ids the user skipped; ``None`` while there is no confirmation."""
         ...
 
+    async def confirmed_plan_intact(self) -> bool:
+        """Whether the hash of the items now equals the hash the user confirmed; False without a confirmation."""
+        ...
+
     async def settle(self, label_id: str, to: ItemState, *, was: ItemState) -> None:
         """Move one item from ``was`` to ``to``; an item in another state is left as it is."""
         ...
@@ -240,6 +246,9 @@ class LabelRename:
         skipped_ids = await self._store.skipped_ids()
         if skipped_ids is None:
             return result  # no confirmation row: nothing is renamed (AC 5)
+        if not await self._store.confirmed_plan_intact():
+            logger.warning("label rename: the plan differs from the confirmed plan; nothing is changed")
+            return result  # the user confirmed another plan: refuse and change nothing (ADR-0061)
         archive = (await self._store.archive_name()).casefold()
         protected = await self._store.protected_ids()
         failed = 0
