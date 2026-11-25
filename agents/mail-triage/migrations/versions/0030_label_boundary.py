@@ -185,10 +185,29 @@ _SETTINGS = (
     "CONSTRAINT ck_schedule_label_protection CHECK (label_protection_days BETWEEN 1 AND 30)",
     "ALTER TABLE settings.schedule ADD COLUMN IF NOT EXISTS label_retention_days smallint NOT NULL DEFAULT 30 "
     "CONSTRAINT ck_schedule_label_retention CHECK (label_retention_days BETWEEN 7 AND 90)",
-    "ALTER TABLE categories.list_settings ADD COLUMN IF NOT EXISTS other_label text NOT NULL DEFAULT 'Other' "
-    "CONSTRAINT ck_list_settings_other_label CHECK (char_length(other_label) BETWEEN 1 AND 225)",
+    "ALTER TABLE categories.list_settings ADD COLUMN IF NOT EXISTS other_label text NOT NULL DEFAULT 'Other'",
     "ALTER TABLE categories.list_settings ALTER COLUMN archive_label SET DEFAULT 'Archive'",
 )
+
+# A label name is at most 255 characters, counted as characters like the policy (``LABEL_MAX``), not bytes. The earlier
+# revisions allowed 215 (category.name) and 225 (list_settings.archive_label); both are dropped and added again here,
+# so a rerun finds the same limits. The text columns are ``text``, wide enough for 255 four-byte characters.
+_LABEL_MAX = 255
+_LIMITS = (
+    ("category", "ck_category_name_length", "char_length(name) BETWEEN 1 AND {n}", 215),
+    ("list_settings", "ck_list_settings_archive_label", "char_length(archive_label) BETWEEN 1 AND {n}", 225),
+    ("list_settings", "ck_list_settings_other_label", "char_length(other_label) BETWEEN 1 AND {n}", None),
+    ("managed_label", "ck_managed_label_name_length", "char_length(label_name) <= {n}", None),
+    ("label_rename_item", "ck_label_rename_item_old_name_length", "char_length(old_name) <= {n}", None),
+    ("label_rename_item", "ck_label_rename_item_new_name_length", "char_length(new_name) <= {n}", None),
+    ("deleted_label", "ck_deleted_label_name_length", "char_length(name) <= {n}", None),
+)
+
+
+def _set_limit(table: str, constraint: str, expression: str) -> None:
+    op.execute(f"ALTER TABLE categories.{table} DROP CONSTRAINT IF EXISTS {constraint}")
+    op.execute(f"ALTER TABLE categories.{table} ADD CONSTRAINT {constraint} CHECK ({expression})")
+
 
 _ACTOR = "encode(sha256(convert_to(session_user::text, 'UTF8')), 'hex')"
 _REQUEST_DERIVE = f"""
@@ -362,6 +381,8 @@ def upgrade() -> None:
     """Create the tables, copy the data, add the settings, then the guard, the functions and the rights."""
     for statement in (*_TABLES, *_COPY, *_SETTINGS):
         op.execute(statement)
+    for table, constraint, expression, _old in _LIMITS:
+        _set_limit(table, constraint, expression.format(n=_LABEL_MAX))
     for function_sql in (_REQUEST_DERIVE, _GUARD, _PLAN_HASH, _CONFIRM, _RESTORE, _PURGE):
         op.execute(function_sql)
     for name, when, function in _TRIGGERS:
@@ -375,7 +396,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Remove every object of this revision; the data of revision 0029 is not touched."""
+    """Remove every object of this revision and restore the limits of 0029; the data of 0029 is not touched.
+
+    A category name above 215 characters or an archive label above 225 stops the downgrade (the check cannot be added).
+    """
+    for table, constraint, expression, old in _LIMITS:
+        if old is not None:
+            _set_limit(table, constraint, expression.format(n=old))
     for function in reversed(_FUNCTIONS):
         op.execute(f"DROP FUNCTION IF EXISTS {function} CASCADE")
     for table in reversed(_TABLE_NAMES):

@@ -463,7 +463,7 @@ async def test_given_a_value_at_its_edge_when_the_api_writes_it_then_it_is_saved
 async def test_given_the_other_label_when_it_is_empty_or_too_long_then_the_check_refuses(
     cat_owner: asyncpg.Connection,
 ) -> None:
-    for name in ("", "x" * 226):
+    for name in ("", "x" * 256):
         async with cat_owner.transaction():
             await cat_owner.execute("insert into categories.list_version (mailbox_id, version) values ('mb1', 1)")
             with pytest.raises(asyncpg.CheckViolationError):
