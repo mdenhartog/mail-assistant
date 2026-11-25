@@ -1,7 +1,8 @@
 ---
 feature: label-prefix-removal
 intent: INT-010
-status: approved
+status: done
+docs: docs/user-guide/label-prefix-removal.md
 revision: 3 (round table of phase 2 added; D1 to D10, P1 to P7 and R1 to R10 approved by the user, 2026-11-24)
 date: 2026-11-24
 approved: 2026-11-24 (revision 3, the user, phase 1 and 2 gates)
