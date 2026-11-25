@@ -1,5 +1,5 @@
 {
- "description": "Contract cases for the category list, version 3 (INT-010, ADR-0060, AC 1, 13, 19, 32, 33, 34). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name, which is the canonical list name without any prefix. 'category' rows validate one category: 'existing' are the names already on the list and 'settings' the current names of the \"Other\" label and the archive label, in that order; a label that exists already is never a reason to refuse a name (it is adopted), so no row lists labels. A first segment Other or Archive and a Gmail system label (any case, CATEGORY_* too) are reserved names; a name equal to a setting name is a clash. 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name of N characters (segments of 40 letters); the limit counts Unicode characters, not bytes, slashes included. A description of the form __N__ stands for N letters. 'list' rows validate a whole list with the same 'settings'; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. 'label_setting' rows validate the name of the Other label or the archive label: 'counterpart' is the current name of the other setting, 'own_default' the default name of the setting being checked (Other or Archive; a setting may equal its own default, no other reserved name), 'categories' the list names, 'rules' the exact refusal rule ids (at most one); a row with 'repeat' stands for 'fill' repeated that many times instead of 'name'. 'bounds' rows validate one agent setting by 'setting' (wait_minutes 5 to 720, protection_days 1 to 30, retention_days 7 to 90) with a whole number 'value'. Invisible characters and look-alikes use unicode escapes.",
+ "description": "Contract cases for the category list, version 3 (INT-010, ADR-0060, AC 1, 13, 19, 32, 33, 34). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name, which is the canonical list name without any prefix. 'category' rows validate one category: 'existing' are the names already on the list and 'settings' the current names of the \"Other\" label and the archive label, in that order; a label that exists already is never a reason to refuse a name (it is adopted), so no row lists labels. A first segment Other or Archive and a Gmail system label (any case, CATEGORY_* too) are reserved names; a name equal to a setting name is a clash. 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name of N characters (segments of 40 letters); the limit counts Unicode characters, not bytes, slashes included. A description of the form __N__ stands for N letters. 'list' rows validate a whole list with the same 'settings'; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. 'label_setting' rows validate the name of the Other label or the archive label: 'counterpart' is the current name of the other setting, 'own_default' the default name of the setting being checked (Other or Archive; a setting may equal its own default, no other reserved name), 'categories' the list names, 'rules' the exact refusal rule ids (at most one); a row with 'repeat' stands for 'fill' repeated that many times instead of 'name'. 'bounds' rows validate one agent setting by 'setting' (wait_minutes 5 to 720, protection_days 1 to 30, retention_days 7 to 90) with a whole number 'value'. Invisible characters and look-alikes use unicode escapes. Version 3 reserved names (U-label-prefix-removal-24): one list for categories and both settings: Other and Archive (also as a parent), the Gmail system labels (Inbox, Sent, Sent Mail, Drafts, All Mail, Spam, Trash, Chats, Snoozed, Important, Starred, CATEGORY_*) in any case, and the legacy prefix Assistant/ (any case, also full-width or with spaces around the slash), which is refused as a name and as a setting name. Names compare after NFKC and case folding; zero-width and control characters are refused.",
  "normalise": [
   {
    "id": "plain",
@@ -1040,6 +1040,260 @@
     "name_empty",
     "description_empty"
    ]
+  },
+  {
+   "id": "legacy_prefix_assistant_archive",
+   "name": "Assistant/Archive",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_assistant_category",
+   "name": "Assistant/Aankopen/Marktplaats",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_upper_case",
+   "name": "ASSISTANT/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_fullwidth",
+   "name": "\uff21ssistant/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_spaces_around_slash",
+   "name": "Assistant / Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_division_slash",
+   "name": "Assistant\u2215Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_zero_width_slash_is_forbidden",
+   "name": "Assistant\u200b/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "assistant_alone_is_fine",
+   "name": "Assistant",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "assistants_is_fine",
+   "name": "Assistants/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "assistant_as_second_segment_is_fine",
+   "name": "Huis/Assistant/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "system_label_sent_mail",
+   "name": "Sent Mail",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_sent_mail_upper_case",
+   "name": "SENT MAIL",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_drafts",
+   "name": "Drafts",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_all_mail",
+   "name": "all mail",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_chats",
+   "name": "Chats",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_snoozed",
+   "name": "SNOOZED",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "zero_width_space_in_archive",
+   "name": "Arch\u200bive",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "soft_hyphen_in_inbox",
+   "name": "In\u00adbox",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "zero_width_joiner_in_other_child",
+   "name": "Other\u200d/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "reserved_fullwidth_archive_child",
+   "name": "\uff21\uff52\uff43\uff48\uff49\uff56\uff45/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
   }
  ],
  "list": [
@@ -1780,6 +2034,147 @@
    ],
    "rules": [
     "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_for_archive",
+   "name": "Assistant/Archive",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_for_other",
+   "name": "assistant/Other",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_fullwidth",
+   "name": "\uff21ssistant/Old",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "assistant_alone_is_fine",
+   "name": "Assistant",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "system_sent_mail",
+   "name": "Sent Mail",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_drafts",
+   "name": "DRAFTS",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_all_mail",
+   "name": "All Mail",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_chats",
+   "name": "chats",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_snoozed",
+   "name": "Snoozed",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "zero_width_space_in_archive",
+   "name": "Arch\u200bive",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "soft_hyphen_in_inbox",
+   "name": "In\u00adbox",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
    ]
   }
  ],
