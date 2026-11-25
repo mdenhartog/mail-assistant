@@ -39,6 +39,10 @@ export interface Handlers {
   postDecision?: Handler;
   postApprove?: Handler;
   postMoveBack?: Handler;
+  getRename?: Handler;
+  getDeleted?: Handler;
+  postRenameConfirmation?: Handler;
+  postRenameRestore?: Handler;
 }
 
 export interface Stub {
@@ -185,6 +189,9 @@ const putCategoriesEcho: Handler = async (route, { state }) => {
   await reply(200, { ...CATEGORIES, version: (sent.version ?? CATEGORIES.version) + 1 })(route, { n: 0, state });
 };
 
+/** `GET /api/label-rename` while the mailbox has no migration. */
+const NO_RENAME = { state: "none", planHash: null, items: [], summary: { labels: 0, mails: 0 } } as const;
+
 export const PLAN = {
   id: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa",
   state: "ready",
@@ -263,6 +270,10 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     postDecision: reply(200, { changed: 20 }),
     postApprove: reply(200, { state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }),
     postMoveBack: reply(200, { processed: false }),
+    getRename: reply(200, NO_RENAME),
+    getDeleted: reply(200, { retentionDays: 30, items: [] }),
+    postRenameConfirmation: reply(201, { confirmationId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00cc" }),
+    postRenameRestore: reply(201, { requestId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00dd" }),
     ...given,
   };
   return [
@@ -287,6 +298,10 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     ["postDecision", "/api/plan/decisions", "POST", own.postDecision],
     ["postApprove", "/api/plan/approve", "POST", own.postApprove],
     ["postMoveBack", "/api/plan/:id/move-back", "POST", own.postMoveBack],
+    ["getRename", "/api/label-rename", "GET", own.getRename],
+    ["getDeleted", "/api/label-rename/deleted", "GET", own.getDeleted],
+    ["postRenameConfirmation", "/api/label-rename/confirmation", "POST", own.postRenameConfirmation],
+    ["postRenameRestore", "/api/label-rename/restore", "POST", own.postRenameRestore],
   ];
 }
 
@@ -300,7 +315,7 @@ function samePath(stubPath: string, pathname: string): boolean {
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getLatestResort: 0, postResort: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getLatestResort: 0, postResort: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0, getRename: 0, getDeleted: 0, postRenameConfirmation: 0, postRenameRestore: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),
