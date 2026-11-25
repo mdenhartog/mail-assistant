@@ -1,7 +1,8 @@
 ---
 feature: label-prefix-removal
 intent: INT-010
-status: approved
+status: done
+docs: docs/user-guide/label-prefix-removal.md
 revision: 3 (round table of phase 2 added; D1 to D10, P1 to P7 and R1 to R10 approved by the user, 2026-11-24)
 date: 2026-11-24
 approved: 2026-11-24 (revision 3, the user, phase 1 and 2 gates)
@@ -132,7 +133,7 @@ The user, with one mailbox and one agent (D7 of `mail-categories` stays: no seve
 3. Given a mail with only the label `Amerika` that is not in the list, When the scope is decided, Then the mail is out of scope and the label is never changed (security).
 4. Given an old label `Assistant/Aankopen/Marktplaats` with 12 mails, When the user confirms the rename plan, Then the label is renamed by id to `Aankopen/Marktplaats` and the 12 mails are still on it (happy).
 5. Given the preview, When the user has not confirmed, Then no label is renamed (security).
-6. Given the new name equals a label the user made, When the plan runs, Then that rename stops, the others go on, and the page asks the user (error).
+6. Given the new name equals a label the user made, When the plan runs, Then the two are merged (the existing label is added to the mails and the old one removed), the other renames go on, and the preview named the merge before the user confirmed (D8) (edge).
 7. Given an empty label that is not in the list and has stayed empty for the whole waiting time, When the agent runs, Then it deletes the label and reports it (happy).
 8. Given a label that still holds one mail, When the agent runs, Then it is not deleted (security).
 9. Given a label that is in the list but empty, When the agent runs, Then it is not deleted (security).
