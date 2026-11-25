@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 
-import { FIELD_KEYS } from "@/features/settings/useSettings";
+import { isValues } from "@/features/settings/useSettings";
 import type { SettingsValues } from "@/features/settings/useSettings";
 import { useClock } from "@/pages/clock";
 
-/** What is kept: the five typed values, the version they started from and when they were last typed (D-6). */
+/** What is kept: the typed values, the version they started from and when they were last typed (D-6). */
 interface Draft {
   values: SettingsValues;
   version: number;
@@ -36,16 +36,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+/** Picks the settings fields one by one, so nothing else can pass through; null when one is missing or of the wrong kind. */
 function valuesOf(value: unknown): SettingsValues | null {
-  if (!isRecord(value) || !FIELD_KEYS.every((key) => typeof value[key] === "string")) {
+  if (!isValues(value)) {
     return null;
   }
   return {
-    timeZone: String(value["timeZone"]),
-    quietStart: String(value["quietStart"]),
-    quietEnd: String(value["quietEnd"]),
-    overviewAt: String(value["overviewAt"]),
-    remindAt: String(value["remindAt"]),
+    timeZone: value.timeZone,
+    quietStart: value.quietStart,
+    quietEnd: value.quietEnd,
+    overviewAt: value.overviewAt,
+    remindAt: value.remindAt,
+    waitingMinutes: value.waitingMinutes,
+    protectionDays: value.protectionDays,
+    retentionDays: value.retentionDays,
   };
 }
 
@@ -104,7 +108,7 @@ function createStore(now: () => number): DraftStore {
     clear,
     has: () => read() !== null,
     write: (values, version) => {
-      // Picked field by field: nothing but the five values and the version can end up in storage (AC-8, W-4).
+      // Picked field by field: nothing but the eight values and the version can end up in storage (AC-8, W-4).
       const kept = valuesOf(values);
       attempt((storage) => {
         storage.setItem(DRAFT_KEY, JSON.stringify({ values: kept, version, savedAt: now() }));

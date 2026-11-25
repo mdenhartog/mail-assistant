@@ -5,7 +5,7 @@ import type { FieldErrors } from "@/features/settings/fieldErrors";
 import { useDraft } from "@/features/settings/useDraft";
 import type { DraftStore } from "@/features/settings/useDraft";
 import { FIELD_KEYS, classifySaveError, useResetSettings, useSaveSettings } from "@/features/settings/useSettings";
-import type { ConflictState, FieldKey, SaveOutcome, Settings, SettingsValues } from "@/features/settings/useSettings";
+import type { ConflictState, FieldKey, FieldValue, SaveOutcome, Settings, SettingsValues } from "@/features/settings/useSettings";
 
 /** A save or reset that did not store anything and has no field to blame. */
 export type SaveFailure = "failed" | "refused" | "reset-failed";
@@ -30,7 +30,7 @@ export interface SettingsFlow extends SaveResult {
   errors: FieldErrors;
   /** Changes on every submit that shows errors, so focus moves once per submit and not while typing. */
   errorStamp: number;
-  setField: (field: FieldKey, value: string) => void;
+  setField: (field: FieldKey, value: FieldValue) => void;
   submit: () => void;
   /** Replaces the stored values with the defaults (the page asked and Marco confirmed). */
   reset: () => void;
@@ -148,7 +148,7 @@ interface WritesInput {
 
 /** What a write that stored nothing shows: the errors of the fields it names, or the failure, or the conflict. */
 function showOutcome(input: WritesInput, outcome: SaveOutcome, whenFailed: SaveFailure): void {
-  const mapped = outcome.kind === "invalid" ? fieldErrors(outcome.problems) : {};
+  const mapped = outcome.kind === "invalid" ? fieldErrors(outcome.problems, input.settings.ranges) : {};
   if (Object.keys(mapped).length > 0) {
     input.show(mapped);
   } else {
@@ -186,7 +186,7 @@ function useWrites(input: WritesInput): {
   };
 
   const submit = (): void => {
-    const missing = emptyFieldErrors(draft);
+    const missing = emptyFieldErrors(draft, settings.ranges);
     if (inFlight.current) {
       return;
     }
@@ -237,7 +237,7 @@ export function useSettingsFlow(settings: Settings): SettingsFlow {
     clearAll();
   }
 
-  const setField = (field: FieldKey, value: string): void => {
+  const setField = (field: FieldKey, value: FieldValue): void => {
     const next = { ...draft, [field]: value };
     setDraft(next);
     clearFor(field);

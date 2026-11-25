@@ -1,5 +1,4 @@
 import type { CategoryItem, CategoryList } from "@/api/categories/categories.types";
-import { normaliseName } from "@/features/categories/policy";
 import { entryKey, parseSenders, textOfSenders } from "@/features/categories/senders";
 
 /** One category card as the user is editing it. `key` is local; `id` is null until the api has stored it. */
@@ -39,16 +38,11 @@ export function rowsOf(list: CategoryList): Row[] {
   }));
 }
 
-/** The older labels the draft does not already carry as a card. */
-export function openOlder(list: CategoryList, rows: readonly Row[]): CategoryList["olderCategories"] {
-  const taken = new Set(rows.map((row) => normaliseName(row.name)));
-  return list.olderCategories.filter((older) => !taken.has(normaliseName(older.labelName)));
-}
-
-/** The list-level fields next to the categories: the general instructions and the archive label name. */
+/** The list-level fields next to the categories: the general instructions and the names of the archive and "Other" labels. */
 export interface ListSettings {
   instructions: string;
   archiveLabel: string;
+  otherLabel: string;
 }
 
 /** The senders as one comparable text, so blank lines and spaces are not a change. */
@@ -73,6 +67,7 @@ export function isDirty(rows: readonly Row[], list: CategoryList, settings: List
   return (
     settings.instructions !== list.generalInstructions ||
     settings.archiveLabel !== list.archiveLabel ||
+    settings.otherLabel !== list.otherLabel ||
     rows.length !== list.categories.length ||
     rows.some((row, index) => differs(row, list.categories[index]))
   );
@@ -87,6 +82,7 @@ export type Change =
   | { kind: "senders"; name: string }
   | { kind: "instructions" }
   | { kind: "archiveLabel" }
+  | { kind: "otherLabel" }
   | { kind: "remove"; name: string }
   | { kind: "add"; name: string };
 
@@ -117,6 +113,7 @@ export function changesOf(rows: readonly Row[], list: CategoryList, settings: Li
   return [
     ...(settings.instructions === list.generalInstructions ? [] : [{ kind: "instructions" } as const]),
     ...(settings.archiveLabel === list.archiveLabel ? [] : [{ kind: "archiveLabel" } as const]),
+    ...(settings.otherLabel === list.otherLabel ? [] : [{ kind: "otherLabel" } as const]),
     ...rows.flatMap((row) => {
       const before = row.id === null ? undefined : stored.get(row.id);
       return before === undefined ? [] : fieldChanges(row, before);

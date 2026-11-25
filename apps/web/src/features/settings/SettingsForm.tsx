@@ -32,7 +32,7 @@ function FailureBanner({ failure, onRetry }: { failure: SaveFailure; onRetry: ()
   if (failure === "refused") {
     return (
       <Banner kind="danger" title="Some values were not accepted.">
-        Check the times and the time zone, then try again.
+        Check the times, the time zone and the label cleanup numbers, then try again.
       </Banner>
     );
   }
@@ -60,7 +60,14 @@ export function SettingsForm({ settings }: { settings: Settings }): ReactElement
     <form className="mt-6 flex flex-col gap-6" noValidate onSubmit={handleSubmit} ref={form}>
       {flow.restored ? <DraftBanner /> : null}
       <ConflictLayer conflict={flow.conflict} setValue={flow.setField} values={flow.draft} />
-      <SettingsFields errors={flow.errors} readOnly={flow.saving} savedZone={settings.values.timeZone} setField={flow.setField} values={flow.draft} />
+      <SettingsFields
+        errors={flow.errors}
+        ranges={settings.ranges}
+        readOnly={flow.saving}
+        savedZone={settings.values.timeZone}
+        setField={flow.setField}
+        values={flow.draft}
+      />
       <SaveFeedback saved={flow.saved} settings={settings} values={flow.draft} />
       {flow.defaultsRestored ? (
         <Banner kind="success" title="Defaults restored.">
@@ -72,7 +79,7 @@ export function SettingsForm({ settings }: { settings: Settings }): ReactElement
         <Button disabled={!flow.dirty} loading={flow.saving} type="submit" variant="primary">
           Save changes
         </Button>
-        <ResetSlot busy={flow.saving} onReset={flow.reset} />
+        <ResetSlot busy={flow.saving} onReset={flow.reset} ranges={settings.ranges} />
       </div>
       <p className="sr-only" role="status">
         {flow.saving ? "Saving your settings." : ""}

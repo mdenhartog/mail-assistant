@@ -6,6 +6,7 @@ import { SaveFeedback } from "@/features/settings/SaveFeedback";
 import type { Settings } from "@/features/settings/useSettings";
 import { convertClock, minutesPhrase } from "@/features/settings/zoneMath";
 import { expectNoAxeViolations } from "@/test/axe";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const AMS = {
   timeZone: "Europe/Amsterdam",
@@ -13,9 +14,10 @@ const AMS = {
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
+  ...CLEANUP,
 };
 const BKK = { ...AMS, timeZone: "Asia/Bangkok" };
-const FROM_TELEGRAM: Settings = { values: AMS, version: 3, updatedAt: "2026-11-12T13:02:00Z", updatedVia: "telegram" };
+const FROM_TELEGRAM: Settings = { values: AMS, ranges: RANGES, version: 3, updatedAt: "2026-11-12T13:02:00Z", updatedVia: "telegram" };
 const NOW = (): Date => new Date("2026-11-12T15:00:00Z");
 
 function stubSession(minutes: number | null): void {
@@ -70,7 +72,7 @@ describe("last-change line", () => {
   it("says the defaults are used at version 0", () => {
     stubSession(5);
     renderFeedback({
-      settings: { values: AMS, version: 0, updatedAt: null, updatedVia: null },
+      settings: { values: AMS, ranges: RANGES, version: 0, updatedAt: null, updatedVia: null },
       values: AMS,
     });
     expect(screen.getByText("Using the default settings.")).toBeInTheDocument();
@@ -79,7 +81,7 @@ describe("last-change line", () => {
 });
 
 describe("saved banner", () => {
-  const saved: Settings = { values: BKK, version: 4, updatedAt: "2026-11-12T14:42:00Z", updatedVia: "web" };
+  const saved: Settings = { values: BKK, ranges: RANGES, version: 4, updatedAt: "2026-11-12T14:42:00Z", updatedVia: "web" };
 
   it("states what is true now with the interval from the session", async () => {
     stubSession(5);

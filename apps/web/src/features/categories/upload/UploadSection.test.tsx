@@ -11,6 +11,7 @@ const PREVIEW = {
   baseVersion: 3,
   expiresAt: "2026-11-22T12:10:00Z",
   added: 3,
+  adopted: 0,
   changed: 5,
   removed: 2,
   removedCategories: ["Travel", "Huis/Energie"],
@@ -119,6 +120,21 @@ describe("Upload: the preview (criterion 1, 2, 6)", () => {
     expect(sent).toMatchObject({ method: "POST", contentType: "application/yaml" });
     expect(new TextDecoder().decode(sent?.bytes ?? new Uint8Array())).toBe("schema: 1\ncategories: []\n");
     expect(calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
+  it.each([
+    [0, null],
+    [1, "1 existing label will be adopted"],
+    [4, "4 existing labels will be adopted"],
+  ])("given an adopted count of %i, then the preview says %j as plain text (AC 19)", async (adopted, sentence) => {
+    wire({ upload: () => json({ ...PREVIEW, adopted }) });
+    await uploaded();
+    const preview = await screen.findByRole("region", { name: "Preview of your file" });
+    if (sentence === null) {
+      expect(preview).not.toHaveTextContent(/will be adopted/);
+    } else {
+      expect(within(preview).getByText(sentence)).toBeInTheDocument();
+    }
   });
 
   it("given the archive label changes, then the preview says so; otherwise it says nothing about it", async () => {

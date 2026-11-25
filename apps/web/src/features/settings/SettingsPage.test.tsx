@@ -7,6 +7,7 @@ import { setCsrfToken } from "@/api/client";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { expectNoAxeViolations } from "@/test/axe";
 import { expectMotionOnlyWhenSafe } from "@/test/motion";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const VALUES = {
   timeZone: "Europe/Amsterdam",
@@ -14,8 +15,9 @@ const VALUES = {
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
+  ...CLEANUP,
 };
-const STORED = { values: VALUES, version: 3, updatedAt: "2026-11-12T13:02:00Z", updatedVia: "telegram" };
+const STORED = { values: VALUES, ranges: RANGES, version: 3, updatedAt: "2026-11-12T13:02:00Z", updatedVia: "telegram" };
 const HINTS = {
   zone: "The times below are local times in this zone.",
   overview: "When I send you the summary of your mail.",
@@ -472,6 +474,10 @@ describe("keyboard only (criterion 8)", () => {
     setTime("Daily overview", "23:30");
     await user.tab();
     expect(screen.getByLabelText("Remind-me-later default")).toHaveFocus();
+    for (const label of ["Hours", "Minutes", "Protection period (days)", "Retention (days)"]) {
+      await user.tab();
+      expect(screen.getByLabelText(label)).toHaveFocus();
+    }
     await user.tab();
     expect(save()).toHaveFocus();
     await user.keyboard("{Enter}");
@@ -482,8 +488,9 @@ describe("keyboard only (criterion 8)", () => {
     expect(screen.getByLabelText("Daily overview")).toHaveAttribute("aria-invalid", "true");
 
     setTime("Daily overview", "18:30");
-    await user.tab();
-    await user.tab();
+    for (let step = 0; step < 6; step++) {
+      await user.tab();
+    }
     expect(save()).toHaveFocus();
     await user.keyboard(" ");
 

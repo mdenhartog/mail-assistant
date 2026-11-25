@@ -45,6 +45,9 @@ export const FIXED_BLOCK =
 /** The archive label field's sentence (Screens). */
 export const ARCHIVE_HELP = "Mail in this label is never sorted or moved. Renaming it renames the Gmail label, nothing else.";
 
+/** The "Other" label field sentence. */
+export const OTHER_HELP = "Mail that fits no category is filed under this label. Renaming it renames the Gmail label, nothing else.";
+
 /** The texts of the Sort everything again section; the two of the spec (Screens) are used literally. */
 export const SORT_AGAIN = {
   title: "Sort everything again",

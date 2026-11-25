@@ -1,5 +1,6 @@
-import { FIELD_KEYS } from "@/features/settings/useSettings";
-import type { FieldKey, Problem, SettingsValues } from "@/features/settings/useSettings";
+import { durationText, rangeMessage } from "@/features/settings/cleanupText";
+import { FIELD_KEYS, NUMBER_KEYS, isNumberKey } from "@/features/settings/useSettings";
+import type { FieldKey, Problem, Ranges, SettingsValues } from "@/features/settings/useSettings";
 
 /** Message per form field; a field that is not in the object is fine. */
 export type FieldErrors = Partial<Record<FieldKey, string>>;
@@ -11,10 +12,6 @@ function isFieldKey(name: string): name is FieldKey {
   return FIELD_KEYS.some((key) => key === name);
 }
 
-function plural(count: number, unit: string): string {
-  return `${String(count)} ${unit}${count === 1 ? "" : "s"}`;
-}
-
 /** "16 hours", "30 minutes", "12 hours 1 minute" for a shown window such as "20:00 to 12:00". */
 function windowLength(shown: string): string | null {
   const match = WINDOW.exec(shown);
@@ -22,15 +19,7 @@ function windowLength(shown: string): string | null {
     return null;
   }
   const [startH, startM, endH, endM] = match.slice(1).map(Number) as [number, number, number, number];
-  const minutes = (endH * 60 + endM - (startH * 60 + startM) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
-  const parts = [];
-  if (minutes >= 60) {
-    parts.push(plural(Math.floor(minutes / 60), "hour"));
-  }
-  if (minutes % 60 > 0 || minutes < 60) {
-    parts.push(plural(minutes % 60, "minute"));
-  }
-  return parts.join(" ");
+  return durationText((endH * 60 + endM - (startH * 60 + startM) + MINUTES_PER_DAY) % MINUTES_PER_DAY);
 }
 
 function windowLengthText({ value, example }: Problem): string {
@@ -59,26 +48,29 @@ export function problemText(problem: Problem): string {
   return (TEXT[problem.rule] ?? (({ example }: Problem) => `That is not allowed. ${example}.`))(problem);
 }
 
-/** Maps the problems of a 422 to the fields they name; the first problem of a field wins. */
-export function fieldErrors(problems: Problem[]): FieldErrors {
+/**
+ * Maps the problems of a 422 to the fields they name; the first problem of a field wins. A number outside its
+ * range is worded from the ranges the api sent, the same words as the check before sending.
+ */
+export function fieldErrors(problems: Problem[], ranges: Ranges): FieldErrors {
   const result: FieldErrors = {};
   for (const problem of problems) {
     if (isFieldKey(problem.field) && result[problem.field] === undefined) {
-      result[problem.field] = problemText(problem);
+      result[problem.field] = isNumberKey(problem.field) ? rangeMessage(problem.field, ranges) : problemText(problem);
     }
   }
   return result;
 }
 
-const MISSING_TIME: Record<Exclude<FieldKey, "timeZone">, string> = {
+const MISSING_TIME: Record<"quietStart" | "quietEnd" | "overviewAt" | "remindAt", string> = {
   quietStart: "23:00",
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
 };
 
-/** Values that are missing: nothing is sent for them, the field asks instead. */
-export function emptyFieldErrors(values: SettingsValues): FieldErrors {
+/** Values that are missing: nothing is sent for them, the field asks instead. A number outside its range is refused the same way. */
+export function emptyFieldErrors(values: SettingsValues, ranges: Ranges): FieldErrors {
   const result: FieldErrors = {};
   if (values.timeZone.trim() === "") {
     result.timeZone = "Type a city or a country, for example Paris or Japan.";
@@ -86,6 +78,11 @@ export function emptyFieldErrors(values: SettingsValues): FieldErrors {
   for (const [key, example] of Object.entries(MISSING_TIME) as [keyof typeof MISSING_TIME, string][]) {
     if (values[key] === "") {
       result[key] = `Pick a time, for example ${example}.`;
+    }
+  }
+  for (const key of NUMBER_KEYS) {
+    if (values[key] < ranges[key].min || values[key] > ranges[key].max) {
+      result[key] = rangeMessage(key, ranges);
     }
   }
   return result;

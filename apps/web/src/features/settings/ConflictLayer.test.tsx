@@ -4,6 +4,7 @@ import { vi } from "vitest";
 import { ConflictLayer } from "@/features/settings/ConflictLayer";
 import type { ConflictState, SettingsValues } from "@/features/settings/useSettings";
 import { expectNoAxeViolations } from "@/test/axe";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const BASE: SettingsValues = {
   timeZone: "Europe/Amsterdam",
@@ -11,6 +12,7 @@ const BASE: SettingsValues = {
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
+  ...CLEANUP,
 };
 const MINE: SettingsValues = { ...BASE, quietStart: "22:30" };
 
@@ -20,6 +22,7 @@ function conflictVia(updatedVia: "web" | "telegram" | null): ConflictState {
     mine: MINE,
     current: {
       values: { ...BASE, quietStart: "23:00" },
+      ranges: RANGES,
       version: 2,
       updatedAt: "2026-11-12T13:02:00Z",
       updatedVia,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import type { SaveOutcome } from "@/api/categories/categories.types";
+import type { CategoryProblem, SaveOutcome } from "@/api/categories/categories.types";
 import { problemText } from "@/features/categories/problemText";
 import type { Row } from "@/features/categories/rows";
 import { errorsOf } from "@/features/categories/saveErrors";
@@ -14,20 +14,29 @@ function resultOf(outcome: SaveOutcome): SaveResult {
   return outcome.kind === "invalid" ? "refused" : outcome.kind;
 }
 
+/** What the api said about the two label names. */
+interface NameErrors {
+  archive?: string | undefined;
+  other?: string | undefined;
+}
+
 export interface Feedback {
   errors: ErrorsByRow;
   instructionsError: string | undefined;
   /** What the api said about the archive label name. */
   archiveError: string | undefined;
+  /** What the api said about the name of the "Other" label. */
+  otherError: string | undefined;
   errorStamp: number;
   result: SaveResult;
   setResult: (result: SaveResult) => void;
   /** Shows the errors of a refused save or check; `instructions` is the text for the list's instructions field. */
-  show: (errors: ErrorsByRow, instructions?: string, archive?: string) => void;
+  show: (errors: ErrorsByRow, instructions?: string, names?: NameErrors) => void;
   clearAll: () => void;
   clearFor: (key: string) => void;
   clearInstructions: () => void;
   clearArchive: () => void;
+  clearOther: () => void;
 }
 
 /** The field errors and the result banner; the errors start over when the stored version changes. */
@@ -35,6 +44,7 @@ export function useFeedback(version: number): Feedback {
   const [errors, setErrors] = useState<ErrorsByRow>({});
   const [instructionsError, setInstructionsError] = useState<string | undefined>(undefined);
   const [archiveError, setArchiveError] = useState<string | undefined>(undefined);
+  const [otherError, setOtherError] = useState<string | undefined>(undefined);
   const [errorStamp, setErrorStamp] = useState(0);
   const [result, setResult] = useState<SaveResult>(null);
   const [seen, setSeen] = useState(version);
@@ -43,24 +53,28 @@ export function useFeedback(version: number): Feedback {
     setErrors({});
     setInstructionsError(undefined);
     setArchiveError(undefined);
+    setOtherError(undefined);
   }
   return {
     errors,
     instructionsError,
     archiveError,
+    otherError,
     errorStamp,
     result,
     setResult,
-    show: (next, instructions, archive) => {
+    show: (next, instructions, names) => {
       setErrors(next);
       setInstructionsError(instructions);
-      setArchiveError(archive);
+      setArchiveError(names?.archive);
+      setOtherError(names?.other);
       setErrorStamp((stamp) => stamp + 1);
     },
     clearAll: () => {
       setErrors({});
       setInstructionsError(undefined);
       setArchiveError(undefined);
+      setOtherError(undefined);
     },
     clearFor: (key) => {
       setErrors((current) => Object.fromEntries(Object.entries(current).filter(([other]) => other !== key)));
@@ -74,17 +88,27 @@ export function useFeedback(version: number): Feedback {
       setArchiveError(undefined);
       setResult(result === "saved" ? null : result);
     },
+    clearOther: () => {
+      setOtherError(undefined);
+      setResult(result === "saved" ? null : result);
+    },
   };
+}
+
+/** The reason the api gave for each of the two label names, in plain words. */
+function nameErrorsOf(problems: readonly CategoryProblem[]): NameErrors {
+  const archive = problems.find((problem) => problem.field === "archive_label");
+  const other = problems.find((problem) => problem.field === "other_label");
+  return { archive: archive && problemText(archive.rule), other: other && problemText(other.rule) };
 }
 
 export function showFailure(outcome: SaveOutcome, rows: readonly Row[], feedback: Feedback): void {
   const problems = outcome.kind === "invalid" ? outcome.problems : [];
   const mapped = errorsOf(problems, rows);
   const instructions = problems.some((problem) => problem.field === "instructions") ? problemText("instructions_too_long") : undefined;
-  const archive = problems.find((problem) => problem.field === "archive_label");
-  const archiveText = archive === undefined ? undefined : problemText(archive.rule);
-  if (Object.keys(mapped).length > 0 || instructions !== undefined || archiveText !== undefined) {
-    feedback.show(mapped, instructions, archiveText);
+  const names = nameErrorsOf(problems);
+  if (Object.keys(mapped).length > 0 || instructions !== undefined || names.archive !== undefined || names.other !== undefined) {
+    feedback.show(mapped, instructions, names);
   } else {
     feedback.setResult(resultOf(outcome));
   }
