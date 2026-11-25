@@ -531,6 +531,50 @@
         "title": "DecisionResult",
         "type": "object"
       },
+      "DeletedLabel": {
+        "additionalProperties": false,
+        "description": "A label the agent deleted: its name and when.",
+        "properties": {
+          "deletedAt": {
+            "format": "date-time",
+            "title": "Deletedat",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "deletedAt"
+        ],
+        "title": "DeletedLabel",
+        "type": "object"
+      },
+      "DeletedLabels": {
+        "additionalProperties": false,
+        "description": "The recently deleted labels, newest first, for the retention period.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DeletedLabel"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "retentionDays": {
+            "title": "Retentiondays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "retentionDays",
+          "items"
+        ],
+        "title": "DeletedLabels",
+        "type": "object"
+      },
       "GroupExample": {
         "additionalProperties": false,
         "description": "One mail of a group, shown as text (ADR-0044): the lowest-numbered item, cleaned when the plan was built.",
@@ -1509,6 +1553,165 @@
         "title": "Ranges",
         "type": "object"
       },
+      "RenameConfirm": {
+        "additionalProperties": false,
+        "description": "The confirmation: the hash of the plan that was shown and the ids the user keeps as they are.",
+        "properties": {
+          "planHash": {
+            "description": "The hash of the plan the user saw, as the preview gave it.",
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Planhash",
+            "type": "string"
+          },
+          "skippedIds": {
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Skippedids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "planHash",
+          "skippedIds"
+        ],
+        "title": "RenameConfirm",
+        "type": "object"
+      },
+      "RenameConfirmed": {
+        "additionalProperties": false,
+        "description": "The id of the stored confirmation (the same on a repeat).",
+        "properties": {
+          "confirmationId": {
+            "format": "uuid",
+            "title": "Confirmationid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirmationId"
+        ],
+        "title": "RenameConfirmed",
+        "type": "object"
+      },
+      "RenameItem": {
+        "additionalProperties": false,
+        "description": "One label of the plan.",
+        "properties": {
+          "action": {
+            "enum": [
+              "rename",
+              "merge"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "itemState": {
+            "enum": [
+              "planned",
+              "skipped",
+              "done",
+              "kept"
+            ],
+            "title": "Itemstate",
+            "type": "string"
+          },
+          "mailCount": {
+            "title": "Mailcount",
+            "type": "integer"
+          },
+          "newName": {
+            "title": "Newname",
+            "type": "string"
+          },
+          "oldName": {
+            "title": "Oldname",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "oldName",
+          "newName",
+          "mailCount",
+          "action",
+          "itemState"
+        ],
+        "title": "RenameItem",
+        "type": "object"
+      },
+      "RenamePreview": {
+        "additionalProperties": false,
+        "description": "The plan, its state and the hash to confirm it with; ``none`` when the mailbox has no migration.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RenameItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "planHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planhash"
+          },
+          "state": {
+            "enum": [
+              "none",
+              "pending",
+              "confirmed",
+              "done"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/RenameSummary"
+          }
+        },
+        "required": [
+          "state",
+          "planHash",
+          "items",
+          "summary"
+        ],
+        "title": "RenamePreview",
+        "type": "object"
+      },
+      "RenameSummary": {
+        "additionalProperties": false,
+        "description": "How many labels and mails the plan touches.",
+        "properties": {
+          "labels": {
+            "title": "Labels",
+            "type": "integer"
+          },
+          "mails": {
+            "title": "Mails",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "labels",
+          "mails"
+        ],
+        "title": "RenameSummary",
+        "type": "object"
+      },
       "RequestCodeBody": {
         "additionalProperties": false,
         "description": "The username a code is asked for: 1 to 64 characters, no control characters.",
@@ -1626,6 +1829,22 @@
           "version"
         ],
         "title": "RestoreRequest",
+        "type": "object"
+      },
+      "RestoreRequested": {
+        "additionalProperties": false,
+        "description": "The id of the open restore request (the same on a repeat).",
+        "properties": {
+          "requestId": {
+            "format": "uuid",
+            "title": "Requestid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "title": "RestoreRequested",
         "type": "object"
       },
       "SenderItem": {
@@ -2458,6 +2677,152 @@
           }
         },
         "summary": "Confirm Upload",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/label-rename": {
+      "get": {
+        "description": "Return the rename plan, largest labels first, with its state and the hash to confirm it with.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The state, the plan hash, the items and a summary. Nothing is changed.",
+        "operationId": "read_label_rename_api_label_rename_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenamePreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Label Rename",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/label-rename/confirmation": {
+      "post": {
+        "description": "Confirm the plan that was shown; the same hash and skip set again returns the same confirmation.\n\nArgs:\n    body: The plan hash and the ids to skip.\n    request: The request, whose app holds the database access.\n\nReturns:\n    The id of the confirmation, or a generic problem with nothing stored.",
+        "operationId": "confirm_label_rename_api_label_rename_confirmation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenameConfirmed"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "The hash is wrong, stale or replayed, or the plan is not pending; nothing was stored"
+          },
+          "415": {
+            "description": "The body is not JSON"
+          },
+          "422": {
+            "description": "The body has the wrong shape, or a skipped id is not in the plan"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          },
+          "500": {
+            "description": "The confirmation could not be stored"
+          }
+        },
+        "summary": "Confirm Label Rename",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/label-rename/deleted": {
+      "get": {
+        "description": "Return the labels the agent deleted within the retention period, newest first (read-only).\n\nArgs:\n    request: The request, whose app holds the database access and the clock.\n\nReturns:\n    The retention in days and the names with the time they were deleted.",
+        "operationId": "read_deleted_labels_api_label_rename_deleted_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedLabels"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          }
+        },
+        "summary": "Read Deleted Labels",
+        "tags": [
+          "categories"
+        ]
+      }
+    },
+    "/api/label-rename/restore": {
+      "post": {
+        "description": "Ask the agent to restore the old names; one open request at a time.\n\nArgs:\n    request: The request, whose app holds the database access.\n\nReturns:\n    The id of the open restore request, or a generic problem with nothing stored.",
+        "operationId": "restore_label_rename_api_label_rename_restore_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreRequested"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "No live session"
+          },
+          "403": {
+            "description": "Missing or wrong token, wrong Origin or cross-site request"
+          },
+          "409": {
+            "description": "No label was renamed yet; nothing was stored"
+          },
+          "429": {
+            "description": "Too many requests; see Retry-After"
+          },
+          "500": {
+            "description": "The request could not be stored"
+          }
+        },
+        "summary": "Restore Label Rename",
         "tags": [
           "categories"
         ]
