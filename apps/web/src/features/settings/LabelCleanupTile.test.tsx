@@ -318,7 +318,10 @@ describe("keyboard, screen reader and small screens (criteria 5 and 6, AC 17)", 
       expect(control).toHaveClass("min-h-11", "max-w-full", "min-w-0");
       expect(control).toHaveAttribute("inputmode", "numeric");
     }
-    expect(container.querySelector("[class*='w-['], [class*='px]']")).toBeNull();
+    const arbitrary = Array.from(container.querySelectorAll("*")).filter((node) =>
+      (node.getAttribute("class") ?? "").includes("["),
+    );
+    expect(arbitrary).toEqual([]);
     await expectNoAxeViolations(container);
   });
 
