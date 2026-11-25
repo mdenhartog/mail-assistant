@@ -3,17 +3,22 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
 from pydantic.alias_generators import to_camel
 
 from app.settings_repo import StoredSettings
+from category_policy import settings as bounds
 
 HHMM = Annotated[str, StringConstraints(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")]
 _CONFIG = ConfigDict(frozen=True, extra="forbid", alias_generator=to_camel, populate_by_name=True)
 
 
 class SettingsValues(BaseModel):
-    """The five values of the schedule; times are ``HH:MM`` wall-clock times in ``time_zone``."""
+    """The schedule and the label cleanup numbers; times are ``HH:MM`` wall-clock times in ``time_zone``.
+
+    The numbers are whole numbers, checked against their ranges by ``category_policy`` (not here), so a value outside
+    its range gets the same 422 body as every other refused value.
+    """
 
     model_config = _CONFIG
 
@@ -22,6 +27,35 @@ class SettingsValues(BaseModel):
     quiet_end: HHMM
     overview_at: HHMM
     remind_at: HHMM
+    waiting_minutes: StrictInt
+    protection_days: StrictInt
+    retention_days: StrictInt
+
+
+class Range(BaseModel):
+    """The lowest and highest value of a number and the value a new installation starts with."""
+
+    model_config = _CONFIG
+
+    min: int
+    max: int
+    default: int
+
+
+class Ranges(BaseModel):
+    """The ranges and defaults of the label cleanup numbers, so the page shows them without a copy of its own."""
+
+    model_config = _CONFIG
+
+    waiting_minutes: Range = Range(
+        min=bounds.WAIT_MINUTES_MIN, max=bounds.WAIT_MINUTES_MAX, default=bounds.WAIT_MINUTES_DEFAULT
+    )
+    protection_days: Range = Range(
+        min=bounds.PROTECTION_DAYS_MIN, max=bounds.PROTECTION_DAYS_MAX, default=bounds.PROTECTION_DAYS_DEFAULT
+    )
+    retention_days: Range = Range(
+        min=bounds.RETENTION_DAYS_MIN, max=bounds.RETENTION_DAYS_MAX, default=bounds.RETENTION_DAYS_DEFAULT
+    )
 
 
 class Settings(BaseModel):
@@ -30,6 +64,7 @@ class Settings(BaseModel):
     model_config = _CONFIG
 
     values: SettingsValues
+    ranges: Ranges
     version: Annotated[int, Field(ge=0)]
     updated_at: datetime | None
     updated_via: Literal["telegram", "web"] | None
@@ -53,7 +88,11 @@ class Settings(BaseModel):
                     "quiet_end": f"{policy.quiet_end:%H:%M}",
                     "overview_at": f"{policy.overview_at:%H:%M}",
                     "remind_at": f"{policy.remind_at:%H:%M}",
+                    "waiting_minutes": stored.cleanup.waiting_minutes,
+                    "protection_days": stored.cleanup.protection_days,
+                    "retention_days": stored.cleanup.retention_days,
                 },
+                "ranges": Ranges(),
                 "version": stored.version,
                 "updated_at": stored.updated_at,
                 "updated_via": stored.updated_via,

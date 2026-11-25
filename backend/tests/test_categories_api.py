@@ -187,22 +187,33 @@ async def get(api: Api, **switches: Any) -> Any:
     return await request(api, "GET", **switches)
 
 
-async def put(  # the parts of the body and the switches of the request
+async def put(  # noqa: PLR0913  # the parts of the body and the switches of the request
     api: Api,
     version: int,
     categories: list[dict[str, Any]],
     *,
     instructions: str = "",
     archive: str = ARCHIVE,
+    other: str = OTHER,
     **switches: Any,
 ) -> Any:
-    return await request(api, "PUT", body_of(version, categories, instructions, archive), **switches)
+    return await request(api, "PUT", body_of(version, categories, instructions, archive, other), **switches)
 
 
 def body_of(
-    version: int, categories: list[dict[str, Any]], instructions: str = "", archive: str = ARCHIVE
+    version: int,
+    categories: list[dict[str, Any]],
+    instructions: str = "",
+    archive: str = ARCHIVE,
+    other: str = OTHER,
 ) -> dict[str, Any]:
-    return {"version": version, "categories": categories, "generalInstructions": instructions, "archiveLabel": archive}
+    return {
+        "version": version,
+        "categories": categories,
+        "generalInstructions": instructions,
+        "archiveLabel": archive,
+        "otherLabel": other,
+    }
 
 
 def entry(  # noqa: PLR0913  # the fields of one category of the v2 list
@@ -268,6 +279,7 @@ async def test_given_a_list_with_counts_and_labels_when_get_then_the_list_other_
         ],
         "generalInstructions": "",
         "archiveLabel": ARCHIVE,
+        "otherLabel": OTHER,
         "other": {"mailCount": 3},
         "olderCategories": [],
     }
@@ -283,6 +295,7 @@ async def test_given_no_seed_yet_when_get_then_version_0_and_not_ready(api: Api)
         "categories": [],
         "generalInstructions": "",
         "archiveLabel": ARCHIVE,
+        "otherLabel": OTHER,
         "other": {"mailCount": 0},
         "olderCategories": [],
     }
@@ -760,7 +773,7 @@ def test_given_a_shared_category_case_when_the_api_checks_the_list_then_the_rule
     items.append(_item(_nested(case["name"]), _fill(case["description"])))
     other, archive = case["settings"]
 
-    problems = problems_of(items, "", archive, _stored(other, archive))
+    problems = problems_of(items, "", archive, other, _stored(other, archive))
 
     assert [p.rule for p in problems if p.index == len(items) - 1] == case["rules"]
 
@@ -773,7 +786,7 @@ def test_given_a_shared_list_case_when_the_api_checks_the_list_then_the_problems
         items = [_item(c["name"], c["description"]) for c in case["categories"]]
     other, archive = case["settings"]
 
-    problems = problems_of(items, "", archive, _stored(other, archive))
+    problems = problems_of(items, "", archive, other, _stored(other, archive))
 
     assert [[p.index, p.rule] for p in problems] == case["problems"]
 
@@ -800,7 +813,7 @@ def test_given_the_backend_when_read_then_nothing_names_a_removed_rule() -> None
 def test_given_a_shared_instructions_case_when_the_api_checks_the_list_then_the_rules_match(
     case: dict[str, Any],
 ) -> None:
-    problems = problems_of([], "g" * case["length"], ARCHIVE, _stored())
+    problems = problems_of([], "g" * case["length"], ARCHIVE, OTHER, _stored())
 
     assert [p.rule for p in problems] == case["rules"]
     assert all(p.field == "instructions" and p.index is None for p in problems)
@@ -825,7 +838,7 @@ def test_given_a_shared_sender_case_when_the_api_checks_the_list_then_the_proble
             senders=[SenderItem(entry=f"s{i}@example.nl", subdomains=False) for i in range(case["generate_entries"])],
         )
 
-    problems = problems_of(items, "", ARCHIVE, _stored())
+    problems = problems_of(items, "", ARCHIVE, OTHER, _stored())
 
     assert [[p.rule, p.index, p.position, p.other_index] for p in problems] == case["problems"]
     assert all(p.field == "senders" for p in problems)
@@ -856,7 +869,7 @@ async def test_given_a_category_equal_to_the_current_other_or_archive_name_when_
 ) -> None:
     await seed(owner, [("Invoices", "Bills")], other_label="Rest", archive_label="Bewaard")
 
-    response = await put(api, 1, [entry(name)], archive="Bewaard")
+    response = await put(api, 1, [entry(name)], archive="Bewaard", other="Rest")
 
     assert response.status_code == 422
     assert _problem("name_setting_clash", "name", 0) in response.json()["problems"]
@@ -869,7 +882,7 @@ async def test_given_a_category_below_the_other_name_when_put_then_it_is_accepte
 ) -> None:
     await seed(owner, [("Invoices", "Bills")], other_label="Rest")
 
-    response = await put(api, 1, [entry("Rest/Old")])
+    response = await put(api, 1, [entry("Rest/Old")], other="Rest")
 
     assert response.status_code == 200
 
@@ -880,7 +893,7 @@ async def test_given_a_put_when_the_other_name_was_changed_then_the_new_version_
 ) -> None:
     await seed(owner, [("Invoices", "Bills")], other_label="Rest")
 
-    response = await put(api, 1, [entry("Invoices"), entry("Travel")])
+    response = await put(api, 1, [entry("Invoices"), entry("Travel")], other="Rest")
 
     assert response.status_code == 200
     assert await owner.fetchval("select other_label from categories.list_settings where version = 2") == "Rest"
@@ -969,7 +982,7 @@ async def test_given_a_non_json_body_when_put_then_415(api: Api) -> None:
 
     response = await api.http.put(
         "/api/categories",
-        content='{"version": 0, "categories": [], "generalInstructions": "", "archiveLabel": "Archive"}',
+        content=json.dumps(body_of(0, [])),
         headers={
             "Content-Type": "text/plain",
             "Origin": ORIGIN,
@@ -1317,3 +1330,146 @@ async def test_given_the_old_environment_setting_when_the_api_reads_the_list_the
 
     assert body["archiveLabel"] == "Bewaard"
     assert not [name for name in Settings.model_fields if "archive" in name.lower()]
+
+
+# U-label-prefix-removal-10: the name of "Other" next to the archive name (AC 12, 13)
+async def test_given_a_new_installation_when_get_then_other_and_archive_have_their_default_names(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    body = (await get(api)).json()
+
+    assert (body["otherLabel"], body["archiveLabel"]) == ("Other", "Archive")
+
+
+async def test_given_no_seed_yet_when_get_then_the_defaults_are_shown(api: Api) -> None:
+    body = (await get(api)).json()
+
+    assert (body["otherLabel"], body["archiveLabel"]) == ("Other", "Archive")
+
+
+async def test_given_a_valid_other_name_when_put_then_it_is_stored_in_the_new_version_and_returned(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    ids = await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(api, 1, [entry("Invoices", "Bills", ids[0])], other="Rest")
+
+    assert response.status_code == 200
+    assert (response.json()["version"], response.json()["otherLabel"]) == (2, "Rest")
+    assert await owner.fetchval("select other_label from categories.list_settings where version = 2") == "Rest"
+    assert (await get(api)).json()["otherLabel"] == "Rest"
+
+
+async def test_given_only_the_other_name_changed_when_put_then_it_is_a_new_version(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    ids = await seed(owner, [("Invoices", "Bills")])
+
+    unchanged = await put(api, 1, [entry("Invoices", "Bills", ids[0])])
+    changed = await put(api, 1, [entry("Invoices", "Bills", ids[0])], other="Rest")
+
+    assert (unchanged.json()["version"], changed.json()["version"]) == (1, 2)
+
+
+async def test_given_no_other_name_when_put_then_422_and_nothing_is_stored(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    body = body_of(1, [entry("Invoices")])
+    del body["otherLabel"]
+
+    response = await request(api, "PUT", body)
+
+    assert response.status_code == 422
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+@pytest.mark.parametrize(
+    ("other", "rule"),
+    [
+        ("inbox", "setting_name_system_label"),
+        ("INVOICES", "setting_name_category_clash"),
+        ("Invoices/Old", "setting_name_category_clash"),
+        ("Other/Old", "setting_name_reserved"),
+        (" Rest", "setting_name_invalid"),
+        ("", "setting_name_invalid"),
+    ],
+)
+async def test_given_an_invalid_other_name_when_put_then_422_names_the_field_and_nothing_is_stored(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+    other: str,
+    rule: str,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(api, 1, [entry("Invoices")], other=other)
+
+    assert response.status_code == 422
+    assert response.json()["problems"] == [
+        {"rule": rule, "field": "other_label", "index": None, "position": None, "otherIndex": None}
+    ]
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_the_other_name_equal_to_the_new_archive_name_when_put_then_422_on_the_other_field(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(api, 1, [entry("Invoices")], archive="Kept", other="kept")
+
+    assert response.status_code == 422
+    assert {p["field"] for p in response.json()["problems"]} >= {"other_label"}
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_the_other_name_equal_to_the_archive_name_when_put_then_422_on_both_fields(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(api, 1, [entry("Invoices")], other="Archive")
+
+    assert response.status_code == 422
+    assert {(p["rule"], p["field"]) for p in response.json()["problems"]} == {
+        ("setting_name_reserved", "archive_label"),
+        ("setting_name_reserved", "other_label"),
+    }
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_a_category_equal_to_the_new_other_name_when_put_then_422_on_the_other_field(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+
+    response = await put(api, 1, [entry("Rest")], other="Rest")
+
+    assert response.status_code == 422
+    assert [(p["rule"], p["field"]) for p in response.json()["problems"]] == [
+        ("setting_name_category_clash", "other_label")
+    ]
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1
+
+
+async def test_given_an_unknown_field_next_to_the_names_when_put_then_422(
+    api: Api,
+    owner: asyncpg.Connection,  # noqa: F811
+) -> None:
+    await seed(owner, [("Invoices", "Bills")])
+    body = {**body_of(1, [entry("Invoices")]), "extra": "x"}
+
+    response = await request(api, "PUT", body)
+
+    assert response.status_code == 422
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1

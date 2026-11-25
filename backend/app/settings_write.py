@@ -4,6 +4,8 @@ from datetime import time
 
 from app.settings_fields import FIELD_OF_RULE, TIME_FIELDS
 from app.settings_models import ProblemItem, SettingsValues
+from app.settings_repo import LabelCleanup
+from category_policy import settings as bounds
 from schedule_policy.policy import Problem, TimePolicy
 
 
@@ -57,3 +59,53 @@ def field_problems(values: SettingsValues, problems: list[Problem]) -> list[Prob
             for field in fields
         )
     return items
+
+
+_CLEANUP_FIELDS = {
+    "wait_minutes": ("waitingMinutes", bounds.WAIT_MINUTES_DEFAULT),
+    "protection_days": ("protectionDays", bounds.PROTECTION_DAYS_DEFAULT),
+    "retention_days": ("retentionDays", bounds.RETENTION_DAYS_DEFAULT),
+}
+
+
+def to_cleanup(values: SettingsValues) -> LabelCleanup:
+    """Take the label cleanup numbers out of the request values.
+
+    Args:
+        values: The request values.
+
+    Returns:
+        The three numbers, not yet checked.
+    """
+    return LabelCleanup(values.waiting_minutes, values.protection_days, values.retention_days)
+
+
+def cleanup_problems(values: SettingsValues) -> list[ProblemItem]:
+    """Check the label cleanup numbers against the bounds of ``category_policy``.
+
+    Args:
+        values: The request values.
+
+    Returns:
+        One item per number outside its range: the API field, the rule, the value given and the default as example.
+    """
+    cleanup = to_cleanup(values)
+    found = [
+        *bounds.validate_wait_minutes(cleanup.waiting_minutes),
+        *bounds.validate_protection_days(cleanup.protection_days),
+        *bounds.validate_retention_days(cleanup.retention_days),
+    ]
+    shown = {
+        "wait_minutes": cleanup.waiting_minutes,
+        "protection_days": cleanup.protection_days,
+        "retention_days": cleanup.retention_days,
+    }
+    return [
+        ProblemItem(
+            field=_CLEANUP_FIELDS[problem.field][0],
+            rule=problem.rule,
+            value=str(shown[problem.field]),
+            example=str(_CLEANUP_FIELDS[problem.field][1]),
+        )
+        for problem in found
+    ]
