@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { classifySaveError } from "@/api/categories/categories.api";
 import { useSaveCategories } from "@/api/categories/categories.queries";
 import type { CategoryInput, CategoryList } from "@/api/categories/categories.types";
-import { MAX_INSTRUCTIONS, OTHER_LABEL_DEFAULT, validateList } from "@/features/categories/policy";
+import { MAX_INSTRUCTIONS, validateList } from "@/features/categories/policy";
 import { problemText } from "@/features/categories/problemText";
 import type { ListSettings, Row } from "@/features/categories/rows";
 import { draftErrors, rowErrors } from "@/features/categories/saveErrors";
@@ -18,6 +18,8 @@ export interface CategoriesSave {
   instructionsError: string | undefined;
   /** What the api said about the archive label name. */
   archiveError: string | undefined;
+  /** What the api said about the name of the "Other" label. */
+  otherError: string | undefined;
   /** Changes on every submit that shows errors, so focus moves once per submit and not while typing. */
   errorStamp: number;
   result: SaveResult;
@@ -35,6 +37,7 @@ export interface CategoriesSave {
   clear: (key: string) => void;
   clearInstructions: () => void;
   clearArchive: () => void;
+  clearOther: () => void;
 }
 
 function bodyOf(rows: readonly Row[]): CategoryInput[] {
@@ -67,7 +70,13 @@ function useSender(list: CategoryList, rows: readonly Row[], settings: ListSetti
     feedback.setResult(null);
     feedback.clearAll();
     save.mutate(
-      { version: list.version, generalInstructions: settings.instructions, archiveLabel: settings.archiveLabel, categories: bodyOf(rows) },
+      {
+        version: list.version,
+        generalInstructions: settings.instructions,
+        archiveLabel: settings.archiveLabel,
+        otherLabel: settings.otherLabel,
+        categories: bodyOf(rows),
+      },
       {
         onSuccess: () => {
           feedback.setResult("saved");
@@ -94,7 +103,7 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
   const { send, saving } = useSender(list, rows, settings, feedback);
   // The current names of the "Other" label and the archive label; a category of such a name clashes. An existing
   // label never refuses a name: it is adopted (ADR-0060).
-  const names = [OTHER_LABEL_DEFAULT, settings.archiveLabel];
+  const names = [settings.otherLabel, settings.archiveLabel];
 
   const submit = (): void => {
     if (saving) {
@@ -125,6 +134,7 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
     errors: feedback.errors,
     instructionsError: feedback.instructionsError,
     archiveError: feedback.archiveError,
+    otherError: feedback.otherError,
     errorStamp: feedback.errorStamp,
     result: feedback.result,
     asking,
@@ -142,5 +152,6 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
     clear: feedback.clearFor,
     clearInstructions: feedback.clearInstructions,
     clearArchive: feedback.clearArchive,
+    clearOther: feedback.clearOther,
   };
 }

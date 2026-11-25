@@ -6,16 +6,19 @@ import { Field } from "@/components/Field";
 import { FieldGroup } from "@/components/FieldGroup";
 import { TimeField } from "@/components/TimeField";
 import type { FieldErrors } from "@/features/settings/fieldErrors";
+import { LabelCleanupTile } from "@/features/settings/LabelCleanupTile";
 import { ZoneField } from "@/features/settings/ZoneField";
-import type { FieldKey, SettingsValues } from "@/features/settings/useSettings";
+import type { FieldKey, FieldValue, Ranges, SettingsValues } from "@/features/settings/useSettings";
 
 interface SettingsFieldsProps {
   values: SettingsValues;
+  /** The bounds and defaults of the cleanup numbers, as the api sent them. */
+  ranges: Ranges;
   errors: FieldErrors;
   readOnly: boolean;
   /** The zone as stored; Escape in the zone field puts it back. */
   savedZone: string;
-  setField: (field: FieldKey, value: string) => void;
+  setField: (field: FieldKey, value: FieldValue) => void;
 }
 
 interface GroupControl {
@@ -106,9 +109,9 @@ function QuietHours({ values, errors, readOnly, setField }: SettingsFieldsProps)
   );
 }
 
-/** The four settings in the order of the screens document: Time zone first, then the three times. */
+/** The settings in the order of the screens document: Time zone first, then the three times, then the Label cleanup tile. */
 export function SettingsFields(props: SettingsFieldsProps): ReactElement {
-  const { values, errors, readOnly, savedZone, setField } = props;
+  const { values, ranges, errors, readOnly, savedZone, setField } = props;
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Card>
@@ -130,6 +133,9 @@ export function SettingsFields(props: SettingsFieldsProps): ReactElement {
         hint="When a snoozed alert comes back if you do not name a time."
         label="Remind-me-later default"
       />
+      <div className="sm:col-span-2">
+        <LabelCleanupTile errors={errors} ranges={ranges} readOnly={readOnly} setField={setField} values={values} />
+      </div>
     </div>
   );
 }

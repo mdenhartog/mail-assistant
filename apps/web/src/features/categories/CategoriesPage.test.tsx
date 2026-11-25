@@ -42,7 +42,7 @@ function rowOf(buttonName: string): HTMLElement {
 }
 
 const withNested = (): void => {
-  wire({ get: () => json({ ...LIST, categories: nested(), olderCategories: [] }) });
+  wire({ get: () => json({ ...LIST, categories: nested() }) });
 };
 
 describe("Categories page: the row button (AC-22)", () => {
@@ -288,7 +288,7 @@ describe("Categories page: states (criterion 5)", () => {
   });
 
   it("given a ready list without categories, then the page says it is empty and offers Add category", async () => {
-    wire({ get: () => json({ ...LIST, categories: [], olderCategories: [] }) });
+    wire({ get: () => json({ ...LIST, categories: [] }) });
     renderPage();
     expect(await screen.findByText("You have no categories yet.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add category" })).toBeEnabled();
@@ -301,22 +301,19 @@ describe("Categories page: states (criterion 5)", () => {
       id: `7f0c1c2e-1b1e-4c52-9d0e-${String(index).padStart(12, "0")}`,
       name: `Category ${String(index)}`,
     }));
-    wire({ get: () => json({ ...LIST, categories: many, olderCategories: [] }) });
+    wire({ get: () => json({ ...LIST, categories: many }) });
     renderPage();
     await screen.findByRole("button", { name: "Edit Category 0" });
     expect(screen.getByRole("button", { name: "Add category" })).toBeDisabled();
     expect(screen.getByText("You have reached the limit of 100 categories. Remove one to add another.")).toBeInTheDocument();
   });
 
-  it("given an older category, when Add to my list is pressed, then its edit view opens as a new category with the name filled in", async () => {
-    wire();
+  it("given an answer that still carries olderCategories, then no older-categories section is shown (AC 19, ADR-0060)", async () => {
+    wire({ get: () => json({ ...LIST, olderCategories: [{ labelName: "Travel", mailCount: null }] }) });
     await loaded();
-    const older = screen.getByRole("region", { name: "Older category" });
-    await userEvent.click(within(older).getByRole("button", { name: "Add to my list: Travel" }));
-
-    const view = within(screen.getByRole("region", { name: "New category" }));
-    expect(view.getByLabelText("Name")).toHaveValue("Travel");
-    expect(view.getByLabelText("Description")).toHaveFocus();
+    expect(screen.queryByRole("region", { name: /Older categor/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add to my list/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Travel")).not.toBeInTheDocument();
   });
 
   it("given Add category, then a new category opens in the edit view with focus on its name; Cancel drops it", async () => {
@@ -339,12 +336,10 @@ describe("Categories page: text is text (criterion 7)", () => {
         json({
           ...LIST,
           categories: [{ ...INVOICES, name: markup, description: "<b>bold</b><script>alert(1)</script>" }],
-          olderCategories: [{ labelName: "<i>old</i>", mailCount: 3 }],
         }),
     });
     const container = renderPage();
     expect(await screen.findByText(markup)).toBeInTheDocument();
-    expect(screen.getByText("<i>old</i>")).toBeInTheDocument();
     expect(container.querySelector("img, b, i, script")).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: `Edit ${markup}` }));

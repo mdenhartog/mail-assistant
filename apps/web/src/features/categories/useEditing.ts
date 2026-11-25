@@ -26,7 +26,6 @@ export interface EditingFlow {
   focusRow: FocusRow | null;
   open: (key: string) => void;
   add: () => void;
-  adopt: (labelName: string) => void;
   undo: () => void;
   save: () => void;
   cancel: () => void;
@@ -102,9 +101,6 @@ export function useEditing(parts: Parts): EditingFlow {
     },
     add: () => {
       open(flow.add(), "name", null);
-    },
-    adopt: (labelName) => {
-      open(flow.adopt(labelName), "description", null);
     },
     undo: () => {
       const row = flow.undoRemove();

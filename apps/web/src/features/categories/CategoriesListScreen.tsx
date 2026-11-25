@@ -5,10 +5,9 @@ import type { CategoryList } from "@/api/categories/categories.types";
 import { Button } from "@/components/Button";
 import { StickyBar } from "@/components/StickyBar";
 import { CategoryListBody } from "@/features/categories/CategoryListBody";
-import { ArchiveLabelField } from "@/features/categories/ArchiveLabelField";
 import { InstructionsField } from "@/features/categories/InstructionsField";
+import { LabelNamesField } from "@/features/categories/LabelNamesField";
 import { Intro, OtherCard } from "@/features/categories/Intro";
-import { OlderCategories } from "@/features/categories/OlderCategories";
 import type { Change } from "@/features/categories/rows";
 import { SaveResultBanner } from "@/features/categories/SaveResultBanner";
 import { changesText } from "@/features/categories/SaveSummary";
@@ -73,15 +72,7 @@ export function CategoriesListScreen({ list, flow, save, view, edit, changes }: 
         readOnly={save.saving}
         value={flow.instructions}
       />
-      <ArchiveLabelField
-        error={save.archiveError}
-        onChange={(value) => {
-          flow.setArchiveLabel(value);
-          save.clearArchive();
-        }}
-        readOnly={save.saving}
-        value={flow.settings.archiveLabel}
-      />
+      <LabelNamesField flow={flow} save={save} />
       <CategoryListBody
         flow={flow}
         locked={save.saving}
@@ -95,7 +86,6 @@ export function CategoriesListScreen({ list, flow, save, view, edit, changes }: 
         view={view}
       />
       <OtherCard mailCount={list.other.mailCount} />
-      <OlderCategories older={flow.older} onAdopt={edit.adopt} />
       <StickyBar className="flex flex-wrap items-center gap-3">
         <Button disabled={!flow.dirty} loading={save.saving} type="submit" variant="primary">
           Save changes

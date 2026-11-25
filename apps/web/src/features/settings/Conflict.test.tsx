@@ -6,6 +6,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { setCsrfToken } from "@/api/client";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { expectNoAxeViolations } from "@/test/axe";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const VALUES = {
   timeZone: "Europe/Amsterdam",
@@ -13,10 +14,12 @@ const VALUES = {
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
+  ...CLEANUP,
 };
-const STORED = { values: VALUES, version: 1, updatedAt: "2026-11-12T10:00:00Z", updatedVia: "telegram" };
+const STORED = { values: VALUES, ranges: RANGES, version: 1, updatedAt: "2026-11-12T10:00:00Z", updatedVia: "telegram" };
 const NEWER = {
   values: { ...VALUES, quietStart: "23:00" },
+  ranges: RANGES,
   version: 2,
   updatedAt: "2026-11-12T13:02:00Z" as string | null,
   updatedVia: "telegram",

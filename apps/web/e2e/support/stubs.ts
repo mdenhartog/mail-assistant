@@ -52,7 +52,12 @@ export const STORED = {
   updatedAt: "2026-11-10T13:02:00Z",
   updatedVia: "telegram",
   version: 3,
-  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00" },
+  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00", waitingMinutes: 720, protectionDays: 7, retentionDays: 30 },
+  ranges: {
+    waitingMinutes: { min: 5, max: 720, default: 720 },
+    protectionDays: { min: 1, max: 30, default: 7 },
+    retentionDays: { min: 7, max: 90, default: 30 },
+  },
 } as const;
 
 const PLACES = {
@@ -151,13 +156,13 @@ export const CATEGORIES = {
   ready: true,
   generalInstructions: "Keep receipts for the tax year.",
   archiveLabel: "Archive",
+  otherLabel: "Other",
   categories: [
     { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120, kind: "extra", notify: true, senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 0 }] },
     { id: "00000000-0000-4000-8000-000000000002", name: "Newsletters", description: "Weekly digests and product news I read on Sunday.", mailCount: 1, kind: "topic", notify: false, senders: [] },
     { id: "00000000-0000-4000-8000-000000000003", name: "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", description: "https://example.com/a/very/long/address/that/has/no/spaces/at/all/and/keeps/going/and/going", mailCount: 0, kind: "topic", notify: false, senders: [] },
   ],
   other: { mailCount: 42 },
-  olderCategories: [{ labelName: "Travel", mailCount: null }],
 } as const;
 
 /** What an upload of a valid file returns: 3 added, 5 changed and 2 removed, one of them with a very long name. */
@@ -167,6 +172,7 @@ export const UPLOAD_PREVIEW = {
   baseVersion: 5,
   expiresAt: "2026-11-22T12:10:00Z",
   added: 3,
+  adopted: 2,
   changed: 5,
   removed: 2,
   removedCategories: ["Travel/Trains", "W".repeat(60)],

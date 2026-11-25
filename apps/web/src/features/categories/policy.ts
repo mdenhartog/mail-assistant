@@ -11,8 +11,6 @@ const DESCRIPTION_MAX = 1500;
 export const MAX_INSTRUCTIONS = 4000;
 export const MAX_CATEGORIES = 100;
 const SEPARATOR = "/";
-/** The default name of the "Other" label; renaming it is not part of this page yet. */
-export const OTHER_LABEL_DEFAULT = "Other";
 const RESERVED_NAMES: readonly string[] = ["other", "archive"];
 const GMAIL_SYSTEM_LABELS: readonly string[] = ["inbox", "spam", "trash", "sent", "draft", "starred", "unread", "important", "chat"];
 const SYSTEM_LABEL_START = "category_";

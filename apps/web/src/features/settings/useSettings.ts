@@ -7,7 +7,12 @@ import type { components } from "@/api/schema";
 export type Settings = components["schemas"]["Settings"];
 export type SettingsValues = components["schemas"]["SettingsValues"];
 export type Problem = components["schemas"]["ProblemItem"];
+export type Ranges = Settings["ranges"];
 export type FieldKey = keyof SettingsValues;
+/** The three whole numbers of the Label cleanup tile; the other values are text. */
+export type NumberKey = "waitingMinutes" | "protectionDays" | "retentionDays";
+/** A value of the form: text for the time zone and the times, a whole number for the cleanup numbers. */
+export type FieldValue = SettingsValues[FieldKey];
 
 /** The 409 answer: the settings as they are now, what the user had typed and what that was based on. */
 export interface ConflictState {
@@ -30,19 +35,45 @@ interface SaveVariables {
 }
 
 const settingsKey = ["settings"] as const;
-/** The five values in the order of the form. */
-export const FIELD_KEYS: readonly FieldKey[] = ["timeZone", "quietStart", "quietEnd", "overviewAt", "remindAt"];
+/** The eight values in the order of the form. */
+export const FIELD_KEYS: readonly FieldKey[] = [
+  "timeZone",
+  "quietStart",
+  "quietEnd",
+  "overviewAt",
+  "remindAt",
+  "waitingMinutes",
+  "protectionDays",
+  "retentionDays",
+];
+export const NUMBER_KEYS: readonly NumberKey[] = ["waitingMinutes", "protectionDays", "retentionDays"];
+
+export function isNumberKey(key: FieldKey): key is NumberKey {
+  return NUMBER_KEYS.some((number) => number === key);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isValues(value: unknown): value is SettingsValues {
-  return isRecord(value) && FIELD_KEYS.every((key) => typeof value[key] === "string");
+/** Whether `value` holds the right kind for every key: text for the text values, a whole number for the cleanup numbers. */
+export function isValues(value: unknown): value is SettingsValues {
+  return (
+    isRecord(value) &&
+    FIELD_KEYS.every((key) => (isNumberKey(key) ? Number.isInteger(value[key]) : typeof value[key] === "string"))
+  );
+}
+
+function isRange(value: unknown): boolean {
+  return isRecord(value) && ["min", "max", "default"].every((key) => Number.isInteger(value[key]));
+}
+
+function isRanges(value: unknown): value is Ranges {
+  return isRecord(value) && NUMBER_KEYS.every((key) => isRange(value[key]));
 }
 
 function isSettings(value: unknown): value is Settings {
-  return isRecord(value) && isValues(value["values"]) && typeof value["version"] === "number";
+  return isRecord(value) && isValues(value["values"]) && isRanges(value["ranges"]) && typeof value["version"] === "number";
 }
 
 function isProblem(value: unknown): value is Problem {

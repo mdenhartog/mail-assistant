@@ -184,6 +184,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/label-rename": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Label Rename
+         * @description Return the rename plan, largest labels first, with its state and the hash to confirm it with.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The state, the plan hash, the items and a summary. Nothing is changed.
+         */
+        get: operations["read_label_rename_api_label_rename_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/label-rename/confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Label Rename
+         * @description Confirm the plan that was shown; the same hash and skip set again returns the same confirmation.
+         *
+         *     Args:
+         *         body: The plan hash and the ids to skip.
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The id of the confirmation, or a generic problem with nothing stored.
+         */
+        post: operations["confirm_label_rename_api_label_rename_confirmation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/label-rename/deleted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Deleted Labels
+         * @description Return the labels the agent deleted within the retention period, newest first (read-only).
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access and the clock.
+         *
+         *     Returns:
+         *         The retention in days and the names with the time they were deleted.
+         */
+        get: operations["read_deleted_labels_api_label_rename_deleted_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/label-rename/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Label Rename
+         * @description Ask the agent to restore the old names; one open request at a time.
+         *
+         *     Args:
+         *         request: The request, whose app holds the database access.
+         *
+         *     Returns:
+         *         The id of the open restore request, or a generic problem with nothing stored.
+         */
+        post: operations["restore_label_rename_api_label_rename_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/places": {
         parameters: {
             query?: never;
@@ -799,6 +904,8 @@ export interface components {
             /** Oldercategories */
             olderCategories: components["schemas"]["OlderCategory"][];
             other: components["schemas"]["OtherItem"];
+            /** Otherlabel */
+            otherLabel: string;
             /** Ready */
             ready: boolean;
             /** Version */
@@ -815,6 +922,8 @@ export interface components {
             categories: components["schemas"]["CategoryInput"][];
             /** Generalinstructions */
             generalInstructions: string;
+            /** Otherlabel */
+            otherLabel: string;
             /** Version */
             version: number;
         };
@@ -830,7 +939,7 @@ export interface components {
              * Field
              * @enum {string}
              */
-            field: "name" | "description" | "id" | "list" | "senders" | "instructions" | "archive_label";
+            field: "name" | "description" | "id" | "list" | "senders" | "instructions" | "archive_label" | "other_label";
             /** Index */
             index: number | null;
             /** Otherindex */
@@ -900,6 +1009,29 @@ export interface components {
         DecisionResult: {
             /** Changed */
             changed: number;
+        };
+        /**
+         * DeletedLabel
+         * @description A label the agent deleted: its name and when.
+         */
+        DeletedLabel: {
+            /**
+             * Deletedat
+             * Format: date-time
+             */
+            deletedAt: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * DeletedLabels
+         * @description The recently deleted labels, newest first, for the retention period.
+         */
+        DeletedLabels: {
+            /** Items */
+            items: components["schemas"]["DeletedLabel"][];
+            /** Retentiondays */
+            retentionDays: number;
         };
         /**
          * GroupExample
@@ -1029,7 +1161,7 @@ export interface components {
         };
         /**
          * OlderCategory
-         * @description An ``Assistant/`` label in Gmail that is not on the list; ``mail_count`` is None while it is not counted.
+         * @description Kept for the web contract; always empty since no label has a prefix (ADR-0060).
          */
         OlderCategory: {
             /** Labelname */
@@ -1268,6 +1400,122 @@ export interface components {
             value: string;
         };
         /**
+         * Range
+         * @description The lowest and highest value of a number and the value a new installation starts with.
+         */
+        Range: {
+            /** Default */
+            default: number;
+            /** Max */
+            max: number;
+            /** Min */
+            min: number;
+        };
+        /**
+         * Ranges
+         * @description The ranges and defaults of the label cleanup numbers, so the page shows them without a copy of its own.
+         */
+        Ranges: {
+            /**
+             * @default {
+             *       "default": 7,
+             *       "max": 30,
+             *       "min": 1
+             *     }
+             */
+            protectionDays: components["schemas"]["Range"];
+            /**
+             * @default {
+             *       "default": 30,
+             *       "max": 90,
+             *       "min": 7
+             *     }
+             */
+            retentionDays: components["schemas"]["Range"];
+            /**
+             * @default {
+             *       "default": 720,
+             *       "max": 720,
+             *       "min": 5
+             *     }
+             */
+            waitingMinutes: components["schemas"]["Range"];
+        };
+        /**
+         * RenameConfirm
+         * @description The confirmation: the hash of the plan that was shown and the ids the user keeps as they are.
+         */
+        RenameConfirm: {
+            /**
+             * Planhash
+             * @description The hash of the plan the user saw, as the preview gave it.
+             */
+            planHash: string;
+            /** Skippedids */
+            skippedIds: string[];
+        };
+        /**
+         * RenameConfirmed
+         * @description The id of the stored confirmation (the same on a repeat).
+         */
+        RenameConfirmed: {
+            /**
+             * Confirmationid
+             * Format: uuid
+             */
+            confirmationId: string;
+        };
+        /**
+         * RenameItem
+         * @description One label of the plan.
+         */
+        RenameItem: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "rename" | "merge";
+            /** Id */
+            id: string;
+            /**
+             * Itemstate
+             * @enum {string}
+             */
+            itemState: "planned" | "skipped" | "done" | "kept";
+            /** Mailcount */
+            mailCount: number;
+            /** Newname */
+            newName: string;
+            /** Oldname */
+            oldName: string;
+        };
+        /**
+         * RenamePreview
+         * @description The plan, its state and the hash to confirm it with; ``none`` when the mailbox has no migration.
+         */
+        RenamePreview: {
+            /** Items */
+            items: components["schemas"]["RenameItem"][];
+            /** Planhash */
+            planHash: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "none" | "pending" | "confirmed" | "done";
+            summary: components["schemas"]["RenameSummary"];
+        };
+        /**
+         * RenameSummary
+         * @description How many labels and mails the plan touches.
+         */
+        RenameSummary: {
+            /** Labels */
+            labels: number;
+            /** Mails */
+            mails: number;
+        };
+        /**
          * RequestCodeBody
          * @description The username a code is asked for: 1 to 64 characters, no control characters.
          */
@@ -1337,6 +1585,17 @@ export interface components {
             version: number;
         };
         /**
+         * RestoreRequested
+         * @description The id of the open restore request (the same on a repeat).
+         */
+        RestoreRequested: {
+            /**
+             * Requestid
+             * Format: uuid
+             */
+            requestId: string;
+        };
+        /**
          * SenderItem
          * @description A sender entry of a category: a full address or a domain, with the opt-in for subdomains.
          *
@@ -1389,6 +1648,7 @@ export interface components {
          * @description What ``GET /api/settings`` returns; never the actor.
          */
         Settings: {
+            ranges: components["schemas"]["Ranges"];
             /** Updatedat */
             updatedAt: string | null;
             /** Updatedvia */
@@ -1416,19 +1676,28 @@ export interface components {
         };
         /**
          * SettingsValues
-         * @description The five values of the schedule; times are ``HH:MM`` wall-clock times in ``time_zone``.
+         * @description The schedule and the label cleanup numbers; times are ``HH:MM`` wall-clock times in ``time_zone``.
+         *
+         *     The numbers are whole numbers, checked against their ranges by ``category_policy`` (not here), so a value outside
+         *     its range gets the same 422 body as every other refused value.
          */
         SettingsValues: {
             /** Overviewat */
             overviewAt: string;
+            /** Protectiondays */
+            protectionDays: number;
             /** Quietend */
             quietEnd: string;
             /** Quietstart */
             quietStart: string;
             /** Remindat */
             remindAt: string;
+            /** Retentiondays */
+            retentionDays: number;
             /** Timezone */
             timeZone: string;
+            /** Waitingminutes */
+            waitingMinutes: number;
         };
         /**
          * UploadConfirm
@@ -1445,6 +1714,11 @@ export interface components {
         UploadPreview: {
             /** Added */
             added: number;
+            /**
+             * Adopted
+             * @description How many new or renamed categories take over a label that already exists in Gmail.
+             */
+            adopted: number;
             /**
              * Archivelabelchanged
              * @description True when the file gives a different archive label; absent keeps the stored one.
@@ -1954,6 +2228,202 @@ export interface operations {
                 content?: never;
             };
             /** @description The change could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    read_label_rename_api_label_rename_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenamePreview"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    confirm_label_rename_api_label_rename_confirmation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RenameConfirmed"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The hash is wrong, stale or replayed, or the plan is not pending; nothing was stored */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not JSON */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body has the wrong shape, or a skipped id is not in the plan */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The confirmation could not be stored */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    read_deleted_labels_api_label_rename_deleted_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletedLabels"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restore_label_rename_api_label_rename_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreRequested"];
+                };
+            };
+            /** @description No live session */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or wrong token, wrong Origin or cross-site request */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No label was renamed yet; nothing was stored */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Too many requests; see Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request could not be stored */
             500: {
                 headers: {
                     [name: string]: unknown;
