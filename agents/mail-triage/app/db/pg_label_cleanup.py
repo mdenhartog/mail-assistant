@@ -14,8 +14,12 @@ started with (R3, AC 24): a restart, or a lowered setting, leaves a running time
 When a label left the list: a managed label of role ``category`` keeps its row in ``managed_label`` after its category
 left the list, and the category id is stable across renames. A label left the list at the creation time of the first
 list version after the last version that still held its category; a category that is in the latest version has not
-left. "Other" and the archive label are settings and never leave. A label that was never managed (no row) has no leaving
-time at all: it is not a candidate.
+left. "Other" and the archive label are settings and never leave while they are the setting.
+
+A label also leaves management without leaving the list: ``save_managed`` replaces or deletes the managed row of a key
+(a category pointed at another label, the Other or archive setting swapped away) and records the label id and the time
+in ``managed_label_released``. The latest of the two times counts, and a label that is managed again is not released.
+A label that was never managed has no time at all: it is a candidate with no protection (D6, A1).
 """
 
 from __future__ import annotations
@@ -34,6 +38,7 @@ from app.db.models import (
     DeletedLabel,
     LabelEmptySince,
     ListVersion,
+    ManagedLabelReleased,
     Plan,
     PlanItem,
     Schedule,
@@ -247,8 +252,9 @@ class PgLabelCleanupStore:
             current = (
                 await session.execute(select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == mailbox))
             ).scalar_one_or_none()
+            released = await self._released(session)
             if current is None:
-                return {}
+                return released
             dropped = (
                 await session.execute(
                     select(ManagedLabelTable.label_id, last_held.c.last_version)
@@ -268,9 +274,25 @@ class PgLabelCleanupStore:
                 )
             ).all()
         made = {row.version: row.created_at for row in versions}
-        found: dict[str, datetime] = {}
+        found: dict[str, datetime] = dict(released)
         for row in dropped:
             after = min((version for version in made if version > row.last_version), default=None)
             if after is not None:
-                found[row.label_id] = made[after]
+                found[row.label_id] = max(made[after], found.get(row.label_id, made[after]))
         return found
+
+    async def _released(self, session: AsyncSession) -> dict[str, datetime]:
+        """The latest release time of each label id that is not managed now (a managed label is not released)."""
+        mailbox = self._mailbox
+        latest = (
+            await session.execute(
+                select(ManagedLabelReleased.label_id, func.max(ManagedLabelReleased.released_at))
+                .where(ManagedLabelReleased.mailbox_id == mailbox)
+                .group_by(ManagedLabelReleased.label_id)
+            )
+        ).all()
+        managed = (
+            await session.execute(select(ManagedLabelTable.label_id).where(ManagedLabelTable.mailbox_id == mailbox))
+        ).scalars()
+        held = set(managed)
+        return {label_id: at for label_id, at in latest if label_id not in held}

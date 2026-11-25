@@ -178,3 +178,22 @@ async def test_sender_and_subject_lose_bidi_and_format_characters_and_are_capped
     assert len(item.subject) == 120
     for text in (item.sender_name, item.sender_address, item.subject):
         assert not [c for c in text if unicodedata.category(c) in {"Cf", "Cc"}]
+
+
+async def test_given_the_rename_plan_is_not_done_when_a_plan_is_built_then_no_label_is_written() -> None:
+    """RED-002: the build reads only; with the hold on it still makes no label write and the labels stay as they are."""
+    rig = Rig()
+    rig.store.writes_held = True
+    rig.store.stored_ids = {FINANCE: rig.finance_label, TRAVEL: rig.travel_label}
+    rig.request()
+    mail = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="moves")
+    rig.judge.by_subject = {"moves": TRAVEL}
+    names = dict(rig.gmail.label_table)
+
+    await rig.build.run_once()
+
+    assert rig.gmail.label_table == names
+    assert not [
+        c for c in rig.gmail.calls if c in {"labels.create", "labels.patch", "labels.delete", "messages.modify"}
+    ]
+    assert rig.gmail.mail_table[mail].labels == {"INBOX", rig.finance_label}

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.judgement import NeedsAttention
+from app.core.mail_errors import LabelWritesHeld
 from app.core.scope import Scope
 from app.usecases.triage import (
     MAX_ATTEMPTS,
@@ -212,6 +213,11 @@ class CatchUp:
             summary.model_down = True
             summary.retry_later += 1
             return _Step.STOP
+        except LabelWritesHeld:  # no label is made before the plan is done: not a failure, tried again later
+            logger.info("label writes held; leaving an old mail for the next run")
+            summary.held += 1
+            summary.retry_later += 1
+            return _Step.HANDLED
         except Exception as error:
             logger.warning("catch-up failed id=%s kind=%s", message_id, type(error).__name__)
             await self._fail(message_id, summary)

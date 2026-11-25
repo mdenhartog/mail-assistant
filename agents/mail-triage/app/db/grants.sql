@@ -207,8 +207,13 @@ GRANT EXECUTE ON FUNCTION categories.approve_system_plan(uuid) TO mail_triage_ru
 -- plan, but only confirm_label_rename moves it to confirmed (a trigger refuses the agent). The api reads the state, the
 -- plan items and the deleted labels and writes nothing here except through the two functions: it has no right on
 -- managed_label, label_empty_since, the confirmation or the restore table.
-GRANT SELECT, INSERT, UPDATE, DELETE ON categories.managed_label, categories.label_rename_item,
+GRANT SELECT, INSERT, UPDATE, DELETE ON categories.managed_label, categories.managed_label_released,
     categories.label_empty_since, categories.deleted_label TO mail_triage_runtime;
+-- The plan items (SEC-001, RED-006): the agent writes the plan once (INSERT) and settles the state of an item; it cannot
+-- rewrite or delete one. The trigger label_rename_item_guard also fixes every column but the state once the plan is
+-- confirmed. The retention purge deletes through purge_label_records (SECURITY DEFINER), not through a right of the agent.
+GRANT SELECT, INSERT ON categories.label_rename_item TO mail_triage_runtime;
+GRANT UPDATE (state) ON categories.label_rename_item TO mail_triage_runtime;
 GRANT SELECT ON categories.label_migration, categories.label_confirmation, categories.label_restore_request
     TO mail_triage_runtime;
 GRANT INSERT (mailbox_id, state, plan_hash), UPDATE (state, plan_hash) ON categories.label_migration

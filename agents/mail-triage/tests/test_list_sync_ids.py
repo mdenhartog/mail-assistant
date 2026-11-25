@@ -360,3 +360,22 @@ async def test_given_the_sync_runs_when_it_starts_then_the_adapter_and_followers
     assert len(seen) >= 1
     bills = store.managed[category(store, store.categories[0].id)]
     assert any(label.label_id == bills.label_id for label in seen[-1].labels())
+
+
+@pytest.mark.parametrize("state", [MigrationState.PENDING, MigrationState.CONFIRMED, MigrationState.DONE])
+async def test_given_a_state_when_synced_then_the_adapters_get_a_set_that_carries_the_hold(
+    state: MigrationState,
+) -> None:
+    seen: list[bool] = []
+
+    class Sink:
+        def set_managed(self, managed: ManagedSet) -> None:
+            seen.append(managed.writes_held)
+
+    gmail = FakeGmail()
+    sync = ListSync(GmailResort(gmail, ManagedSet(()), sleep=lambda _s: None), FakeListStore(migration=state), [Sink()])
+
+    await sync.run()
+
+    assert seen
+    assert set(seen) == {state is not MigrationState.DONE}  # every set it hands out, also after a label was made

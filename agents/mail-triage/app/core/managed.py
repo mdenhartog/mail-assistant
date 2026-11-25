@@ -48,10 +48,16 @@ class ManagedLabel:
 class ManagedSet:
     """The managed labels of one moment; find a mail's label in it by id, by name only while no id is known."""
 
-    __slots__ = ("_by_id", "_by_name", "archive")
+    __slots__ = ("_by_id", "_by_name", "archive", "writes_held")
 
-    def __init__(self, labels: Iterable[ManagedLabel]) -> None:
-        """Index the labels; ``archive`` is the one with the ``ARCHIVE`` role, ``None`` when there is none."""
+    def __init__(self, labels: Iterable[ManagedLabel], *, writes_held: bool = False) -> None:
+        """Index the labels; ``archive`` is the one with the ``ARCHIVE`` role, ``None`` when there is none.
+
+        ``writes_held`` is true while the one-off rename plan is not done (R4, ADR-0061): the adapters then work on
+        stored ids only and never create, adopt or rename a label. It is part of the set, so the one guard in the
+        adapter sees it wherever the set came from.
+        """
+        self.writes_held = writes_held
         kept = list(labels)
         self._by_id = {label.label_id: label for label in kept if label.label_id is not None}
         self._by_name = {label.name.casefold(): label for label in kept if label.label_id is None}

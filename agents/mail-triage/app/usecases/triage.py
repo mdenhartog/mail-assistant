@@ -28,6 +28,7 @@ from app.core.judgement import (
     category_label,
     resolve,
 )
+from app.core.mail_errors import LabelWritesHeld
 from app.core.managed import LabelRef
 from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
 from app.core.scope import Scope, classify
@@ -220,6 +221,7 @@ class RunSummary:
     alerts: int = 0
     retry_later: int = 0
     given_up: int = 0
+    held: int = 0  # left alone because the rename plan is not done and its label has no stored id (R4)
     model_down: bool = False
     listing_failed: bool = False
 
@@ -519,6 +521,10 @@ class TriagePipeline:
             summary.model_down = True
             summary.retry_later += 1
             return False
+        except LabelWritesHeld:  # no label is made before the plan is done: not a failure, tried again later
+            logger.info("label writes held; leaving a mail for the next run")
+            summary.held += 1
+            summary.retry_later += 1
         except Exception as error:
             logger.warning("processing failed id=%s kind=%s", message_id, type(error).__name__)
             await self._fail(message_id, summary)

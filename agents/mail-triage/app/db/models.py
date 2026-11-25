@@ -955,6 +955,19 @@ class LabelRenameItem(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=text("now()"))
 
 
+class ManagedLabelReleased(Base):
+    """A label id that stopped being managed (its row replaced or deleted), with the time protection counts from."""
+
+    __tablename__ = "managed_label_released"
+    __table_args__ = ({"schema": "categories"},)
+
+    mailbox_id: Mapped[str] = mapped_column(ForeignKey("categories.mailbox.id"), primary_key=True)
+    label_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    released_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), primary_key=True, server_default=text("now()")
+    )
+
+
 class LabelEmptySince(Base):
     """The persistent timer of the delayed delete, per label id."""
 

@@ -82,6 +82,7 @@ class FakeApplyStore:
         self.extras: frozenset[str] = frozenset({NEWSLETTER, RECEIPT})  # the extra-label categories
         self.stored_ids: dict[str, str] = {}  # category id (or "archive") -> the Gmail label id the database stored
         self.other_name = OTHER_NAME
+        self.writes_held = False  # the rename plan is not done (R4)
         self.plans: dict[uuid.UUID, PlanRow] = {}
         self.intents: dict[tuple[uuid.UUID, str], AuditMove] = {}
         self.restores: list[tuple[uuid.UUID, AuditMove, str]] = []
@@ -139,7 +140,14 @@ class FakeApplyStore:
 
     async def managed_labels(self) -> ResortLabels:
         listed = [ListedCategory(cid, name, "") for cid, name in self.categories.items()]
-        return resort_labels(self._gmail, listed, stored=self.stored_ids, other=self.other_name, extras=self.extras)
+        return resort_labels(
+            self._gmail,
+            listed,
+            stored=self.stored_ids,
+            other=self.other_name,
+            extras=self.extras,
+            writes_held=self.writes_held,
+        )
 
     async def target_ids(self, plan_id: uuid.UUID) -> frozenset[str]:
         found: set[str] = set()

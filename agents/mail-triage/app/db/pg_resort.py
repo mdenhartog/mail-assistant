@@ -31,6 +31,7 @@ from app.db.migrate import RUNTIME_ROLE, WEB_ROLE
 from app.db.models import (
     ApplyAudit,
     Category,
+    LabelMigration,
     ListSettings,
     ListVersion,
     MailItem,
@@ -77,6 +78,10 @@ async def read_managed_labels(sessions: async_sessionmaker[AsyncSession], mailbo
 
     The names come from the list and the two settings; the Gmail label ids come from ``managed_label`` and are
     ``None`` until the label sync stored them. A stored label of a category that left the list is not managed.
+
+    The set carries the hold of the rename plan (R4): while the state of ``label_migration`` is ``pending`` or
+    ``confirmed`` the adapters work on stored ids only. A mailbox without a state row has no old label, so no hold.
+    This is the one place the hold is read for the adapters of triage, catch-up and the re-sort.
     """
     latest = select(func.max(ListVersion.version)).where(ListVersion.mailbox_id == mailbox_id).scalar_subquery()
     categories = select(Category.id, Category.name, Category.kind).where(
@@ -88,10 +93,12 @@ async def read_managed_labels(sessions: async_sessionmaker[AsyncSession], mailbo
     stored = select(ManagedLabelRow.role, ManagedLabelRow.category_id, ManagedLabelRow.label_id).where(
         ManagedLabelRow.mailbox_id == mailbox_id
     )
+    state = select(LabelMigration.state).where(LabelMigration.mailbox_id == mailbox_id)
     async with sessions() as session:
         listed = (await session.execute(categories)).all()
         names = (await session.execute(settings)).first()
         rows = (await session.execute(stored)).all()
+        migration = (await session.execute(state)).scalar_one_or_none()
     ids = {(row.role, None if row.category_id is None else str(row.category_id)): row.label_id for row in rows}
     by_category = {
         str(row.id): ManagedLabel(
@@ -105,7 +112,9 @@ async def read_managed_labels(sessions: async_sessionmaker[AsyncSession], mailbo
     archive = ManagedLabel(
         "Archive" if names is None else names.archive_label, ids.get(("archive", None)), Role.ARCHIVE
     )
-    return ResortLabels(ManagedSet([*by_category.values(), archive]), by_category)
+    return ResortLabels(
+        ManagedSet([*by_category.values(), archive], writes_held=migration not in (None, "done")), by_category
+    )
 
 
 def _record(plan: Plan, items: int, auto_items: int = 0) -> PlanRecord:

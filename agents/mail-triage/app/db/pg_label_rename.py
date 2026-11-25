@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import exists, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
-from app.db.models import LabelConfirmation, LabelMigration, LabelRenameItem, LabelRestoreRequest
+from app.db.models import LabelConfirmation, LabelMigration, LabelRenameItem, LabelRestoreRequest, ManagedLabel
 from app.db.pg_list_sync import PgListSyncStore
 from app.usecases.label_rename import ItemState, StoredItem
 from app.usecases.list_sync import MigrationState
@@ -170,6 +170,16 @@ class PgRenameStore:
                 )
                 .values(processed_at=func.now())
             )
+
+    async def protected_ids(self) -> frozenset[str]:
+        """The stored Gmail label ids of "Other" and the archive label."""
+        async with self._sessions() as session:
+            rows = await session.execute(
+                select(ManagedLabel.label_id).where(
+                    ManagedLabel.mailbox_id == self._mailbox, ManagedLabel.role.in_(("other", "archive"))
+                )
+            )
+            return frozenset(rows.scalars())
 
     async def archive_name(self) -> str:
         """The name of the archive label in the latest list version."""

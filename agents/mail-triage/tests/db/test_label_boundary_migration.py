@@ -21,6 +21,7 @@ NEW_TABLES = (
     "managed_label",
     "label_migration",
     "label_rename_item",
+    "managed_label_released",
     "label_empty_since",
     "deleted_label",
     "label_confirmation",

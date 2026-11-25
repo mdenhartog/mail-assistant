@@ -324,6 +324,20 @@ async def test_given_a_merge_into_the_archive_label_when_run_then_it_is_kept_and
     assert world.mails_with(archive) == set()
 
 
+async def test_given_a_merge_into_labels_with_stored_archive_and_other_ids_when_run_then_they_are_kept_by_id() -> None:
+    """RED-003: renamed by hand, so the names are no longer the settings; the stored ids still are."""
+    world = World()
+    old_archive, old_other = world.old_label("Misc", mails=2), world.old_label("Rest", mails=1)
+    archive, other = world.gmail.add_label("Misc"), world.gmail.add_label("Rest")
+    world.store.protected = frozenset({archive, other})
+    await world.planned_and_confirmed()
+
+    await world.runner.run_once()
+
+    assert world.store.states() == {old_archive: ItemState.KEPT, old_other: ItemState.KEPT}
+    assert world.mails_with(archive) == world.mails_with(other) == set()
+
+
 async def test_given_a_rename_run_when_the_guard_is_asked_then_it_knows_only_the_label_of_the_item_in_hand() -> None:
     world = World()
     label = world.old_label("Bills")
