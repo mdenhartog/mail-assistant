@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { held, MASKED, reply, sequence, STORED, stubApi } from "./stubs";
 import type { Handler, Handlers } from "./stubs";
 import { categoriesStates } from "./categories";
+import { renameStates } from "./rename";
 import { reviewStates } from "./review";
 
 /** One screen state of the web app, reached the way a person reaches it, against stubbed answers. */
@@ -255,5 +256,5 @@ function otherStates(): UiState[] {
 
 /** Every state of AC-22: the login page, the settings page and the two error pages. */
 export function allStates(): UiState[] {
-  return [...loginStates(), ...settingsStates(), ...otherStates(), ...categoriesStates(), ...reviewStates()];
+  return [...loginStates(), ...settingsStates(), ...otherStates(), ...categoriesStates(), ...renameStates(), ...reviewStates()];
 }

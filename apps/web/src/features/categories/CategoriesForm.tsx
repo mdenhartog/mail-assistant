@@ -5,6 +5,8 @@ import { CategoriesListScreen } from "@/features/categories/CategoriesListScreen
 import { CategoryEditView } from "@/features/categories/CategoryEditView";
 import { LeaveGuard } from "@/features/categories/LeaveGuard";
 import { changesOf } from "@/features/categories/rows";
+import { RecentlyDeleted } from "@/features/categories/rename/RecentlyDeleted";
+import { RenameSection } from "@/features/categories/rename/RenameSection";
 import { SaveSummary } from "@/features/categories/SaveSummary";
 import { SortAgainSection } from "@/features/categories/sort-again/SortAgainSection";
 import { UploadSection } from "@/features/categories/upload/UploadSection";
@@ -13,6 +15,18 @@ import { useCategoriesSave } from "@/features/categories/useCategoriesSave";
 import { useEditing } from "@/features/categories/useEditing";
 import { useListView } from "@/features/categories/useListView";
 import { useOpenFromLink } from "@/features/categories/useOpenFromLink";
+
+/** The sections under the list: sort again, the one-time rename, import and export, and the recently deleted labels. */
+function ListSections({ list }: { list: CategoryList }): ReactElement {
+  return (
+    <>
+      <SortAgainSection />
+      <RenameSection hasList={list.categories.length > 0} />
+      <UploadSection list={list} />
+      <RecentlyDeleted />
+    </>
+  );
+}
 
 /** The loaded list: the collapsed list, or the full-screen edit view of one category, and the save and leave questions. */
 export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
@@ -45,8 +59,7 @@ export function CategoriesForm({ list }: { list: CategoryList }): ReactElement {
       ) : (
         <CategoriesListScreen changes={changes} edit={edit} flow={flow} list={list} save={save} view={view} />
       )}
-      {edit.editing === null ? <SortAgainSection /> : null}
-      {edit.editing === null ? <UploadSection list={list} /> : null}
+      {edit.editing === null ? <ListSections list={list} /> : null}
       <SaveSummary changes={changes} onCancel={save.cancel} onConfirm={save.confirm} open={save.asking} />
       <LeaveGuard dirty={flow.dirty} />
       <p className="sr-only" role="status">

@@ -81,16 +81,33 @@ export interface WireOptions {
   plan?: () => Answer;
   /** `POST /api/resort-requests` (default: stored, 201). */
   resort?: (body: unknown) => Answer;
+  /** `GET /api/label-rename` (default: state none, no items). */
+  rename?: () => Answer;
+  /** `GET /api/label-rename/deleted` (default: nothing deleted, 30 days). */
+  deleted?: () => Answer;
+  /** `POST /api/label-rename/confirmation` (default: 201 with an id). */
+  confirm?: (body: unknown) => Answer;
+  /** `POST /api/label-rename/restore` (default: 201 with an id). */
+  restore?: () => Answer;
 }
+
+/** What `GET /api/label-rename` says while there is no migration. */
+export const NO_RENAME = { state: "none", planHash: null, items: [], summary: { labels: 0, mails: 0 } };
 
 export interface Wired {
   puts: Put[];
   gets: () => number;
   /** The bodies of every POST to `/api/resort-requests`. */
   resorts: unknown[];
+  /** The bodies of every POST to `/api/label-rename/confirmation`. */
+  confirmations: unknown[];
+  /** How many times `POST /api/label-rename/restore` was called. */
+  restores: () => number;
+  /** How many times `GET /api/label-rename` was called. */
+  renameReads: () => number;
 }
 
-type Seen = { puts: Put[]; gets: number; resorts: unknown[] };
+type Seen = { puts: Put[]; gets: number; resorts: unknown[]; confirmations: unknown[]; restores: number; renameReads: number };
 
 async function answerResort(options: WireOptions, request: Request, seen: Seen): Promise<Response> {
   const body: unknown = await request.json();
@@ -110,11 +127,25 @@ async function answerList(options: WireOptions, request: Request, seen: Seen): P
 
 /** The routes of the Categories page: the list (GET answers `get`; PUT goes to `put`, default: echo at the next version), the plan and the sort-again request. */
 export function wire(options: WireOptions = {}): Wired {
-  const seen: Seen = { puts: [], gets: 0, resorts: [] };
+  const seen: Seen = { puts: [], gets: 0, resorts: [], confirmations: [], restores: 0, renameReads: 0 };
   const routes: Record<string, (request: Request) => Answer> = {
     "/api/resort-requests/latest": () => (options.latest ? options.latest() : json({ threshold: 50 })),
     "/api/plan": () => (options.plan ? options.plan() : json(NO_OPEN_PLAN)),
     "/api/resort-requests": (request) => answerResort(options, request, seen),
+    "/api/label-rename": () => {
+      seen.renameReads += 1;
+      return options.rename ? options.rename() : json(NO_RENAME);
+    },
+    "/api/label-rename/deleted": () => (options.deleted ? options.deleted() : json({ retentionDays: 30, items: [] })),
+    "/api/label-rename/confirmation": async (request) => {
+      const body: unknown = await request.json();
+      seen.confirmations.push(body);
+      return options.confirm ? options.confirm(body) : json({ confirmationId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00cc" }, 201);
+    },
+    "/api/label-rename/restore": () => {
+      seen.restores += 1;
+      return options.restore ? options.restore() : json({ requestId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00dd" }, 201);
+    },
   };
   vi.stubGlobal(
     "fetch",
@@ -124,7 +155,14 @@ export function wire(options: WireOptions = {}): Wired {
       return route ? route(request) : answerList(options, request, seen);
     }),
   );
-  return { puts: seen.puts, gets: () => seen.gets, resorts: seen.resorts };
+  return {
+    puts: seen.puts,
+    gets: () => seen.gets,
+    resorts: seen.resorts,
+    confirmations: seen.confirmations,
+    restores: () => seen.restores,
+    renameReads: () => seen.renameReads,
+  };
 }
 
 /** The page inside a data router (the unsaved-changes guard needs one), with a second route to leave to. */
