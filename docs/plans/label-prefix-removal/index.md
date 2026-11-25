@@ -6,7 +6,7 @@ spec: docs/specs/label-prefix-removal.md
 
 # Gmail labels without the Assistant prefix
 
-The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-0060, ADR-0061 and the threat model `docs/security/label-prefix-removal-threat-model.md`. Twenty units: nineteen in one release and one contract migration that ships after the rename is `done` in production.
+The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-0060, ADR-0061 and the threat model `docs/security/label-prefix-removal-threat-model.md`. Twenty-one units: twenty in one release and one contract migration that ships after the rename is `done` in production.
 
 ## Units
 
@@ -26,6 +26,7 @@ The plan for `docs/specs/label-prefix-removal.md` (revision 3, approved), ADR-00
 | [U-label-prefix-removal-18](U-label-prefix-removal-18.md) | Agent re-sort path follows the managed set: build, apply, move back, report | backend | U-label-prefix-removal-03, U-label-prefix-removal-04 | yes | 4 |
 | [U-label-prefix-removal-19](U-label-prefix-removal-19.md) | Api follows the policy v3 rules: list save, upload and the contract cases | backend | U-label-prefix-removal-16, U-label-prefix-removal-02 | yes | 4 |
 | [U-label-prefix-removal-20](U-label-prefix-removal-20.md) | Web follows the policy v3 rules: the TypeScript mirror and the messages | web | U-label-prefix-removal-16 | yes | 4 |
+| [U-label-prefix-removal-21](U-label-prefix-removal-21.md) | Database length limits follow the policy: 255 characters for labels | backend | U-label-prefix-removal-02 | yes | 4 |
 | [U-label-prefix-removal-06](U-label-prefix-removal-06.md) | Rename plan runner: build, rename, merge, skip, restore, notice | backend | U-label-prefix-removal-05 | yes | 5 |
 | [U-label-prefix-removal-09](U-label-prefix-removal-09.md) | Cleanup use case: the cycle, the lease, the daily notice and the deleted-label record | backend | U-label-prefix-removal-05, U-label-prefix-removal-07, U-label-prefix-removal-08 | no | 5 |
 | [U-label-prefix-removal-12](U-label-prefix-removal-12.md) | Web: the Label cleanup tile on the Settings page and the two names on the Categories page | web | U-label-prefix-removal-10 | yes | 5 |
