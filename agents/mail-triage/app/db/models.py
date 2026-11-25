@@ -399,7 +399,7 @@ class Category(Base):
         ),
         UniqueConstraint("mailbox_id", "version", "position", name="uq_category_position"),
         UniqueConstraint("mailbox_id", "version", "name", name="uq_category_name"),
-        CheckConstraint("char_length(name) BETWEEN 1 AND 215", name="ck_category_name_length"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 255", name="ck_category_name_length"),
         CheckConstraint("char_length(description) <= 1500", name="ck_category_description_length"),
         CheckConstraint("position BETWEEN 0 AND 99", name="ck_category_position"),
         CheckConstraint("kind IN ('topic', 'extra')", name="ck_category_kind"),
@@ -856,8 +856,8 @@ class ListSettings(Base):
             name="fk_list_settings_list_version",
         ),
         CheckConstraint("char_length(general_instructions) <= 4000", name="ck_list_settings_instructions"),
-        CheckConstraint("char_length(archive_label) BETWEEN 1 AND 225", name="ck_list_settings_archive_label"),
-        CheckConstraint("char_length(other_label) BETWEEN 1 AND 225", name="ck_list_settings_other_label"),
+        CheckConstraint("char_length(archive_label) BETWEEN 1 AND 255", name="ck_list_settings_archive_label"),
+        CheckConstraint("char_length(other_label) BETWEEN 1 AND 255", name="ck_list_settings_other_label"),
         {"schema": "categories"},
     )
 
@@ -905,6 +905,7 @@ class ManagedLabel(Base):
         ),
         CheckConstraint("role IN ('category', 'other', 'archive')", name="ck_managed_label_role"),
         CheckConstraint("(role = 'category') = (category_id IS NOT NULL)", name="ck_managed_label_category"),
+        CheckConstraint("char_length(label_name) <= 255", name="ck_managed_label_name_length"),
         Index("uq_managed_label_role", "mailbox_id", "role", unique=True, postgresql_where=text("role <> 'category'")),
         {"schema": "categories"},
     )
@@ -939,6 +940,8 @@ class LabelRenameItem(Base):
         CheckConstraint("action IN ('rename', 'merge')", name="ck_label_rename_item_action"),
         CheckConstraint("state IN ('planned', 'skipped', 'done', 'kept')", name="ck_label_rename_item_state"),
         CheckConstraint("mail_count >= 0", name="ck_label_rename_item_count"),
+        CheckConstraint("char_length(old_name) <= 255", name="ck_label_rename_item_old_name_length"),
+        CheckConstraint("char_length(new_name) <= 255", name="ck_label_rename_item_new_name_length"),
         {"schema": "categories"},
     )
 
@@ -975,6 +978,7 @@ class DeletedLabel(Base):
     __tablename__ = "deleted_label"
     __table_args__ = (
         CheckConstraint("label_id_hash ~ '^[0-9a-f]{64}$'", name="ck_deleted_label_hash"),
+        CheckConstraint("char_length(name) <= 255", name="ck_deleted_label_name_length"),
         {"schema": "categories"},
     )
 
