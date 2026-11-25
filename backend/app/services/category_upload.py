@@ -15,8 +15,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from app.categories_models import CategoryInput, CategoryProblem, SenderItem
-from app.categories_repo import CategoriesRepository, StoredCategory, StoredList, VersionConflict
-from app.categories_write import build, canonical_instructions, canonical_text, is_unchanged, problems_of
+from app.categories_repo import CategoriesRepository, ListSettings, StoredCategory, StoredList, VersionConflict
+from app.categories_write import adopted_names, build, canonical_instructions, canonical_text, is_unchanged, problems_of
 from app.errors import RateLimited
 from app.schemas.category_upload import UploadPreview, UploadProblem
 from app.upload_preview_repo import UploadPreviewRepository
@@ -60,13 +60,15 @@ class ListPlan:
     archive_label: str
     archive_changed: bool
     added: int
+    adopted: int
     changed: int
     removed: list[str]
 
 
 def _file_problems(refused: FileProblems) -> list[UploadProblem]:
     return [
-        UploadProblem(rule=p.rule, line=p.line, field=p.field, message=FILE_RULE_TEXT[p.rule]) for p in refused.problems
+        UploadProblem(rule=p.rule, line=max(1, p.line), field=p.field, message=FILE_RULE_TEXT[p.rule])
+        for p in refused.problems
     ]
 
 
@@ -129,7 +131,7 @@ def plan_of(parsed: ParsedList, stored: StoredList, new_id: Callable[[], uuid.UU
         The rows to store and the counts of what is added, changed and removed.
 
     Raises:
-        FileRefused: The list breaks a rule that needs the stored list (a Gmail label of a new name exists).
+        FileRefused: The list breaks a rule that needs the stored list (a name equal to the current "Other" name).
     """
     items = _inputs(parsed, stored)
     instructions = canonical_instructions(parsed.general_instructions)
@@ -148,6 +150,7 @@ def plan_of(parsed: ParsedList, stored: StoredList, new_id: Callable[[], uuid.UU
         archive_label=archive,
         archive_changed=archive != stored.archive_label,
         added=len(new_ids),
+        adopted=len(adopted_names(rows, stored)),
         changed=sum(1 for row in rows if row.id in before and row != before[row.id]),
         removed=[canonical_text(c.name) for c in stored.categories if c.id not in kept],
     )
@@ -222,6 +225,7 @@ class CategoryUpload:
             base_version=stored.version,
             expires_at=expires_at,
             added=plan.added,
+            adopted=plan.adopted,
             changed=plan.changed,
             removed=len(plan.removed),
             removed_categories=plan.removed,
@@ -260,7 +264,9 @@ class CategoryUpload:
             raise Unconfirmable from None
         if is_unchanged(plan.rows, plan.instructions, plan.archive_label, stored):
             return stored
-        return await self._write(stored, plan.rows, plan.new_ids, (plan.instructions, plan.archive_label))
+        return await self._write(
+            stored, plan.rows, plan.new_ids, ListSettings(plan.instructions, plan.archive_label, stored.other_label)
+        )
 
     async def restore_previous(self, version: int) -> StoredList:
         """Store a new version equal to the one before the current version.
@@ -281,9 +287,9 @@ class CategoryUpload:
         previous = await self._repository.read_version(version - 1)
         if previous is None:
             raise Unconfirmable
-        settings = (previous.general_instructions, previous.archive_label)
-        if is_unchanged(list(previous.categories), *settings, stored):
+        if is_unchanged(list(previous.categories), previous.general_instructions, previous.archive_label, stored):
             return stored
+        settings = ListSettings(previous.general_instructions, previous.archive_label, stored.other_label)
         return await self._write(stored, list(previous.categories), frozenset(), settings)
 
     async def _write(
@@ -291,10 +297,10 @@ class CategoryUpload:
         stored: StoredList,
         rows: list[StoredCategory],
         new_ids: frozenset[uuid.UUID],
-        settings: tuple[str, str],  # the general instructions and the archive label name
+        settings: ListSettings,
     ) -> StoredList:
         try:
-            await self._repository.add_version(stored.version, rows, new_ids, *settings)
+            await self._repository.add_version(stored.version, rows, new_ids, settings)
         except VersionConflict:
             raise Unconfirmable from None
         return await self._repository.read()

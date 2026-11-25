@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 
 from app.categories_models import CategoryConflict409, CategoryList, CategoryListUpdate, CategoryProblem422
-from app.categories_repo import CategoriesRepository, StoredList, VersionConflict
+from app.categories_repo import CategoriesRepository, ListSettings, StoredList, VersionConflict
 from app.categories_write import build, canonical_instructions, is_unchanged, problems_of, to_response
 from app.core.security import csrf, session
 from app.errors import PROBLEM_MEDIA_TYPE, RateLimited, problem_response
@@ -124,7 +124,9 @@ async def write_categories(body: CategoryListUpdate, request: Request) -> Catego
     if is_unchanged(rows, instructions, body.archive_label, stored):
         return to_response(stored)
     try:
-        await repository.add_version(stored.version, rows, new_ids, instructions, body.archive_label)
+        await repository.add_version(
+            stored.version, rows, new_ids, ListSettings(instructions, body.archive_label, stored.other_label)
+        )
     except VersionConflict:
         return _conflict(await repository.read(), "version")
     except DBAPIError:
