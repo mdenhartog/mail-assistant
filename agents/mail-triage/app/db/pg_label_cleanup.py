@@ -1,12 +1,15 @@
-"""The database side of the delayed label delete: the timers, the three settings and when a label left the list.
+"""The database side of the delayed label delete: the timers, the settings, the lease and the record of deletes.
 
 One store per mailbox (ADR-0043); every statement filters on ``mailbox_id``. The agent role may write
-``label_empty_since``
-and read the rest (grants.sql). Times come from the caller, so the store has no clock; label ids are never logged
-(ADR-0060 point 8).
+``label_empty_since`` and ``deleted_label`` and read the rest (grants.sql). Times come from the caller, so the store has
+no clock; label ids are never logged (ADR-0060 point 8).
 
-``label_empty_since`` holds ``empty_since`` and ``last_seen_empty`` only. The wait a timer started with (R3, AC 24) is
-NOT stored yet: it needs one more column (``wait_minutes``, additive), see ``StoredTimer.with_wait``.
+The lease (R9) is a PostgreSQL advisory lock, taken with ``pg_try_advisory_xact_lock`` in a transaction that stays open
+for the length of the ``async with``. It never waits, needs no table or cleanup, and is released by the database when
+the transaction ends, also when the agent crashes or loses its connection, so a stale lease cannot exist.
+
+``label_empty_since`` holds ``empty_since``, ``last_seen_empty`` and ``wait_minutes``, the waiting time the timer
+started with (R3, AC 24): a restart, or a lowered setting, leaves a running timer on its own length.
 
 When a label left the list: a managed label of role ``category`` keeps its row in ``managed_label`` after its category
 left the list, and the category id is stable across renames. A label left the list at the creation time of the first
@@ -17,46 +20,48 @@ time at all: it is not a candidate.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import contextlib
+import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
-from app.core.label_cleanup import Timer
-from app.db.models import Category, CategoryMailbox, LabelEmptySince, ListVersion, Schedule
+from app.db.models import (
+    Category,
+    CategoryMailbox,
+    DeletedLabel,
+    LabelEmptySince,
+    ListVersion,
+    Plan,
+    PlanItem,
+    Schedule,
+)
 from app.db.models import ManagedLabel as ManagedLabelTable
+from app.db.pg_list_sync import PgListSyncStore
+from app.db.pg_resort import read_managed_labels
+from app.usecases.label_cleanup import CleanupSettings, StoredTimer
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.usecases.list_sync import MigrationState
+    from app.usecases.resort_apply import ResortLabels
 
 __all__ = ["CleanupSettings", "PgLabelCleanupStore", "StoredTimer"]
 
 DEFAULT_WAIT = timedelta(minutes=720)
 DEFAULT_PROTECTION = timedelta(days=7)
 DEFAULT_RETENTION = timedelta(days=30)
+MIN_WAIT = timedelta(minutes=5)  # the bounds of the waiting time (R8; the database checks them too)
+MAX_WAIT = timedelta(minutes=720)
+NIL_CATEGORY = uuid.UUID(int=0)  # the built-in "Other" in a plan item
 
 
-@dataclass(frozen=True, slots=True)
-class StoredTimer:
-    """A row of ``label_empty_since``: when the label was first seen empty and when last."""
-
-    empty_since: datetime
-    last_seen_empty: datetime
-
-    def with_wait(self, wait: timedelta) -> Timer:
-        """The timer of the rule, given the wait it started with (to be stored with the row by unit 09)."""
-        return Timer(self.empty_since, self.last_seen_empty, wait)
-
-
-@dataclass(frozen=True, slots=True)
-class CleanupSettings:
-    """The three agent settings of the cleanup."""
-
-    wait: timedelta
-    protection: timedelta
-    retention: timedelta
+_LEASE_NAMESPACE = 0x4C434C45  # "LCLE": the first key of the advisory lock; the second one is the mailbox
 
 
 class PgLabelCleanupStore:
@@ -71,19 +76,33 @@ class PgLabelCleanupStore:
         """Every running timer, by Gmail label id."""
         async with self._sessions() as session:
             rows = await session.execute(
-                select(LabelEmptySince.label_id, LabelEmptySince.empty_since, LabelEmptySince.last_seen_empty).where(
-                    LabelEmptySince.mailbox_id == self._mailbox
-                )
+                select(
+                    LabelEmptySince.label_id,
+                    LabelEmptySince.empty_since,
+                    LabelEmptySince.last_seen_empty,
+                    LabelEmptySince.wait_minutes,
+                ).where(LabelEmptySince.mailbox_id == self._mailbox)
             )
-            return {row.label_id: StoredTimer(row.empty_since, row.last_seen_empty) for row in rows}
+            return {
+                row.label_id: StoredTimer(row.empty_since, row.last_seen_empty, timedelta(minutes=row.wait_minutes))
+                for row in rows
+            }
 
-    async def start_timer(self, label_id: str, now: datetime) -> None:
-        """Start a timer; a timer that is already running is not restarted."""
+    async def start_timer(self, label_id: str, now: datetime, wait: timedelta) -> None:
+        """Start a timer with the waiting time that applies now; a timer that is already running is not restarted."""
+        if not MIN_WAIT <= wait <= MAX_WAIT:
+            raise ValueError("wait is outside its bounds")
         async with self._sessions.begin() as session:
             await session.execute(insert(CategoryMailbox).values(id=self._mailbox).on_conflict_do_nothing())
             await session.execute(
                 insert(LabelEmptySince)
-                .values(mailbox_id=self._mailbox, label_id=label_id, empty_since=now, last_seen_empty=now)
+                .values(
+                    mailbox_id=self._mailbox,
+                    label_id=label_id,
+                    empty_since=now,
+                    last_seen_empty=now,
+                    wait_minutes=int(wait.total_seconds() // 60),
+                )
                 .on_conflict_do_nothing(index_elements=["mailbox_id", "label_id"])
             )
 
@@ -104,6 +123,100 @@ class PgLabelCleanupStore:
                     LabelEmptySince.mailbox_id == self._mailbox, LabelEmptySince.label_id == label_id
                 )
             )
+
+    async def migration_state(self) -> MigrationState | None:
+        """The state of the rename plan; ``None`` when the mailbox has none."""
+        return await PgListSyncStore(self._sessions, self._mailbox).migration_state()
+
+    async def managed(self) -> ResortLabels:
+        """The managed labels now: the current list, "Other" and the archive label."""
+        return await read_managed_labels(self._sessions, self._mailbox)
+
+    @contextlib.asynccontextmanager
+    async def lease(self) -> AsyncGenerator[bool]:
+        """The single-writer lease of this mailbox: ``True`` while held, ``False`` at once when another holds it."""
+        async with self._sessions.begin() as session:
+            held = (
+                await session.execute(
+                    text("SELECT pg_try_advisory_xact_lock(:space, hashtext(:mailbox))"),
+                    {"space": _LEASE_NAMESPACE, "mailbox": self._mailbox},
+                )
+            ).scalar_one()
+            yield bool(held)
+
+    async def resort_label_ids(self) -> frozenset[str]:
+        """The Gmail label ids a re-sort in progress moves mail from or to.
+
+        An open plan (building, ready, scheduled or applying) with an item that is not decided or applied yet: every
+        category of the item (the pair before and after, topic and extra) is mapped to its label, the nil category
+        to the "Other" label. A label of a category that left the list is found too: its row stays in ``managed_label``.
+        """
+        mailbox = self._mailbox
+        open_items = (
+            Plan.mailbox_id == mailbox,
+            Plan.state.in_(("building", "ready", "scheduled", "applying")),
+            PlanItem.state.in_(("pending", "approved")),
+        )
+        columns = (
+            PlanItem.old_category_id,
+            PlanItem.new_category_id,
+            PlanItem.old_topic_id,
+            PlanItem.old_extra_id,
+            PlanItem.new_topic_id,
+            PlanItem.new_extra_id,
+        )
+        found: set[uuid.UUID] = set()
+        async with self._sessions() as session:
+            for column in columns:
+                rows = await session.execute(
+                    select(column)
+                    .join(Plan, (Plan.mailbox_id == PlanItem.mailbox_id) & (Plan.id == PlanItem.plan_id))
+                    .where(*open_items, column.is_not(None))
+                    .distinct()
+                )
+                found.update(found_id for found_id in rows.scalars() if found_id is not None)
+            if not found:
+                return frozenset()
+            labels = await session.execute(
+                select(ManagedLabelTable.label_id).where(
+                    ManagedLabelTable.mailbox_id == mailbox,
+                    or_(
+                        ManagedLabelTable.category_id.in_(found),
+                        (ManagedLabelTable.role == "other") & (NIL_CATEGORY in found),
+                    ),
+                )
+            )
+            return frozenset(labels.scalars())
+
+    async def record_deleted(self, label_id_hash: str, name: str, now: datetime) -> None:
+        """Write the deleted label: the hash of its id and its name; a label that is recorded already stays as it is."""
+        async with self._sessions.begin() as session:
+            await session.execute(insert(CategoryMailbox).values(id=self._mailbox).on_conflict_do_nothing())
+            await session.execute(
+                insert(DeletedLabel)
+                .values(mailbox_id=self._mailbox, label_id_hash=label_id_hash, name=name, deleted_at=now)
+                .on_conflict_do_nothing(index_elements=["mailbox_id", "label_id_hash"])
+            )
+
+    async def deleted_since(self, since: datetime) -> int:
+        """How many labels of this mailbox were deleted after ``since``."""
+        async with self._sessions() as session:
+            return (
+                await session.execute(
+                    select(func.count())
+                    .select_from(DeletedLabel)
+                    .where(DeletedLabel.mailbox_id == self._mailbox, DeletedLabel.deleted_at > since)
+                )
+            ).scalar_one()
+
+    async def purge_records(self) -> tuple[int, int]:
+        """Remove the deleted-label records and the finished rename items past the retention; both counts.
+
+        The database decides what is old (its clock and ``label_retention_days``); the agent supplies nothing.
+        """
+        async with self._sessions.begin() as session:
+            removed = (await session.execute(text("SELECT categories.purge_label_records()"))).scalar_one()
+        return int(removed["deleted_label"]), int(removed["label_rename_item"])
 
     async def settings(self) -> CleanupSettings:
         """The waiting time, the protection period and the retention; the defaults while there is no schedule row."""

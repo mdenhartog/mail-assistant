@@ -12,7 +12,7 @@ import logging
 import secrets
 import signal
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.adapters.gmail_apply import GmailApply
 from app.adapters.gmail_build import GmailBuild
+from app.adapters.gmail_label_delete import GmailLabelDelete
 from app.adapters.gmail_read import GmailReader
 from app.adapters.gmail_resort import GmailResort
 from app.adapters.gmail_send import GmailSender
@@ -44,6 +45,7 @@ from app.db.migrate import (
 )
 from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_label_cleanup import PgLabelCleanupStore
 from app.db.pg_label_rename import PgRenameStore
 from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
 from app.db.pg_list_sync import PgLabelBook, PgListSyncStore
@@ -64,6 +66,7 @@ from app.usecases.catchup import BUDGET_RESERVE, CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
+from app.usecases.label_cleanup import CleanupGmail, LabelCleanup
 from app.usecases.label_rename import LabelRename, RenameGmail
 from app.usecases.list_notice import ListNotice, ListNoticeActions
 from app.usecases.list_sync import LabelGmail, ListSync
@@ -171,6 +174,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     mailbox: object,
     sender: object,
     labels: SyncAndRenameGmail,
+    label_delete: CleanupGmail,
     build_mailbox: BuildMailbox,
     apply_mailbox: ApplyMailbox,
     own_address: str,
@@ -288,6 +292,14 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         router=router,
         list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id), managed_sinks),
         label_rename=LabelRename(labels, PgRenameStore(sessions, settings.mailbox_id), outbox),
+        label_cleanup=LabelCleanup(
+            labels,
+            label_delete,
+            PgLabelCleanupStore(sessions, settings.mailbox_id),
+            outbox,
+            now=now,
+            cycle=timedelta(seconds=settings.poll_interval_seconds),
+        ),
         list_notice=ListNotice(list_store, outbox, list_actions, chat_id=settings.telegram_allowed_chat_id),
         approval_notice=approval_notice,
         resort_build=ResortBuild(
@@ -451,6 +463,7 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
                 mailbox=ports,
                 sender=ports,
                 labels=GmailResort(service, ManagedSet(())),  # the sync and the label book fill the managed set
+                label_delete=GmailLabelDelete(service),  # the only place that deletes a label
                 build_mailbox=build,
                 apply_mailbox=GmailApply(service, ManagedSet(())),
                 managed_sinks=(ports, build),

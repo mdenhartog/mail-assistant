@@ -217,6 +217,8 @@ GRANT UPDATE (processed_at) ON categories.label_restore_request TO mail_triage_r
 GRANT SELECT ON categories.label_migration, categories.label_rename_item, categories.deleted_label
     TO web_settings_runtime;
 GRANT EXECUTE ON FUNCTION categories.label_plan_hash(text) TO mail_triage_runtime;
+-- The retention of the deleted-label record and the rename backup (spec R7); it runs with the agent's own rights.
+GRANT EXECUTE ON FUNCTION categories.purge_label_records() TO mail_triage_runtime;
 GRANT EXECUTE ON FUNCTION categories.confirm_label_rename(text, text, text[]) TO web_settings_runtime;
 GRANT EXECUTE ON FUNCTION categories.request_label_restore(text) TO web_settings_runtime;
 -- The Settings page saves the label cleanup values with the rest of the schedule; the CHECK constraints hold the bounds.

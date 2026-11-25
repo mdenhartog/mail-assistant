@@ -958,6 +958,7 @@ class LabelEmptySince(Base):
     __tablename__ = "label_empty_since"
     __table_args__ = (
         CheckConstraint("last_seen_empty >= empty_since", name="ck_label_empty_since_order"),
+        CheckConstraint("wait_minutes BETWEEN 5 AND 720", name="ck_label_empty_since_wait"),
         {"schema": "categories"},
     )
 
@@ -965,6 +966,7 @@ class LabelEmptySince(Base):
     label_id: Mapped[str] = mapped_column(Text, primary_key=True)
     empty_since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_empty: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    wait_minutes: Mapped[int] = mapped_column(SmallInteger)  # the waiting time the timer started with (R3)
 
 
 class DeletedLabel(Base):
