@@ -257,7 +257,8 @@ test("the archive label is saved with the list, is there after a reload and is i
   expect(exported.status()).toBe(200);
   expect(await exported.text()).toMatch(new RegExp(`archiveLabel:\\s*["']?${ARCHIVE}["']?\\s*$`, "m"));
 
-  // The golden file names Assistant/Archive, so its preview sees the archive label as a change against the stored one.
+  // The golden file names the archive label Assistant/Archive (a plain name with a slash, no longer a prefix), so its
+  // preview sees it as a change against the stored name.
   const answered = page.waitForResponse((response) => response.url().includes("/api/categories/upload") && response.request().method() === "POST");
   await uploadToPreview(page, goldenFile());
   const preview = (await (await answered).json()) as { archiveLabelChanged: boolean };

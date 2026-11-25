@@ -26,15 +26,20 @@ export function resetCategories(): void {
   sql(`
     TRUNCATE categories.plan_approval, categories.plan_decision, categories.plan_item, categories.plan,
       categories.list_audit, categories.category, categories.list_version, categories.category_label,
-      categories.category_identity, categories.category_count, categories.gmail_label, categories.list_cursor
+      categories.category_identity, categories.category_count, categories.gmail_label, categories.list_cursor,
+      categories.managed_label, categories.label_rename_item, categories.label_migration, categories.label_empty_since,
+      categories.deleted_label, categories.label_confirmation, categories.label_restore_request
       CASCADE;
     INSERT INTO categories.mailbox (id) VALUES ('${MAILBOX}') ON CONFLICT DO NOTHING;
   `);
 }
 
 /**
- * Version 1 as the agent seeds it: Invoices and Travel with counts, "Other" with a count, and one Gmail label under
- * `Assistant/` that is not on the list (an older category).
+ * Version 1 as the agent seeds it after the label boundary (ADR-0060): Invoices and Travel with counts, "Other" with a
+ * count, their Gmail labels by id in `managed_label` (the labels carry the plain names, there is no `Assistant/` prefix),
+ * one Gmail label that is not on the list (Newsletters, which a new category of that name would adopt) and no rename to
+ * do (`label_migration` is `done`). The api reads the label names from `gmail_label`; `managed_label` is what the agent
+ * would have written, seeded so that the database holds one consistent state.
  */
 export function seedList(): void {
   sql(`
@@ -48,8 +53,14 @@ export function seedList(): void {
     INSERT INTO categories.category_count (mailbox_id, category_id, mail_count) VALUES
       ('${MAILBOX}', '${INVOICES_ID}', 12), ('${MAILBOX}', '${TRAVEL_ID}', 1), ('${MAILBOX}', '${OTHER_ID}', 3);
     INSERT INTO categories.gmail_label (mailbox_id, name) VALUES
-      ('${MAILBOX}', 'Assistant/Invoices'), ('${MAILBOX}', 'Assistant/Travel'), ('${MAILBOX}', 'Assistant/Other'),
-      ('${MAILBOX}', 'Assistant/Newsletters');
+      ('${MAILBOX}', 'Invoices'), ('${MAILBOX}', 'Travel'), ('${MAILBOX}', 'Other'), ('${MAILBOX}', 'Archive'),
+      ('${MAILBOX}', 'Newsletters');
+    INSERT INTO categories.managed_label (mailbox_id, label_id, role, category_id, label_name) VALUES
+      ('${MAILBOX}', 'Label_Invoices', 'category', '${INVOICES_ID}', 'Invoices'),
+      ('${MAILBOX}', 'Label_Travel', 'category', '${TRAVEL_ID}', 'Travel'),
+      ('${MAILBOX}', 'Label_Other', 'other', NULL, 'Other'),
+      ('${MAILBOX}', 'Label_Archive', 'archive', NULL, 'Archive');
+    INSERT INTO categories.label_migration (mailbox_id, state) VALUES ('${MAILBOX}', 'done');
     COMMIT;
   `);
 }
