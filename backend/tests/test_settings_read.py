@@ -45,6 +45,9 @@ DEFAULTS = {
     "quietEnd": "07:00",
     "overviewAt": "18:00",
     "remindAt": "09:00",
+    "waitingMinutes": 720,
+    "protectionDays": 7,
+    "retentionDays": 30,
 }
 STORED = {
     "timeZone": "America/New_York",
@@ -52,6 +55,14 @@ STORED = {
     "quietEnd": "06:45",
     "overviewAt": "18:05",
     "remindAt": "09:15",
+    "waitingMinutes": 720,
+    "protectionDays": 7,
+    "retentionDays": 30,
+}
+RANGES = {
+    "waitingMinutes": {"min": 5, "max": 720, "default": 720},
+    "protectionDays": {"min": 1, "max": 30, "default": 7},
+    "retentionDays": {"min": 7, "max": 90, "default": 30},
 }
 TIME_FIELDS = ("quietStart", "quietEnd", "overviewAt", "remindAt")
 INSERT_ROW = (
@@ -139,7 +150,7 @@ async def test_given_a_stored_row_when_settings_are_read_then_values_version_tim
     assert response.status_code == 200
     body = response.json()
     assert datetime.fromisoformat(body.pop("updatedAt")) == changed_at
-    assert body == {"values": STORED, "version": 1, "updatedVia": "web"}
+    assert body == {"values": STORED, "ranges": RANGES, "version": 1, "updatedVia": "web"}
 
 
 async def test_given_a_stored_row_when_settings_are_read_then_no_actor_is_in_the_answer(
@@ -151,7 +162,7 @@ async def test_given_a_stored_row_when_settings_are_read_then_no_actor_is_in_the
 
     response = await api.http.get("/api/settings", cookies=await _cookie(store))
 
-    assert set(response.json()) == {"values", "version", "updatedAt", "updatedVia"}
+    assert set(response.json()) == {"values", "ranges", "version", "updatedAt", "updatedVia"}
     assert "web:0123" not in response.text
     assert "updatedBy" not in response.text
 
@@ -163,7 +174,13 @@ async def test_given_no_row_when_settings_are_read_then_the_defaults_at_version_
     response = await api.http.get("/api/settings", cookies=await _cookie(store))
 
     assert response.status_code == 200
-    assert response.json() == {"values": DEFAULTS, "version": 0, "updatedAt": None, "updatedVia": None}
+    assert response.json() == {
+        "values": DEFAULTS,
+        "ranges": RANGES,
+        "version": 0,
+        "updatedAt": None,
+        "updatedVia": None,
+    }
 
 
 async def test_given_no_row_when_the_repository_reads_then_it_returns_the_defaults_at_version_zero(
@@ -317,7 +334,7 @@ def test_given_the_exported_document_when_read_then_times_are_hhmm_and_no_actor_
     assert {name: values[name]["pattern"] for name in TIME_FIELDS} == dict.fromkeys(
         TIME_FIELDS, r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
     )
-    assert set(settings) == {"values", "version", "updatedAt", "updatedVia"}
+    assert set(settings) == {"values", "ranges", "version", "updatedAt", "updatedVia"}
 
 
 def test_given_the_exported_document_when_read_then_every_reference_resolves() -> None:

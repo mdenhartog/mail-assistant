@@ -25,7 +25,7 @@ from app.export_openapi import DEFAULT_TARGET
 from app.ids import SecretsIdSource
 from app.main import discover_routers
 from app.security_events import SecurityEvents
-from app.settings_repo import SettingsRepository
+from app.settings_repo import DEFAULT_CLEANUP, SettingsRepository
 from app.startup import attach_database
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy
 from tests.db.conftest import (  # noqa: F401  # the shared fixtures of U-09, used here without editing them
@@ -51,6 +51,9 @@ DEFAULTS = {
     "quietEnd": "07:00",
     "overviewAt": "18:00",
     "remindAt": "09:00",
+    "waitingMinutes": 720,
+    "protectionDays": 7,
+    "retentionDays": 30,
 }
 CHANGED = TimePolicy("Pacific/Kiritimati", time(22, 30), time(6, 45), time(18, 5), time(9, 15))
 URL = "/api/settings/reset"
@@ -104,8 +107,8 @@ async def _post(api: Api, body: Any, *, token: bool = True, origin: str | None =
 async def _store_changed(api: Api) -> None:
     """Leave a changed row at version 2, written by another actor."""
     repository = SettingsRepository(api.app.state.database)
-    await repository.write(DEFAULT_POLICY, 0, OTHER)
-    await repository.write(CHANGED, 1, OTHER)
+    await repository.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, OTHER)
+    await repository.write(CHANGED, DEFAULT_CLEANUP, 1, OTHER)
 
 
 # Criterion 1
@@ -119,7 +122,7 @@ async def test_given_a_changed_row_when_reset_at_the_current_version_then_the_de
 
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"values", "version", "updatedAt", "updatedVia"}
+    assert set(body) == {"values", "ranges", "version", "updatedAt", "updatedVia"}
     assert body["values"] == DEFAULTS
     assert (body["version"], body["updatedVia"]) == (3, "web")
     stored = await SettingsRepository(api.app.state.database).read()

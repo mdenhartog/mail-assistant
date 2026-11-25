@@ -1,6 +1,7 @@
 """Request and response models of the category list API (U-mail-categories-04, category contract v2).
 
-The v2 fields (U-label-structure-11, ADR-0053) are required on a save: no default stands in for a missing one.
+The v2 fields (U-label-structure-11, ADR-0053) and the two label names (ADR-0060) are required on a save: no default
+stands in for a missing one.
 """
 
 import uuid
@@ -80,6 +81,7 @@ class CategoryList(BaseModel):
     categories: list[CategoryItem]
     general_instructions: str
     archive_label: str
+    other_label: str
     other: OtherItem
     older_categories: list[OlderCategory]
 
@@ -109,6 +111,7 @@ class CategoryListUpdate(BaseModel):
     categories: list[CategoryInput]
     general_instructions: str
     archive_label: str
+    other_label: str
 
 
 class CategoryProblem(BaseModel):
@@ -121,7 +124,7 @@ class CategoryProblem(BaseModel):
     model_config = _CONFIG
 
     rule: str
-    field: Literal["name", "description", "id", "list", "senders", "instructions", "archive_label"]
+    field: Literal["name", "description", "id", "list", "senders", "instructions", "archive_label", "other_label"]
     index: int | None
     position: int | None
     other_index: int | None

@@ -272,6 +272,10 @@
           "other": {
             "$ref": "#/components/schemas/OtherItem"
           },
+          "otherLabel": {
+            "title": "Otherlabel",
+            "type": "string"
+          },
           "ready": {
             "title": "Ready",
             "type": "boolean"
@@ -288,6 +292,7 @@
           "categories",
           "generalInstructions",
           "archiveLabel",
+          "otherLabel",
           "other",
           "olderCategories"
         ],
@@ -313,6 +318,10 @@
             "title": "Generalinstructions",
             "type": "string"
           },
+          "otherLabel": {
+            "title": "Otherlabel",
+            "type": "string"
+          },
           "version": {
             "minimum": 0.0,
             "title": "Version",
@@ -323,7 +332,8 @@
           "version",
           "categories",
           "generalInstructions",
-          "archiveLabel"
+          "archiveLabel",
+          "otherLabel"
         ],
         "title": "CategoryListUpdate",
         "type": "object"
@@ -340,7 +350,8 @@
               "list",
               "senders",
               "instructions",
-              "archive_label"
+              "archive_label",
+              "other_label"
             ],
             "title": "Field",
             "type": "string"
@@ -1441,6 +1452,63 @@
         "title": "ProblemItem",
         "type": "object"
       },
+      "Range": {
+        "additionalProperties": false,
+        "description": "The lowest and highest value of a number and the value a new installation starts with.",
+        "properties": {
+          "default": {
+            "title": "Default",
+            "type": "integer"
+          },
+          "max": {
+            "title": "Max",
+            "type": "integer"
+          },
+          "min": {
+            "title": "Min",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "min",
+          "max",
+          "default"
+        ],
+        "title": "Range",
+        "type": "object"
+      },
+      "Ranges": {
+        "additionalProperties": false,
+        "description": "The ranges and defaults of the label cleanup numbers, so the page shows them without a copy of its own.",
+        "properties": {
+          "protectionDays": {
+            "$ref": "#/components/schemas/Range",
+            "default": {
+              "default": 7,
+              "max": 30,
+              "min": 1
+            }
+          },
+          "retentionDays": {
+            "$ref": "#/components/schemas/Range",
+            "default": {
+              "default": 30,
+              "max": 90,
+              "min": 7
+            }
+          },
+          "waitingMinutes": {
+            "$ref": "#/components/schemas/Range",
+            "default": {
+              "default": 720,
+              "max": 720,
+              "min": 5
+            }
+          }
+        },
+        "title": "Ranges",
+        "type": "object"
+      },
       "RequestCodeBody": {
         "additionalProperties": false,
         "description": "The username a code is asked for: 1 to 64 characters, no control characters.",
@@ -1647,6 +1715,9 @@
         "additionalProperties": false,
         "description": "What ``GET /api/settings`` returns; never the actor.",
         "properties": {
+          "ranges": {
+            "$ref": "#/components/schemas/Ranges"
+          },
           "updatedAt": {
             "anyOf": [
               {
@@ -1685,6 +1756,7 @@
         },
         "required": [
           "values",
+          "ranges",
           "version",
           "updatedAt",
           "updatedVia"
@@ -1730,12 +1802,16 @@
       },
       "SettingsValues": {
         "additionalProperties": false,
-        "description": "The five values of the schedule; times are ``HH:MM`` wall-clock times in ``time_zone``.",
+        "description": "The schedule and the label cleanup numbers; times are ``HH:MM`` wall-clock times in ``time_zone``.\n\nThe numbers are whole numbers, checked against their ranges by ``category_policy`` (not here), so a value outside\nits range gets the same 422 body as every other refused value.",
         "properties": {
           "overviewAt": {
             "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
             "title": "Overviewat",
             "type": "string"
+          },
+          "protectionDays": {
+            "title": "Protectiondays",
+            "type": "integer"
           },
           "quietEnd": {
             "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
@@ -1752,10 +1828,18 @@
             "title": "Remindat",
             "type": "string"
           },
+          "retentionDays": {
+            "title": "Retentiondays",
+            "type": "integer"
+          },
           "timeZone": {
             "maxLength": 64,
             "title": "Timezone",
             "type": "string"
+          },
+          "waitingMinutes": {
+            "title": "Waitingminutes",
+            "type": "integer"
           }
         },
         "required": [
@@ -1763,7 +1847,10 @@
           "quietStart",
           "quietEnd",
           "overviewAt",
-          "remindAt"
+          "remindAt",
+          "waitingMinutes",
+          "protectionDays",
+          "retentionDays"
         ],
         "title": "SettingsValues",
         "type": "object"

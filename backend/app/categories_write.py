@@ -18,6 +18,7 @@ from app.categories_models import (
 from app.categories_repo import OTHER_ID, StoredCategory, StoredList, StoredSender
 from category_policy import (
     ARCHIVE_LABEL_DEFAULT,
+    OTHER_LABEL_DEFAULT,
     Category,
     SenderCategory,
     SenderEntry,
@@ -97,6 +98,7 @@ def to_response(stored: StoredList) -> CategoryList:
         ],
         general_instructions=stored.general_instructions,
         archive_label=stored.archive_label,
+        other_label=stored.other_label,
         other=OtherItem(mail_count=stored.counts.get(OTHER_ID, 0)),
         older_categories=[],  # no label has a prefix any more (ADR-0060): nothing is "older"
     )
@@ -124,7 +126,7 @@ def _sender_problems(items: list[CategoryInput]) -> list[CategoryProblem]:
 
 
 def problems_of(
-    items: list[CategoryInput], instructions: str, archive_label: str, stored: StoredList
+    items: list[CategoryInput], instructions: str, archive_label: str, other_label: str, stored: StoredList
 ) -> list[CategoryProblem]:
     """Check a whole list against the shared rules and the ids of the stored list.
 
@@ -132,8 +134,11 @@ def problems_of(
         items: The categories as sent.
         instructions: The general instructions as sent.
         archive_label: The archive label name as sent.
-        stored: The stored list: the known ids and the current name of "Other". A name equal to an existing Gmail
-            label adopts it and is no problem (ADR-0060); a name equal to a setting name is.
+        other_label: The name of "Other" as sent.
+        stored: The stored list: the known ids and the current names of "Other" and the archive. A name equal to an
+            existing Gmail label adopts it and is no problem (ADR-0060); a category equal to a current setting name is.
+            Each setting name is checked against the other one as sent; the name of "Other" only when it changed (an
+            upload keeps the stored name, and a clash with a category is then reported on the category).
 
     Returns:
         Every problem with the rule, the field and the position; no value. Empty when the list is valid.
@@ -143,8 +148,13 @@ def problems_of(
     found.extend(_sender_problems(items))
     found.extend(
         CategoryProblem(rule=problem.rule, field="archive_label", index=None, position=None, other_index=None)
-        for problem in validate_label_setting_name(archive_label, categories, stored.other_label, ARCHIVE_LABEL_DEFAULT)
+        for problem in validate_label_setting_name(archive_label, categories, other_label, ARCHIVE_LABEL_DEFAULT)
     )
+    if other_label != stored.other_label:
+        found.extend(
+            CategoryProblem(rule=problem.rule, field="other_label", index=None, position=None, other_index=None)
+            for problem in validate_label_setting_name(other_label, categories, archive_label, OTHER_LABEL_DEFAULT)
+        )
     found.extend(_id_problems(items, stored))
     return found
 
@@ -228,13 +238,16 @@ def canonical_instructions(raw: str) -> str:
     return raw.strip()
 
 
-def is_unchanged(rows: list[StoredCategory], instructions: str, archive_label: str, stored: StoredList) -> bool:
-    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order, instructions, archive.
+def is_unchanged(
+    rows: list[StoredCategory], instructions: str, archive_label: str, other_label: str, stored: StoredList
+) -> bool:
+    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order, instructions, names.
 
     Args:
         rows: The rows built from the request.
         instructions: The general instructions in their stored form.
         archive_label: The archive label name.
+        other_label: The name of "Other".
         stored: The stored list.
 
     Returns:
@@ -244,4 +257,5 @@ def is_unchanged(rows: list[StoredCategory], instructions: str, archive_label: s
         tuple(rows) == stored.categories
         and instructions == stored.general_instructions
         and archive_label == stored.archive_label
+        and other_label == stored.other_label
     )

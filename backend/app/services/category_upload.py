@@ -137,7 +137,7 @@ def plan_of(parsed: ParsedList, stored: StoredList, new_id: Callable[[], uuid.UU
     instructions = canonical_instructions(parsed.general_instructions)
     # A file without the field keeps the stored name: a hand-written file must never trigger a rename.
     archive = parsed.archive_label if parsed.archive_label_given else stored.archive_label
-    found = problems_of(items, instructions, archive, stored)
+    found = problems_of(items, instructions, archive, stored.other_label, stored)
     if found:
         raise FileRefused(policy_problems(found))
     rows, new_ids = build(items, new_id)
@@ -262,7 +262,7 @@ class CategoryUpload:
             plan = plan_of(await asyncio.to_thread(parse_file, content.encode()), stored, self._ids.category_id)
         except FileRefused:
             raise Unconfirmable from None
-        if is_unchanged(plan.rows, plan.instructions, plan.archive_label, stored):
+        if is_unchanged(plan.rows, plan.instructions, plan.archive_label, stored.other_label, stored):
             return stored
         return await self._write(
             stored, plan.rows, plan.new_ids, ListSettings(plan.instructions, plan.archive_label, stored.other_label)
@@ -287,7 +287,9 @@ class CategoryUpload:
         previous = await self._repository.read_version(version - 1)
         if previous is None:
             raise Unconfirmable
-        if is_unchanged(list(previous.categories), previous.general_instructions, previous.archive_label, stored):
+        if is_unchanged(
+            list(previous.categories), previous.general_instructions, previous.archive_label, stored.other_label, stored
+        ):
             return stored
         settings = ListSettings(previous.general_instructions, previous.archive_label, stored.other_label)
         return await self._write(stored, list(previous.categories), frozenset(), settings)

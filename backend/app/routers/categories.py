@@ -46,7 +46,7 @@ def _refusal(body: CategoryListUpdate, stored: StoredList) -> JSONResponse | Non
         return _conflict(stored, "not-ready")
     if body.version != stored.version:
         return _conflict(stored, "version")
-    problems = problems_of(body.categories, body.general_instructions, body.archive_label, stored)
+    problems = problems_of(body.categories, body.general_instructions, body.archive_label, body.other_label, stored)
     if not problems:
         return None
     refusal = CategoryProblem422(type="about:blank", title="Unprocessable content", status=422, problems=problems)
@@ -121,11 +121,11 @@ async def write_categories(body: CategoryListUpdate, request: Request) -> Catego
     ids: IdSource = request.app.state.ids
     rows, new_ids = build(body.categories, ids.category_id)
     instructions = canonical_instructions(body.general_instructions)
-    if is_unchanged(rows, instructions, body.archive_label, stored):
+    if is_unchanged(rows, instructions, body.archive_label, body.other_label, stored):
         return to_response(stored)
     try:
         await repository.add_version(
-            stored.version, rows, new_ids, ListSettings(instructions, body.archive_label, stored.other_label)
+            stored.version, rows, new_ids, ListSettings(instructions, body.archive_label, body.other_label)
         )
     except VersionConflict:
         return _conflict(await repository.read(), "version")
