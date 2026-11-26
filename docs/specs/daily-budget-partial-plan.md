@@ -1,10 +1,10 @@
 ---
 feature: daily-budget-partial-plan
 intent: INT-011
-status: approved
-revision: 1 (phase 1; D1 to D8 approved by the user, 2026-11-26)
+status: draft
+revision: 2 (phase 2 threat model: D3, D7, D8 changed and D9 to D13 added; waiting for the user)
 date: 2026-11-26
-approved: 2026-11-26 (revision 1, the user, phase 1 gate)
+approved: 2026-11-26 (revision 1, the user, phase 1 gate; revision 2 not yet approved)
 approver: the user
 depends_on: mail-categories, label-structure, mail-triage, web-settings
 ---
@@ -62,12 +62,17 @@ The user, with one mailbox and one agent.
 |---|---|---|
 | D1 | The default of `DAILY_MODEL_BUDGET` becomes 500 (agent setting and compose default). The reserve of 50 stays in code. Calls are counted as model calls, not mails (the user's answer, 2026-11-25). | The intent. |
 | D2 | A build that is stopped by the budget **closes the part** when it checked at least one mail: the part becomes an ordinary pair of plans (`auto` and `review`) for the mails checked so far. With no mail checked yet it keeps waiting. | One part runs through the existing flow, nothing new to approve. |
-| D3 | The request keeps one **cursor** for the whole series. The next part starts at the next budget day (UTC date), from that cursor, once the previous part has no non-terminal plan. A part the user leaves open holds the series; the screen says so. | No mail is checked twice. One non-terminal plan per mailbox and kind (ADR-0056) stays true. |
+| D3 | The **series** (the parts of one request) carries the cursor; the request itself stays insert-only. The next part starts at the next budget day (UTC date), from the end of the previous part, once the previous part has no non-terminal plan. A part the user leaves open holds the series; the screen says so. | No mail is checked twice. One non-terminal plan per mailbox and kind (ADR-0056) stays true. |
 | D4 | A list change ends the series (the pending parts are replaced, ADR-0056 point 5). Sort again starts a new series. | D8 and D12 of `label-structure`: a list change never moves old mail. |
 | D5 | The 5 000-mail cap counts the whole series. | Same cap as today. |
 | D6 | The daily budget count is **stored in the database per UTC day** and not only in memory. A restart does not give a second budget. | At 500 calls a restart could double the spend. |
-| D7 | The existing "plan ready" Telegram message is the one message: it says the part number, the counts and, when more mail waits, that the rest continues after this part is done. At most one such message per day. No names, senders or subjects. | The user asked for one message. |
-| D8 | Settings, the reserve and the quiet hours are not changed. Raising the number on the user's own stack needs the user's go-ahead for a deploy. | Standing rule. |
+| D7 | The existing "plan ready" Telegram message is the one message: it says the part number, the counts and, when more mail waits, that the rest continues after this part is done. At most one such message per day, **except** that the notice of a part with sure items (which move without review) is always sent, and such a part does not move mail before its notice was sent. No names, senders or subjects. | The user asked for one message; the Cancel button must never be missing. |
+| D8 | The reserve for new mail stays 50 calls and the quiet hours are not changed. Raising the number on the user's own stack needs the user's go-ahead for a deploy. The plan's use of the budget is **paced over the UTC day** (D10). | Standing rule; the threat model found that a plan running at night would leave new mail 50 calls. |
+| D9 | **A series ends** when the user presses Cancel, Undo or Lock on any part, when the web is locked, when the list changes, when the cap is reached, when a part stays open for 14 days, or when the series is older than 14 days. The system never approves a part of an ended series. Sort again starts a new series. | Without it the next day's part would move mail after the user said stop (threat T-11). |
+| D10 | **Pacing.** Until hour `h` of the UTC day the plan may spend at most `(limit - reserve) * h / 24` calls of the day, so new mail keeps enough calls through the day. The exact rule is decided in phase 3 (ADR); the criterion is that a plan running just after midnight leaves enough for the day's new mail. | Threat T-05. |
+| D11 | While a series is unfinished, a new "Sort again" request is refused with 409 and a plain message. | Threat T-09: a new request between parts would pay again. |
+| D12 | A mail on which the model fails 3 times (refusal or time-out) is recorded as unclear and the series goes on past it. Every attempt that reaches the model provider counts as a call. | Threat T-03, T-02. |
+| D13 | The series position is an internalDate and message id mark; it never restarts at the top of the mailbox. When the position cannot be found, the series pauses with the reason `cursor_lost`. | Threat T-08. |
 
 ## Acceptance criteria
 
@@ -85,13 +90,22 @@ The user, with one mailbox and one agent.
 12. Given the screen shows a part, When the total grows over the days, Then it shows the part number and the checked mails over all parts of the series (happy).
 13. Given the budget day changes at midnight UTC, When the agent checks the day, Then the count starts again from zero once (edge).
 14. Given logs and audit, When a part closes or waits, Then they hold numbers only, never mail text, senders, subjects or label names (security).
+15. Given the user pressed Cancel, Undo or Lock on any part, When the next budget day starts, Then no further part is built or approved (security, D9).
+16. Given a part is open for 14 days, When the next budget day starts, Then the series ends with the reason `expired` and one counts-only notice says so (edge, D9).
+17. Given a series is unfinished, When a new Sort again request is sent, Then 409 and nothing is stored (security, D11).
+18. Given a mail on which the model fails 3 times, When the build goes on, Then the mail is recorded as unclear, the series passes it and no more calls are spent on it (edge, D12).
+19. Given the mail at the end of part 1 was deleted, When part 2 starts, Then it continues after that mail's date and no mail of part 1 is checked again (edge, D13).
+20. Given a part with sure items and no sent notice, When its apply time passes, Then it does not move mail (security, D7).
+21. Given two agent instances, When both spend calls, Then the stored count never goes above the limit and no mail is checked twice (security, D6).
+22. Given the build runs just after midnight UTC with a full budget, When it spends, Then it stops at its paced share and the day's new mail still gets its calls (happy, D10).
+23. Given the plan view of a paused part, When it is read, Then it holds the part, the totals and one fixed pause reason and no cursor, message id, sender, subject or error text (security).
 
 ## Architecture fit
 
 - `mail-triage` agent: the budget (`DailyBudget`, now stored), the build (`resort_build`), the plan store and the request cursor.
 - `api`: the plan view gets the part, the series total and the reason for a pause (read only; no new write path).
 - `web`: the "Review moves" building and waiting states; the Settings page is unchanged.
-- No new component and no new external system. Two schema changes are expected (a per-day budget row and the series cursor on the request); phase 3 decides the details and writes the ADR.
+- No new component and no new external system. Three schema changes are expected (a per-day budget ledger with its spend function, part and cursor columns on the plan, and column grants for the web role on the plan); phase 3 decides the details and writes the ADR.
 
 ## Open questions for the next phases
 
