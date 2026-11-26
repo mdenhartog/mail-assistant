@@ -25,6 +25,7 @@ from googleapiclient.errors import HttpError
 
 from app.core.mail_errors import LabelWritesHeld
 from app.core.managed import LabelRef, ManagedLabel, ManagedSet, Role
+from app.core.rename_plan import LEGACY_PREFIX
 from category_policy import (
     ARCHIVE_LABEL_DEFAULT,
     OTHER_LABEL_DEFAULT,
@@ -221,6 +222,9 @@ _OWN_DEFAULT = {
 def _usable_name(role: Role, name: str) -> bool:
     """Whether ``name`` may be the name of a managed label of ``role`` (the shared category policy)."""
     own_default = name if role is Role.LEGACY else _OWN_DEFAULT.get(role, "")  # a plan label may be "Other"/"Archive"
+    if role is Role.LEGACY and name.casefold().startswith(LEGACY_PREFIX):
+        name = name[len(LEGACY_PREFIX) :]  # a restore gives the retired prefix back; the rest still has to be valid
+        own_default = name
     if validate_label_setting_name(name, (), "", own_default):  # the length, character and Gmail system label rules
         return False
     if role in _CATEGORY_ROLES:

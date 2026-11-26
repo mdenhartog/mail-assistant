@@ -26,6 +26,26 @@ def test_given_a_plan_label_when_renamed_to_a_reserved_list_name_then_the_rename
     assert gmail.label_table[old] == "Other"
 
 
+def test_given_a_plan_label_when_renamed_back_to_its_old_prefixed_name_then_the_rename_is_allowed() -> None:
+    gmail = FakeGmail()
+    old = gmail.add_label("Bills")
+    adapter = adapter_for(gmail, ManagedLabel("Bills", old, Role.LEGACY))
+
+    adapter.rename_label(old, "Assistant/Bills")  # a restore (spec AC 27): the old names return by id
+
+    assert gmail.label_table[old] == "Assistant/Bills"
+
+
+@pytest.mark.parametrize("name", ["Assistant/INBOX", "Assistant/a//b", "Assistant/"])
+def test_given_a_plan_label_when_renamed_to_a_prefixed_invalid_name_then_it_is_refused(name: str) -> None:
+    gmail = FakeGmail()
+    old = gmail.add_label("X")
+    adapter = adapter_for(gmail, ManagedLabel("X", old, Role.LEGACY))
+
+    with pytest.raises(LabelRefused):
+        adapter.rename_label(old, name)
+
+
 @pytest.mark.parametrize("name", ["INBOX", "Inbox", "CATEGORY_PERSONAL", "a//b", ""])
 def test_given_a_plan_label_when_renamed_to_a_system_or_invalid_name_then_it_is_refused(name: str) -> None:
     gmail = FakeGmail()
