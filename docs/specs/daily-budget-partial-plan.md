@@ -1,9 +1,11 @@
 ---
 feature: daily-budget-partial-plan
 intent: INT-011
-status: draft
-revision: 1 (phase 1, waiting for the user)
+status: approved
+revision: 1 (phase 1; D1 to D8 approved by the user, 2026-11-26)
 date: 2026-11-26
+approved: 2026-11-26 (revision 1, the user, phase 1 gate)
+approver: the user
 depends_on: mail-categories, label-structure, mail-triage, web-settings
 ---
 
