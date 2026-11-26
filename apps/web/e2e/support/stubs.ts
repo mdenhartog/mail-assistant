@@ -141,6 +141,7 @@ const putEcho: Handler = async (route, { state }) => {
     updatedVia: "web",
     version: (sent.version ?? STORED.version) + 1,
     values: sent.values ?? STORED.values,
+    ranges: STORED.ranges,
   })(route, { n: 0, state });
 };
 
@@ -152,6 +153,7 @@ const resetToDefaults: Handler = async (route, { state }) => {
     updatedVia: "web",
     version: (sent.version ?? STORED.version) + 1,
     values: STORED.values,
+    ranges: STORED.ranges,
   })(route, { n: 0, state });
 };
 
