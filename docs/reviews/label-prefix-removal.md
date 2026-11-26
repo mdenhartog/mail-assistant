@@ -2,7 +2,7 @@
 intent: INT-010
 spec: docs/specs/label-prefix-removal.md
 plan: docs/plans/label-prefix-removal/index.md
-pr: pending (one feature pull request, to be filled when opened)
+pr: https://github.com/mdenhartog/mail-assistant/pull/201
 release: not released (unit 15, the contract migration, is built last and ships after the rename is done in production)
 ---
 
@@ -20,7 +20,7 @@ The feature removes the `Assistant/` prefix from every label the agent manages (
 | 4 Plan | 21 units; the repairs below are numbered units 22 to 24 | `docs/plans/label-prefix-removal/index.md` |
 | 5 Build, test first | Units built on unit branches, each with its failing test first, and landed in the feature branch | `git log` of the feature branch |
 | 6 Challenge | Red team and code review ran; the repairs below were landed from their findings | "Challenge and repairs" below |
-| 7 Verify | One feature pull request and one CI run. Pull request: pending. CI result: pending. I did not run the prod-like e2e specs for this record | "Known limits" below |
+| 7 Verify | One feature pull request and one CI run. Pull request: #201. CI result: all jobs green after repair rounds r1a to r8a (run on 7b52def). I did not run the prod-like e2e specs locally; CI did | "Known limits" below |
 | 8 Finish | Spec `status: done`, user guide, API guide, this record; `node scripts/docs.mjs check` | this record |
 | 9 Release | Not started | "Approvals and deploy" below |
 
@@ -107,4 +107,4 @@ The design (ADR-0060, ADR-0061) fixed the components; no dependency changed.
 | 2026-11-24 | Spec revision 3 approved by the user; safeguards R1 to R10, the waiting time default of 12 hours and D8 closed |
 | Not given | Approval for production |
 
-Deploy: pending. Pull request: pending. CI: pending.
+Deploy: pending (needs the user go-ahead). Pull request: #201. CI: green on 7b52def.
