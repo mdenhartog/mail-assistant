@@ -838,3 +838,30 @@ def test_given_the_chart_when_searched_then_no_cron_job_and_only_the_migrate_job
         if doc["kind"] != "Job":
             assert not any(key in yaml.safe_dump(doc) for key in OWNER_KEYS)
     assert job_container(docs)["command"] == ["python", "-m", "app", "migrate"]  # the purge is a step of this command
+
+
+def _compose_migrate_environment() -> dict[str, str]:
+    """The migrate environment as compose resolves it with no override: each ``${VAR:-default}`` is its default."""
+    environment = compose_services()["mail-triage-migrate"]["environment"]
+    resolved: dict[str, str] = {}
+    for key, value in environment.items():
+        match = re.fullmatch(r"\$\{[A-Z_]+:-([^${}]*)\}", str(value))
+        if match:
+            resolved[key] = match.group(1)
+    return resolved
+
+
+def test_given_the_compose_migrate_defaults_when_the_settings_load_then_the_archive_label_is_accepted() -> None:
+    from app.settings import load_migrate_settings  # noqa: PLC0415 - only this test needs the settings loader
+    from category_policy import ARCHIVE_LABEL_DEFAULT  # noqa: PLC0415
+
+    defaults = _compose_migrate_environment()
+    assert "ARCHIVE_LABEL" in defaults  # the default is declared, so a regression to a retired name shows here
+    job_env = {
+        "DATABASE_OWNER_URL": "postgresql+asyncpg://owner:test-pw@localhost/db",
+        "RUNTIME_ROLE_PASSWORD": "test-runtime",
+        "WEB_ROLE_PASSWORD": "test-web",
+        "ARCHIVE_LABEL": defaults["ARCHIVE_LABEL"],
+    }
+
+    assert load_migrate_settings(job_env).archive_label == ARCHIVE_LABEL_DEFAULT
