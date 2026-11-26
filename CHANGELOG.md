@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.4.0](https://github.com/mdenhartog/mail-assistant/compare/v0.3.0...v0.4.0) (2026-11-26)
+
+
+### Features
+
+* **agent:** the archive label name is a setting, default Assistant/Archive ([#156](https://github.com/mdenhartog/mail-assistant/issues/156)) ([8416894](https://github.com/mdenhartog/mail-assistant/commit/84168948707b642a430911ea0cb450732d98c7ed))
+* **api:** export the category list and serve the template and example (U-label-structure-13) ([#183](https://github.com/mdenhartog/mail-assistant/issues/183)) ([58d3b78](https://github.com/mdenhartog/mail-assistant/commit/58d3b78eb4b992fc9aa21380c1da7ecd8678f163))
+* **api:** return the skipped count of every sender entry (U-label-structure-37) ([#189](https://github.com/mdenhartog/mail-assistant/issues/189)) ([6187c60](https://github.com/mdenhartog/mail-assistant/commit/6187c60d6de33b136da010eeecc80a294998fb86))
+* **api:** the category list v2 with its web body and the ingress limit (U-label-structure-11, 33, 34) ([#177](https://github.com/mdenhartog/mail-assistant/issues/177)) ([372b31a](https://github.com/mdenhartog/mail-assistant/commit/372b31aa10d429195c0bf81c451d3a6f32f320e4))
+* **api:** upload a category file with a bound preview, confirm and restore, and the edge limit (U-label-structure-12, 35) ([#182](https://github.com/mdenhartog/mail-assistant/issues/182)) ([38885b4](https://github.com/mdenhartog/mail-assistant/commit/38885b4d8c62b0083e5c0bebee575f1d27af5954))
+* **category-policy:** sender entry rules, the pure matcher and the refused domains (U-label-structure-03) ([#170](https://github.com/mdenhartog/mail-assistant/issues/170)) ([b779d1c](https://github.com/mdenhartog/mail-assistant/commit/b779d1cae5305727708fb23638533c7756ba8bb0))
+* **category-policy:** the category contract v2 with its consumers (U-label-structure-02, 28, 29, 30, 31) ([#169](https://github.com/mdenhartog/mail-assistant/issues/169)) ([2231926](https://github.com/mdenhartog/mail-assistant/commit/22319262bfa28e6748de7e08ecd43c21a045d12d))
+* **category-policy:** the YAML category file, its limits and the template (U-label-structure-04) ([#173](https://github.com/mdenhartog/mail-assistant/issues/173)) ([d68b03f](https://github.com/mdenhartog/mail-assistant/commit/d68b03f45aa1f65a9ed7ca924ccfb50365a7439f))
+* **db:** the contract v2 migration 0024, additive (U-label-structure-05) ([#171](https://github.com/mdenhartog/mail-assistant/issues/171)) ([b9c5035](https://github.com/mdenhartog/mail-assistant/commit/b9c5035d2dbbf4823b7794057a7920f496255a64))
+* **db:** the filing code on topic and source, and revision 0025 (U-label-structure-32) ([#178](https://github.com/mdenhartog/mail-assistant/issues/178)) ([f6ed757](https://github.com/mdenhartog/mail-assistant/commit/f6ed757c98fa27594e3446c20943d01061715e7b))
+* **label-prefix-removal:** gmail labels without the assistant prefix ([#201](https://github.com/mdenhartog/mail-assistant/issues/201)) ([dcee6a8](https://github.com/mdenhartog/mail-assistant/commit/dcee6a8a18579e15a0dca5c596973946af3049e1))
+* **label-structure:** release 2 with the archive label, sort everything again and tips ([#199](https://github.com/mdenhartog/mail-assistant/issues/199)) ([a05ff4e](https://github.com/mdenhartog/mail-assistant/commit/a05ff4effbafde489d4dc465d6311d730259b02a))
+* **mail-triage:** agent test fakes for headers, scripted model and kill point (U-label-structure-01) ([#164](https://github.com/mdenhartog/mail-assistant/issues/164)) ([4901df8](https://github.com/mdenhartog/mail-assistant/commit/4901df8dab8c7c93c55ffc38ed7061e3613c1703))
+* **mail-triage:** audit the list content, the success numbers, revision 0028 (U-label-structure-14) ([#190](https://github.com/mdenhartog/mail-assistant/issues/190)) ([f769c49](https://github.com/mdenhartog/mail-assistant/commit/f769c49cd0e8d92be0585e70adc1dc5a879e264a))
+* **mail-triage:** judge topic and extra label, ask urgency apart (U-label-structure-09) ([#184](https://github.com/mdenhartog/mail-assistant/issues/184)) ([8d53f76](https://github.com/mdenhartog/mail-assistant/commit/8d53f762fb3db34f71d72a99546b0126762215b4))
+* **mail-triage:** one alert with every cause and the always-notify text (U-label-structure-10) ([#185](https://github.com/mdenhartog/mail-assistant/issues/185)) ([5b7fd81](https://github.com/mdenhartog/mail-assistant/commit/5b7fd812a76754d540a6a45d4d202d75ee6425ee))
+* **mail-triage:** one authenticated sender verifier for pinned mail and sender rules (U-label-structure-07) ([#168](https://github.com/mdenhartog/mail-assistant/issues/168)) ([a6b7305](https://github.com/mdenhartog/mail-assistant/commit/a6b73055bf47ca5c560b76695e14d4b4db104a35))
+* **mail-triage:** record skipped sender rules per entry, revision 0027 (U-label-structure-36) ([#188](https://github.com/mdenhartog/mail-assistant/issues/188)) ([a7dcb04](https://github.com/mdenhartog/mail-assistant/commit/a7dcb047fefea287fc213d5a1d8774ab54125f26))
+* **mail-triage:** sender-rule filing without a category call (U-label-structure-08) ([#181](https://github.com/mdenhartog/mail-assistant/issues/181)) ([14f242b](https://github.com/mdenhartog/mail-assistant/commit/14f242b8a9ee47e53e844145bf1724279162217e))
+* **web:** show how often a listed sender was not applied (U-label-structure-38) ([#191](https://github.com/mdenhartog/mail-assistant/issues/191)) ([7db0f59](https://github.com/mdenhartog/mail-assistant/commit/7db0f59d6acae33cd7dba991a7dfd658bfeb7b81))
+* **web:** the categories page as a nested list with an edit view (U-label-structure-15) ([#180](https://github.com/mdenhartog/mail-assistant/issues/180)) ([2b954c3](https://github.com/mdenhartog/mail-assistant/commit/2b954c37be38df56449daf312b9067103f144c8b))
+* **web:** upload a category file, preview, confirm, restore and export (U-label-structure-16) ([#187](https://github.com/mdenhartog/mail-assistant/issues/187)) ([077b7fb](https://github.com/mdenhartog/mail-assistant/commit/077b7fb422698a576a5a1243ff4f110e28bb1d05))
+
+
+### Bug Fixes
+
+* **agent:** first-deploy fixes: Gmail status in logs, refused label names, plan build in slices ([#154](https://github.com/mdenhartog/mail-assistant/issues/154)) ([3bdf8e5](https://github.com/mdenhartog/mail-assistant/commit/3bdf8e568382105febbbd2061beb61dc97d77259))
+* **api:** limit previews per session and parse the upload off the event loop ([#194](https://github.com/mdenhartog/mail-assistant/issues/194)) ([f634d0e](https://github.com/mdenhartog/mail-assistant/commit/f634d0ec5998c21a5046178365b93e7deeb24f5c))
+* **category-policy:** pin Python 3.13 like every other uv project ([#175](https://github.com/mdenhartog/mail-assistant/issues/175)) ([2edd215](https://github.com/mdenhartog/mail-assistant/commit/2edd21529491fa28beb863cb5ee77fe012fe2789))
+* **mail-triage:** R1 challenge findings on sender checks, alerts and the report ([#195](https://github.com/mdenhartog/mail-assistant/issues/195)) ([74a80d1](https://github.com/mdenhartog/mail-assistant/commit/74a80d17edfc831621b48bfad1420e5a9ef61ec8))
+* **mail-triage:** remove the automatic plan build after a list change and at first start (U-label-structure-06) ([#166](https://github.com/mdenhartog/mail-assistant/issues/166)) ([d2a145d](https://github.com/mdenhartog/mail-assistant/commit/d2a145dd49e6bfc270ae21fc7d8d0ddcb9a6d8cb))
+* **mail:** never wait on a host name lookup when sending or listening ([#157](https://github.com/mdenhartog/mail-assistant/issues/157)) ([9c787b2](https://github.com/mdenhartog/mail-assistant/commit/9c787b297251ba3ff61631f932a01210cf1e2132))
+* **web:** send the upload bytes unchanged and drop the R2 button sentence ([#196](https://github.com/mdenhartog/mail-assistant/issues/196)) ([0e6702b](https://github.com/mdenhartog/mail-assistant/commit/0e6702bccab5b269f099bcdea8d81102d09c2714))
+
 ## [0.3.0](https://github.com/mdenhartog/mail-assistant/compare/v0.2.0...v0.3.0) (2026-11-20)
 
 
