@@ -59,3 +59,5 @@ One line per item: `id · title · area · tags · path`. Valid items only; supe
 - component · Project workflow · area:process · tags:workflow,phases · components/project-workflow.md
 - ADR-0060 · The category list is the label boundary; managed labels by id; delayed delete of empty labels · area:architecture · tags:label-prefix-removal,mail-triage,gmail,security · decisions/ADR-0060-list-is-the-label-boundary.md
 - ADR-0061 · One-time label rename plan and its agent-api seam · area:architecture · tags:label-prefix-removal,mail-triage,api,postgresql · decisions/ADR-0061-one-time-label-rename-plan.md
+- ADR-0062 · Stored daily model budget of 500 calls with a paced share for the plan (supersedes ADR-0021 counter) · area:architecture · tags:daily-budget-partial-plan,budget,postgresql · decisions/ADR-0062-stored-model-budget-with-paced-plan-share.md
+- ADR-0063 · Resort plan as a series of parts with a watermark cursor and a bounded notice · area:architecture · tags:daily-budget-partial-plan,plan,api,security · decisions/ADR-0063-plan-series-in-parts.md
