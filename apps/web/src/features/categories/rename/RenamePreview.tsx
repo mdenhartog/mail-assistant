@@ -24,7 +24,7 @@ function Card({ item, skipped, onToggle }: { item: RenameItem; skipped: boolean;
     <li>
       <div
         aria-label={item.oldName}
-        className={`flex flex-col gap-2 rounded-card bg-surface-raised p-5 shadow-soft ${skipped ? "opacity-80" : ""}`}
+        className={`flex flex-col gap-2 rounded-card bg-surface-raised p-5 shadow-soft ${skipped ? "border border-border" : ""}`}
         role="group"
       >
         <div>

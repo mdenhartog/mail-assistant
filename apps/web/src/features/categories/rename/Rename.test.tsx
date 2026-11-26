@@ -186,6 +186,12 @@ describe("the typed confirmation (criterion 3)", () => {
     expect(screen.getByRole("button", { name: "Rename these labels" })).toBeDisabled();
   });
 
+  it("given a label is skipped, then its card is not dimmed, so the muted text keeps its contrast", async () => {
+    await loadedPending();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Skip Assistant/Bills" }));
+    expect(screen.getByRole("group", { name: "Assistant/Bills" }).className).not.toMatch(/opacity/);
+  });
+
   it("given the plan changed (409), then the preview is read again and a plain message says so", async () => {
     let reads = 0;
     const wired = wire({
