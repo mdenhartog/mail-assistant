@@ -42,6 +42,7 @@ const TELEGRAM_NOW = {
   updatedVia: "telegram",
   version: 4,
   values: { ...STORED.values, overviewAt: "19:30", remindAt: "10:00" },
+  ranges: STORED.ranges,
 };
 
 async function toCodeStep(page: Page, handlers: Handlers = {}): Promise<void> {
