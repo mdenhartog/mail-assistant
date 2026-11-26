@@ -1,10 +1,10 @@
 ---
 feature: daily-budget-partial-plan
 intent: INT-011
-status: draft
-revision: 2 (phase 2 threat model: D3, D7, D8 changed and D9 to D13 added; waiting for the user)
+status: approved
+revision: 2 (phase 2 threat model: D3, D7, D8 changed and D9 to D13 added)
 date: 2026-11-26
-approved: 2026-11-26 (revision 1, the user, phase 1 gate; revision 2 not yet approved)
+approved: 2026-11-26 (revision 2, the user, phase 2 gate; revision 1 approved the same day at the phase 1 gate)
 approver: the user
 depends_on: mail-categories, label-structure, mail-triage, web-settings
 ---
