@@ -212,7 +212,8 @@ test("a save without a change makes no new version", async ({ page }) => {
 });
 
 // 6 (AC-2, AC-40 second half): one row per rule that the user can reach from the page
-const RESERVED = "The first part of a name cannot be Archive or Other. Those are kept for the assistant.";
+const RESERVED =
+  "This name is kept for the assistant or Gmail. The first part cannot be Archive or Other, and Gmail's own labels like Inbox are not allowed.";
 const REFUSED: { rule: string; name: string; description?: string; text: string }[] = [
   { rule: "empty name", name: "", text: "Give the category a name." },
   {
