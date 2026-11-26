@@ -37,6 +37,7 @@ SENDER_SKIP_TABLES = {"sender_skip"}  # 0027
 RESORT_REQUEST_TABLES = {"resort_request"}  # 0029
 LABEL_BOUNDARY_TABLES = {  # 0030
     "managed_label",
+    "managed_label_released",
     "label_migration",
     "label_rename_item",
     "label_empty_since",
