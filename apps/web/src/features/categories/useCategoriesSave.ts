@@ -18,6 +18,8 @@ export interface CategoriesSave {
   instructionsError: string | undefined;
   /** What the api said about the archive label name. */
   archiveError: string | undefined;
+  /** What the api said about the name of the "Other" label. */
+  otherError: string | undefined;
   /** Changes on every submit that shows errors, so focus moves once per submit and not while typing. */
   errorStamp: number;
   result: SaveResult;
@@ -35,6 +37,7 @@ export interface CategoriesSave {
   clear: (key: string) => void;
   clearInstructions: () => void;
   clearArchive: () => void;
+  clearOther: () => void;
 }
 
 function bodyOf(rows: readonly Row[]): CategoryInput[] {
@@ -67,7 +70,13 @@ function useSender(list: CategoryList, rows: readonly Row[], settings: ListSetti
     feedback.setResult(null);
     feedback.clearAll();
     save.mutate(
-      { version: list.version, generalInstructions: settings.instructions, archiveLabel: settings.archiveLabel, categories: bodyOf(rows) },
+      {
+        version: list.version,
+        generalInstructions: settings.instructions,
+        archiveLabel: settings.archiveLabel,
+        otherLabel: settings.otherLabel,
+        categories: bodyOf(rows),
+      },
       {
         onSuccess: () => {
           feedback.setResult("saved");
@@ -92,27 +101,28 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
   const [asking, setAsking] = useState(false);
   const feedback = useFeedback(list.version);
   const { send, saving } = useSender(list, rows, settings, feedback);
-  // Every label this page knows is an older category: a card of that name adopts it (AC-53). The api knows the rest.
-  const labels = list.olderCategories.map((older) => older.labelName);
+  // The current names of the "Other" label and the archive label; a category of such a name clashes. An existing
+  // label never refuses a name: it is adopted (ADR-0060).
+  const names = [settings.otherLabel, settings.archiveLabel];
 
   const submit = (): void => {
     if (saving) {
       return;
     }
-    const errors = draftErrors(rows, labels);
+    const errors = draftErrors(rows, names);
     const tooLong = Array.from(settings.instructions).length > MAX_INSTRUCTIONS ? problemText("instructions_too_long") : undefined;
     if (Object.keys(errors).length === 0 && tooLong === undefined) {
       feedback.setResult(null);
       setAsking(true);
     } else {
-      feedback.setResult(validateList(rows, labels, labels).some((problem) => problem.field === "list") ? "refused" : null);
+      feedback.setResult(validateList(rows, names).some((problem) => problem.field === "list") ? "refused" : null);
       feedback.show(errors, tooLong);
     }
   };
 
   const checkRow = (key: string): boolean => {
     const row = rows.find((other) => other.key === key);
-    const errors = row === undefined ? {} : rowErrors(rows, row, labels);
+    const errors = row === undefined ? {} : rowErrors(rows, row, names);
     const fine = Object.keys(errors).length === 0;
     if (!fine) {
       feedback.show(errors);
@@ -124,6 +134,7 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
     errors: feedback.errors,
     instructionsError: feedback.instructionsError,
     archiveError: feedback.archiveError,
+    otherError: feedback.otherError,
     errorStamp: feedback.errorStamp,
     result: feedback.result,
     asking,
@@ -141,5 +152,6 @@ export function useCategoriesSave(list: CategoryList, rows: readonly Row[], sett
     clear: feedback.clearFor,
     clearInstructions: feedback.clearInstructions,
     clearArchive: feedback.clearArchive,
+    clearOther: feedback.clearOther,
   };
 }

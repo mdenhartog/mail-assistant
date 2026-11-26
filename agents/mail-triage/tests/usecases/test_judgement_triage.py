@@ -10,7 +10,6 @@ import pytest
 from app.core.alert_state import AlertState
 from app.core.judgement import (
     OTHER_ID,
-    OTHER_LABEL,
     Judgement,
     JudgementError,
     JudgingList,
@@ -35,10 +34,14 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from app.adapters.judge_anthropic import TrimmedMail
+    from app.core.managed import ManagedLabel
 
 GOOD_AUTH = "mx.google.com; spf=pass; dmarc=pass (p=REJECT) header.from=accounts.google.com"
 FORGED_AUTH = "mx.google.com; dmarc=pass header.from=accounts.google.com"
 FAILED_AUTH = "mx.google.com; dmarc=fail header.from=accounts.google.com"
+
+
+OTHER = "Other"
 
 
 class RecordingMailbox(FakeMailbox):
@@ -46,9 +49,9 @@ class RecordingMailbox(FakeMailbox):
         super().__init__(ids)
         self.ensured: list[str] = []
 
-    def ensure_label(self, name: str) -> str:
-        self.ensured.append(name)
-        return super().ensure_label(name)
+    def ensure_label(self, label: ManagedLabel) -> str:
+        self.ensured.append(label.name)
+        return super().ensure_label(label)
 
 
 @dataclass
@@ -107,8 +110,8 @@ async def test_given_the_hostile_corpus_when_processed_then_every_mail_goes_to_o
     summary = await pipeline(mailbox, StubModelJudge(StubModel.hostile()), store).run_once()  # type: ignore[arg-type]
 
     assert summary.filed == len(ids)
-    assert mailbox.ensured == [OTHER_LABEL] * len(ids)  # no label of any other name is ever created
-    assert [label for _, label in mailbox.filed] == [f"id:{OTHER_LABEL}"] * len(ids)
+    assert mailbox.ensured == [OTHER] * len(ids)  # no label of any other name is ever created
+    assert [label for _, label in mailbox.filed] == [f"id:{OTHER}"] * len(ids)
     assert set(mailbox.calls) == {"list_new", "fetch", "ensure_label", "file"}
     assert mailbox.calls.count("file") == len(ids)  # exactly one Gmail change per mail
     assert store.used == ["complete"] * len(ids)  # nothing is written but the outcome with its filing
@@ -121,7 +124,7 @@ async def test_given_an_urgent_mail_with_an_unknown_id_when_processed_then_it_go
 
     await pipeline(FakeMailbox(["m1"]), judge, store).run_once()  # type: ignore[arg-type]
 
-    assert store.outcomes["m1"].label == OTHER_LABEL
+    assert store.outcomes["m1"].label == OTHER
     assert store.outcomes["m1"].urgent is True
     assert store.outcomes["m1"].alert is AlertState.OPEN
 
@@ -219,7 +222,7 @@ async def test_given_mail_that_is_not_proven_when_processed_then_it_is_judged_an
     await pipeline(mailbox, judge, store).run_once()
 
     assert len(judge.seen) == 1
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
+    assert mailbox.filed == [("m1", "id:Finance")]
     assert store.outcomes["m1"].filing == FilingEntry(FINANCE_ID, 3)
 
 
@@ -246,7 +249,7 @@ async def test_given_no_list_version_yet_when_processed_then_the_mail_goes_to_ot
         store,
     ).run_once()
 
-    assert store.outcomes["m1"].label == OTHER_LABEL
+    assert store.outcomes["m1"].label == OTHER
     assert store.outcomes["m1"].filing is None
 
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from app.adapters.gmail_read import FetchedMail, HistoryExpiredError
+from app.adapters.gmail_read import FetchedMail, HistoryExpiredError, LabelRefused
 from app.adapters.judge_anthropic import ModelUnavailable, TrimmedMail
 from app.core.alert_state import AlertState
 from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAttention
@@ -16,11 +16,13 @@ from app.core.pinned import PinnedSenders
 from app.core.sender_rules import UrgencyVerdict
 from app.usecases.triage import MAX_ATTEMPTS, Claim, MailContent, Outcome, TriagePipeline, decide_outcome
 from schedule_policy.policy import DEFAULT_POLICY
+from tests.usecases.fakes_labels import FakeLabelBook
 from tests.usecases.fakes_policy import FakePolicySource
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from app.core.managed import ManagedLabel
     from app.core.sender_rules import UrgencyJudge
     from app.usecases.triage import Judge
 
@@ -43,6 +45,7 @@ def fetched(message_id: str, text: str = "hello") -> FetchedMail:
         text=text,
         has_attachment=False,
         headers={},
+        labels=frozenset({"INBOX"}),
     )
 
 
@@ -74,19 +77,21 @@ class FakeMailbox:
             raise self.fetch_errors[message_id]
         return self.mails[message_id]
 
-    def ensure_label(self, name: str) -> str:
+    def ensure_label(self, label: ManagedLabel) -> str:
         self.calls.append("ensure_label")
-        if ".." in name:  # the real adapter refuses these names
-            raise ValueError("label names must start with Assistant/")
-        return f"id:{name}"
+        if ".." in label.name:  # the real adapter refuses a label that is not managed
+            raise LabelRefused("label_not_managed")
+        return f"id:{label.name}"
 
-    def file(self, message_id: str, label_id: str) -> None:
+    def file(self, message_id: str, label_id: str) -> str:
         self.calls.append("file")
         self.filed.append((message_id, label_id))
+        return label_id
 
-    def add_label(self, message_id: str, label_id: str) -> None:
+    def add_label(self, message_id: str, label_id: str) -> str:
         self.calls.append("add_label")
         self.extra.append((message_id, label_id))
+        return label_id
 
 
 class FakeJudge:
@@ -178,6 +183,7 @@ def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
     now: datetime = DAYTIME,
     source: FakePolicySource | None = None,
     urgency: UrgencyJudge | None = None,
+    labels: FakeLabelBook | None = None,
 ) -> TriagePipeline:
     return TriagePipeline(
         mailbox,
@@ -188,6 +194,7 @@ def pipeline(  # noqa: PLR0913, PLR0917 - a test helper that takes every part
         policy=source or FakePolicySource(),
         pinned=PINNED,
         urgency=urgency or NeedsAttentionUrgency(),
+        labels=labels or FakeLabelBook(lambda: store.current),
     )
 
 
@@ -196,8 +203,8 @@ async def test_given_a_new_non_urgent_mail_when_run_then_it_is_filed_without_ale
 
     summary = await pipeline(mailbox, FakeJudge(judgement()), store).run_once()
 
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
-    assert store.done["m1"] == Completed("Assistant/Finance", False, None, "")
+    assert mailbox.filed == [("m1", "id:Finance")]
+    assert store.done["m1"] == Completed("Finance", False, None, "")
     assert summary.filed == 1
     assert summary.alerts == 0
     assert set(mailbox.calls) <= {"list_new", "fetch", "ensure_label", "file"}  # nothing that could delete
@@ -217,7 +224,7 @@ async def test_given_a_new_urgent_mail_inside_quiet_hours_when_run_then_it_is_fi
 
     await pipeline(mailbox, FakeJudge(judgement(urgent=True)), store, now=NIGHT).run_once()
 
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
+    assert mailbox.filed == [("m1", "id:Finance")]
     assert store.done["m1"].alert is AlertState.HELD
 
 
@@ -320,8 +327,8 @@ async def test_given_the_budget_is_used_up_when_a_mail_arrives_then_it_is_still_
 
     await pipeline(mailbox, FakeJudge(NeedsAttention("budget")), store).run_once()
 
-    assert mailbox.filed == [("m1", "id:Assistant/Other")]
-    assert store.done["m1"] == Completed("Assistant/Other", True, AlertState.OPEN, "needs_attention:budget")
+    assert mailbox.filed == [("m1", "id:Other")]
+    assert store.done["m1"] == Completed("Other", True, AlertState.OPEN, "needs_attention:budget")
 
 
 async def test_given_unusable_model_output_when_run_then_the_mail_needs_attention_not_silence() -> None:
@@ -383,6 +390,7 @@ async def test_given_a_judged_mail_when_completed_then_the_store_gets_the_capped
         text="body that must not be stored",
         has_attachment=True,
         headers={},
+        labels=frozenset({"INBOX"}),
         auth_results=("mx.google.com; spf=fail; dkim=pass; dmarc=pass",),  # no header.from: not vouched for
     )
     verdict = Judgement(topic_id=FINANCE_ID, urgent=True, reason="Due Friday", summary="Pay it", confidence=0.9)
@@ -413,6 +421,7 @@ async def test_given_a_forged_lower_authentication_results_header_then_the_alert
         text="body",
         has_attachment=False,
         headers={"Authentication-Results": "forged; spf=pass; dkim=pass; dmarc=pass"},
+        labels=frozenset({"INBOX"}),
         auth_results=(
             "mx.google.com; dmarc=fail header.from=example.com",
             "mx.google.com; dmarc=pass header.from=example.com",
@@ -441,9 +450,9 @@ async def test_given_a_needs_attention_mail_when_completed_then_the_content_has_
 def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent_with_an_open_alert() -> None:
     verdict = judgement(FINANCE_ID, urgent=True, confidence=0.9)
 
-    outcome = decide_outcome(verdict, fetched("m1"), CURRENT, DAYTIME, DEFAULT_POLICY)
+    outcome = decide_outcome(verdict, fetched("m1"), CURRENT, DAYTIME, DEFAULT_POLICY, other_label="Other")
 
-    assert outcome.label == "Assistant/Finance"
+    assert outcome.label == "Finance"
     assert outcome.urgent is True
     assert outcome.alert is AlertState.OPEN
     assert outcome.confidence == 0.9
@@ -453,16 +462,18 @@ def test_given_an_urgent_judgement_when_decided_directly_then_it_is_filed_urgent
 
 
 def test_given_an_urgent_judgement_in_quiet_hours_when_decided_directly_then_the_alert_is_held() -> None:
-    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), EMPTY, NIGHT, DEFAULT_POLICY)
+    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), EMPTY, NIGHT, DEFAULT_POLICY, other_label="Other")
 
     assert outcome.alert is AlertState.HELD
     assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)  # 07:00 in Amsterdam
 
 
 def test_given_a_needs_attention_verdict_when_decided_directly_then_it_is_other_urgent_with_a_note() -> None:
-    outcome = decide_outcome(NeedsAttention("invalid_output"), fetched("m1"), EMPTY, DAYTIME, DEFAULT_POLICY)
+    outcome = decide_outcome(
+        NeedsAttention("invalid_output"), fetched("m1"), EMPTY, DAYTIME, DEFAULT_POLICY, other_label="Other"
+    )
 
-    assert outcome.label == "Assistant/Other"
+    assert outcome.label == "Other"
     assert outcome.urgent is True
     assert outcome.confidence is None
     assert outcome.note == "needs_attention:invalid_output"
@@ -478,21 +489,23 @@ NEW_YORK_NIGHT = datetime(2026, 11, 10, 4, 30, tzinfo=UTC)  # 23:30 on 9 Novembe
 
 
 def test_given_new_york_when_an_urgent_mail_arrives_at_2330_there_then_the_alert_is_held_until_0700() -> None:
-    outcome = decide_outcome(judgement(urgent=True), fetched("m1"), EMPTY, NEW_YORK_NIGHT, NEW_YORK)
+    outcome = decide_outcome(
+        judgement(urgent=True), fetched("m1"), EMPTY, NEW_YORK_NIGHT, NEW_YORK, other_label="Other"
+    )
 
     assert outcome.alert is AlertState.HELD
     assert outcome.release_at == datetime(2026, 11, 10, 12, 0, tzinfo=UTC)  # 07:00 in New York
 
 
 def test_given_a_needs_attention_verdict_in_quiet_hours_when_decided_then_it_is_held_with_a_release_moment() -> None:
-    outcome = decide_outcome(NeedsAttention("budget"), fetched("m1"), EMPTY, NIGHT, DEFAULT_POLICY)
+    outcome = decide_outcome(NeedsAttention("budget"), fetched("m1"), EMPTY, NIGHT, DEFAULT_POLICY, other_label="Other")
 
     assert outcome.alert is AlertState.HELD
     assert outcome.release_at == datetime(2026, 11, 10, 6, 0, tzinfo=UTC)
 
 
 def test_given_a_non_urgent_mail_in_quiet_hours_when_decided_then_there_is_no_alert_and_no_release_moment() -> None:
-    outcome = decide_outcome(judgement(urgent=False), fetched("m1"), EMPTY, NIGHT, DEFAULT_POLICY)
+    outcome = decide_outcome(judgement(urgent=False), fetched("m1"), EMPTY, NIGHT, DEFAULT_POLICY, other_label="Other")
 
     assert (outcome.alert, outcome.release_at) == (None, None)
 
@@ -531,8 +544,8 @@ async def test_given_a_refused_label_when_an_urgent_mail_is_filed_then_it_goes_t
 
     summary = await pipeline(mailbox, FakeJudge(judgement(urgent=True)), store).run_once()
 
-    assert mailbox.filed == [("m1", "id:Assistant/Other")]
+    assert mailbox.filed == [("m1", "id:Other")]
     assert store.done["m1"].alert is AlertState.OPEN
-    assert store.outcomes["m1"].label == "Assistant/Other"
+    assert store.outcomes["m1"].label == "Other"
     assert summary.alerts == 1
     assert summary.retry_later == 0

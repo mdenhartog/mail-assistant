@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.exc import DBAPIError
 
 from app.db import Database
-from app.settings_repo import SettingsRepository
+from app.settings_repo import DEFAULT_CLEANUP, LabelCleanup, SettingsRepository
 from schedule_policy.policy import TimePolicy
 
 CASES_FILE = Path(__file__).resolve().parents[3] / "packages" / "schedule-policy" / "contract" / "settings_cases.json"
@@ -43,11 +43,11 @@ async def test_given_a_contract_case_when_written_through_the_repository_then_th
     repo = SettingsRepository(web_database)
 
     if expected_accepted:
-        stored = await repo.write(policy, 0, ACTOR)
+        stored = await repo.write(policy, DEFAULT_CLEANUP, 0, ACTOR)
         assert (stored.policy, stored.version) == (policy, 1)
     else:
         with pytest.raises(DBAPIError):
-            await repo.write(policy, 0, ACTOR)
+            await repo.write(policy, DEFAULT_CLEANUP, 0, ACTOR)
         assert (await repo.read()).version == 0
 
 
@@ -56,3 +56,44 @@ def test_given_the_contract_cases_when_selected_then_the_unstorable_ones_are_lef
 ):
     assert not [case["id"] for case in CASES if set(case["rules"]) & MALFORMED_TIME_RULES]
     assert CASES  # the filter must not empty the run
+
+
+# The label cleanup numbers (AC 33, 34): the database CHECKs are the last line behind the code checks.
+CLEANUP_POLICY = TimePolicy("Europe/Amsterdam", time(22, 0), time(7, 0), time(8, 0), time(12, 0))
+IN_RANGE_CLEANUPS = [
+    LabelCleanup(5, 1, 7),
+    LabelCleanup(720, 30, 90),
+    LabelCleanup(60, 14, 45),
+]
+OUT_OF_RANGE_CLEANUPS = [
+    LabelCleanup(4, 7, 30),
+    LabelCleanup(721, 7, 30),
+    LabelCleanup(60, 0, 30),
+    LabelCleanup(60, 31, 30),
+    LabelCleanup(60, 7, 6),
+    LabelCleanup(60, 7, 91),
+]
+
+
+@pytest.mark.parametrize("cleanup", IN_RANGE_CLEANUPS, ids=repr)
+async def test_given_cleanup_numbers_in_range_when_written_then_they_are_read_back(
+    cleanup: LabelCleanup, web_database: Database
+) -> None:
+    repo = SettingsRepository(web_database)
+
+    stored = await repo.write(CLEANUP_POLICY, cleanup, 0, ACTOR)
+
+    assert stored.cleanup == cleanup
+    assert (await repo.read()).cleanup == cleanup
+
+
+@pytest.mark.parametrize("cleanup", OUT_OF_RANGE_CLEANUPS, ids=repr)
+async def test_given_cleanup_numbers_outside_the_range_when_written_then_the_database_check_refuses_them(
+    cleanup: LabelCleanup, web_database: Database
+) -> None:
+    repo = SettingsRepository(web_database)
+
+    with pytest.raises(DBAPIError):
+        await repo.write(CLEANUP_POLICY, cleanup, 0, ACTOR)
+
+    assert (await repo.read()).version == 0

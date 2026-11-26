@@ -1,18 +1,36 @@
 /**
  * The name, description and list rules of a category, as the api and the agent apply them
- * (`packages/category-policy` v2, INT-004, INT-008). The cases both runtimes must pass live in
+ * (`packages/category-policy` v3, INT-004, INT-008, INT-010). The cases both runtimes must pass live in
  * `category_cases.json`; this file adds no rule of its own. The api stays the authority: it checks again.
  */
 
 const SEGMENT_MAX = 40;
-const LABEL_MAX = 225;
+const LABEL_MAX = 255;
 const DESCRIPTION_MAX = 1500;
 /** The most characters the general instructions of the list may have (C-3). */
 export const MAX_INSTRUCTIONS = 4000;
 export const MAX_CATEGORIES = 100;
 const SEPARATOR = "/";
-export const LABEL_PREFIX = "Assistant/";
 const RESERVED_NAMES: readonly string[] = ["other", "archive"];
+const GMAIL_SYSTEM_LABELS: readonly string[] = [
+  "inbox",
+  "spam",
+  "trash",
+  "sent",
+  "sent mail",
+  "draft",
+  "drafts",
+  "all mail",
+  "starred",
+  "unread",
+  "important",
+  "chat",
+  "chats",
+  "snoozed",
+];
+/** The retired prefix: a name that starts with it is refused (ADR-0060). */
+const LEGACY_PREFIX = "assistant/";
+const SYSTEM_LABEL_START = "category_";
 const FORBIDDEN = /[\p{Cc}\p{Cf}]/u;
 
 // Control and format characters and "..": the agent refuses a label with ".." too.
@@ -61,16 +79,8 @@ export function normaliseName(raw: string): string {
   return canonical(canonical(raw).toUpperCase().toLowerCase().normalize("NFKC").toUpperCase().toLowerCase());
 }
 
-/** The Gmail label of a category name. */
-function labelFor(name: string): string {
-  return `${LABEL_PREFIX}${canonical(name)}`;
-}
-
-/** Whether the label of the name exists and is not an older category's label (which the name adopts). */
-function labelClashes(name: string, labels: readonly string[], adoptable: readonly string[]): boolean {
-  const key = normaliseName(labelFor(name));
-  const has = (list: readonly string[]): boolean => list.some((label) => normaliseName(label) === key);
-  return has(labels) && !has(adoptable);
+function isSystemLabel(key: string): boolean {
+  return GMAIL_SYSTEM_LABELS.includes(key) || key.startsWith(SYSTEM_LABEL_START) || key.startsWith(LEGACY_PREFIX);
 }
 
 /** The rules about the shape of a name, in rule order. */
@@ -78,19 +88,14 @@ function shapeProblems(segments: readonly string[], text: string): string[] {
   const checks: [boolean, string][] = [
     [segments.some((segment) => segment === ""), "name_segment_empty"],
     [segments.some((segment) => length(segment) > SEGMENT_MAX), "name_segment_too_long"],
-    [length(LABEL_PREFIX) + length(text) > LABEL_MAX, "name_label_too_long"],
+    [length(text) > LABEL_MAX, "name_label_too_long"],
     [hasForbidden(text), "name_forbidden_char"],
-    [RESERVED_NAMES.includes(normaliseName(segments[0] ?? "")), "name_reserved"],
+    [RESERVED_NAMES.includes(normaliseName(segments[0] ?? "")) || isSystemLabel(normaliseName(text)), "name_reserved"],
   ];
   return checks.filter(([broken]) => broken).map(([, rule]) => rule);
 }
 
-function nameProblems(
-  name: string,
-  existing: readonly string[],
-  labels: readonly string[],
-  adoptable: readonly string[],
-): string[] {
+function nameProblems(name: string, existing: readonly string[], settings: readonly string[]): string[] {
   const segments = segmentsOf(name);
   const text = segments.join(SEPARATOR);
   if (text === "") {
@@ -100,8 +105,8 @@ function nameProblems(
   const key = normaliseName(name);
   if (existing.some((other) => normaliseName(other) === key)) {
     rules.push("name_duplicate");
-  } else if (labelClashes(text, labels, adoptable)) {
-    rules.push("name_label_exists");
+  } else if (!rules.includes("name_reserved") && settings.some((setting) => normaliseName(setting) === key)) {
+    rules.push("name_setting_clash");
   }
   return rules;
 }
@@ -115,23 +120,20 @@ function descriptionProblems(description: string): string[] {
 }
 
 /**
- * Checks one category.
+ * Checks one category. A label that exists in Gmail never refuses a name: the caller adopts it (ADR-0060).
  *
  * @param existing Names of the other categories on the list.
- * @param labels The Gmail labels that exist, as the caller knows them.
- * @param adoptable The subset of `labels` that belongs to an older category: a new category of that name adopts
- * the label and its mail instead of clashing (C-15, AC-40, AC-53).
+ * @param settings The current names of the "Other" label and the archive label; a category of that name clashes.
  * @returns The problems in rule order; empty when the category is valid.
  */
 export function validateCategory(
   name: string,
   description: string,
   existing: readonly string[],
-  labels: readonly string[],
-  adoptable: readonly string[],
+  settings: readonly string[],
 ): Problem[] {
   return [
-    ...nameProblems(name, existing, labels, adoptable).map((rule): Problem => ({ rule, field: "name", index: null })),
+    ...nameProblems(name, existing, settings).map((rule): Problem => ({ rule, field: "name", index: null })),
     ...descriptionProblems(description).map((rule): Problem => ({ rule, field: "description", index: null })),
   ];
 }
@@ -140,20 +142,15 @@ export function validateCategory(
  * Checks a whole list: every category (a later duplicate is the one flagged) and the cap of 100.
  *
  * @example
- * validateList([{ name: "Invoices", description: "Bills" }], [], []); // []
+ * validateList([{ name: "Invoices", description: "Bills" }], ["Other", "Archive"]); // []
  */
-export function validateList(
-  categories: readonly CategoryText[],
-  labels: readonly string[],
-  adoptable: readonly string[],
-): Problem[] {
+export function validateList(categories: readonly CategoryText[], settings: readonly string[]): Problem[] {
   const problems = categories.flatMap((category, index) =>
     validateCategory(
       category.name,
       category.description,
       categories.slice(0, index).map((other) => other.name),
-      labels,
-      adoptable,
+      settings,
     ).map((problem): Problem => ({ ...problem, index })),
   );
   return categories.length > MAX_CATEGORIES ? [...problems, { rule: "list_too_many", field: "list", index: null }] : problems;

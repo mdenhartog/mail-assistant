@@ -103,9 +103,9 @@ def test_given_a_sentry_event_with_local_variables_when_sent_then_all_variable_v
 def test_given_normal_log_lines_when_emitted_then_ids_and_counts_stay_readable() -> None:
     logger, records = make_logger()
 
-    logger.info("filed mail %s under %s (%d of %d)", "18c3f2a", "Assistant/Finance", 3, 10)
+    logger.info("filed mail %s under %s (%d of %d)", "18c3f2a", "Finance", 3, 10)
 
-    assert records[0].getMessage() == "filed mail 18c3f2a under Assistant/Finance (3 of 10)"
+    assert records[0].getMessage() == "filed mail 18c3f2a under Finance (3 of 10)"
 
 
 def test_given_log_extras_with_mail_headers_when_emitted_then_every_header_is_replaced_whatever_its_case() -> None:

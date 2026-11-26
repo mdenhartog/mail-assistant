@@ -28,7 +28,7 @@ function stub(plan: (request: Request) => Response, ended: { value: boolean } = 
         return Promise.resolve(ended.value ? new Response(null, { status: 401 }) : json(SESSION));
       }
       if (path === "/api/categories") {
-        return Promise.resolve(json({ version: 1, ready: true, generalInstructions: "", archiveLabel: "Assistant/Archive", categories: [], other: { mailCount: 0 }, olderCategories: [] }));
+        return Promise.resolve(json({ version: 1, ready: true, generalInstructions: "", archiveLabel: "Archive", otherLabel: "Other", categories: [], other: { mailCount: 0 } }));
       }
       return Promise.resolve(plan(request));
     }),

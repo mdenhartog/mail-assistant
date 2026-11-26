@@ -18,10 +18,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.adapters.gmail_read import FetchedMail
-from app.core.scope import ArchiveLabel
+from app.adapters.gmail_resort import GmailResort
+from app.core.managed import ManagedLabel, ManagedSet
 from app.settings import load_settings
 from app.usecases.catchup import BACKLOG_ALERT_LIMIT, BUDGET_RESERVE
 from app.wiring import build_runner
+from tests.fakes.fake_gmail import FakeGmail as GmailDouble
 from tests.test_settings import VALID
 
 if TYPE_CHECKING:
@@ -91,13 +93,18 @@ class StatefulGmail:
             labels=frozenset(self.labels[message_id]),
         )
 
-    def ensure_label(self, name: str) -> str:
-        return f"id:{name}"
+    def ensure_label(self, label: ManagedLabel) -> str:
+        return f"id:{label.name}"
 
-    def file(self, message_id: str, label_id: str) -> None:
+    def file(self, message_id: str, label_id: str) -> str:
         self.labels[message_id].discard("INBOX")
         self.labels[message_id].add(label_id)
         self.filed.append(message_id)
+        return label_id
+
+    def add_label(self, message_id: str, label_id: str) -> str:
+        self.labels[message_id].add(label_id)
+        return label_id
 
     def check_repliable(self, original: FetchedMail) -> None:
         del original
@@ -160,10 +167,10 @@ def agent(  # noqa: PLR0913, PLR0917 - the fakes of the world are passed in, lik
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
-        labels=object(),  # type: ignore[arg-type]
+        labels=GmailResort(GmailDouble(), ManagedSet(()), sleep=lambda _s: None),
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
-        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=tmp / "heartbeat",
         now=clock.now,

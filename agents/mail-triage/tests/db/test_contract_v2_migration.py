@@ -14,6 +14,7 @@ from alembic import command
 
 from app.db.migrate import RUNTIME_ROLE, WEB_ROLE, migrate_database
 from app.settings import SettingsError, load_migrate_settings
+from category_policy import ARCHIVE_LABEL_DEFAULT
 from tests.db.conftest import alembic_config, plain_url
 
 if TYPE_CHECKING:
@@ -294,7 +295,8 @@ async def test_given_no_archive_label_when_the_migrate_job_runs_then_the_default
 
 
 def test_given_the_job_environment_when_it_holds_archive_label_then_the_settings_carry_it() -> None:
-    assert load_migrate_settings(JOB_ENV).archive_label == DEFAULT_ARCHIVE
+    # the settings default is the prefix-free policy default (spec AC 12); 0024 keeps its own legacy default
+    assert load_migrate_settings(JOB_ENV).archive_label == ARCHIVE_LABEL_DEFAULT
     assert load_migrate_settings({**JOB_ENV, "ARCHIVE_LABEL": "Mail/Done"}).archive_label == "Mail/Done"
 
 

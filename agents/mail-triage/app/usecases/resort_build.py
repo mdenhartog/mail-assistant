@@ -26,13 +26,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
-from app.core.judgement import OTHER_ID, OTHER_LABEL, ListedCategory, NeedsAttention, file_under
+from app.core.judgement import OTHER_ID, ListedCategory, NeedsAttention, file_under
+from app.core.managed import LabelRef, ManagedLabel, Role
+from app.core.pinned import pinned_kind
 from app.core.resort_plan import PlanKind, PlanState, build_may_start, kind_for, on_list_changed
-from app.core.scope import LABEL_PREFIX, Scope, assistant_labels, classify, clean_display
+from app.core.scope import Scope, classify, clean_display
 from app.core.sender_rules import ExtraRule, RuleFiling, RuleSkipped, SenderRules
 from app.usecases.catchup import BUDGET_RESERVE, CALLS_PER_MAIL
-from app.usecases.triage import pinned_mail_kind
-from category_policy.kinds import Kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import Judgement
     from app.core.pinned import PinnedSenders
-    from app.core.scope import ArchiveLabel
+    from app.usecases.resort_apply import ResortLabels
 
 __all__ = [
     "BUILD_SLICE",
@@ -174,9 +174,10 @@ class BuildMailbox(Protocol):
         ...
 
     def candidates(self, after: str | None, limit: int) -> list[Candidate]:
-        """List up to ``limit`` mails of the inbox or an ``Assistant/`` label (not spam or trash).
+        """List up to ``limit`` mails of the inbox or a managed label (not spam or trash).
 
-        Newest first, strictly after the cursor ``after`` (``None`` starts at the top).
+        Newest first, strictly after the cursor ``after`` (``None`` starts at the top). The use case decides scope
+        again by label id, so a listing that is too wide never plans mail of a label that is not managed.
         """
         ...
 
@@ -200,6 +201,10 @@ class BuildStore(Protocol):
 
     async def current_list(self) -> BuildList:
         """The latest list version."""
+        ...
+
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels now: the current list, the "Other" setting and the archive label (ADR-0060)."""
         ...
 
     async def latest_plan(self) -> PlanRecord | None:
@@ -302,7 +307,6 @@ class ResortBuild:
         budget: BudgetView,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
-        archive: ArchiveLabel,  # the protected label (C-14, ADR-0059)
         cap: int = PLAN_CAP,
         per_run: int = BUILD_SLICE,  # how many mails one run looks at before it pauses (ADR-0051)
     ) -> None:
@@ -315,7 +319,6 @@ class ResortBuild:
         self._budget = budget
         self._now = now
         self._pinned = pinned
-        self._archive = archive
         self._cap = cap
         self._per_run = per_run
 
@@ -391,7 +394,7 @@ class ResortBuild:
         """
         names = await asyncio.to_thread(self._mail.label_names)
         rejected = await self._store.rejected_ids(plan.list_version)
-        lookup = _Lookup(current)
+        lookup = _Lookup(current, await self._store.managed_labels())
         checked, unclear, review, auto, cursor = plan.checked, plan.unclear, plan.items, plan.auto_items, plan.cursor
         looked = 0
         while checked < plan.cap:
@@ -441,13 +444,13 @@ class ResortBuild:
             else await asyncio.to_thread(self._mail.fetch, candidate.message_id)
         )
         if mail is not None:
-            label_names = {names[i] for i in mail.labels if i in names}
-            scope = classify(label_names, self._archive.name, lookup.extra_ids)
+            refs = [LabelRef(i, names.get(i, "")) for i in mail.labels]
+            scope = classify(refs, lookup.labels.managed)
             if scope is Scope.UNCLEAR:
                 checked = unclear = 1
-            elif scope is Scope.IN_SCOPE and pinned_mail_kind(mail, self._pinned) is None:
+            elif scope is Scope.IN_SCOPE and pinned_kind(mail.auth_results, mail.sender, self._pinned) is None:
                 checked = 1
-                item = await self._judged_item(mail, lookup, assistant_labels(label_names))
+                item = await self._judged_item(mail, lookup, lookup.held(refs))
         kind = PlanKind.REVIEW if item is None else kind_for(item.confidence_pct, plan.threshold)
         if not await self._store.record_progress(
             plan.plan_id, item=item, kind=kind, cursor=candidate.resume_after, checked=checked, unclear=unclear
@@ -455,7 +458,7 @@ class ResortBuild:
             raise _Cancelled
         return checked, unclear, None if item is None else kind
 
-    async def _judged_item(self, mail: FetchedMail, lookup: _Lookup, labels: list[str]) -> ItemDraft | None:
+    async def _judged_item(self, mail: FetchedMail, lookup: _Lookup, labels: list[ManagedLabel]) -> ItemDraft | None:
         ruled = lookup.rules.apply(mail.auth_results, mail.sender)
         if isinstance(ruled, RuleFiling):  # decided in code: no model call, no budget (ADR-0054, ADR-0055)
             target = _Target(ruled.topic.category_id, _id_of(ruled.extra), CERTAIN)
@@ -479,7 +482,7 @@ class ResortBuild:
             if verdict.reason == "budget":
                 raise _Pause
             return None  # no trustworthy answer: the mail stays where it is
-        filing = file_under(verdict, lookup.categories)
+        filing = file_under(verdict, lookup.categories, other_label=lookup.other_name)
         extra = _id_of(ruled.extra) if isinstance(ruled, ExtraRule) else _id_of(filing.extra)
         return _Target(filing.category_id, extra, _percent(verdict.confidence))
 
@@ -498,21 +501,20 @@ class _Target:
 
 
 class _Lookup:
-    """The list of this run: label names by kind, the sender rules and the instructions."""
+    """The list of this run: the managed labels, the sender rules and the instructions."""
 
-    def __init__(self, current: BuildList) -> None:
+    def __init__(self, current: BuildList, labels: ResortLabels) -> None:
         self.categories = current.categories
         self.instructions = current.general_instructions
         self.rules = SenderRules(current.categories)
-        self.topics = {OTHER_LABEL: OTHER_ID}
-        self.extras: dict[str, str] = {}
-        for category in current.categories:
-            label = f"{LABEL_PREFIX}{category.name.strip()}"
-            if category.kind is Kind.EXTRA:
-                self.extras[label] = category.category_id
-            else:
-                self.topics[label] = category.category_id
-        self.extra_ids = frozenset(self.extras)  # the label names of the extra categories
+        self.labels = labels
+        self.other_name = labels.by_category[OTHER_ID].name  # the "Other" setting
+        self.category_of = {label: cid for cid, label in labels.by_category.items()}
+
+    def held(self, refs: list[LabelRef]) -> list[ManagedLabel]:
+        """The managed labels a mail carries; the labels of the user are not part of its pair."""
+        found = (self.labels.managed.find(ref) for ref in refs)
+        return [label for label in found if label is not None]
 
 
 def _id_of(category: ListedCategory | None) -> str | None:
@@ -524,14 +526,13 @@ def _percent(confidence: float) -> int:
     return max(0, min(100, round(confidence * 100)))
 
 
-def _draft(mail: FetchedMail, lookup: _Lookup, labels: list[str], target: _Target) -> ItemDraft | None:
-    """An item only when the pair would change; a topic label outside the list (a deleted category) always moves."""
-    topic_label = next((label for label in labels if label not in lookup.extras), None)
-    extra_label = next((label for label in labels if label in lookup.extras), None)
-    old_topic = lookup.topics.get(topic_label, OTHER_ID) if topic_label else OTHER_ID
-    old_extra = lookup.extras[extra_label] if extra_label else None
-    legacy = topic_label is not None and topic_label not in lookup.topics
-    if (old_topic, old_extra) == (target.topic_id, target.extra_id) and not legacy:
+def _draft(mail: FetchedMail, lookup: _Lookup, labels: list[ManagedLabel], target: _Target) -> ItemDraft | None:
+    """An item only when the pair would change; mail without a topic label counts as Other."""
+    topic_label = next((label for label in labels if label.role is not Role.EXTRA), None)
+    extra_label = next((label for label in labels if label.role is Role.EXTRA), None)
+    old_topic = lookup.category_of.get(topic_label, OTHER_ID) if topic_label else OTHER_ID
+    old_extra = lookup.category_of.get(extra_label) if extra_label else None
+    if (old_topic, old_extra) == (target.topic_id, target.extra_id):
         return None
     name, _address = parseaddr(mail.headers.get("From", ""))
     name = clean_display(name, NAME_MAX)

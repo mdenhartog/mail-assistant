@@ -11,7 +11,6 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.scope import ArchiveLabel
 from app.runner import Runner
 from app.settings import SettingsError, load_settings
 from app.usecases.approval_notice import PlanNoticeActions
@@ -99,6 +98,8 @@ def _runner(
         inbox=Inbox([]),
         router=Router(),
         list_sync=ListSyncStep(),
+        label_rename=ResortIdle(),
+        label_cleanup=ResortIdle(),
         list_notice=ListNoticeIdle(),
         approval_notice=announce or Announce(steps),
         resort_build=Build(steps),
@@ -213,10 +214,10 @@ def _wired(extra: dict[str, str] | None = None) -> Any:
         mailbox=object(),
         sender=object(),
         labels=object(),  # type: ignore[arg-type]
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
         own_address="marco@example.com",
-        archive=ArchiveLabel("Archive"),
         heartbeat=None,  # type: ignore[arg-type]
         now=lambda: NOW,
     )

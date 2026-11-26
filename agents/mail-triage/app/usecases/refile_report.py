@@ -1,9 +1,10 @@
 """The daily report for AC-46: how much the user re-filed by hand and how much of the new mail sits in "Other".
 
-It compares the label recorded in ``filing`` with the label the mail carries now. Gmail history is not used (it does not
-say who changed a label). The report holds counts only: no sender, no subject, no message id (AC-30). Pinned mail has no
-``filing`` row (ADR-0048), so Google security mail and the sign-in code mail never enter these numbers. The one-year
-retention of ``filing`` is the database's ``purge_expired()``, not this report.
+It compares the label of the category recorded in ``filing`` with the managed labels the mail carries now (by Gmail
+label id; a label of the user is not looked at). "Other" is the managed label of the "Other" setting. Gmail history is
+not used (it does not say who changed a label). The report holds counts only: no sender, no subject, no message id
+(AC-30). Pinned mail has no ``filing`` row (ADR-0048), so Google security mail and the sign-in code mail never
+enter these numbers. The one-year retention of ``filing`` is the database's ``purge_expired()``, not this report.
 """
 
 from __future__ import annotations
@@ -14,8 +15,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol
 
-from app.core.judgement import OTHER_LABEL
-from app.core.scope import LABEL_PREFIX
+from app.core.managed import LabelRef, Role
 from app.usecases.report import success_text
 
 if TYPE_CHECKING:
@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
     from app.adapters.gmail_read import FetchedMail
     from app.usecases.report import SuccessCounts
+    from app.usecases.resort_apply import ResortLabels
 
 __all__ = ["PERIOD", "Filed", "RefileMailbox", "RefileReport", "RefileReportService", "RefileStore"]
 
@@ -72,8 +73,8 @@ class RefileStore(Protocol):
         """The newest filing of each mail filed since ``since``, the most recently filed first."""
         ...
 
-    async def category_labels(self) -> dict[str, str]:
-        """Category id to the Gmail label id recorded for it (``OTHER_ID`` included)."""
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels now: the current list, the "Other" setting and the archive label (ADR-0060)."""
         ...
 
     async def record_report(self, report: RefileReport) -> None:
@@ -113,9 +114,9 @@ class RefileReportService:
         """Compare every filing of the period with the mail's current label and record the counts."""
         since = self._now() - PERIOD
         filings = await self._store.filings_since(since)
-        recorded = await self._store.category_labels()
+        labels = await self._store.managed_labels()
         names = await asyncio.to_thread(self._mailbox.label_names)
-        other_ids = {label_id for label_id, name in names.items() if name == OTHER_LABEL}
+        recorded = {cid: label.label_id for cid, label in labels.by_category.items() if label.label_id is not None}
         refiled = in_other = gone = 0
         checked = filings[: self._max_checked]  # the store hands the newest first
         for entry in checked:
@@ -123,8 +124,15 @@ class RefileReportService:
             if mail is None:
                 gone += 1
                 continue
-            held = {label_id for label_id in mail.labels if names.get(label_id, "").startswith(LABEL_PREFIX)}
-            in_other += bool(held & other_ids)
+            found = {
+                label_id: label
+                for label_id in mail.labels
+                if (label := labels.managed.find(LabelRef(label_id, names.get(label_id, "")))) is not None
+            }
+            held = {
+                label_id for label_id, label in found.items() if label.role is not Role.ARCHIVE
+            }  # archiving is no re-filing
+            in_other += any(label.role is Role.OTHER for label in found.values())
             # The mail carries one label per kind it was filed with: the topic and at most one extra (spec C-13).
             expected = {recorded.get(entry.category_id)}
             if entry.extra_id is not None:

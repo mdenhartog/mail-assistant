@@ -32,14 +32,6 @@ function isSender(value: unknown): boolean {
   return isRecord(value) && typeof value["entry"] === "string" && typeof value["subdomains"] === "boolean";
 }
 
-function isOlder(value: unknown): boolean {
-  return (
-    isRecord(value) &&
-    typeof value["labelName"] === "string" &&
-    (value["mailCount"] === null || typeof value["mailCount"] === "number")
-  );
-}
-
 function allOf(value: unknown, check: (item: unknown) => boolean): boolean {
   return Array.isArray(value) && (value as unknown[]).every(check);
 }
@@ -55,8 +47,8 @@ function isList(value: unknown): value is CategoryList {
     typeof value["ready"] === "boolean" &&
     typeof value["generalInstructions"] === "string" &&
     typeof value["archiveLabel"] === "string" &&
+    typeof value["otherLabel"] === "string" &&
     allOf(value["categories"], isCategory) &&
-    allOf(value["olderCategories"], isOlder) &&
     isOther(value["other"])
   );
 }

@@ -118,10 +118,10 @@ const CATEGORY_LIST = {
   version: 3,
   ready: true,
   generalInstructions: "",
-  archiveLabel: "Assistant/Archive",
+  archiveLabel: "Archive",
+  otherLabel: "Other",
   categories: [INVOICES, NEWS],
   other: { mailCount: 7 },
-  olderCategories: [],
 };
 
 function route(wiring: PlanWiring, url: URL, body: unknown): Answer {

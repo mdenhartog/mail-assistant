@@ -236,10 +236,10 @@ test("the archive label is saved with the list, is there after a reload and is i
     await dialog.getByRole("button", { name: "Save changes", exact: true }).click();
   }
 
-  // A name inside Assistant/ other than Assistant/Archive is refused with the reason, and nothing is stored.
-  await field.fill("Assistant/Oud");
+  // A Gmail system label is refused with the reason, and nothing is stored.
+  await field.fill("INBOX");
   await saveChanges();
-  await expect(page.getByText("Use a name outside Assistant/, or exactly Assistant/Archive.")).toBeVisible();
+  await expect(page.getByText("This is a Gmail label of its own and cannot be used here.")).toBeVisible();
   await expect(field).toHaveAttribute("aria-invalid", "true");
   expect(versions(), "the refused name stored no new version").toEqual(["1|operator"]);
 
@@ -257,7 +257,8 @@ test("the archive label is saved with the list, is there after a reload and is i
   expect(exported.status()).toBe(200);
   expect(await exported.text()).toMatch(new RegExp(`archiveLabel:\\s*["']?${ARCHIVE}["']?\\s*$`, "m"));
 
-  // The golden file names Assistant/Archive, so its preview sees the archive label as a change against the stored one.
+  // The golden file names the archive label Assistant/Archive (a plain name with a slash, no longer a prefix), so its
+  // preview sees it as a change against the stored name.
   const answered = page.waitForResponse((response) => response.url().includes("/api/categories/upload") && response.request().method() === "POST");
   await uploadToPreview(page, goldenFile());
   const preview = (await (await answered).json()) as { archiveLabelChanged: boolean };

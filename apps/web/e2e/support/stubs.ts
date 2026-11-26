@@ -39,6 +39,10 @@ export interface Handlers {
   postDecision?: Handler;
   postApprove?: Handler;
   postMoveBack?: Handler;
+  getRename?: Handler;
+  getDeleted?: Handler;
+  postRenameConfirmation?: Handler;
+  postRenameRestore?: Handler;
 }
 
 export interface Stub {
@@ -52,7 +56,12 @@ export const STORED = {
   updatedAt: "2026-11-10T13:02:00Z",
   updatedVia: "telegram",
   version: 3,
-  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00" },
+  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00", waitingMinutes: 720, protectionDays: 7, retentionDays: 30 },
+  ranges: {
+    waitingMinutes: { min: 5, max: 720, default: 720 },
+    protectionDays: { min: 1, max: 30, default: 7 },
+    retentionDays: { min: 7, max: 90, default: 30 },
+  },
 } as const;
 
 const PLACES = {
@@ -132,6 +141,7 @@ const putEcho: Handler = async (route, { state }) => {
     updatedVia: "web",
     version: (sent.version ?? STORED.version) + 1,
     values: sent.values ?? STORED.values,
+    ranges: STORED.ranges,
   })(route, { n: 0, state });
 };
 
@@ -143,6 +153,7 @@ const resetToDefaults: Handler = async (route, { state }) => {
     updatedVia: "web",
     version: (sent.version ?? STORED.version) + 1,
     values: STORED.values,
+    ranges: STORED.ranges,
   })(route, { n: 0, state });
 };
 
@@ -150,14 +161,14 @@ export const CATEGORIES = {
   version: 5,
   ready: true,
   generalInstructions: "Keep receipts for the tax year.",
-  archiveLabel: "Assistant/Archive",
+  archiveLabel: "Archive",
+  otherLabel: "Other",
   categories: [
     { id: "00000000-0000-4000-8000-000000000001", name: "Invoices", description: "Invoices, receipts and payment confirmations.", mailCount: 120, kind: "extra", notify: true, senders: [{ entry: "billing@example.com", subdomains: false, skippedCount: 0 }] },
     { id: "00000000-0000-4000-8000-000000000002", name: "Newsletters", description: "Weekly digests and product news I read on Sunday.", mailCount: 1, kind: "topic", notify: false, senders: [] },
     { id: "00000000-0000-4000-8000-000000000003", name: "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW", description: "https://example.com/a/very/long/address/that/has/no/spaces/at/all/and/keeps/going/and/going", mailCount: 0, kind: "topic", notify: false, senders: [] },
   ],
   other: { mailCount: 42 },
-  olderCategories: [{ labelName: "Assistant/Travel", mailCount: null }],
 } as const;
 
 /** What an upload of a valid file returns: 3 added, 5 changed and 2 removed, one of them with a very long name. */
@@ -167,6 +178,7 @@ export const UPLOAD_PREVIEW = {
   baseVersion: 5,
   expiresAt: "2026-11-22T12:10:00Z",
   added: 3,
+  adopted: 2,
   changed: 5,
   removed: 2,
   removedCategories: ["Travel/Trains", "W".repeat(60)],
@@ -178,6 +190,9 @@ const putCategoriesEcho: Handler = async (route, { state }) => {
   const sent = (route.request().postDataJSON() ?? {}) as { version?: number };
   await reply(200, { ...CATEGORIES, version: (sent.version ?? CATEGORIES.version) + 1 })(route, { n: 0, state });
 };
+
+/** `GET /api/label-rename` while the mailbox has no migration. */
+const NO_RENAME = { state: "none", planHash: null, items: [], summary: { labels: 0, mails: 0 } } as const;
 
 export const PLAN = {
   id: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00aa",
@@ -257,6 +272,10 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     postDecision: reply(200, { changed: 20 }),
     postApprove: reply(200, { state: "scheduled", applyAfter: "2026-11-15T14:20:00Z" }),
     postMoveBack: reply(200, { processed: false }),
+    getRename: reply(200, NO_RENAME),
+    getDeleted: reply(200, { retentionDays: 30, items: [] }),
+    postRenameConfirmation: reply(201, { confirmationId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00cc" }),
+    postRenameRestore: reply(201, { requestId: "5b0c1c2e-1b1e-4c52-9d0e-0a6a1b1c00dd" }),
     ...given,
   };
   return [
@@ -281,6 +300,10 @@ function tableOf(given: Handlers): [Endpoint, string, string, Handler][] {
     ["postDecision", "/api/plan/decisions", "POST", own.postDecision],
     ["postApprove", "/api/plan/approve", "POST", own.postApprove],
     ["postMoveBack", "/api/plan/:id/move-back", "POST", own.postMoveBack],
+    ["getRename", "/api/label-rename", "GET", own.getRename],
+    ["getDeleted", "/api/label-rename/deleted", "GET", own.getDeleted],
+    ["postRenameConfirmation", "/api/label-rename/confirmation", "POST", own.postRenameConfirmation],
+    ["postRenameRestore", "/api/label-rename/restore", "POST", own.postRenameRestore],
   ];
 }
 
@@ -294,7 +317,7 @@ function samePath(stubPath: string, pathname: string): boolean {
 /** Installs the stubs on the page. A request under /api or /auth without a stub is answered 599 and shows up as a failure. */
 export async function stubApi(page: Page, handlers: Handlers = {}): Promise<Stub> {
   const state: StubState = { signedIn: handlers.signedIn ?? false };
-  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getLatestResort: 0, postResort: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0 };
+  const calls: Stub["calls"] = { session: 0, requestCode: 0, verifyCode: 0, getSettings: 0, putSettings: 0, resetSettings: 0, logout: 0, places: 0, getCategories: 0, putCategories: 0, uploadFile: 0, confirmUpload: 0, restorePrevious: 0, exportList: 0, getPlan: 0, getLatestResort: 0, postResort: 0, getPlanItems: 0, postDecision: 0, postApprove: 0, postMoveBack: 0, getRename: 0, getDeleted: 0, postRenameConfirmation: 0, postRenameRestore: 0 };
   const table = tableOf(handlers);
   await page.route(
     (url) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/"),

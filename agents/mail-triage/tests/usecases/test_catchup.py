@@ -16,10 +16,13 @@ from app.core.judgement import Judgement, JudgingList, ListedCategory, NeedsAtte
 from app.core.pinned import PinnedSenders
 from app.usecases.catchup import BACKLOG_ALERT_LIMIT, BUDGET_RESERVE, RUN_LIMIT, CatchUp, CatchUpState
 from app.usecases.triage import MAX_ATTEMPTS, Claim, FilingEntry, Outcome
+from tests.usecases.fakes_labels import FakeLabelBook
 from tests.usecases.fakes_policy import FakePolicySource
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
+
+    from app.core.managed import ManagedLabel
 
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 CURRENT = JudgingList(version=3, categories=(ListedCategory(FINANCE_ID, "Finance", "Bills and invoices"),))
@@ -55,6 +58,8 @@ class FakeMailbox:
         self.mails = {i: fetched(i) for i in ids}
         self.calls: list[str] = []
         self.filed: list[str] = []
+        self.filed_under: list[str] = []
+        self.ensured: list[str] = []
         self.listed_with: list[datetime] = []
         self.list_error: Exception | None = None
         self.after_fetch: Callable[[str], None] = lambda _id: None
@@ -72,15 +77,17 @@ class FakeMailbox:
         self.after_fetch(message_id)
         return self.mails[message_id]
 
-    def ensure_label(self, name: str) -> str:
+    def ensure_label(self, label: ManagedLabel) -> str:
         self.calls.append("ensure_label")
-        return f"id:{name}"
+        self.ensured.append(label.name)
+        return f"id:{label.name}"
 
-    def file(self, message_id: str, label_id: str) -> None:
-        del label_id
+    def file(self, message_id: str, label_id: str) -> str:
         self.calls.append("file")
         self.filed.append(message_id)
+        self.filed_under.append(label_id)
         self.after_file(message_id)
+        return label_id
 
 
 class FakeJudge:
@@ -179,13 +186,14 @@ class Plenty:
         return 10_000
 
 
-def catchup(
+def catchup(  # noqa: PLR0913 - a test helper that takes every part
     mailbox: FakeMailbox,
     judge: FakeJudge,
     store: FakeStore,
     notifier: FakeNotifier | None = None,
     *,
     budget: DailyBudget | Plenty | None = None,
+    labels: FakeLabelBook | None = None,
 ) -> CatchUp:
     notifier = notifier or FakeNotifier()
     return CatchUp(
@@ -197,6 +205,7 @@ def catchup(
         now=lambda: NOW,
         policy=FakePolicySource(),
         pinned=PINNED,
+        labels=labels or FakeLabelBook(lambda: store.current),
     )
 
 
@@ -222,13 +231,13 @@ async def test_given_three_unread_mails_when_it_runs_then_each_is_filed_with_one
 
     assert mailbox.filed == ["new", "mid", "old"]
     assert [e for e in store.events if e.startswith("complete:")] == ["complete:new", "complete:mid", "complete:old"]
-    assert {o.label for o in store.done.values()} == {"Assistant/Finance"}
+    assert {o.label for o in store.done.values()} == {"Finance"}
     assert summary.filed == 3
 
 
 async def test_given_a_mail_filed_earlier_when_it_runs_then_it_is_skipped_and_not_judged_again() -> None:
     mailbox, store, judge = FakeMailbox(["m1", "m2"]), FakeStore(), FakeJudge()
-    store.done["m1"] = Outcome("Assistant/Finance", False, 0.9, None, "", None)  # type: ignore[arg-type]
+    store.done["m1"] = Outcome("Finance", False, 0.9, None, "", None)  # type: ignore[arg-type]
 
     await catchup(mailbox, judge, store).run_once()
 
@@ -239,7 +248,7 @@ async def test_given_a_mail_filed_earlier_when_it_runs_then_it_is_skipped_and_no
 async def test_given_the_pipeline_filed_a_mail_after_listing_when_it_runs_then_it_is_not_judged_twice() -> None:
     mailbox, store, judge = FakeMailbox(["x"]), FakeStore(), FakeJudge(judgement(urgent=True))
     mailbox.after_fetch = lambda mail_id: store.done.update(
-        {mail_id: Outcome("Assistant/Finance", True, 0.9, None, "", None)}  # type: ignore[arg-type]
+        {mail_id: Outcome("Finance", True, 0.9, None, "", None)}  # type: ignore[arg-type]
     )
 
     await catchup(mailbox, judge, store).run_once()
@@ -469,7 +478,7 @@ async def test_given_the_budget_is_used_up_when_it_runs_then_nothing_is_filed_ur
     await catchup(mailbox, FakeJudge(budget=budget), store, budget=budget).run_once()
 
     assert mailbox.filed == []
-    assert store.done == {}  # nothing became "Assistant/Other", urgent or an alert
+    assert store.done == {}  # nothing became "Other", urgent or an alert
 
 
 async def test_given_the_next_day_when_it_runs_again_then_it_continues_with_the_fresh_budget() -> None:
@@ -534,7 +543,7 @@ def alerted(store: FakeStore) -> list[str]:
 
 
 def urgent_outcome(alert: AlertState | None = AlertState.OPEN) -> Outcome:
-    return Outcome("Assistant/Finance", True, 0.9, alert, "", None)  # type: ignore[arg-type]
+    return Outcome("Finance", True, 0.9, alert, "", None)  # type: ignore[arg-type]
 
 
 async def test_given_seven_urgent_old_mails_when_it_runs_then_the_five_newest_get_an_alert() -> None:
@@ -599,6 +608,7 @@ async def test_given_urgent_old_mail_in_quiet_hours_when_it_runs_then_held_alert
         now=lambda: NIGHT,
         policy=source,
         pinned=PINNED,
+        labels=FakeLabelBook(lambda: store.current),
     )
 
     await use_case.run_once()

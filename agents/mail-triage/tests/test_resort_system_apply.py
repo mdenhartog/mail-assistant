@@ -20,7 +20,7 @@ async def test_given_a_pair_when_the_extra_label_changes_then_only_the_extra_lab
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance", "Assistant/Receipt"}
+    assert rig.labels_of(mid) == {"INBOX", "Finance", "Receipt"}
 
 
 async def test_given_a_pair_when_both_parts_change_then_both_labels_swap_and_the_audit_holds_the_pair() -> None:
@@ -30,7 +30,7 @@ async def test_given_a_pair_when_both_parts_change_then_both_labels_swap_and_the
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel", "Assistant/Receipt"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel", "Receipt"}
     (move,) = await rig.store.audit_moves(plan)
     assert label_ids(move.old_label) == {rig.finance, rig.newsletter}
     assert label_ids(move.new_label) == {rig.travel, rig.receipt}
@@ -51,9 +51,9 @@ async def test_given_a_pair_when_the_extra_label_is_added_or_dropped_then_the_to
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(added) == {"INBOX", "Assistant/Finance", "Assistant/Newsletter"}
-    assert rig.labels_of(dropped) == {"INBOX", "Assistant/Finance"}
-    assert rig.labels_of(unfiled) == {"INBOX", "Assistant/Travel", "Assistant/Receipt"}
+    assert rig.labels_of(added) == {"INBOX", "Finance", "Newsletter"}
+    assert rig.labels_of(dropped) == {"INBOX", "Finance"}
+    assert rig.labels_of(unfiled) == {"INBOX", "Travel", "Receipt"}
 
 
 async def test_given_the_user_changed_the_extra_label_meanwhile_when_applied_then_the_item_is_skipped() -> None:
@@ -63,7 +63,7 @@ async def test_given_the_user_changed_the_extra_label_meanwhile_when_applied_the
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance", "Assistant/Receipt"}  # untouched
+    assert rig.labels_of(mid) == {"INBOX", "Finance", "Receipt"}  # untouched
     assert rig.store.item(plan, mid).state is ItemState.SKIPPED
     assert rig.store.item(plan, mid).reason is SkipReason.CHANGED
 
@@ -77,8 +77,8 @@ async def test_given_a_mail_moved_by_the_user_meanwhile_when_applied_then_it_is_
     await rig.apply().run_once()
 
     assert rig.store.item(plan, moved_by_user).reason is SkipReason.CHANGED
-    assert rig.labels_of(moved_by_user) == {"INBOX", "Assistant/Travel"}
-    assert rig.labels_of(untouched) == {"INBOX", "Assistant/Travel"}
+    assert rig.labels_of(moved_by_user) == {"INBOX", "Travel"}
+    assert rig.labels_of(untouched) == {"INBOX", "Travel"}
     assert any("1 moved, 1 skipped" in text for text in rig.telegram.texts)
 
 
@@ -90,7 +90,7 @@ async def test_given_the_new_extra_category_left_the_list_when_applied_then_the_
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance"}
+    assert rig.labels_of(mid) == {"INBOX", "Finance"}
     assert rig.store.state(plan) is PlanState.CANCELLED
 
 
@@ -103,7 +103,7 @@ async def test_given_an_applied_pair_plan_when_moved_back_then_the_old_pair_is_r
 
     await rig.move_back().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance", "Assistant/Newsletter"}
+    assert rig.labels_of(mid) == {"INBOX", "Finance", "Newsletter"}
     assert len(rig.store.restores) == 1
 
 
@@ -117,7 +117,7 @@ async def test_given_an_applied_pair_when_the_user_added_a_label_meanwhile_then_
 
     await rig.move_back().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel", "Assistant/Receipt", "Assistant/Finance"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel", "Receipt", "Finance"}
     assert rig.store.restores == []
 
 
@@ -136,7 +136,7 @@ async def test_given_an_approved_plan_when_the_delay_has_not_passed_then_nothing
     rig.clock.advance(timedelta(minutes=15))
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel", "Assistant/Receipt"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel", "Receipt"}
     (text,) = rig.telegram.texts
     assert "1 moved, 0 skipped" in text
     assert "lock web sign-in" in text.lower()
@@ -155,7 +155,7 @@ async def test_given_a_plan_whose_target_category_was_removed_when_the_apply_run
 
     assert rig.store.state(plan) is PlanState.CANCELLED
     assert rig.modifies() == 0  # no item went to a deleted label
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance"}
+    assert rig.labels_of(mid) == {"INBOX", "Finance"}
     assert any("cancelled" in text for text in rig.telegram.texts)
 
 
@@ -168,4 +168,4 @@ async def test_given_a_list_save_that_keeps_the_targets_when_a_plan_is_scheduled
     await rig.apply().run_once()
 
     assert rig.store.state(plan) is PlanState.APPLIED
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel"}

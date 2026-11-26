@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 from app.db import Database
-from app.settings_repo import SettingsRepository, StoredSettings, VersionConflict
+from app.settings_repo import DEFAULT_CLEANUP, SettingsRepository, StoredSettings, VersionConflict
 from schedule_policy.policy import DEFAULT_POLICY, TimePolicy
 
 ACTOR = "0123456789abcdef0123456789abcdef"
@@ -40,14 +40,14 @@ def repo(web_database: Database) -> SettingsRepository:
 async def test_given_no_row_when_written_at_version_0_then_version_1_and_a_second_writer_conflicts(
     repo: SettingsRepository, owner: asyncpg.Connection
 ) -> None:
-    stored = await repo.write(NEW_YORK, 0, ACTOR)
+    stored = await repo.write(NEW_YORK, DEFAULT_CLEANUP, 0, ACTOR)
 
     assert (stored.policy, stored.version, stored.updated_via) == (NEW_YORK, 1, "web")
     assert stored.updated_at is not None
     assert await repo.read() == stored
     assert await owner.fetchval("select count(*) from settings.schedule") == 1
     with pytest.raises(VersionConflict) as conflict:
-        await repo.write(DEFAULT_POLICY, 0, OTHER)
+        await repo.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, OTHER)
     assert conflict.value.current == stored
 
 
@@ -55,9 +55,9 @@ async def test_given_no_row_when_written_at_version_0_then_version_1_and_a_secon
 async def test_given_a_write_at_version_1_when_committed_then_version_2_and_one_audit_record_per_change(
     repo: SettingsRepository, owner: asyncpg.Connection
 ) -> None:
-    await repo.write(DEFAULT_POLICY, 0, OTHER)
+    await repo.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, OTHER)
 
-    stored = await repo.write(NEW_YORK, 1, ACTOR)
+    stored = await repo.write(NEW_YORK, DEFAULT_CLEANUP, 1, ACTOR)
 
     assert (stored.policy, stored.version) == (NEW_YORK, 2)
     rows = await owner.fetch(AUDIT)
@@ -72,7 +72,7 @@ async def test_given_two_sessions_on_the_same_version_when_both_write_then_exact
     web_database: Database, owner: asyncpg.Connection
 ) -> None:
     first, second = SettingsRepository(web_database), SettingsRepository(web_database)
-    await first.write(DEFAULT_POLICY, 0, ACTOR)
+    await first.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, ACTOR)
     seen = await asyncio.gather(first.read(), second.read())
     assert {s.version for s in seen} == {1}
     barrier = asyncio.Barrier(2)
@@ -80,7 +80,7 @@ async def test_given_two_sessions_on_the_same_version_when_both_write_then_exact
     async def attempt(repo: SettingsRepository, policy: TimePolicy, actor: str) -> StoredSettings | VersionConflict:
         await barrier.wait()
         try:
-            return await repo.write(policy, 1, actor)
+            return await repo.write(policy, DEFAULT_CLEANUP, 1, actor)
         except VersionConflict as conflict:
             return conflict
 
@@ -99,10 +99,10 @@ async def test_given_two_sessions_on_the_same_version_when_both_write_then_exact
 async def test_given_a_stale_version_when_written_then_conflict_and_nothing_changes(
     repo: SettingsRepository, owner: asyncpg.Connection
 ) -> None:
-    current = await repo.write(DEFAULT_POLICY, 0, ACTOR)
+    current = await repo.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, ACTOR)
 
     with pytest.raises(VersionConflict) as conflict:
-        await repo.write(NEW_YORK, 5, ACTOR)
+        await repo.write(NEW_YORK, DEFAULT_CLEANUP, 5, ACTOR)
 
     assert conflict.value.current == current
     assert await repo.read() == current
@@ -113,7 +113,7 @@ async def test_given_no_row_when_written_at_a_later_version_then_conflict_with_t
     repo: SettingsRepository, owner: asyncpg.Connection
 ) -> None:
     with pytest.raises(VersionConflict) as conflict:
-        await repo.write(NEW_YORK, 3, ACTOR)
+        await repo.write(NEW_YORK, DEFAULT_CLEANUP, 3, ACTOR)
 
     assert (conflict.value.current.policy, conflict.value.current.version) == (DEFAULT_POLICY, 0)
     assert await owner.fetchval("select count(*) from settings.schedule") == 0
@@ -123,11 +123,11 @@ async def test_given_no_row_when_written_at_a_later_version_then_conflict_with_t
 async def test_given_a_failing_audit_trigger_when_written_then_the_write_is_rolled_back_with_an_error(
     repo: SettingsRepository, owner: asyncpg.Connection
 ) -> None:
-    current = await repo.write(DEFAULT_POLICY, 0, ACTOR)
+    current = await repo.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, ACTOR)
     await owner.execute(BREAK_AUDIT)
 
     with pytest.raises(DBAPIError):
-        await repo.write(NEW_YORK, 1, ACTOR)
+        await repo.write(NEW_YORK, DEFAULT_CLEANUP, 1, ACTOR)
 
     assert await repo.read() == current
     assert await owner.fetchval("select count(*) from settings.settings_change") == 1
@@ -139,7 +139,7 @@ async def test_given_a_failing_audit_trigger_when_the_first_row_is_written_then_
     await owner.execute(BREAK_AUDIT)
 
     with pytest.raises(DBAPIError):
-        await repo.write(NEW_YORK, 0, ACTOR)
+        await repo.write(NEW_YORK, DEFAULT_CLEANUP, 0, ACTOR)
 
     assert await owner.fetchval("select count(*) from settings.schedule") == 0
 
@@ -148,7 +148,7 @@ async def test_given_a_failing_audit_trigger_when_the_first_row_is_written_then_
 async def test_given_a_write_that_skips_a_version_when_executed_as_the_web_role_then_42501(
     repo: SettingsRepository, web_database: Database
 ) -> None:
-    await repo.write(DEFAULT_POLICY, 0, ACTOR)
+    await repo.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, ACTOR)
 
     with pytest.raises(DBAPIError) as refused:
         async with web_database.session() as session, session.begin():
@@ -166,7 +166,7 @@ async def test_given_a_write_that_skips_a_version_when_executed_as_the_web_role_
 
 async def test_given_an_actor_outside_the_web_form_when_written_then_42501(repo: SettingsRepository) -> None:
     with pytest.raises(DBAPIError) as refused:
-        await repo.write(NEW_YORK, 0, "not-a-digest")
+        await repo.write(NEW_YORK, DEFAULT_CLEANUP, 0, "not-a-digest")
 
     assert getattr(refused.value.orig, "sqlstate", None) == "42501"
 
@@ -175,11 +175,11 @@ async def test_given_an_actor_outside_the_web_form_when_written_then_42501(repo:
 async def test_given_an_injection_zone_when_written_then_the_database_check_refuses_it_and_nothing_changes(
     repo: SettingsRepository, owner: asyncpg.Connection
 ) -> None:
-    current = await repo.write(DEFAULT_POLICY, 0, ACTOR)
+    current = await repo.write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, ACTOR)
     hostile = TimePolicy("'; drop table settings.schedule; --", *_times(DEFAULT_POLICY))
 
     with pytest.raises(DBAPIError):
-        await repo.write(hostile, 1, ACTOR)
+        await repo.write(hostile, DEFAULT_CLEANUP, 1, ACTOR)
 
     assert await repo.read() == current
     assert await owner.fetchval("select to_regclass('settings.schedule') is not null")
@@ -191,11 +191,11 @@ async def test_given_failure_paths_with_the_canary_zone_when_logged_then_no_reco
 ) -> None:
     caplog.set_level(logging.DEBUG)
     canary = TimePolicy(CANARY_ZONE, *_times(DEFAULT_POLICY))
-    await repo.write(canary, 0, ACTOR)
+    await repo.write(canary, DEFAULT_CLEANUP, 0, ACTOR)
     with pytest.raises(VersionConflict):
-        await repo.write(canary, 0, ACTOR)
+        await repo.write(canary, DEFAULT_CLEANUP, 0, ACTOR)
     await owner.execute(BREAK_AUDIT)
     with pytest.raises(DBAPIError):
-        await repo.write(canary, 1, ACTOR)
+        await repo.write(canary, DEFAULT_CLEANUP, 1, ACTOR)
 
     assert CANARY_ZONE not in "\n".join(r.getMessage() for r in caplog.records)

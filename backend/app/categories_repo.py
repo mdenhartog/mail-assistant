@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from category_policy import ARCHIVE_LABEL_DEFAULT, Kind
+from category_policy import ARCHIVE_LABEL_DEFAULT, OTHER_LABEL_DEFAULT, Kind
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -46,7 +46,7 @@ _SKIPPED = text(
     "WHERE k.mailbox_id = :mailbox AND s.version = :version"
 )
 _SETTINGS = text(
-    "SELECT general_instructions, archive_label FROM categories.list_settings "
+    "SELECT general_instructions, archive_label, other_label FROM categories.list_settings "
     "WHERE mailbox_id = :mailbox AND version = :version"
 )
 _HAS_VERSION = text("SELECT 1 FROM categories.list_version WHERE mailbox_id = :mailbox AND version = :version")
@@ -67,8 +67,8 @@ _INSERT_SENDER = text(
     "VALUES (:mailbox, :version, :category_id, :entry, :is_domain, :subdomains)"
 )
 _INSERT_SETTINGS = text(
-    "INSERT INTO categories.list_settings (mailbox_id, version, general_instructions, archive_label) "
-    "VALUES (:mailbox, :version, :instructions, :archive)"
+    "INSERT INTO categories.list_settings (mailbox_id, version, general_instructions, archive_label, other_label) "
+    "VALUES (:mailbox, :version, :instructions, :archive, :other)"
 )
 
 
@@ -101,9 +101,19 @@ class StoredList:
     categories: tuple[StoredCategory, ...]
     general_instructions: str
     archive_label: str
+    other_label: str
     counts: dict[uuid.UUID, int]
     skipped: dict[str, int]  # per list entry as stored; an entry without a row has no key (its count is 0)
     labels: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ListSettings:
+    """The settings stored with a list version: the general instructions and the names of the two special labels."""
+
+    general_instructions: str
+    archive_label: str
+    other_label: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -174,10 +184,12 @@ async def _load(session: AsyncSession, mailbox: str, version: int) -> StoredList
         )
         for row in rows
     )
-    instructions, archive = (
-        (settings.general_instructions, settings.archive_label) if settings else ("", ARCHIVE_LABEL_DEFAULT)
+    instructions, archive, other = (
+        (settings.general_instructions, settings.archive_label, settings.other_label)
+        if settings
+        else ("", ARCHIVE_LABEL_DEFAULT, OTHER_LABEL_DEFAULT)
     )
-    return StoredList(version, categories, instructions, archive, {}, {}, ())
+    return StoredList(version, categories, instructions, archive, other, {}, {}, ())
 
 
 class CategoriesRepository:
@@ -243,8 +255,7 @@ class CategoriesRepository:
         expected_version: int,
         categories: Sequence[StoredCategory],
         new_ids: frozenset[uuid.UUID],
-        general_instructions: str,
-        archive_label: str,
+        settings: ListSettings,
     ) -> None:
         """Add ``expected_version + 1`` with the given categories in order, in one transaction.
 
@@ -254,8 +265,8 @@ class CategoriesRepository:
         Args:
             expected_version: The version the change is based on; it must still be the latest.
             categories: The whole new list.
-            general_instructions: The general instructions of the list, in their stored form.
-            archive_label: The archive label name of the list (validated by the caller).
+            settings: The general instructions (in their stored form), the archive label name (validated by the
+                caller) and the "Other" name (carried over from the list this version is based on).
             new_ids: The ids of the categories that did not exist before; their identity rows are inserted first.
 
         Raises:
@@ -273,7 +284,13 @@ class CategoriesRepository:
                     await session.execute(_INSERT_IDENTITY, {"mailbox": self._mailbox, "id": new_id})
                 await _insert_rows(session, params, categories)
                 await session.execute(
-                    _INSERT_SETTINGS, {**params, "instructions": general_instructions, "archive": archive_label}
+                    _INSERT_SETTINGS,
+                    {
+                        **params,
+                        "instructions": settings.general_instructions,
+                        "archive": settings.archive_label,
+                        "other": settings.other_label,
+                    },
                 )
         except IntegrityError as error:
             if getattr(error.orig, "sqlstate", None) == _UNIQUE_VIOLATION:  # (mailbox, version): a second writer won

@@ -17,8 +17,8 @@ async def test_an_approved_item_swaps_the_assistant_label_and_nothing_else_chang
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(moved) == {"INBOX", "Assistant/Travel"}
-    assert rig.labels_of(unfiled) == {"INBOX", "Assistant/Finance"}  # INBOX stays; only Assistant/ labels change
+    assert rig.labels_of(moved) == {"INBOX", "Travel"}
+    assert rig.labels_of(unfiled) == {"INBOX", "Finance"}  # INBOX stays; only  labels change
     assert set(rig.gmail.mail_table) == {moved, unfiled}  # nothing deleted
     assert set(rig.gmail.calls) <= {"labels.list", "labels.get", "labels.create", "messages.get", "messages.modify"}
     assert rig.store.state(plan) is PlanState.APPLIED
@@ -85,8 +85,8 @@ async def test_a_plan_with_a_category_that_left_the_list_is_cancelled_and_nothin
     await rig.apply().run_once()
 
     assert rig.store.state(plan) is PlanState.CANCELLED
-    assert rig.labels_of(stale) == {"INBOX", "Assistant/Finance"}
-    assert rig.labels_of(fine) == {"INBOX", "Assistant/Finance"}  # nothing of a cancelled plan moves
+    assert rig.labels_of(stale) == {"INBOX", "Finance"}
+    assert rig.labels_of(fine) == {"INBOX", "Finance"}  # nothing of a cancelled plan moves
     assert rig.modifies() == 0
 
 
@@ -108,19 +108,20 @@ async def test_a_category_that_leaves_the_list_during_the_apply_skips_the_item_n
     await rig.apply().run_once()
 
     assert rig.store.item(plan, stale).reason is SkipReason.CATEGORY_REMOVED
-    assert rig.labels_of(stale) == {"INBOX", "Assistant/Finance"}
-    assert rig.labels_of(fine) == {"INBOX", "Assistant/Finance", "Assistant/Newsletter"}
+    assert rig.labels_of(stale) == {"INBOX", "Finance"}
+    assert rig.labels_of(fine) == {"INBOX", "Finance", "Newsletter"}
 
 
-async def test_a_label_of_a_deleted_category_counts_as_the_old_label_of_other() -> None:
+async def test_a_label_that_is_not_managed_is_never_touched_by_a_move() -> None:
     rig = ApplyRig()
-    legacy = rig.gmail.add_label("Assistant/Legacy")
-    mid = rig.mail(("INBOX", legacy))
-    rig.store.add_plan([item(mid, OTHER_ID, FINANCE)])
+    folder = rig.gmail.add_label("Amerika")  # the user's own label, in no list
+    mid = rig.mail(("INBOX", rig.finance, folder))
+    rig.store.add_plan([item(mid, FINANCE, TRAVEL)])
 
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel", "Amerika"}
+    assert {label_id for _, _, label_id in rig.mailbox.writes} == {rig.finance, rig.travel}
 
 
 async def test_pinned_mail_is_never_moved() -> None:
@@ -131,11 +132,11 @@ async def test_pinned_mail_is_never_moved() -> None:
     await rig.apply().run_once()
 
     assert rig.store.item(plan, pinned).reason is SkipReason.PINNED
-    assert rig.labels_of(pinned) == {"INBOX", "Assistant/Finance"}
+    assert rig.labels_of(pinned) == {"INBOX", "Finance"}
     assert rig.modifies() == 0
 
 
-async def test_the_result_notice_has_counts_offers_move_back_and_lock_and_names_empty_labels() -> None:
+async def test_the_result_notice_has_counts_offers_move_back_and_lock_and_counts_empty_labels() -> None:
     rig = ApplyRig()
     a = rig.mail(("INBOX", rig.finance))
     b = rig.mail(("INBOX", rig.finance))
@@ -152,7 +153,7 @@ async def test_the_result_notice_has_counts_offers_move_back_and_lock_and_names_
     assert "Finance" not in text  # Finance still holds the unclear mail
 
 
-async def test_the_notice_names_a_label_that_is_empty_after_the_apply() -> None:
+async def test_the_notice_counts_the_labels_that_are_empty_after_the_apply_and_names_none() -> None:
     rig = ApplyRig()
     mid = rig.mail(("INBOX", rig.finance))
     rig.store.add_plan([item(mid, FINANCE, TRAVEL)])
@@ -161,5 +162,5 @@ async def test_the_notice_names_a_label_that_is_empty_after_the_apply() -> None:
 
     text = rig.telegram.texts[-1]
     assert "1 moved" in text
-    assert "Finance" in text
-    assert "now empty" in text
+    assert "Labels that are empty now: 1" in text
+    assert "Finance" not in text  # no label name in a notice (ADR-0060 point 8)

@@ -67,6 +67,9 @@ export function PreviewPanel({ preview, busy, onReplace, onCancel }: PreviewPane
         {", "}
         <Count count={preview.removed} kind="removed" />
       </p>
+      {preview.adopted > 0 ? (
+        <p className="text-text">{`${String(preview.adopted)} existing ${preview.adopted === 1 ? "label" : "labels"} will be adopted`}</p>
+      ) : null}
       {preview.instructionsChanged ? <p className="text-text">The general instructions change too.</p> : null}
       {preview.archiveLabelChanged ? <p className="text-text">The archive label changes too.</p> : null}
       {preview.removed > 0 ? <RemovedBlock names={preview.removedCategories} /> : null}

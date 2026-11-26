@@ -8,6 +8,7 @@ import { setCsrfToken } from "@/api/client";
 import { expectNoAxeViolations } from "@/test/axe";
 import { json } from "@/test/categories";
 import { READY } from "@/test/plan";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const SESSION = {
   maskedAddress: "m***@example.com",
@@ -17,7 +18,8 @@ const SESSION = {
   noticeIntervalMinutes: 5,
 };
 const SETTINGS = {
-  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00" },
+  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00", ...CLEANUP },
+  ranges: RANGES,
   version: 1,
   updatedAt: null,
   updatedVia: null,

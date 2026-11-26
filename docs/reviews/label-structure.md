@@ -2,7 +2,7 @@
 intent: INT-008
 spec: docs/specs/label-structure.md
 plan: docs/plans/label-structure/index.md
-pr: R1 is built in the pull requests listed under "Units and pull requests"; R2 is one feature pull request, to be filled when opened
+pr: R1 is built in the pull requests listed under "Units and pull requests"; R2 is one feature pull request, #199 (merged 2026-11-23)
 release: not released (R1 and R2 are built; R2 is in the second part of this file)
 ---
 
@@ -120,7 +120,7 @@ Pending: local Docker deploy requested by the owner after merge.
 
 ## Release R2: review record (archive label, sort everything again, tips)
 
-Release R2 is units 18 to 27 and unit 39 of the plan (unit 39 was added during the build, see the plan index). It is built on the feature branch `feature/INT-008/label-structure` and lands in one pull request for the feature. The documentation of phase 8 is this record, the [user guide](../user-guide/label-structure.md), the [API guide](../api/README.md) and the reconciled architecture. With R2 all of the spec is built; what is not delivered is listed under "Known limits of R2".
+Release R2 is units 18 to 27 and unit 39 of the plan (unit 39 was added during the build, see the plan index). It was built on the feature branch `feature/INT-008/label-structure` and landed in one pull request for the feature, #199. The documentation of phase 8 is this record, the [user guide](../user-guide/label-structure.md), the [API guide](../api/README.md) and the reconciled architecture. With R2 all of the spec is built; what is not delivered is listed under "Known limits of R2".
 
 ## R2 gates
 
@@ -132,7 +132,7 @@ Release R2 is units 18 to 27 and unit 39 of the plan (unit 39 was added during t
 | 4 Plan | Units 18 to 27, and unit 39 added while starting unit 26 | `docs/plans/label-structure/` |
 | 5 Build, test first | Units built on unit branches, each with its failing test commit first, and landed in the feature branch | `git log` of the feature branch |
 | 6 Challenge | Red team and code review ran on the R2 code; repair rounds A and B merged into the feature branch | "R2 challenge" below |
-| 7 Verify | One feature pull request and one CI run for the whole of R2. Pull request: to be filled when opened. CI result: to be filled when the run ends. I did not run the prod-like e2e specs for this record (no Docker) | "Known limits of R2" |
+| 7 Verify | One feature pull request and one CI run for the whole of R2. Pull request: #199, merged 2026-11-23. CI result: checks `SUCCESS`, optional jobs skipped. I did not run the prod-like e2e specs for this record (no Docker) | "Known limits of R2" |
 | 8 Finish | User guide, API guide, threat model, architecture and this record updated; the spec stays `status: done` | `node scripts/docs.mjs check`, `node scripts/architecture.mjs check` |
 | 9 Release | Not started | "R2 approvals and deploy" below |
 

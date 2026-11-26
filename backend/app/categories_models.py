@@ -1,6 +1,7 @@
 """Request and response models of the category list API (U-mail-categories-04, category contract v2).
 
-The v2 fields (U-label-structure-11, ADR-0053) are required on a save: no default stands in for a missing one.
+The v2 fields (U-label-structure-11, ADR-0053) and the two label names (ADR-0060) are required on a save: no default
+stands in for a missing one.
 """
 
 import uuid
@@ -61,15 +62,6 @@ class OtherItem(BaseModel):
     mail_count: Annotated[int, Field(ge=0)]
 
 
-class OlderCategory(BaseModel):
-    """An ``Assistant/`` label in Gmail that is not on the list; ``mail_count`` is None while it is not counted."""
-
-    model_config = _CONFIG
-
-    label_name: str
-    mail_count: Annotated[int, Field(ge=0)] | None
-
-
 class CategoryList(BaseModel):
     """What ``GET /api/categories`` returns; ``ready`` is False until the agent has written version 1."""
 
@@ -80,8 +72,8 @@ class CategoryList(BaseModel):
     categories: list[CategoryItem]
     general_instructions: str
     archive_label: str
+    other_label: str
     other: OtherItem
-    older_categories: list[OlderCategory]
 
 
 class CategoryInput(BaseModel):
@@ -109,6 +101,7 @@ class CategoryListUpdate(BaseModel):
     categories: list[CategoryInput]
     general_instructions: str
     archive_label: str
+    other_label: str
 
 
 class CategoryProblem(BaseModel):
@@ -121,7 +114,7 @@ class CategoryProblem(BaseModel):
     model_config = _CONFIG
 
     rule: str
-    field: Literal["name", "description", "id", "list", "senders", "instructions", "archive_label"]
+    field: Literal["name", "description", "id", "list", "senders", "instructions", "archive_label", "other_label"]
     index: int | None
     position: int | None
     other_index: int | None

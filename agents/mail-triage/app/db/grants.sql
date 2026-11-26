@@ -201,3 +201,34 @@ GRANT INSERT (old_topic_id, old_extra_id, new_topic_id, new_extra_id, confidence
 GRANT UPDATE (tip) ON categories.plan_item TO mail_triage_runtime;
 GRANT EXECUTE ON FUNCTION categories.request_resort(text, numeric) TO web_settings_runtime;
 GRANT EXECUTE ON FUNCTION categories.approve_system_plan(uuid) TO mail_triage_runtime;
+
+-- The label boundary (INT-010, U-label-prefix-removal-02, ADR-0060, ADR-0061). The agent writes its own tables: the
+-- managed labels, the plan, the timers and the record of deleted labels. It starts and finishes the state of the rename
+-- plan, but only confirm_label_rename moves it to confirmed (a trigger refuses the agent). The api reads the state, the
+-- plan items and the deleted labels and writes nothing here except through the two functions: it has no right on
+-- managed_label, label_empty_since, the confirmation or the restore table.
+GRANT SELECT, INSERT, UPDATE, DELETE ON categories.managed_label, categories.managed_label_released,
+    categories.label_empty_since, categories.deleted_label TO mail_triage_runtime;
+-- The plan items (SEC-001, RED-006): the agent writes the plan once (INSERT) and settles the state of an item; it cannot
+-- rewrite or delete one. The trigger label_rename_item_guard also fixes every column but the state once the plan is
+-- confirmed. The retention purge deletes through purge_label_records (SECURITY DEFINER), not through a right of the agent.
+GRANT SELECT, INSERT ON categories.label_rename_item TO mail_triage_runtime;
+GRANT UPDATE (state) ON categories.label_rename_item TO mail_triage_runtime;
+GRANT SELECT ON categories.label_migration, categories.label_confirmation, categories.label_restore_request
+    TO mail_triage_runtime;
+GRANT INSERT (mailbox_id, state, plan_hash), UPDATE (state, plan_hash) ON categories.label_migration
+    TO mail_triage_runtime;
+GRANT UPDATE (processed_at) ON categories.label_restore_request TO mail_triage_runtime;
+GRANT SELECT ON categories.label_migration, categories.label_rename_item, categories.deleted_label
+    TO web_settings_runtime;
+GRANT EXECUTE ON FUNCTION categories.label_plan_hash(text) TO mail_triage_runtime;
+-- The retention of the deleted-label record and the rename backup (spec R7); it runs with the agent's own rights.
+GRANT EXECUTE ON FUNCTION categories.purge_label_records() TO mail_triage_runtime;
+GRANT EXECUTE ON FUNCTION categories.confirm_label_rename(text, text, text[]) TO web_settings_runtime;
+GRANT EXECUTE ON FUNCTION categories.request_label_restore(text) TO web_settings_runtime;
+-- The Settings page creates (the first save inserts the row) and saves the label cleanup values with the rest of the
+-- schedule; the CHECK constraints hold the bounds.
+GRANT INSERT (label_wait_minutes, label_protection_days, label_retention_days) ON settings.schedule
+    TO web_settings_runtime;
+GRANT UPDATE (label_wait_minutes, label_protection_days, label_retention_days) ON settings.schedule
+    TO web_settings_runtime;

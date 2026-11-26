@@ -154,7 +154,7 @@ async def test_given_a_mail_of_the_backlog_in_a_ticked_category_then_decide_outc
     fetched = mail("a@example.com", auth=())
     current = JudgingList(3, (FINANCE_TICKED,))
 
-    outcome = decide_outcome(judged(), fetched, current, DAYTIME, DEFAULT_POLICY)
+    outcome = decide_outcome(judged(), fetched, current, DAYTIME, DEFAULT_POLICY, other_label="Other")
 
     assert (outcome.alert, outcome.causes) == (None, ())
 

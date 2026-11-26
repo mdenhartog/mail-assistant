@@ -10,9 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from tests.db.conftest import AGENT_ROLE
 
 
-def create_agent_engine(url: str) -> AsyncEngine:
+def create_agent_engine(url: str, *, pool_size: int = 1) -> AsyncEngine:
     """An engine whose connections act as the agent role: the grants are part of what is tested."""
-    engine = create_async_engine(url, pool_size=1, max_overflow=0)
+    engine = create_async_engine(url, pool_size=pool_size, max_overflow=0)
 
     # On every checkout, not once per connection: the pool resets the session authorization on checkin.
     @event.listens_for(engine.sync_engine, "checkout")

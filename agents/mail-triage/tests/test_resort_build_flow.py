@@ -38,12 +38,11 @@ async def test_only_mail_in_scope_becomes_an_item() -> None:
     rig = Rig()
     rig.request()
     rig.gmail.add_label("Archive")
-    rig.gmail.add_label("DRAFT")
     ok = rig.gmail.add_mail(("INBOX",), subject="ok")
     rig.gmail.add_mail(("SPAM",), subject="spam")
     rig.gmail.add_mail(("TRASH", rig.finance_label), subject="trash")
     rig.gmail.add_mail((rig.gmail.label_id("Archive"), rig.finance_label), subject="archived")
-    rig.gmail.add_mail(("INBOX", rig.gmail.label_id("DRAFT")), subject="draft")
+    rig.gmail.add_mail(("INBOX", "DRAFT"), subject="draft")  # the system label id, not a name
     two = rig.gmail.add_mail((rig.finance_label, rig.travel_label), subject="two")
     rig.mailbox.ghosts.append("deleted-meanwhile")
     rig.judge.answer = TRAVEL
@@ -71,19 +70,20 @@ async def test_first_start_without_a_plan_builds_none_and_judges_no_mail() -> No
     assert not [c for c in rig.gmail.calls if "modify" in c]
 
 
-async def test_a_deleted_category_makes_its_mails_items_and_its_label_stays() -> None:
+async def test_mail_with_only_the_label_of_a_deleted_category_is_not_planned_and_its_label_stays() -> None:
     rig = Rig()
     rig.request()
-    gone = rig.gmail.add_label("Assistant/Old shop")
-    mail = rig.gmail.add_mail((gone,), subject="old")
+    gone = rig.gmail.add_label("Old shop")  # no longer in the list: not managed
+    rig.mailbox.listed_names.add("Old shop")  # even a wide listing returns it
+    rig.gmail.add_mail((gone,), subject="old")
     rig.judge.answer = OTHER_ID
 
     await rig.build.run_once()
 
-    items = rig.store.items_of(rig.store.plan())
-    assert [i.message_id for i in items] == [mail]
-    assert str(items[0].new_topic_id) == OTHER_ID
-    assert "Assistant/Old shop" in rig.gmail.label_names()
+    plan = rig.store.plan()
+    assert rig.store.items_of(plan) == []
+    assert (plan.checked, rig.judge.calls) == (0, 0)
+    assert "Old shop" in rig.gmail.label_names()
     assert not [c for c in rig.gmail.calls if "delete" in c or "modify" in c]
 
 
@@ -178,3 +178,22 @@ async def test_sender_and_subject_lose_bidi_and_format_characters_and_are_capped
     assert len(item.subject) == 120
     for text in (item.sender_name, item.sender_address, item.subject):
         assert not [c for c in text if unicodedata.category(c) in {"Cf", "Cc"}]
+
+
+async def test_given_the_rename_plan_is_not_done_when_a_plan_is_built_then_no_label_is_written() -> None:
+    """RED-002: the build reads only; with the hold on it still makes no label write and the labels stay as they are."""
+    rig = Rig()
+    rig.store.writes_held = True
+    rig.store.stored_ids = {FINANCE: rig.finance_label, TRAVEL: rig.travel_label}
+    rig.request()
+    mail = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="moves")
+    rig.judge.by_subject = {"moves": TRAVEL}
+    names = dict(rig.gmail.label_table)
+
+    await rig.build.run_once()
+
+    assert rig.gmail.label_table == names
+    assert not [
+        c for c in rig.gmail.calls if c in {"labels.create", "labels.patch", "labels.delete", "messages.modify"}
+    ]
+    assert rig.gmail.mail_table[mail].labels == {"INBOX", rig.finance_label}

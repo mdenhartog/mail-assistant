@@ -1,5 +1,5 @@
 {
- "description": "Contract cases for the category list, version 2 (INT-008, AC-1, AC-2, AC-6, AC-42, C-1, C-3, C-6, C-11, C-16). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name. 'category' rows validate one category: 'existing' are the names already on the list, 'labels' the Gmail labels that exist (the caller's view) and 'adoptable' the subset of them that belongs to an older category, which a new category of the same name adopts instead of clashing; 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name whose label (Assistant/ plus the name) has N characters; a description of the form __N__ stands for N letters. 'list' rows validate a whole list; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. Invisible characters and look-alikes use unicode escapes.",
+ "description": "Contract cases for the category list, version 3 (INT-010, ADR-0060, AC 1, 13, 19, 32, 33, 34). One file shared by category_policy, the agent and the api. 'normalise' rows give the expected comparison key of a name; 'label' rows the Gmail label of a name, which is the canonical list name without any prefix. 'category' rows validate one category: 'existing' are the names already on the list and 'settings' the current names of the \"Other\" label and the archive label, in that order; a label that exists already is never a reason to refuse a name (it is adopted), so no row lists labels. A first segment Other or Archive and a Gmail system label (any case, CATEGORY_* too) are reserved names; a name equal to a setting name is a clash. 'rules' is the exact list of refusal rule ids in reporting order, empty means valid. A name of the form __label_len_N__ stands for a valid nested name of N characters (segments of 40 letters); the limit counts Unicode characters, not bytes, slashes included. A description of the form __N__ stands for N letters. 'list' rows validate a whole list with the same 'settings'; 'problems' is a list of [index, rule] pairs, index null for a rule about the whole list; 'generate' N stands for N valid categories. 'instructions' rows give the length of the general instructions (N letters) and the exact refusal rule ids. 'label_setting' rows validate the name of the Other label or the archive label: 'counterpart' is the current name of the other setting, 'own_default' the default name of the setting being checked (Other or Archive; a setting may equal its own default, no other reserved name), 'categories' the list names, 'rules' the exact refusal rule ids (at most one); a row with 'repeat' stands for 'fill' repeated that many times instead of 'name'. 'bounds' rows validate one agent setting by 'setting' (wait_minutes 5 to 720, protection_days 1 to 30, retention_days 7 to 90) with a whole number 'value'. Invisible characters and look-alikes use unicode escapes. Version 3 reserved names (U-label-prefix-removal-24): one list for categories and both settings: Other and Archive (also as a parent), the Gmail system labels (Inbox, Sent, Sent Mail, Drafts, All Mail, Spam, Trash, Chats, Snoozed, Important, Starred, CATEGORY_*) in any case, and the legacy prefix Assistant/ (any case, also full-width or with spaces around the slash), which is refused as a name and as a setting name. Names compare after NFKC and case folding; zero-width and control characters are refused.",
  "normalise": [
   {
    "id": "plain",
@@ -61,32 +61,32 @@
   {
    "id": "plain",
    "name": "Invoices",
-   "expected": "Assistant/Invoices"
+   "expected": "Invoices"
   },
   {
    "id": "nested",
    "name": "Huis/Energie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   },
   {
    "id": "padded",
    "name": "  Invoices ",
-   "expected": "Assistant/Invoices"
+   "expected": "Invoices"
   },
   {
    "id": "spaces_around_segments",
    "name": "Huis / Energie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   },
   {
    "id": "division_slash_folds",
    "name": "Huis\u2215Energie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   },
   {
    "id": "fullwidth_slash_folds",
    "name": "Huis\uff0fEnergie",
-   "expected": "Assistant/Huis/Energie"
+   "expected": "Huis/Energie"
   }
  ],
  "category": [
@@ -95,8 +95,10 @@
    "name": "Invoices",
    "description": "Bills and receipts",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -104,8 +106,10 @@
    "name": "Huis/Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -113,8 +117,10 @@
    "name": "Huis/Energie/Gas",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -124,8 +130,10 @@
    "existing": [
     "Huis/Energie"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -135,8 +143,10 @@
    "existing": [
     "Huis"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -146,8 +156,10 @@
    "existing": [
     "Invoices"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -155,8 +167,10 @@
    "name": "Huis / Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -164,8 +178,10 @@
    "name": "Huis\u2215Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -173,8 +189,10 @@
    "name": "Huis\uff0fEnergie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -182,8 +200,10 @@
    "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -191,8 +211,10 @@
    "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_too_long"
    ]
@@ -202,37 +224,45 @@
    "name": "Huis/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_too_long"
    ]
   },
   {
-   "id": "label_224_characters",
-   "name": "__label_len_224__",
+   "id": "label_254_characters",
+   "name": "__label_len_254__",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
-   "id": "label_225_characters",
-   "name": "__label_len_225__",
+   "id": "label_255_characters",
+   "name": "__label_len_255__",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
-   "id": "label_226_characters",
-   "name": "__label_len_226__",
+   "id": "label_256_characters",
+   "name": "__label_len_256__",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_label_too_long"
    ]
@@ -242,8 +272,10 @@
    "name": "",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_empty"
    ]
@@ -253,8 +285,10 @@
    "name": "   ",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_empty"
    ]
@@ -264,8 +298,10 @@
    "name": "/",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -275,8 +311,10 @@
    "name": "/Huis",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -286,8 +324,10 @@
    "name": "Huis/",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -297,8 +337,10 @@
    "name": "Huis//Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -308,8 +350,10 @@
    "name": "Huis/ /Energie",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -319,8 +363,10 @@
    "name": "\u2215Huis",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -330,8 +376,10 @@
    "name": "Huis\uff0f",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty"
    ]
@@ -341,8 +389,10 @@
    "name": "Inv\u0007oices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -352,8 +402,10 @@
    "name": "Huis/Inv\u0007oices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -363,8 +415,10 @@
    "name": "Inv..oices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -374,8 +428,10 @@
    "name": "..",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -385,8 +441,10 @@
    "name": "Inv\uff0e\uff0eoices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -396,8 +454,10 @@
    "name": "Inv\noices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -407,8 +467,10 @@
    "name": "Inv\u200boices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -418,8 +480,10 @@
    "name": "Inv\u202eoices",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_forbidden_char"
    ]
@@ -429,8 +493,10 @@
    "name": "Other",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -440,8 +506,10 @@
    "name": "archive",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -451,8 +519,10 @@
    "name": "ARCHIVE",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -462,8 +532,10 @@
    "name": "  OTHER  ",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -473,8 +545,10 @@
    "name": "\uff2f\uff54\uff48\uff45\uff52",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -484,8 +558,10 @@
    "name": "Archive/Old",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -495,8 +571,10 @@
    "name": "Other/Things",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_reserved"
    ]
@@ -506,8 +584,10 @@
    "name": "Huis/Archive",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -515,8 +595,10 @@
    "name": "Other things",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -524,8 +606,10 @@
    "name": "Other//x",
    "description": "x",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_segment_empty",
     "name_reserved"
@@ -538,8 +622,10 @@
    "existing": [
     "Invoices"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
@@ -551,8 +637,10 @@
    "existing": [
     "Invoices"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
@@ -564,8 +652,10 @@
    "existing": [
     "Huis/Energie"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
@@ -577,137 +667,325 @@
    "existing": [
     "Huis/Energie"
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_duplicate"
    ]
   },
   {
-   "id": "label_exists_not_on_list",
+   "id": "label_that_exists_is_adopted_not_refused",
    "name": "Invoices",
    "description": "x",
    "existing": [],
-   "labels": [
-    "Assistant/Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
-   "adoptable": [],
-   "rules": [
-    "name_label_exists"
-   ]
+   "rules": []
   },
   {
-   "id": "nested_label_exists_not_on_list",
+   "id": "nested_label_that_exists_is_adopted",
    "name": "Huis/Energie",
    "description": "x",
    "existing": [],
-   "labels": [
-    "Assistant/Huis/Energie"
-   ],
-   "adoptable": [],
-   "rules": [
-    "name_label_exists"
-   ]
-  },
-  {
-   "id": "label_is_an_older_category_is_adopted",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Assistant/Invoices"
-   ],
-   "adoptable": [
-    "Assistant/Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
    "rules": []
   },
   {
-   "id": "label_is_an_older_category_other_case",
-   "name": "invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Assistant/INVOICES"
-   ],
-   "adoptable": [
-    "Assistant/Invoices"
-   ],
-   "rules": []
-  },
-  {
-   "id": "label_of_another_older_category_does_not_adopt",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Assistant/Invoices",
-    "Assistant/Receipts"
-   ],
-   "adoptable": [
-    "Assistant/Receipts"
-   ],
-   "rules": [
-    "name_label_exists"
-   ]
-  },
-  {
-   "id": "label_exists_other_case",
-   "name": "invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Assistant/INVOICES"
-   ],
-   "adoptable": [],
-   "rules": [
-    "name_label_exists"
-   ]
-  },
-  {
-   "id": "label_for_another_name",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Assistant/Receipts"
-   ],
-   "adoptable": [],
-   "rules": []
-  },
-  {
-   "id": "label_outside_assistant_is_ignored",
-   "name": "Invoices",
-   "description": "x",
-   "existing": [],
-   "labels": [
-    "Invoices"
-   ],
-   "adoptable": [],
-   "rules": []
-  },
-  {
-   "id": "duplicate_wins_over_label",
+   "id": "duplicate_still_refused",
    "name": "Invoices",
    "description": "x",
    "existing": [
     "invoices"
    ],
-   "labels": [
-    "Assistant/Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
-   "adoptable": [],
    "rules": [
     "name_duplicate"
    ]
+  },
+  {
+   "id": "reserved_archive_taxes",
+   "name": "archive/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "reserved_other_upper_case",
+   "name": "OTHER",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_inbox",
+   "name": "Inbox",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_inbox_case2",
+   "name": "INBOX",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_spam",
+   "name": "spam",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_trash",
+   "name": "Trash",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_sent",
+   "name": "SENT",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_draft",
+   "name": "Draft",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_starred",
+   "name": "STARRED",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_unread",
+   "name": "Unread",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_important",
+   "name": "important",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_chat",
+   "name": "CHAT",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_category_personal",
+   "name": "CATEGORY_PERSONAL",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_category_social",
+   "name": "category_social",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_\uff49\uff4e\uff42\uff4f\uff58",
+   "name": "\uff29\uff2e\uff22\uff2f\uff38",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_with_child_is_fine",
+   "name": "INBOX/Old",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "category_without_underscore_is_fine",
+   "name": "Category",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "clash_with_renamed_other",
+   "name": "overig",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Overig",
+    "Archive"
+   ],
+   "rules": [
+    "name_setting_clash"
+   ]
+  },
+  {
+   "id": "clash_with_renamed_archive_nested",
+   "name": "BEWAARD / 2026",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Bewaard/2026"
+   ],
+   "rules": [
+    "name_setting_clash"
+   ]
+  },
+  {
+   "id": "below_a_renamed_setting_is_fine",
+   "name": "Bewaard/Sub",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Bewaard"
+   ],
+   "rules": []
+  },
+  {
+   "id": "renamed_setting_is_not_the_default_name_is_free",
+   "name": "Overig",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Bewaard"
+   ],
+   "rules": []
   },
   {
    "id": "description_empty",
    "name": "Invoices",
    "description": "",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "description_empty"
    ]
@@ -717,8 +995,10 @@
    "name": "Invoices",
    "description": "  \n ",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "description_empty"
    ]
@@ -728,8 +1008,10 @@
    "name": "Invoices",
    "description": "__1500__",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": []
   },
   {
@@ -737,8 +1019,10 @@
    "name": "Invoices",
    "description": "__1501__",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "description_too_long"
    ]
@@ -748,11 +1032,267 @@
    "name": "",
    "description": "",
    "existing": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "rules": [
     "name_empty",
     "description_empty"
+   ]
+  },
+  {
+   "id": "legacy_prefix_assistant_archive",
+   "name": "Assistant/Archive",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_assistant_category",
+   "name": "Assistant/Aankopen/Marktplaats",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_upper_case",
+   "name": "ASSISTANT/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_fullwidth",
+   "name": "\uff21ssistant/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_spaces_around_slash",
+   "name": "Assistant / Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_division_slash",
+   "name": "Assistant\u2215Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_zero_width_slash_is_forbidden",
+   "name": "Assistant\u200b/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "assistant_alone_is_fine",
+   "name": "Assistant",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "assistants_is_fine",
+   "name": "Assistants/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "assistant_as_second_segment_is_fine",
+   "name": "Huis/Assistant/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": []
+  },
+  {
+   "id": "system_label_sent_mail",
+   "name": "Sent Mail",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_sent_mail_upper_case",
+   "name": "SENT MAIL",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_drafts",
+   "name": "Drafts",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_all_mail",
+   "name": "all mail",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_chats",
+   "name": "Chats",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "system_label_snoozed",
+   "name": "SNOOZED",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
+   ]
+  },
+  {
+   "id": "zero_width_space_in_archive",
+   "name": "Arch\u200bive",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "soft_hyphen_in_inbox",
+   "name": "In\u00adbox",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "zero_width_joiner_in_other_child",
+   "name": "Other\u200d/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_forbidden_char"
+   ]
+  },
+  {
+   "id": "reserved_fullwidth_archive_child",
+   "name": "\uff21\uff52\uff43\uff48\uff49\uff56\uff45/Taxes",
+   "description": "x",
+   "existing": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
+   "rules": [
+    "name_reserved"
    ]
   }
  ],
@@ -760,8 +1300,10 @@
   {
    "id": "empty_list",
    "categories": [],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
@@ -772,8 +1314,10 @@
      "description": "x"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
@@ -788,8 +1332,10 @@
      "description": "x"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
@@ -804,8 +1350,10 @@
      "description": "y"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      1,
@@ -825,8 +1373,10 @@
      "description": "x"
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      1,
@@ -846,8 +1396,10 @@
      "description": ""
     }
    ],
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      1,
@@ -860,52 +1412,58 @@
    ]
   },
   {
-   "id": "label_not_on_list_refused",
+   "id": "label_that_exists_is_adopted",
    "categories": [
     {
      "name": "Invoices",
      "description": "x"
     }
    ],
-   "labels": [
-    "Assistant/Invoices"
-   ],
-   "adoptable": [],
-   "problems": [
-    [
-     0,
-     "name_label_exists"
-    ]
-   ]
-  },
-  {
-   "id": "label_older_category_adopted",
-   "categories": [
-    {
-     "name": "Invoices",
-     "description": "x"
-    }
-   ],
-   "labels": [
-    "Assistant/Invoices"
-   ],
-   "adoptable": [
-    "Assistant/Invoices"
+   "settings": [
+    "Other",
+    "Archive"
    ],
    "problems": []
   },
   {
+   "id": "clash_with_a_setting_flags_its_index",
+   "categories": [
+    {
+     "name": "Invoices",
+     "description": "x"
+    },
+    {
+     "name": "Overig",
+     "description": "x"
+    }
+   ],
+   "settings": [
+    "Overig",
+    "Archive"
+   ],
+   "problems": [
+    [
+     1,
+     "name_setting_clash"
+    ]
+   ]
+  },
+  {
    "id": "hundred_categories",
    "generate": 100,
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": []
   },
   {
    "id": "hundred_and_one_categories",
    "generate": 101,
-   "labels": [],
-   "adoptable": [],
+   "settings": [
+    "Other",
+    "Archive"
+   ],
    "problems": [
     [
      null,
@@ -933,57 +1491,908 @@
    ]
   }
  ],
- "archive": [
-  {"id": "default_name", "name": "Assistant/Archive", "categories": ["Invoices"], "rules": []},
-  {"id": "outside_assistant", "name": "Bewaard", "categories": ["Invoices"], "rules": []},
-  {"id": "outside_assistant_nested", "name": "Bewaard/2024", "categories": [], "rules": []},
-  {"id": "label_225_characters", "name": "__len_225__", "categories": [], "rules": []},
-  {"id": "label_226_characters", "name": "__len_226__", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "empty", "name": "", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "leading_space", "name": " Bewaard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "trailing_space", "name": "Bewaard ", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "dot_dot", "name": "Bew..aard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "control_character", "name": "Bew\u0007aard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "format_character", "name": "Bew​aard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "leading_slash", "name": "/Bewaard", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "trailing_slash", "name": "Bewaard/", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "empty_segment", "name": "Bewaard//2024", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "slash_look_alike", "name": "Bewaard∕2024", "categories": [], "rules": ["archive_invalid"]},
-  {"id": "system_inbox", "name": "INBOX", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_inbox_lower_case", "name": "inbox", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_spam_mixed_case", "name": "SpAm", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_trash", "name": "TRASH", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_category_label", "name": "CATEGORY_PROMOTIONS", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_category_label_lower_case", "name": "category_social", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "system_label_fullwidth", "name": "ＩＮＢＯＸ", "categories": [], "rules": ["archive_system_label"]},
-  {"id": "category_prefix_without_underscore_is_fine", "name": "Category", "categories": [], "rules": []},
-  {"id": "system_label_with_child_is_fine", "name": "INBOX/Old", "categories": [], "rules": []},
-  {"id": "inside_assistant", "name": "Assistant/Other", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "inside_assistant_below_archive", "name": "Assistant/Archive/Old", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "inside_assistant_other_case", "name": "assistant/archive", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "inside_assistant_fullwidth", "name": "Ａssistant/Huis", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "assistant_itself", "name": "Assistant", "categories": [], "rules": ["archive_inside_assistant"]},
-  {"id": "assistant_prefix_is_fine", "name": "Assistants", "categories": [], "rules": []},
-  {"id": "equal_to_a_category_label", "name": "Assistant/Huis", "categories": ["Huis"], "rules": ["archive_category_label"]},
-  {"id": "equal_to_a_category_label_other_case", "name": "ASSISTANT/HUIS", "categories": ["Huis"], "rules": ["archive_category_label"]},
-  {"id": "below_a_category_label", "name": "Assistant/Huis/Energie", "categories": ["Huis"], "rules": ["archive_category_label"]},
-  {"id": "below_a_nested_category_label", "name": "Assistant/Huis/Energie/Gas", "categories": ["Huis/Energie"], "rules": ["archive_category_label"]},
-  {"id": "parent_of_a_category_label", "name": "Assistant/Huis", "categories": ["Huis/Energie"], "rules": ["archive_inside_assistant"]},
-  {"id": "sibling_with_same_prefix", "name": "Assistant/Huisje", "categories": ["Huis"], "rules": ["archive_inside_assistant"]}
+ "label_setting": [
+  {
+   "id": "default_other",
+   "name": "Other",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "default_archive",
+   "name": "Archive",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "nested",
+   "name": "Bewaard/2026",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "characters_255",
+   "name": "",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [],
+   "repeat": 255,
+   "fill": "a"
+  },
+  {
+   "id": "characters_256",
+   "name": "",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_too_long"
+   ],
+   "repeat": 256,
+   "fill": "a"
+  },
+  {
+   "id": "multibyte_255_characters",
+   "name": "",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [],
+   "repeat": 255,
+   "fill": "\u00e9"
+  },
+  {
+   "id": "multibyte_256_characters",
+   "name": "",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_too_long"
+   ],
+   "repeat": 256,
+   "fill": "\u00e9"
+  },
+  {
+   "id": "empty",
+   "name": "",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "leading_space",
+   "name": " Bewaard",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "trailing_space",
+   "name": "Bewaard ",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "space_around_segment",
+   "name": "Bewaard / 2026",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "dot_dot",
+   "name": "Bew..aard",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "control_character",
+   "name": "Bew\u0007aard",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "format_character",
+   "name": "Bew\u200baard",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "leading_slash",
+   "name": "/Bewaard",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "trailing_slash",
+   "name": "Bewaard/",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "double_slash",
+   "name": "Bewaard//2024",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "slash_look_alike",
+   "name": "Bewaard\u22152024",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "system_inbox",
+   "name": "INBOX",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_inbox_lower_case",
+   "name": "inbox",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_spam_mixed_case",
+   "name": "SpAm",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_trash",
+   "name": "TRASH",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_category_personal",
+   "name": "CATEGORY_PERSONAL",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_category_lower_case",
+   "name": "category_social",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_label_fullwidth",
+   "name": "\uff29\uff2e\uff22\uff2f\uff38",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "category_prefix_without_underscore_is_fine",
+   "name": "Category",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "system_label_with_child_is_fine",
+   "name": "INBOX/Old",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "other_for_the_archive_label",
+   "name": "other",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "archive_for_the_other_label",
+   "name": "ARCHIVE",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "equals_a_category",
+   "name": "Invoices",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "equals_a_category_other_case",
+   "name": "INVOICES",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "equals_a_nested_category_case_only",
+   "name": "aankopen/marktplaats",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "below_a_category",
+   "name": "Invoices/Old",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "below_a_nested_category",
+   "name": "Aankopen/Marktplaats/Oud",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_category_clash"
+   ]
+  },
+  {
+   "id": "above_a_category_is_fine",
+   "name": "Aankopen",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "category_prefix_text_is_fine",
+   "name": "Invoices 2",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "too_long_wins_over_clash",
+   "name": "",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [],
+   "rules": [
+    "setting_name_too_long"
+   ],
+   "repeat": 256,
+   "fill": "a"
+  },
+  {
+   "id": "other_default_with_a_renamed_archive",
+   "name": "Other",
+   "counterpart": "Bewaard",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "archive_default_with_a_renamed_other",
+   "name": "Archive",
+   "counterpart": "Overig",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "archive_for_the_other_label_renamed_archive",
+   "name": "Archive",
+   "counterpart": "Bewaard",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "other_for_the_archive_label_renamed_other",
+   "name": "other",
+   "counterpart": "Overig",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "archive_child_for_the_archive_label",
+   "name": "ARCHIVE/Old",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "other_child_for_the_other_label",
+   "name": "Other/Mail",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_for_archive",
+   "name": "Assistant/Archive",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_for_other",
+   "name": "assistant/Other",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "legacy_prefix_fullwidth",
+   "name": "\uff21ssistant/Old",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_reserved"
+   ]
+  },
+  {
+   "id": "assistant_alone_is_fine",
+   "name": "Assistant",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": []
+  },
+  {
+   "id": "system_sent_mail",
+   "name": "Sent Mail",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_drafts",
+   "name": "DRAFTS",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_all_mail",
+   "name": "All Mail",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_chats",
+   "name": "chats",
+   "counterpart": "Archive",
+   "own_default": "Other",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "system_snoozed",
+   "name": "Snoozed",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_system_label"
+   ]
+  },
+  {
+   "id": "zero_width_space_in_archive",
+   "name": "Arch\u200bive",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  },
+  {
+   "id": "soft_hyphen_in_inbox",
+   "name": "In\u00adbox",
+   "counterpart": "Other",
+   "own_default": "Archive",
+   "categories": [
+    "Invoices",
+    "Aankopen/Marktplaats"
+   ],
+   "rules": [
+    "setting_name_invalid"
+   ]
+  }
+ ],
+ "bounds": [
+  {
+   "id": "wait_minutes_-1",
+   "setting": "wait_minutes",
+   "value": -1,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "wait_minutes_0",
+   "setting": "wait_minutes",
+   "value": 0,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "wait_minutes_4",
+   "setting": "wait_minutes",
+   "value": 4,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "wait_minutes_5",
+   "setting": "wait_minutes",
+   "value": 5,
+   "rules": []
+  },
+  {
+   "id": "wait_minutes_6",
+   "setting": "wait_minutes",
+   "value": 6,
+   "rules": []
+  },
+  {
+   "id": "wait_minutes_720",
+   "setting": "wait_minutes",
+   "value": 720,
+   "rules": []
+  },
+  {
+   "id": "wait_minutes_721",
+   "setting": "wait_minutes",
+   "value": 721,
+   "rules": [
+    "wait_minutes_out_of_range"
+   ]
+  },
+  {
+   "id": "protection_days_-1",
+   "setting": "protection_days",
+   "value": -1,
+   "rules": [
+    "protection_days_out_of_range"
+   ]
+  },
+  {
+   "id": "protection_days_0",
+   "setting": "protection_days",
+   "value": 0,
+   "rules": [
+    "protection_days_out_of_range"
+   ]
+  },
+  {
+   "id": "protection_days_1",
+   "setting": "protection_days",
+   "value": 1,
+   "rules": []
+  },
+  {
+   "id": "protection_days_30",
+   "setting": "protection_days",
+   "value": 30,
+   "rules": []
+  },
+  {
+   "id": "protection_days_31",
+   "setting": "protection_days",
+   "value": 31,
+   "rules": [
+    "protection_days_out_of_range"
+   ]
+  },
+  {
+   "id": "retention_days_0",
+   "setting": "retention_days",
+   "value": 0,
+   "rules": [
+    "retention_days_out_of_range"
+   ]
+  },
+  {
+   "id": "retention_days_6",
+   "setting": "retention_days",
+   "value": 6,
+   "rules": [
+    "retention_days_out_of_range"
+   ]
+  },
+  {
+   "id": "retention_days_7",
+   "setting": "retention_days",
+   "value": 7,
+   "rules": []
+  },
+  {
+   "id": "retention_days_90",
+   "setting": "retention_days",
+   "value": 90,
+   "rules": []
+  },
+  {
+   "id": "retention_days_91",
+   "setting": "retention_days",
+   "value": 91,
+   "rules": [
+    "retention_days_out_of_range"
+   ]
+  }
  ],
  "confidence": [
-  {"id": "below_half", "confidence": 0.494, "pct": 49, "threshold": 50, "at_or_above": false},
-  {"id": "half_boundary_rounds_up", "confidence": 0.495, "pct": 50, "threshold": 50, "at_or_above": true},
-  {"id": "exactly_half", "confidence": 0.5, "pct": 50, "threshold": 50, "at_or_above": true},
-  {"id": "below_eighty", "confidence": 0.794, "pct": 79, "threshold": 80, "at_or_above": false},
-  {"id": "eighty_boundary_rounds_up", "confidence": 0.795, "pct": 80, "threshold": 80, "at_or_above": true},
-  {"id": "exactly_eighty", "confidence": 0.8, "pct": 80, "threshold": 80, "at_or_above": true},
-  {"id": "half_boundary_against_eighty", "confidence": 0.495, "pct": 50, "threshold": 80, "at_or_above": false},
-  {"id": "zero", "confidence": 0.0, "pct": 0, "threshold": 50, "at_or_above": false},
-  {"id": "one", "confidence": 1.0, "pct": 100, "threshold": 80, "at_or_above": true},
-  {"id": "smallest_half_up", "confidence": 0.005, "pct": 1, "threshold": 1, "at_or_above": true},
-  {"id": "below_smallest_half_up", "confidence": 0.004, "pct": 0, "threshold": 1, "at_or_above": false},
-  {"id": "float_trap_0_295", "confidence": 0.295, "pct": 30, "threshold": 30, "at_or_above": true},
-  {"id": "float_trap_0_145", "confidence": 0.145, "pct": 15, "threshold": 15, "at_or_above": true}
+  {
+   "id": "below_half",
+   "confidence": 0.494,
+   "pct": 49,
+   "threshold": 50,
+   "at_or_above": false
+  },
+  {
+   "id": "half_boundary_rounds_up",
+   "confidence": 0.495,
+   "pct": 50,
+   "threshold": 50,
+   "at_or_above": true
+  },
+  {
+   "id": "exactly_half",
+   "confidence": 0.5,
+   "pct": 50,
+   "threshold": 50,
+   "at_or_above": true
+  },
+  {
+   "id": "below_eighty",
+   "confidence": 0.794,
+   "pct": 79,
+   "threshold": 80,
+   "at_or_above": false
+  },
+  {
+   "id": "eighty_boundary_rounds_up",
+   "confidence": 0.795,
+   "pct": 80,
+   "threshold": 80,
+   "at_or_above": true
+  },
+  {
+   "id": "exactly_eighty",
+   "confidence": 0.8,
+   "pct": 80,
+   "threshold": 80,
+   "at_or_above": true
+  },
+  {
+   "id": "half_boundary_against_eighty",
+   "confidence": 0.495,
+   "pct": 50,
+   "threshold": 80,
+   "at_or_above": false
+  },
+  {
+   "id": "zero",
+   "confidence": 0.0,
+   "pct": 0,
+   "threshold": 50,
+   "at_or_above": false
+  },
+  {
+   "id": "one",
+   "confidence": 1.0,
+   "pct": 100,
+   "threshold": 80,
+   "at_or_above": true
+  },
+  {
+   "id": "smallest_half_up",
+   "confidence": 0.005,
+   "pct": 1,
+   "threshold": 1,
+   "at_or_above": true
+  },
+  {
+   "id": "below_smallest_half_up",
+   "confidence": 0.004,
+   "pct": 0,
+   "threshold": 1,
+   "at_or_above": false
+  },
+  {
+   "id": "float_trap_0_295",
+   "confidence": 0.295,
+   "pct": 30,
+   "threshold": 30,
+   "at_or_above": true
+  },
+  {
+   "id": "float_trap_0_145",
+   "confidence": 0.145,
+   "pct": 15,
+   "threshold": 15,
+   "at_or_above": true
+  }
  ]
 }

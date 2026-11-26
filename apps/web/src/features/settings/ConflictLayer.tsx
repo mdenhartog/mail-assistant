@@ -5,12 +5,12 @@ import { Button } from "@/components/Button";
 import { ConflictBanner } from "@/features/settings/ConflictBanner";
 import { useConflict } from "@/features/settings/useConflict";
 import type { ConflictMark, ConflictSource } from "@/features/settings/useConflict";
-import type { ConflictState, FieldKey, SettingsValues } from "@/features/settings/useSettings";
+import type { ConflictState, FieldKey, FieldValue, SettingsValues } from "@/features/settings/useSettings";
 
 interface ConflictLayerProps {
   conflict: ConflictState | null;
   values: SettingsValues;
-  setValue: (field: FieldKey, value: string) => void;
+  setValue: (field: FieldKey, value: FieldValue) => void;
 }
 
 interface MarkItemProps {

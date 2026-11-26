@@ -9,7 +9,8 @@ from datetime import timedelta
 import pytest
 
 from app.core.resort_plan import ItemState, PlanState
-from tests.resort_apply_support import FINANCE, TRAVEL, ApplyRig, item
+from app.usecases.resort_apply import SkipReason
+from tests.resort_apply_support import FINANCE, OTHER_ID, TRAVEL, ApplyRig, item
 
 
 async def test_two_apply_runs_at_once_move_each_mail_once() -> None:
@@ -20,7 +21,7 @@ async def test_two_apply_runs_at_once_move_each_mail_once() -> None:
     await asyncio.gather(rig.apply().run_once(), rig.apply().run_once())
 
     assert rig.modifies() == 2 * len(mails)  # one add and one remove per mail, no more
-    assert all(rig.labels_of(m) == {"INBOX", "Assistant/Travel"} for m in mails)
+    assert all(rig.labels_of(m) == {"INBOX", "Travel"} for m in mails)
     assert rig.store.state(plan) is PlanState.APPLIED
     assert len(rig.telegram.texts) == 1  # one result notice
 
@@ -41,7 +42,7 @@ async def test_a_database_failure_after_the_gmail_change_ends_applied_without_a_
 
     assert rig.modifies() == 2  # nothing moved twice
     assert rig.store.state(plan) is PlanState.APPLIED
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel"}
     assert len(await rig.store.audit_moves(plan)) == 1
 
 
@@ -56,13 +57,13 @@ async def test_a_crash_between_adding_and_removing_is_finished_on_retry_without_
     rig.mailbox.on_remove = crash
     with pytest.raises(ConnectionResetError):
         await rig.apply().run_once()
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Finance", "Assistant/Travel"}  # never without a label
+    assert rig.labels_of(mid) == {"INBOX", "Finance", "Travel"}  # never without a label
 
     rig.mailbox.on_remove = None
     rig.clock.advance(timedelta(minutes=6))
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel"}
     assert rig.modifies() == 2  # the add ran once, the retry only removed
     assert rig.store.state(plan) is PlanState.APPLIED
 
@@ -85,7 +86,7 @@ async def test_apply_retry_with_intent_skips_mail_that_gained_archive() -> None:
     await rig.apply().run_once()
 
     assert rig.store.item(plan, mid).state is ItemState.SKIPPED
-    assert "Assistant/Finance" in rig.labels_of(mid)  # the old label is not removed from a mail that left the scope
+    assert "Finance" in rig.labels_of(mid)  # the old label is not removed from a mail that left the scope
 
 
 async def test_a_lost_answer_after_the_add_is_finished_on_retry() -> None:
@@ -99,7 +100,7 @@ async def test_a_lost_answer_after_the_add_is_finished_on_retry() -> None:
     rig.clock.advance(timedelta(minutes=6))
     await rig.apply().run_once()
 
-    assert rig.labels_of(mid) == {"INBOX", "Assistant/Travel"}
+    assert rig.labels_of(mid) == {"INBOX", "Travel"}
     assert rig.store.state(plan) is PlanState.APPLIED
 
 
@@ -122,7 +123,7 @@ async def test_lock_during_an_apply_stops_before_the_next_batch() -> None:
 
     await rig.apply().run_once()
 
-    moved = [m for m in mails if rig.labels_of(m) == {"INBOX", "Assistant/Travel"}]
+    moved = [m for m in mails if rig.labels_of(m) == {"INBOX", "Travel"}]
     assert moved == mails[:2]  # the first batch stays moved
     assert rig.store.state(plan) is PlanState.CANCELLED
     assert rig.telegram.texts == []
@@ -152,4 +153,44 @@ async def test_a_plan_cancelled_during_the_apply_stops_before_the_next_batch() -
     rig.mailbox.on_add = cancel_after_first
     await rig.apply().run_once()
 
-    assert sum(rig.labels_of(m) == {"INBOX", "Assistant/Travel"} for m in mails) == 1
+    assert sum(rig.labels_of(m) == {"INBOX", "Travel"} for m in mails) == 1
+
+
+async def test_the_archive_label_wins_and_the_mail_is_left_alone_even_when_the_archive_was_renamed_by_hand() -> None:
+    rig = ApplyRig()
+    archive = rig.gmail.add_label(
+        "Done"
+    )  # the archive setting is Archive; the user renamed the label, the id is stored
+    rig.store.stored_ids["archive"] = archive
+    mid = rig.mail(("INBOX", rig.finance, archive))
+    plan = rig.store.add_plan([item(mid, FINANCE, TRAVEL)])
+
+    await rig.apply().run_once()
+
+    assert rig.store.item(plan, mid).reason is SkipReason.OUT_OF_SCOPE
+    assert rig.mailbox.writes == []
+    assert rig.labels_of(mid) == {"INBOX", "Finance", "Done"}
+
+
+async def test_a_move_adds_and_removes_managed_labels_by_their_stored_id_even_after_a_hand_rename() -> None:
+    rig = ApplyRig()
+    rig.gmail.label_table[rig.travel] = "Trips"  # renamed by hand; its id is the one the database stored
+    rig.store.stored_ids[TRAVEL] = rig.travel
+    mid = rig.mail(("INBOX", rig.finance))
+    rig.store.add_plan([item(mid, FINANCE, TRAVEL)])
+
+    await rig.apply().run_once()
+
+    assert rig.mailbox.writes == [("add", mid, rig.travel), ("remove", mid, rig.finance)]
+    assert rig.labels_of(mid) == {"INBOX", "Trips"}
+
+
+async def test_a_label_without_a_stored_id_is_created_by_the_name_of_the_other_setting() -> None:
+    rig = ApplyRig()
+    rig.store.other_name = "Misc"
+    mid = rig.mail(("INBOX", rig.finance))
+    rig.store.add_plan([item(mid, FINANCE, OTHER_ID)])
+
+    await rig.apply().run_once()
+
+    assert rig.labels_of(mid) == {"INBOX", "Misc"}

@@ -209,6 +209,8 @@ class Runner:
         inbox: InboxPort,
         router: RouterPort,
         list_sync: ListSyncPort,
+        label_rename: ResortStepPort,
+        label_cleanup: ResortStepPort,
         list_notice: ListNoticePort,
         approval_notice: ApprovalNoticePort,
         resort_build: ResortStepPort,
@@ -234,6 +236,8 @@ class Runner:
         self._inbox = inbox
         self._router = router
         self._list_sync = list_sync
+        self._label_rename = label_rename
+        self._label_cleanup = label_cleanup
         self._list_notice = list_notice
         self._approval_notice = approval_notice
         self._resort_build = resort_build
@@ -261,6 +265,10 @@ class Runner:
         from someone else, or someone guessing codes, must reach Marco soon.
         """
         await self._guard("list_sync", self._sync_list())
+        # INT-010: the one-off rename of the old labels; when it is done the sync's gate opens.
+        await self._guard("label_rename", self._label_rename.run_once())
+        # INT-010: the delayed delete of empty labels; it waits until the rename is done and deletes one label at most.
+        await self._guard("label_cleanup", self._label_cleanup.run_once())
         # A change of the list is announced like a web change: soon, outside quiet hours.
         await self._guard("list_notice", self._list_notice.run(self._now()))
         await self._guard("approval_notice", self._approval_notice.run(self._now()))

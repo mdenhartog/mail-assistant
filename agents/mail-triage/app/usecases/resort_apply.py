@@ -1,13 +1,14 @@
-"""Apply an approved re-sort plan: swap the ``Assistant/`` label of each approved mail (INT-004).
+"""Apply an approved re-sort plan: swap the managed labels of each approved mail (INT-004, INT-010).
 
-ADR-0046 points 4 and 8, ADR-0047, spec AC-14, AC-15, AC-18, AC-26, AC-35, AC-39, AC-51, AC-57.
+ADR-0046 points 4 and 8, ADR-0047, ADR-0060, spec AC-14, AC-15, AC-18, AC-26, AC-35, AC-39, AC-51, AC-57.
 
 The agent takes ``scheduled`` plans whose ``apply_after`` has passed and works through the approved items in batches.
 Before every batch it checks the web lock and compare-and-sets its own claim on the plan, so Lock, Cancel and a second
 run stop it before the next batch. For every mail it checks again that the proposed category is still in the list, that
 the mail still exists and is in scope, carries exactly the old label and is not pinned. Only then does it change labels,
-and only ``Assistant/`` labels, through the narrow Gmail port: nothing is deleted, archived or sent, and ``INBOX`` is
-never touched.
+and only managed labels (the category list, "Other" and the archive label, by Gmail label id; ADR-0060), through the
+narrow Gmail port: nothing is deleted, archived or sent, and ``INBOX`` is never touched. Scope is decided by label id: a
+label that is not managed never puts a mail in scope and is never added or removed, and the archive label wins.
 
 A swap is two Gmail calls and a database write. The order makes every crash recoverable:
 
@@ -28,7 +29,8 @@ is checked against the whole old pair, so a mail whose extra label the user chan
 changed mail. A plan whose target category left the list (an upload or a rename, D20) is cancelled before it moves
 anything.
 
-The notice holds numbers and the names of labels that are empty afterwards (D18); it never holds a sender or subject.
+The notice holds numbers only, the count of labels that are empty afterwards included; it never holds a label name,
+a sender or a subject (ADR-0060 point 8).
 """
 
 from __future__ import annotations
@@ -41,18 +43,19 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
 from app.core import approval_text
-from app.core.judgement import OTHER_ID, OTHER_LABEL
+from app.core.judgement import OTHER_ID
+from app.core.mail_errors import LabelWritesHeld, MailFailed, MailGone
+from app.core.managed import LabelRef, ManagedLabel, ManagedSet, Role
+from app.core.pinned import pinned_kind
 from app.core.resort_plan import ItemState, Plan, PlanNotDueError, PlanState, start_apply
-from app.core.scope import LABEL_PREFIX, Scope, classify, clean_display
-from app.usecases.triage import pinned_mail_kind
+from app.core.scope import Scope, classify
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Mapping
     from datetime import datetime
 
     from app.adapters.gmail_read import FetchedMail
     from app.core.pinned import PinnedSenders
-    from app.core.scope import ArchiveLabel
 
 __all__ = [
     "BATCH_SIZE",
@@ -68,26 +71,34 @@ __all__ = [
     "MailGone",
     "Offer",
     "ResortApply",
+    "ResortLabels",
     "SkipReason",
     "held_label_ids",
     "join_label_ids",
     "label_ids",
-    "label_name_of",
 ]
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 50
-NAME_MAX = 60
 MAX_ITEM_ATTEMPTS = 3  # a mail that fails this often ends ``failed`` and no longer holds back the plan
 
 
-class MailGone(Exception):  # noqa: N818 - a fact about the mail, not a failure
-    """The mail no longer exists in Gmail."""
+@dataclass(frozen=True, slots=True)
+class ResortLabels:
+    """The managed labels of one moment (ADR-0060): the set that decides scope, and the label of each category.
 
+    ``by_category`` maps a category id of the current list to its managed label; ``OTHER_ID`` maps to the "Other"
+    label of the settings. The archive label is in ``managed`` only (it is never a target). A label whose Gmail id is
+    not stored yet has ``label_id`` ``None`` and is created or adopted by name when a move needs it.
+    """
 
-class MailFailed(Exception):  # noqa: N818 - a fact about one mail, not a failure of the agent
-    """Gmail refused or failed an operation on one mail after the adapter's own retries; the mail is not gone."""
+    managed: ManagedSet
+    by_category: Mapping[str, ManagedLabel]
+
+    def category_of(self, label: ManagedLabel) -> str | None:
+        """The category id a managed label stands for; ``None`` for the archive label."""
+        return next((cid for cid, found in self.by_category.items() if found == label), None)
 
 
 class SkipReason(StrEnum):
@@ -145,6 +156,10 @@ class ApplyMailbox(Protocol):
     ``MailFailed``.
     """
 
+    def set_managed(self, managed: ManagedSet) -> None:
+        """Use the managed labels of this batch: the adapter only changes labels of this set, by id."""
+        ...
+
     def label_names(self) -> dict[str, str]:
         """Label id to label name."""
         ...
@@ -153,16 +168,16 @@ class ApplyMailbox(Protocol):
         """Headers and label ids of one mail; ``None`` when it no longer exists."""
         ...
 
-    def ensure_label(self, name: str) -> str:
-        """The id of the ``Assistant/`` label ``name``, created when missing (idempotent)."""
+    def ensure_label(self, label: ManagedLabel) -> str:
+        """The id of the managed label, created or adopted by name when it has none yet (idempotent)."""
         ...
 
-    def add_label(self, message_id: str, label_id: str) -> None:
-        """Add one ``Assistant/`` label (idempotent); raises ``MailGone`` when the mail is gone."""
+    def add_label(self, message_id: str, label_id: str) -> str:
+        """Add one managed label (idempotent), return the id used; raises ``MailGone`` when the mail is gone."""
         ...
 
     def remove_label(self, message_id: str, label_id: str) -> None:
-        """Remove one ``Assistant/`` label (idempotent); raises ``MailGone`` when the mail is gone."""
+        """Remove one managed label (idempotent); raises ``MailGone`` when the mail is gone."""
         ...
 
     def count_mail(self, label_id: str) -> int:
@@ -209,12 +224,8 @@ class ApplyStore(Protocol):
         """``scheduled`` or ``applying`` to ``cancelled`` (Lock); false when it was already something else."""
         ...
 
-    async def current_categories(self) -> dict[str, str]:
-        """Category id to name of the current list."""
-        ...
-
-    async def extra_label_names(self) -> frozenset[str]:
-        """The Gmail label names (``Assistant/...``) of the extra-label categories of the current list."""
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels now: the current list, the "Other" setting and the archive label (ADR-0060)."""
         ...
 
     async def target_ids(self, plan_id: uuid.UUID) -> frozenset[str]:
@@ -260,17 +271,9 @@ class ApplyStore(Protocol):
         ...
 
 
-def label_name_of(category_id: str, categories: dict[str, str]) -> str | None:
-    """The Gmail label name of a category of the current list; ``None`` when it is not in the list."""
-    if category_id == OTHER_ID:
-        return OTHER_LABEL
-    name = categories.get(category_id)
-    return None if name is None else f"{LABEL_PREFIX}{name.strip()}"
-
-
-def held_label_ids(mail: FetchedMail, names: dict[str, str]) -> set[str]:
-    """The ids of the ``Assistant/`` labels on the mail."""
-    return {i for i in mail.labels if names.get(i, "").startswith(LABEL_PREFIX)}
+def held_label_ids(mail: FetchedMail, names: dict[str, str], managed: ManagedSet) -> set[str]:
+    """The ids of the managed labels on the mail (the archive label too: it is managed, and it wins elsewhere)."""
+    return {i for i in mail.labels if managed.find(LabelRef(i, names.get(i, ""))) is not None}
 
 
 def label_ids(text: str) -> frozenset[str]:
@@ -285,10 +288,10 @@ def join_label_ids(ids: Iterable[str]) -> str:
 
 @dataclass(frozen=True, slots=True)
 class _Checked:
-    """A mail that passed every check: the labels it holds now (the old pair) and the label names of the new pair."""
+    """A mail that passed every check: the labels it holds now (the old pair) and the managed labels of the new pair."""
 
     old_ids: frozenset[str]
-    new_label_names: tuple[str, ...]
+    new_labels: tuple[ManagedLabel, ...]
 
 
 def _added(move: AuditMove) -> set[str]:
@@ -298,42 +301,47 @@ def _added(move: AuditMove) -> set[str]:
 
 @dataclass(frozen=True, slots=True)
 class _View:
-    """The current list and the label table as one batch of items sees them."""
+    """The managed labels and the label table as one batch of items sees them."""
 
-    categories: dict[str, str]  # category id to name
+    labels: ResortLabels
     names: dict[str, str]  # Gmail label id to name
-    extras: frozenset[str]  # the label names of the extra-label categories
 
-    def new_label_names(self, one: ApplyItem) -> tuple[str, ...] | None:
-        """The label names of the new pair; ``None`` when a target category left the list."""
-        topic = label_name_of(str(one.new_topic_id), self.categories)
-        extra = None if one.new_extra_id is None else label_name_of(str(one.new_extra_id), self.categories)
+    def refs(self, mail: FetchedMail) -> list[LabelRef]:
+        """The labels of a mail as ``classify`` wants them: id and current name."""
+        return [LabelRef(i, self.names.get(i, "")) for i in mail.labels]
+
+    def managed_label(self, label_id: str) -> ManagedLabel | None:
+        """The managed label with this Gmail id (by name only while its id is not stored)."""
+        return self.labels.managed.find(LabelRef(label_id, self.names.get(label_id, "")))
+
+    def new_labels(self, one: ApplyItem) -> tuple[ManagedLabel, ...] | None:
+        """The managed labels of the new pair; ``None`` when a target category left the list."""
+        topic = self.labels.by_category.get(str(one.new_topic_id))
+        extra = None if one.new_extra_id is None else self.labels.by_category.get(str(one.new_extra_id))
         if topic is None or (one.new_extra_id is not None and extra is None):
             return None
         return (topic,) if extra is None else (topic, extra)
 
     def holds_old_pair(self, one: ApplyItem, held: set[str]) -> bool:
-        """Whether the mail carries exactly the old pair: its topic label (or none, for Other) and its extra label.
-
-        Other is the topic of mail without a topic label and of mail under the label of a category that left the list.
-        """
-        extras = {i for i in held if self.names[i] in self.extras}
+        """Whether the mail carries exactly the old pair: its topic label (or none, for Other) and its extra label."""
+        found = {i: self.managed_label(i) for i in held}
+        extras = {i for i, label in found.items() if label is not None and label.role is Role.EXTRA}
         topics = held - extras
-        return self._topic_matches(str(one.old_topic_id), topics) and self._extra_matches(one.old_extra_id, extras)
+        return self._topic_matches(str(one.old_topic_id), [found[i] for i in topics]) and self._extra_matches(
+            one.old_extra_id, [found[i] for i in extras]
+        )
 
-    def _topic_matches(self, old_topic: str, topics: set[str]) -> bool:
+    def _topic_matches(self, old_topic: str, topics: list[ManagedLabel | None]) -> bool:
         if not topics:
-            return old_topic == OTHER_ID
-        name = self.names[next(iter(topics))]
-        if name == label_name_of(old_topic, self.categories):
-            return True
-        listed = {label_name_of(c, self.categories) for c in self.categories}
-        return old_topic == OTHER_ID and name not in listed
+            return old_topic == OTHER_ID  # Other is the topic of mail without a topic label
+        wanted = self.labels.by_category.get(old_topic)
+        return wanted is not None and topics == [wanted]
 
-    def _extra_matches(self, old_extra: uuid.UUID | None, extras: set[str]) -> bool:
+    def _extra_matches(self, old_extra: uuid.UUID | None, extras: list[ManagedLabel | None]) -> bool:
         if old_extra is None:
             return not extras
-        return {self.names[i] for i in extras} == {label_name_of(str(old_extra), self.categories)}
+        wanted = self.labels.by_category.get(str(old_extra))
+        return wanted is not None and extras == [wanted]
 
 
 class ResortApply:
@@ -348,7 +356,6 @@ class ResortApply:
         notifier: ApplyNotifier,
         now: Callable[[], datetime],
         pinned: PinnedSenders,
-        archive: ArchiveLabel,  # the protected label (C-14, ADR-0059)
         batch_size: int = BATCH_SIZE,
     ) -> None:
         """Wire the ports, the clock and the allow-list of pinned sender domains."""
@@ -358,7 +365,6 @@ class ResortApply:
         self._notifier = notifier
         self._now = now
         self._pinned = pinned
-        self._archive = archive
         self._batch = batch_size
 
     async def run_once(self) -> None:
@@ -378,9 +384,9 @@ class ResortApply:
         An upload or a rename that removes a target cancels the plan; a list save that keeps every target lets it
         finish. True when the plan was cancelled (now or by someone else meanwhile: it is not ours to apply).
         """
-        categories = await self._store.current_categories()
+        labels = (await self._store.managed_labels()).by_category
         targets = await self._store.target_ids(due.plan_id)
-        if all(t == OTHER_ID or t in categories for t in targets):
+        if all(t == OTHER_ID or t in labels for t in targets):
             return False
         if await self._store.cancel(due.plan_id):
             logger.info("plan cancelled: a target category left the list plan=%s", due.plan_id)
@@ -400,11 +406,12 @@ class ResortApply:
         items = [one for one in found if one.message_id not in waiting][: self._batch]
         if not items:
             return False
-        categories = await self._store.current_categories()
-        extras = await self._store.extra_label_names()
+        labels = await self._store.managed_labels()
+        self._mail.set_managed(labels.managed)
         names = await asyncio.to_thread(self._mail.label_names)
+        view = _View(labels, names)
         for one in items:
-            if not await self._apply_item(plan_id, one, _View(categories, names, extras)):
+            if not await self._apply_item(plan_id, one, view):
                 waiting.add(one.message_id)
         return True
 
@@ -435,6 +442,9 @@ class ResortApply:
         """
         try:
             await self._move_item(plan_id, one, view)
+        except LabelWritesHeld:  # the rename plan is not done: wait, no attempt is counted and no label is made (R4)
+            logger.info("item waits for the rename plan plan=%s", plan_id)
+            return False
         except MailFailed:
             attempts = await self._store.count_attempt(plan_id, one.message_id)
             logger.warning("item failed plan=%s attempts=%d", plan_id, attempts)
@@ -446,14 +456,14 @@ class ResortApply:
 
     async def _move_item(self, plan_id: uuid.UUID, one: ApplyItem, view: _View) -> None:
         mid = one.message_id
-        if view.new_label_names(one) is None:
+        if view.new_labels(one) is None:
             await self._skip(plan_id, mid, SkipReason.CATEGORY_REMOVED)
             return
         mail = await asyncio.to_thread(self._mail.fetch, mid)
         if mail is None:
             await self._skip(plan_id, mid, SkipReason.GONE)
             return
-        held = held_label_ids(mail, view.names)
+        held = held_label_ids(mail, view.names, view.labels.managed)
         intent = await self._store.intent_for(plan_id, mid)
         try:
             if intent is not None and _added(intent) <= held:
@@ -493,18 +503,17 @@ class ResortApply:
 
     def _check(self, one: ApplyItem, mail: FetchedMail, view: _View, held: set[str]) -> _Checked | SkipReason:
         """The checks before a move, in the order that cannot leak: scope, pinning, then the old pair."""
-        label_names = {view.names[i] for i in mail.labels if i in view.names}
-        scope = classify(label_names, self._archive.name, view.extras)
+        scope = classify(view.refs(mail), view.labels.managed)
         if scope is Scope.OUT:
             return SkipReason.OUT_OF_SCOPE
         if scope is Scope.UNCLEAR:
             return SkipReason.CHANGED
-        if pinned_mail_kind(mail, self._pinned) is not None:
+        if pinned_kind(mail.auth_results, mail.sender, self._pinned) is not None:
             return SkipReason.PINNED
-        new_names = view.new_label_names(one)
-        if new_names is None or not view.holds_old_pair(one, held):
+        new_labels = view.new_labels(one)
+        if new_labels is None or not view.holds_old_pair(one, held):
             return SkipReason.CHANGED
-        return _Checked(frozenset(held), new_names)
+        return _Checked(frozenset(held), new_labels)
 
     async def _move(  # noqa: PLR0913, PLR0917
         self,
@@ -516,10 +525,9 @@ class ResortApply:
         held: set[str],
     ) -> None:
         if intent is None:
-            by_name = {name: label_id for label_id, name in view.names.items()}
             new_ids = {
-                by_name.get(name) or await asyncio.to_thread(self._mail.ensure_label, name)
-                for name in checked.new_label_names
+                label.label_id or await asyncio.to_thread(self._mail.ensure_label, label)
+                for label in checked.new_labels
             }
             intent = AuditMove(mid, join_label_ids(checked.old_ids), join_label_ids(new_ids))
             await self._store.record_intent(plan_id, intent)
@@ -541,24 +549,24 @@ class ResortApply:
     async def _report(self, plan_id: uuid.UUID) -> None:
         counts = await self._store.item_counts(plan_id)
         await self._store.remove_applied_items(plan_id)
-        empty = await self._empty_labels(plan_id)
+        empty = await self._count_empty_labels(plan_id)
         text = (
             f"Plan applied: {counts.get(ItemState.APPLIED, 0)} moved, {counts.get(ItemState.SKIPPED, 0)} skipped"
             + (f", {counts[ItemState.FAILED]} failed" if counts.get(ItemState.FAILED) else "")
             + "."
         )
         if empty:
-            text += f" Labels now empty, you can delete them in Gmail: {', '.join(empty)}."
+            text += f" Labels that are empty now: {empty}."
         text += f" You can move everything back or lock web sign-in. {approval_text.LOCK_EXPLAINED}"
         logger.info("plan applied plan=%s counts=%s", plan_id, {k.value: v for k, v in counts.items()})
         await self._notifier.result(text, plan_id=plan_id, offers=(Offer.MOVE_BACK, Offer.LOCK))
 
-    async def _empty_labels(self, plan_id: uuid.UUID) -> list[str]:
-        """Names of the labels mail was moved out of that hold no mail now (D18; the agent never deletes labels)."""
+    async def _count_empty_labels(self, plan_id: uuid.UUID) -> int:
+        """How many labels mail was moved out of hold no mail now (a count: a notice never names a label)."""
         names = await asyncio.to_thread(self._mail.label_names)
         old_ids = sorted({i for m in await self._store.audit_moves(plan_id) for i in label_ids(m.old_label)})
-        empty: list[str] = []
+        empty = 0
         for label_id in old_ids:
             if label_id in names and await asyncio.to_thread(self._mail.count_mail, label_id) == 0:
-                empty.append(clean_display(names[label_id].removeprefix(LABEL_PREFIX), NAME_MAX))
+                empty += 1
         return empty

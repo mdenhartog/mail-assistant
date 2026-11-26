@@ -56,7 +56,7 @@ def content(**changes: object) -> MailContent:
 
 
 def outcome(
-    label: str = "Assistant/Finance",
+    label: str = "Finance",
     *,
     alert: AlertState | None = None,
     confidence: float | None = 0.9,
@@ -325,18 +325,18 @@ async def test_given_audit_entries_when_written_then_they_hold_kind_alert_and_di
 async def test_given_the_overview_when_asked_then_only_unalerted_mails_since_the_start_are_listed(
     store: PgStore, engine: AsyncEngine
 ) -> None:
-    await add(store, "old", outcome("Assistant/Finance"))
+    await add(store, "old", outcome("Finance"))
     async with engine.begin() as connection:
         await connection.execute(
             text("update mail_item set created_at = :t where gmail_message_id = 'old'"), {"t": NOW - timedelta(days=2)}
         )
-    await add(store, "quiet", outcome("Assistant/Newsletters", confidence=0.4, sender="n@example.com", subject="Hi"))
+    await add(store, "quiet", outcome("Newsletters", confidence=0.4, sender="n@example.com", subject="Hi"))
     await add(store, "loud", outcome(alert=AlertState.OPEN))
 
     listed = await store.filed_without_alert_since(NOW - timedelta(days=1))
 
     assert [(m.label, m.confidence, m.sender, m.subject) for m in listed] == [
-        ("Assistant/Newsletters", 0.4, "n@example.com", "Hi")
+        ("Newsletters", 0.4, "n@example.com", "Hi")
     ]
 
 
@@ -382,7 +382,7 @@ async def test_given_old_mail_content_when_purged_then_the_content_is_gone_and_t
             )
         ).one()
         new = (await connection.execute(text("select sender from mail_item where gmail_message_id = 'new'"))).one()
-    assert tuple(old) == (None, None, None, None, None, "Assistant/Finance", True)
+    assert tuple(old) == (None, None, None, None, None, "Finance", True)
     assert new[0] == "boss@example.com"
 
 
@@ -489,16 +489,16 @@ async def test_given_backlog_alerts_in_any_state_and_a_normal_alert_when_counted
 async def test_given_urgent_and_normal_mail_without_alerts_when_listed_then_urgent_is_set_only_for_urgent(
     store: PgStore,
 ) -> None:
-    urgent_without_alert = replace(outcome("Assistant/Finance"), urgent=True, alert=None)
-    for message_id, result in (("u1", urgent_without_alert), ("n1", outcome("Assistant/Newsletter"))):
+    urgent_without_alert = replace(outcome("Finance"), urgent=True, alert=None)
+    for message_id, result in (("u1", urgent_without_alert), ("n1", outcome("Newsletter"))):
         assert await store.claim(message_id, f"t-{message_id}") is Claim.NEW
         await store.complete_backlog(message_id, result)
 
     filed = await store.filed_without_alert_since(NOW - timedelta(days=1))
 
     assert {(mail.label, mail.urgent) for mail in filed} == {
-        ("Assistant/Finance", True),
-        ("Assistant/Newsletter", False),
+        ("Finance", True),
+        ("Newsletter", False),
     }
 
 
@@ -506,7 +506,7 @@ async def test_given_an_urgent_mail_filed_yesterday_when_the_next_overview_is_li
     store: PgStore, engine: AsyncEngine
 ) -> None:
     assert await store.claim("u1", "t-u1") is Claim.NEW
-    await store.complete_backlog("u1", replace(outcome("Assistant/Finance"), urgent=True, alert=None))
+    await store.complete_backlog("u1", replace(outcome("Finance"), urgent=True, alert=None))
     async with engine.begin() as connection:
         await connection.execute(text("update mail_item set created_at = now() - interval '1 day'"))
     start_of_today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
