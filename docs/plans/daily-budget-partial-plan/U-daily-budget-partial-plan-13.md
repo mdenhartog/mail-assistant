@@ -19,3 +19,4 @@ feature: daily-budget-partial-plan
   4. Given an expired series, When it opens, Then the plain sentence shows and no part is offered (AC 16). (type: edge)
   5. Given the 409, When the user sorts again, Then the plain message shows (AC 17). (type: error)
   6. Given every state, When axe runs, Then there is no violation in both schemes and no horizontal scroll (AC 11). (type: a11y)
+  7. Given the stubs, When a contract test validates every stub body against `backend/openapi.json`, Then each one is valid (the stubs cannot drift from the real api). (type: edge)

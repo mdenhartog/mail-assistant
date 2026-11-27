@@ -17,4 +17,4 @@ feature: daily-budget-partial-plan
   2. Given `DAILY_MODEL_BUDGET` of 51 or 1001, When the agent starts, Then settings validation fails and names only the field (SAC-18). (type: security)
   3. Given `DAILY_MODEL_BUDGET` of 52 and of 1000, When the settings load, Then both are accepted (SAC-18). (type: edge)
   4. Given the compose file, When its defaults go through the settings loader, Then the budget is 500 (T-15). (type: edge)
-  5. Given the README, When the settings table is read, Then it names 500 and the bound. (type: happy)
+  5. Given the README, When `node scripts/docs.mjs check` runs, Then it passes and the settings table names 500 and the bound. (type: happy)

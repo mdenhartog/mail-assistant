@@ -15,6 +15,7 @@ feature: daily-budget-partial-plan
 - Criteria:
   1. Given part 1 ended at mail M and M was deleted, When the next scan starts, Then it continues after M's date and no mail of part 1 is listed again (SAC-10, AC 19). (type: edge)
   2. Given the mark cannot be placed at all, When the scan starts, Then it returns `cursor_lost` and lists nothing (T-08). (type: security)
-  3. Given a mail on which the model fails 3 times, When the build runs again, Then the mail is `unclear`, the cursor moves past it and no further call is spent (SAC-4, AC 18). (type: security)
-  4. Given a mail that fails twice and then succeeds, When it is judged, Then the result is used and the attempts are not reset to zero for other mails. (type: edge)
-  5. Given logs, When a cursor moves or is lost, Then they hold no message id, no internalDate and no mail text (SAC-17). (type: security)
+  3. Given a mail on which the model fails 3 times (the count kept in `fail_count` and `fail_mark` of the plan, U-03), When the build runs again after a restart, Then the mail is `unclear`, the cursor moves past it and no further call is spent (SAC-4, AC 18). (type: security)
+  4. Given mail X fails twice and then succeeds and mail Y is next, When both are judged, Then X uses its result and Y still has 3 attempts. (type: edge)
+  5. Given the build stored `cursor_lost` as the pause reason, When the user presses Cancel on the open part or 14 days pass, Then the series ends (reason `ended` or `expired`) and a new request is accepted again; until then the series is unfinished and a new request gets 409 (D13, D9). (type: edge)
+  6. Given logs, When a cursor moves or is lost, Then they hold no message id, no internalDate and no mail text (SAC-17). (type: security)

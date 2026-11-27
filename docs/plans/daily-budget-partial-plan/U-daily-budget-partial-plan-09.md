@@ -13,11 +13,15 @@ feature: daily-budget-partial-plan
 - Parallel: no
 - Guardrails: guardrail-python, guardrail-pytest, guardrail-llm
 - Criteria:
-  1. Given a build with 60 calls left above the reserve, When the next mail needs 2 calls and fewer are left, Then the build stops with the reason `budget` and the checked mails close as part 1 (AC 2). (type: happy)
+  1. Given 1 call left above the reserve and a mail that needs 2, When the build reaches it, Then the build stops with the reason `budget` and the mails checked before it close as part 1 (AC 2). (type: happy)
   2. Given part 1 is finished, When the next budget day starts, Then part 2 starts after the cursor and no mail of part 1 is judged again (AC 4). (type: happy)
   3. Given part 1 is still open, When the next day starts, Then part 2 does not start and the pause reason is `waiting_for_part` (AC 5). (type: edge)
   4. Given 5 000 mails over several parts, When the cap is reached, Then no further part starts and the rest is "not looked at" (AC 7). (type: edge)
   5. Given the cursor mail was deleted, When part 2 starts, Then it continues after that mail's date (AC 19). (type: edge)
   6. Given the build stops at the paced share, When the day goes on, Then the build goes on in the same part until the hour allows more or the budget is spent (AC 22). (type: happy)
-  7. Given new mail arrives while a plan builds and the budget is low, When both run, Then new mail still gets its calls (AC 9). (type: happy)
-  8. Given logs and audit, When a part closes or waits, Then they hold numbers only (AC 14). (type: security)
+  7. Given logs and audit, When a part closes or waits, Then they hold numbers only (AC 14). (type: security)
+  8. Given the build is stopped by the pace, When the pause is stored, Then the reason is `pace`; given it is stopped by the budget, Then `budget`; given the cursor mark is lost, Then `cursor_lost` (AC 11, D13). (type: edge)
+  9. Given a part open for 14 days, When the next budget day starts, Then the series ends with `expired` and the build starts no part (AC 16, SAC-12). (type: security)
+  10. Given a build at 23:59 UTC when midnight passes, When it goes on, Then the day and the pace hour reset once, the part stays one part and part 2 starts only on a later run (D10). (type: edge)
+
+The cap is injectable in tests (the default stays 5 000).

@@ -19,3 +19,5 @@ feature: daily-budget-partial-plan
   4. Given a new request with no unfinished series, When it is sent, Then it is stored as before (AC 12). (type: happy)
   5. Given the api role, When it reads the plan, Then it uses the column-level grant and `build_cursor` is never selected (SAC-16). (type: security)
   6. Given the contract, When `export_openapi --check` runs, Then the file matches the code. (type: happy)
+  7. Given a request that was stored and no plan yet, When the same user sends a second request, Then it is refused with 409 and one row exists (double submit). (type: edge)
+  8. Given the refusal is decided in the database function of U-03, When the api gets its typed error, Then it maps it to 409 with a plain message and holds no second definition of "unfinished". (type: edge)

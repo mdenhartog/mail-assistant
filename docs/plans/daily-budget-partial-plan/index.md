@@ -26,10 +26,17 @@ The plan for `docs/specs/daily-budget-partial-plan.md` (revision 2, approved), A
 | [U-daily-budget-partial-plan-12](U-daily-budget-partial-plan-12.md) | Web: "Review moves" shows the part and why a plan waits | web | U-daily-budget-partial-plan-11 | yes | 4 |
 | [U-daily-budget-partial-plan-13](U-daily-budget-partial-plan-13.md) | End-to-end: the journey of a paused part | web | U-daily-budget-partial-plan-12 | no | 5 |
 
+## Test rules for every unit
+
+- Coverage of the changed code is at least 90 %; mutation testing runs on U-04 and U-06 (the arithmetic and the rules).
+- Time always comes from the database (`categories.utc_now()`, U-02); pure rules take the day, the hour and the ages as arguments. Tests move the clock by overriding that function, never the agent's clock.
+- Two-instance, crash and lease tests use real PostgreSQL connections with a barrier (testcontainers); the 5 000-mail cap is injectable in tests.
+- "Unfinished series" is defined once, in the database function of U-03; the agent and the api use it and have no copy.
+
 ## Build order
 
-1. Wave 1 — in parallel (at most two build agents at a time): U-01, U-02, U-04, U-06, U-07
-2. Wave 2 (after wave 1) — one at a time because both touch the migration chain or the budget: U-03, U-05
+1. Wave 1 — in parallel, at most two build agents at a time, so three rounds: U-02 first (U-03 and U-05 need it), then U-04 with U-06, then U-01 with U-07
+2. Wave 2 (after wave 1): U-03 (needs U-02 in the Alembic chain) and U-05 (needs U-02 and U-04); U-05 does not touch the migration chain, so they may run together
 3. Wave 3 — U-08 and U-11 in parallel
 4. Wave 4 — U-09 on its own (it rebuilds the build use case); U-10 and U-12 in parallel with each other
 5. Wave 5 — U-13

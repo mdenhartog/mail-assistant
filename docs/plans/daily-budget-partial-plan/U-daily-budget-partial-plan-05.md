@@ -20,3 +20,7 @@ feature: daily-budget-partial-plan
   5. Given the build runs at 00:30 UTC with a full budget, When it spends, Then it stops at the paced share (SAC-7, AC 22). (type: happy)
   6. Given the code base, When the architecture test runs, Then every model call path goes through the spend function (SAC-18). (type: security)
   7. Given logs and audit, When a spend is refused, Then they hold integers and fixed values only (AC 14, SAC-17). (type: security)
+  8. Given the agent's own clock is 10 minutes ahead at 23:55 database time, When it spends, Then the day and the pace hour are the database's (SAC-1). (type: security)
+  9. Given the budget is gone after the first HTTP attempt of a judgement, When the retry would follow, Then no further HTTP call is made. (type: edge)
+
+The day and the hour come from `categories.utc_now()` (U-02); the pure rules receive them as arguments.

@@ -20,3 +20,7 @@ feature: daily-budget-partial-plan
   5. Given the Cancel button of part 1, When it is pressed after part 2 exists, Then only part 1 is affected or it is refused as used; given a chat that is not allowed or a wrong secret, Then it is refused (SAC-15). (type: security)
   6. Given a series ends by `expired`, When the day changes, Then one counts-only notice says so (AC 16, SAC-12). (type: edge)
   7. Given logs, When a notice is sent, Then no sender, subject, label name or message id is in them (SAC-17). (type: security)
+  8. Given Cancel, Undo or Lock arrives while a part is `applying`, When it is handled, Then the moves already done stay and no further move starts (SAC-13). (type: security)
+  9. Given a part with no items (all unclear), When it closes, Then no `auto` notice is sent and the series goes on (spec D2). (type: edge)
+
+Notice cases (exact counts): (a) a `review` part, no earlier notice today: 1 message; (b) a second `review` part the same UTC day: 0 messages; (c) an `auto` part with items the same day: 1 message in addition (always sent); (d) a failed send: it is retried, and a `review` notice that fails does not block the apply of nothing (a review part never applies without the user); (e) `expired` or `ended`: 1 counts-only message, not counted against (a) to (c).

@@ -21,3 +21,6 @@ feature: daily-budget-partial-plan
   6. Given a part open for 14 days, When decided, Then `end(expired)` (SAC-12, AC 16). (type: security)
   7. Given a series older than 14 days, When decided, Then `end(expired)` (AR-C). (type: security)
   8. Given an ended series (property test), When any event arrives, Then the decision is never `start_next_part`. (type: security)
+  9. Given a part with one mail checked, no moves and all items unclear, When decided, Then its plans are terminal, the mails count toward the cap and the next part may start (spec D2). (type: edge)
+
+Time enters as arguments (the database day, hour and ages), never from a clock. Mutation testing runs on this unit; coverage of the changed code is at least 90 %.

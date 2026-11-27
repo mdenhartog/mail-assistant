@@ -13,8 +13,10 @@ feature: daily-budget-partial-plan
 - Parallel: yes
 - Guardrails: guardrail-python, guardrail-pytest
 - Criteria:
-  1. Given a full budget at 00:30 UTC, When the allowance is asked, Then it is at most 9 calls (SAC-7, AC 22). (type: happy)
-  2. Given 12:00 UTC and nothing spent, When asked, Then the allowance is 225 (half of 450). (type: happy)
+  1. Given limit 500, reserve 50, hour 0 (integer hours, floor) and nothing spent, When asked, Then the allowance is 0; given hour 1, Then 18 (SAC-7, AC 22). (type: happy)
+  2. Given hour 12 and nothing spent, When asked, Then the allowance is 225 (half of 450). (type: happy)
   3. Given the plan has already spent its share, When asked, Then the allowance is 0 and never negative. (type: edge)
-  4. Given hour 24 or more (end of day), When asked, Then the allowance is the whole of `limit - reserve` minus what was spent. (type: edge)
+  4. Given hour 23 and nothing spent, When asked, Then the allowance is 431; the hour is always 0 to 23. (type: edge)
   5. Given any input (property test), When asked, Then `spent + allowance` never exceeds `limit - reserve` (AC 9). (type: security)
+
+Mutation testing runs on this unit (the arithmetic is the risk); coverage of the changed code is at least 90 %.
