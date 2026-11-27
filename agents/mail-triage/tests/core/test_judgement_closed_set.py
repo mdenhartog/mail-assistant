@@ -8,18 +8,32 @@ import pytest
 
 from app.core.judgement import (
     OTHER_ID,
-    OTHER_LABEL,
     SUMMARY_MAX_CHARS,
     Filing,
     Judgement,
     ListedCategory,
     NeedsAttention,
-    decide,
     parse_judgement,
-    resolve,
+)
+from app.core.judgement import (
+    decide as _decide,
+)
+from app.core.judgement import (
+    resolve as _resolve,
 )
 from category_policy.kinds import Kind
 from tests.fakes.stub_model import HOSTILE_CORPUS
+
+OTHER_LABEL = "Other"
+
+
+def resolve(judgement: Judgement, categories: object) -> Filing | NeedsAttention:
+    return _resolve(judgement, categories, other_label=OTHER_LABEL)  # type: ignore[arg-type]
+
+
+def decide(raw: object, categories: object) -> Filing | NeedsAttention:
+    return _decide(raw, categories, other_label=OTHER_LABEL)  # type: ignore[arg-type]
+
 
 LIST = tuple(
     ListedCategory(category_id=str(uuid.UUID(int=n)), name=f"Topic {n:02d}", description=f"About topic {n}")
@@ -52,7 +66,7 @@ def test_given_a_list_of_40_categories_when_judged_then_every_category_can_be_us
         assert result.category_id == category.category_id
         labels.append(result.label)
 
-    assert labels == [f"Assistant/Topic {n:02d}" for n in range(1, 41)]
+    assert labels == [f"Topic {n:02d}" for n in range(1, 41)]
     assert len(set(labels)) == 40
 
 
@@ -60,7 +74,7 @@ def test_given_an_id_of_the_list_when_resolved_then_the_mail_carries_exactly_tha
     result = resolve(judgement(LIST[6].category_id), LIST)
 
     assert isinstance(result, Filing)
-    assert result.label == "Assistant/Topic 07"
+    assert result.label == "Topic 07"
 
 
 def test_given_the_nil_id_when_resolved_then_it_is_other() -> None:
@@ -166,7 +180,7 @@ def test_given_a_topic_and_an_extra_label_of_the_list_when_resolved_then_the_mai
     result = resolve(judgement(LIST[1].category_id, extra_id=IMPORTANT.category_id), WITH_EXTRAS)
 
     assert isinstance(result, Filing)
-    assert (result.label, result.category_id) == ("Assistant/Topic 02", LIST[1].category_id)
+    assert (result.label, result.category_id) == ("Topic 02", LIST[1].category_id)
     assert result.extra == IMPORTANT
 
 
@@ -218,3 +232,15 @@ def test_given_the_nil_id_as_the_extra_when_resolved_then_the_extra_is_dropped()
 
     assert isinstance(result, Filing)
     assert result.extra is None
+
+
+def test_given_no_category_is_found_then_the_other_label_of_the_settings_is_used() -> None:  # criterion 6
+    result = _resolve(judgement("nope"), LIST, other_label="Misc")
+    assert isinstance(result, Filing)
+    assert (result.label, result.category_id) == ("Misc", OTHER_ID)
+
+
+def test_given_a_listed_topic_then_it_is_filed_under_its_list_label_without_a_prefix() -> None:
+    result = _resolve(judgement(LIST[0].category_id), LIST, other_label="Other")
+    assert isinstance(result, Filing)
+    assert result.label == "Topic 01"

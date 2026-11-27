@@ -21,6 +21,10 @@ class UploadPreview(BaseModel):
     base_version: Annotated[int, Field(ge=1)]
     expires_at: datetime
     added: Annotated[int, Field(ge=0)]
+    adopted: Annotated[
+        int,
+        Field(ge=0, description="How many new or renamed categories take over a label that already exists in Gmail."),
+    ]
     changed: Annotated[int, Field(ge=0)]
     removed: Annotated[int, Field(ge=0)]
     removed_categories: list[str]

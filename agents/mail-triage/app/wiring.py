@@ -12,7 +12,7 @@ import logging
 import secrets
 import signal
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.adapters.gmail_apply import GmailApply
 from app.adapters.gmail_build import GmailBuild
+from app.adapters.gmail_label_delete import GmailLabelDelete
 from app.adapters.gmail_read import GmailReader
 from app.adapters.gmail_resort import GmailResort
 from app.adapters.gmail_send import GmailSender
@@ -30,7 +31,7 @@ from app.adapters.telegram_outbox import TelegramOutbox
 from app.adapters.tip_anthropic import AnthropicTips
 from app.adapters.token_store import TokenCipher, TokenDecryptError, TokenStore
 from app.adapters.urgency_anthropic import AnthropicUrgency
-from app.core.scope import ArchiveLabel
+from app.core.managed import ManagedSet
 from app.db import repos
 from app.db.engine import make_engine
 from app.db.migrate import (
@@ -44,8 +45,10 @@ from app.db.migrate import (
 )
 from app.db.pg_approval import PgApprovalStore, PgMoveBackRequests
 from app.db.pg_conversation import ConversationStore
+from app.db.pg_label_cleanup import PgLabelCleanupStore
+from app.db.pg_label_rename import PgRenameStore
 from app.db.pg_list_notice import PgActionStore, PgListNoticeStore
-from app.db.pg_list_sync import PgListSyncStore
+from app.db.pg_list_sync import PgLabelBook, PgListSyncStore
 from app.db.pg_overview_log import PgOverviewLog
 from app.db.pg_policy_source import PgPolicySource
 from app.db.pg_refile import PgRefileStore
@@ -63,8 +66,10 @@ from app.usecases.catchup import BUDGET_RESERVE, CatchUp
 from app.usecases.code_alert import CodeAlert
 from app.usecases.deliver_alerts import AlertDelivery
 from app.usecases.dispatch import CommandRouter
+from app.usecases.label_cleanup import CleanupGmail, LabelCleanup
+from app.usecases.label_rename import LabelRename, RenameGmail
 from app.usecases.list_notice import ListNotice, ListNoticeActions
-from app.usecases.list_sync import ListSync
+from app.usecases.list_sync import LabelGmail, ListSync
 from app.usecases.move_back import MoveBack
 from app.usecases.overview import OverviewService
 from app.usecases.plan_tips import PlanTips
@@ -82,15 +87,16 @@ from app.usecases.web_notice import WebNotice
 from app.usecases.web_notice_actions import WebNoticeActions
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.gmail_send import ConfirmedDraft
+    from app.core.managed import ManagedLabel
     from app.db.purge import Clock
     from app.settings import MigrateSettings, Settings
-    from app.usecases.list_sync import LabelGmail
+    from app.usecases.list_sync import ManagedSink
     from app.usecases.resort_apply import ApplyMailbox
     from app.usecases.resort_build import BuildMailbox
 
@@ -131,17 +137,21 @@ class MailPorts:
         """Headers and text of one mail."""
         return self._reader.fetch(message_id)
 
-    def ensure_label(self, name: str) -> str:
-        """Id of the label, created when missing."""
-        return self._reader.ensure_label(name)
+    def set_managed(self, managed: ManagedSet) -> None:
+        """Use the managed labels of the moment for every label change."""
+        self._reader.set_managed(managed)
 
-    def file(self, message_id: str, label_id: str) -> None:
-        """Add the category label and take the mail out of the inbox."""
-        self._reader.file(message_id, label_id)
+    def ensure_label(self, label: ManagedLabel) -> str:
+        """Id of the managed label, created or adopted when missing."""
+        return self._reader.ensure_label(label)
 
-    def add_label(self, message_id: str, label_id: str) -> None:
-        """Add the extra label of a sender rule."""
-        self._reader.add_label(message_id, label_id)
+    def file(self, message_id: str, label_id: str) -> str:
+        """Add the managed label and take the mail out of the inbox; the id used comes back."""
+        return self._reader.file(message_id, label_id)
+
+    def add_label(self, message_id: str, label_id: str) -> str:
+        """Add the extra label of a sender rule; the id used comes back."""
+        return self._reader.add_label(message_id, label_id)
 
     def check_repliable(self, original: FetchedMail) -> None:
         """Refuse automatic, list and no-reply mail."""
@@ -152,6 +162,10 @@ class MailPorts:
         return self._sender.send_reply(original, draft)
 
 
+class SyncAndRenameGmail(LabelGmail, RenameGmail, Protocol):
+    """The label adapter of the list sync and of the one-off rename (``GmailResort``): both run one after the other."""
+
+
 def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is read from the environment
     settings: Settings,
     *,
@@ -159,8 +173,8 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     client: httpx.AsyncClient,
     mailbox: object,
     sender: object,
-    labels: LabelGmail,
-    archive: ArchiveLabel,
+    labels: SyncAndRenameGmail,
+    label_delete: CleanupGmail,
     build_mailbox: BuildMailbox,
     apply_mailbox: ApplyMailbox,
     own_address: str,
@@ -169,8 +183,13 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
     new_id: Callable[[], str] = lambda: str(uuid.uuid4()),
     new_token: Callable[[], str] = lambda: secrets.token_urlsafe(16),  # 22 characters: the notice's own Undo token
     today: Callable[[], str] | None = None,
+    managed_sinks: Sequence[ManagedSink] = (),
 ) -> Runner:
-    """Wire the store, the adapters and the use cases into a runner."""
+    """Wire the store, the adapters and the use cases into a runner.
+
+    ``managed_sinks`` are the adapters that guard label writes or the listing (the mail ports, the plan build): the
+    label sync and the label book hand them the managed labels each time they are read.
+    """
     conversations = ConversationStore(sessions, now)  # the one: PgStore and the router judge expiry with this clock
     store = PgStore(sessions, conversations)
     outbox = TelegramOutbox(client, settings.telegram_bot_token, settings.telegram_allowed_chat_id)
@@ -232,6 +251,12 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             now=now,
         )
     )
+    book = PgLabelBook(
+        sessions,
+        settings.mailbox_id,
+        lambda: {label.id: label.name for label in labels.list_labels()},
+        followers=managed_sinks,
+    )  # one for triage and catch-up: the same managed labels, read from the same tables
     notifier = TelegramApplyNotifier(outbox, approval_notice, now=now)
     apply_store = PgApplyStore(sessions, settings.mailbox_id)
     return Runner(
@@ -244,6 +269,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             policy,
             settings.pinned_senders,
             urgency,
+            book,
         ),
         catchup=CatchUp(
             mailbox,  # type: ignore[arg-type]
@@ -254,6 +280,7 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             now,
             policy,
             settings.pinned_senders,
+            book,
         ),
         delivery=AlertDelivery(store, outbox, now, policy, hourly_cap=settings.alerts_per_hour),
         snooze=snooze,
@@ -263,7 +290,16 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
         store=store,
         inbox=inbox,
         router=router,
-        list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id), archive),
+        list_sync=ListSync(labels, PgListSyncStore(sessions, settings.mailbox_id), managed_sinks),
+        label_rename=LabelRename(labels, PgRenameStore(sessions, settings.mailbox_id), outbox),
+        label_cleanup=LabelCleanup(
+            labels,
+            label_delete,
+            PgLabelCleanupStore(sessions, settings.mailbox_id),
+            outbox,
+            now=now,
+            cycle=timedelta(seconds=settings.poll_interval_seconds),
+        ),
         list_notice=ListNotice(list_store, outbox, list_actions, chat_id=settings.telegram_allowed_chat_id),
         approval_notice=approval_notice,
         resort_build=ResortBuild(
@@ -284,7 +320,6 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             budget=budget,
             now=now,
             pinned=settings.pinned_senders,
-            archive=archive,
             cap=settings.plan_cap,
         ),
         resort_apply=ResortApply(
@@ -294,14 +329,12 @@ def build_runner(  # noqa: PLR0913 - the outside world is injected, nothing is r
             notifier=notifier,
             now=now,
             pinned=settings.pinned_senders,
-            archive=archive,
         ),
         move_back=MoveBack(
             mailbox=apply_mailbox,
             store=apply_store,
             lock=web_lock,
             notifier=notifier,
-            archive=archive,
         ),
         refile_report=RefileReportService(
             PgRefileStore(sessions, settings.mailbox_id),
@@ -414,10 +447,9 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
             scopes=list(GMAIL_SCOPES),
         )
         service = build("gmail", "v1", credentials=credentials, cache_discovery=False)
-        names = await PgListSyncStore(sessions, settings.mailbox_id).archive_names()
-        archive = ArchiveLabel(names.applied or names.wanted)  # the sync learns the id and does any rename
         address = str(service.users().getProfile(userId="me").execute()["emailAddress"])
         ports = MailPorts(GmailReader(service), GmailSender(service))
+        build = GmailBuild(service)
         stop = asyncio.Event()
         loop = asyncio.get_running_loop()
         for name in ("SIGINT", "SIGTERM"):
@@ -430,10 +462,11 @@ async def serve(settings: Settings) -> int:  # pragma: no cover - needs the real
                 client=client,
                 mailbox=ports,
                 sender=ports,
-                labels=GmailResort(service, archive),
-                archive=archive,
-                build_mailbox=GmailBuild(service),
-                apply_mailbox=GmailApply(service, archive),
+                labels=GmailResort(service, ManagedSet(())),  # the sync and the label book fill the managed set
+                label_delete=GmailLabelDelete(service),  # the only place that deletes a label
+                build_mailbox=build,
+                apply_mailbox=GmailApply(service, ManagedSet(())),
+                managed_sinks=(ports, build),
                 own_address=address,
                 heartbeat=HEARTBEAT,
                 now=_utc_now,

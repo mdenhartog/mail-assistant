@@ -21,7 +21,9 @@ function isProblem(value: unknown): value is UploadProblem {
 }
 
 function isCounts(value: Record<string, unknown>): boolean {
-  return typeof value["added"] === "number" && typeof value["changed"] === "number" && typeof value["removed"] === "number";
+  return typeof value["added"] === "number" &&
+    typeof value["adopted"] === "number" &&
+    typeof value["changed"] === "number" && typeof value["removed"] === "number";
 }
 
 function isPreview(value: unknown): value is UploadPreview {

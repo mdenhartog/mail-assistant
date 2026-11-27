@@ -13,10 +13,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from app.adapters.gmail_read import FetchedMail
+from app.adapters.gmail_resort import GmailResort
 from app.adapters.gmail_send import ConfirmedDraft
-from app.core.scope import ArchiveLabel
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from app.settings import load_settings
 from app.wiring import MailPorts, build_runner
+from tests.fakes.fake_gmail import FakeGmail as GmailDouble
 from tests.test_settings import VALID
 
 if TYPE_CHECKING:
@@ -40,6 +42,7 @@ class FakeGmail:
             text="Please pay the attached invoice by Friday.",
             has_attachment=False,
             headers={},
+            labels=frozenset({"INBOX"}),
             auth_results=("mx.google.com; spf=pass; dkim=pass; dmarc=pass",),
         )
         self.filed: list[tuple[str, str]] = []
@@ -56,11 +59,15 @@ class FakeGmail:
         assert message_id == "gm-1"
         return self.mail
 
-    def ensure_label(self, name: str) -> str:
-        return f"id:{name}"
+    def ensure_label(self, label: ManagedLabel) -> str:
+        return f"id:{label.name}"
 
-    def file(self, message_id: str, label_id: str) -> None:
+    def file(self, message_id: str, label_id: str) -> str:
         self.filed.append((message_id, label_id))
+        return label_id
+
+    def add_label(self, message_id: str, label_id: str) -> str:
+        return label_id
 
     def check_repliable(self, original: FetchedMail) -> None:
         del original
@@ -142,10 +149,10 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
-        labels=object(),  # type: ignore[arg-type]
+        labels=GmailResort(GmailDouble(), ManagedSet(()), sleep=lambda _s: None),
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
-        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,
@@ -156,7 +163,13 @@ async def test_given_an_urgent_mail_when_the_agent_runs_then_it_is_filed_alerted
 
     await run.mail_cycle()
 
-    assert gmail.filed == [("gm-1", "id:Assistant/Other")]  # no list version exists yet, so everything is "Other"
+    assert gmail.filed == [("gm-1", "id:Other")]  # no list version exists yet, so everything is "Other"
+    async with engine.connect() as connection:  # the id Gmail gave to "Other" is remembered by id
+        stored = (
+            await connection.execute(text("select role, label_id from categories.managed_label order by role"))
+        ).all()
+    assert [row[0] for row in stored] == ["archive", "other"]  # the sync made both labels
+    assert ("other", "id:Other") in [tuple(row) for row in stored]
     [alert] = internet.messages
     assert "boss@example.com" in alert["text"]
     assert "Invoice due Friday" in alert["text"]
@@ -202,10 +215,10 @@ async def test_given_the_agent_runs_twice_when_the_same_mail_is_listed_then_it_a
         client=httpx.AsyncClient(transport=httpx.MockTransport(internet)),
         mailbox=gmail,
         sender=gmail,
-        labels=object(),  # type: ignore[arg-type]
+        labels=GmailResort(GmailDouble(), ManagedSet(()), sleep=lambda _s: None),
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
-        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=_heartbeat(),
         now=lambda: NOW,
@@ -239,8 +252,8 @@ def test_given_the_gmail_ports_when_used_then_each_call_goes_to_the_reader_or_th
 
     assert ports.list_new("1") == (["gm-1"], "200")
     assert ports.fetch("gm-1") is gmail.mail
-    assert ports.ensure_label("Assistant/Finance") == "id:Assistant/Finance"
-    ports.file("gm-1", "id:Assistant/Finance")
+    assert ports.ensure_label(ManagedLabel("Finance", None, Role.TOPIC)) == "id:Finance"
+    assert ports.file("gm-1", "id:Finance") == "id:Finance"
     ports.check_repliable(gmail.mail)
     assert ports.send_reply(gmail.mail, ConfirmedDraft("d1", "marco@example.com", None, "Hi")) == "sent-1"
-    assert gmail.filed == [("gm-1", "id:Assistant/Finance")]
+    assert gmail.filed == [("gm-1", "id:Finance")]

@@ -14,6 +14,7 @@ from googleapiclient.errors import HttpError
 from app.adapters import gmail_auth, gmail_read
 from app.adapters.gmail_read import GmailReader, HistoryExpiredError
 from app.core.authentication import authenticated_from_domain
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from category_policy import SenderCategory, SenderEntry, build_matcher
 from category_policy.kinds import Kind
 
@@ -123,7 +124,8 @@ def gmail() -> FakeGmail:
 
 def reader(gmail: FakeGmail, sleeps: list[float] | None = None) -> GmailReader:
     record = sleeps if sleeps is not None else []
-    return GmailReader(Chain(gmail), sleep=record.append)  # type: ignore[arg-type]
+    managed = ManagedSet([ManagedLabel("Finance", "Label_7", Role.TOPIC)])
+    return GmailReader(Chain(gmail), sleep=record.append, managed=managed)  # type: ignore[arg-type]
 
 
 def message(mid: str, labels: list[str]) -> dict[str, Any]:
@@ -308,23 +310,8 @@ def test_given_a_category_label_when_filing_then_exactly_that_label_is_added_and
     assert kw["body"] == {"addLabelIds": ["Label_7"], "removeLabelIds": ["INBOX"]}
 
 
-def test_given_an_existing_label_when_ensured_then_it_is_found_and_a_missing_one_is_created(gmail: FakeGmail) -> None:
-    gmail.labels = [{"id": "Label_1", "name": "Assistant/Finance"}]
-    gmail_reader = reader(gmail)
-
-    assert gmail_reader.ensure_label("Assistant/Finance") == "Label_1"
-    assert gmail_reader.ensure_label("Assistant/Travel") == "Label_new"
-
-
-@pytest.mark.parametrize("name", ["INBOX", "Work", "Assistant", "../Assistant/x"])
-def test_given_a_label_outside_the_prefix_when_ensured_then_it_is_refused(gmail: FakeGmail, name: str) -> None:
-    with pytest.raises(ValueError, match="Assistant/"):
-        reader(gmail).ensure_label(name)
-
-    assert not [c for c in gmail.calls if c[0] == "create"]
-
-
-@pytest.mark.parametrize("word", ["trash", "delete", "spam", "batchDelete", "untrash"])
+# Deleting is checked by reflection in test_gmail_reflection.py: one label delete by id is reserved there.
+@pytest.mark.parametrize("word", ["trash", "spam", "batchDelete", "untrash"])
 def test_given_the_module_source_when_scanned_then_it_has_no_trash_delete_or_spam_operation(word: str) -> None:
     assert word.lower() not in SOURCE.lower()
 
@@ -455,9 +442,9 @@ def test_given_a_fetched_mail_when_read_then_it_carries_its_gmail_labels(gmail: 
 def test_given_an_extra_label_when_added_then_only_that_label_is_added_and_the_inbox_is_kept(
     gmail: FakeGmail,
 ) -> None:
-    reader(gmail).add_label("m1", "Label_9")
+    reader(gmail).add_label("m1", "Label_7")
 
     name, kw = gmail.calls[-1]
     assert name == "modify"
     assert kw["id"] == "m1"
-    assert kw["body"] == {"addLabelIds": ["Label_9"]}
+    assert kw["body"] == {"addLabelIds": ["Label_7"]}

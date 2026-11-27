@@ -7,6 +7,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { App, routes } from "@/App";
 import { setCsrfToken } from "@/api/client";
 import { expectNoAxeViolations } from "@/test/axe";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const VALUES = {
   timeZone: "Europe/Amsterdam",
@@ -14,8 +15,9 @@ const VALUES = {
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
+  ...CLEANUP,
 };
-const STORED = { values: VALUES, version: 3, updatedAt: "2026-11-12T13:02:00Z", updatedVia: "telegram" };
+const STORED = { values: VALUES, ranges: RANGES, version: 3, updatedAt: "2026-11-12T13:02:00Z", updatedVia: "telegram" };
 const SESSION = {
   maskedAddress: "m***@example.com",
   csrfToken: "csrf-secret-4711",
@@ -128,7 +130,7 @@ afterEach(() => {
 });
 
 describe("the draft is kept while typing (criterion 3)", () => {
-  it("given edited fields, when read from sessionStorage, then it holds the five values and the version, nothing else", async () => {
+  it("given edited fields, when read from sessionStorage, then it holds the eight values and the version, nothing else", async () => {
     wire();
     const user = userEvent.setup();
     setup();

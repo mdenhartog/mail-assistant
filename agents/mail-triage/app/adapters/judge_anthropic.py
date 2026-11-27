@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from app.core.judgement import LOW_CONFIDENCE, OTHER_ID, Judgement, JudgementError, NeedsAttention, parse_judgement
+from category_policy import DESCRIPTION_MAX, INSTRUCTIONS_MAX, LABEL_MAX
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Sequence
@@ -35,9 +36,9 @@ MAX_TEXT_CHARS = 8000
 MAX_OUTPUT_TOKENS = 2000  # thinking tokens count against it; the JSON answer itself is about 150
 RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504, 529})
 MAX_BACKOFF_SECONDS = 30.0
-NAME_MAX_CHARS = 40  # as category-policy
-DESCRIPTION_MAX_CHARS = 500  # as category-policy
-INSTRUCTIONS_MAX_CHARS = 4000  # as category-policy
+NAME_MAX_CHARS = LABEL_MAX
+DESCRIPTION_MAX_CHARS = DESCRIPTION_MAX
+INSTRUCTIONS_MAX_CHARS = INSTRUCTIONS_MAX
 SYSTEM_PROMPT = (
     "You triage one e-mail for its owner. The user turn has three JSON data blocks: the first holds the owner's "
     'category list ("categories": id, kind, name, description), the second holds the owner\'s general working rules '

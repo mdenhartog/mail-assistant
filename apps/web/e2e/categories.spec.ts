@@ -131,8 +131,8 @@ test("before the agent has written version 1 the page says the categories are no
   expect(versions()).toEqual([]);
 });
 
-// 3 (AC-1, C-12, AC-68): one row per category (name, kind, senders), Other, the fixed block and the older category
-test("the page shows one row per category, Other, the fixed block and the older category", async ({ page }) => {
+// 3 (AC-1, C-12, AC-68): one row per category (name, kind, senders), Other and the fixed block; no older-categories list
+test("the page shows one row per category, Other and the fixed block, and no list of older categories", async ({ page }) => {
   await openSeeded(page);
 
   const invoices = page.getByRole("button", { name: `Edit ${INVOICES}`, exact: true });
@@ -147,7 +147,8 @@ test("the page shows one row per category, Other, the fixed block and the older 
     page.getByText("Changing the list never moves mail you already have. Only new mail follows it."),
   ).toBeVisible();
   await expect(page.getByText("Your archive label is left alone.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add to my list: Newsletters" })).toBeVisible();
+  // A Gmail label that is not on the list is no longer offered as an "older category" (ADR-0060).
+  await expect(page.getByRole("button", { name: /^Add to my list/ })).toHaveCount(0);
 
   await openEdit(page, INVOICES);
   await expect(editView(page).getByLabel("Description")).toHaveValue("Invoices, receipts and payment confirmations");
@@ -211,7 +212,8 @@ test("a save without a change makes no new version", async ({ page }) => {
 });
 
 // 6 (AC-2, AC-40 second half): one row per rule that the user can reach from the page
-const RESERVED = "The first part of a name cannot be Archive or Other. Those are kept for the assistant.";
+const RESERVED =
+  "This name is kept for the assistant or Gmail. The first part cannot be Archive or Other, and Gmail's own labels like Inbox are not allowed.";
 const REFUSED: { rule: string; name: string; description?: string; text: string }[] = [
   { rule: "empty name", name: "", text: "Give the category a name." },
   {
@@ -246,20 +248,21 @@ for (const row of REFUSED) {
   });
 }
 
-// 6b (AC-2, AC-40): the label of Travel still exists in Gmail until the agent renames it, so a new category may not take it
-test("a new name that equals an existing Gmail label is refused and nothing is stored", async ({ page }) => {
+// 6b (AC-2, ADR-0060): a Gmail label that exists is adopted, never a reason to refuse a name
+test("a new name that equals an existing Gmail label is adopted and the list is saved", async ({ page }) => {
   await openSeeded(page);
 
   await editCategory(page, TRAVEL, async (view) => {
     await view.getByLabel("Name").fill("Trips");
   });
-  await addCategory(page, TRAVEL, "A second category with the name of the old label");
+  await addCategory(page, TRAVEL, "A second category with the name of the existing label");
   await pressSave(page);
   await confirmSave(page);
 
-  // The api refuses the name; the page opens the view of that category with the reason.
-  await expect(editView(page).getByText("A Gmail label with this name already exists.")).toBeVisible();
-  expect(versions()).toEqual(["1|operator"]);
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await expect(page.getByText("A Gmail label with this name already exists.")).toHaveCount(0);
+  expect(versions()).toEqual(["1|operator", "2|web"]);
+  expect(storedList(2).map((row) => row.name)).toEqual([INVOICES, "Trips", TRAVEL]);
 });
 
 // 7 (AC-3)
@@ -296,21 +299,6 @@ test("a rename keeps the category id, makes no review and the summary says only 
   expect(invoices?.id).toBe(INVOICES_ID);
   expect(trips).toMatchObject({ id: TRAVEL_ID, name: "Trips", description: "Bookings, tickets and itineraries" });
   expect(planCount(), "a rename makes no plan").toBe(0);
-});
-
-// 9 (AC-53)
-test("an older category is added to the list with its own button", async ({ page }) => {
-  await openSeeded(page);
-
-  await page.getByRole("button", { name: "Add to my list: Newsletters" }).click();
-  await expect(editView(page).getByLabel("Name")).toHaveValue("Newsletters");
-  await editView(page).getByLabel("Description").fill("Newsletters and mailing lists");
-  await keepEdit(page);
-  await pressSave(page);
-  await confirmSave(page);
-  await expect(page.getByText("Saved.")).toBeVisible();
-
-  expect(storedList(2).map((row) => row.name)).toEqual([INVOICES, TRAVEL, "Newsletters"]);
 });
 
 // 10 (C-12)

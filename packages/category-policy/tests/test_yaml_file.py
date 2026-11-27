@@ -62,7 +62,7 @@ def pairs(data: bytes | str) -> list[tuple[str, str]]:
 
 EXPECTED_SMALL = ParsedList(
     general_instructions="Mail from the school is always important.",
-    archive_label="Assistant/Archive",
+    archive_label="Archive",
     categories=(
         FileCategory(
             name="Huis/Energie",
@@ -96,7 +96,7 @@ def test_given_a_valid_file_when_parsed_then_the_list_is_the_expected_one():
 
 def test_given_a_file_with_and_without_an_archive_label_when_parsed_then_it_says_whether_it_was_given():
     absent = parse_category_file(as_bytes(doc("categories: []")))
-    given = parse_category_file(as_bytes(doc("archiveLabel: Assistant/Archive\ncategories: []")))
+    given = parse_category_file(as_bytes(doc("archiveLabel: Archive\ncategories: []")))
 
     assert isinstance(absent, ParsedList)
     assert isinstance(given, ParsedList)
@@ -118,7 +118,7 @@ def test_given_only_the_required_fields_when_parsed_then_the_defaults_apply():
 
     assert result == ParsedList(
         general_instructions="",
-        archive_label="Assistant/Archive",
+        archive_label="Archive",
         categories=(FileCategory(name="Huis", description="A"),),
     )
 
@@ -364,7 +364,7 @@ def test_given_several_structural_mistakes_when_parsed_then_all_are_listed_with_
 def test_given_policy_violations_when_parsed_then_each_is_reported_with_line_and_field():
     body = (
         "generalInstructions: " + "x" * 4001 + "\n"  # 2
-        "archiveLabel: Assistant/Mail\n"  # 3
+        "archiveLabel: INBOX\n"  # 3
         "categories:\n"  # 4
         "  - name: Other\n"  # 5
         "    description: A\n"  # 6
@@ -383,7 +383,7 @@ def test_given_policy_violations_when_parsed_then_each_is_reported_with_line_and
 
     assert [(p.rule, p.line, p.field) for p in found] == [
         ("instructions_too_long", 2, "generalInstructions"),
-        ("archive_inside_assistant", 3, "archiveLabel"),
+        ("setting_name_system_label", 3, "archiveLabel"),
         ("name_reserved", 5, "categories[0].name"),
         ("description_empty", 8, "categories[1].description"),
         ("sender_refused_domain", 10, "categories[1].senders[0]"),
@@ -417,15 +417,15 @@ def test_given_a_subdomain_flag_on_an_address_when_parsed_then_it_is_refused_by_
 
 
 def test_given_the_archive_label_below_a_category_label_when_parsed_then_it_is_refused():
-    body = "archiveLabel: Assistant/Huis\ncategories:\n  - name: Huis\n    description: A\n"
+    body = "archiveLabel: Huis/Old\ncategories:\n  - name: Huis\n    description: A\n"
 
-    assert pairs(doc(body)) == [("archive_category_label", "archiveLabel")]
+    assert pairs(doc(body)) == [("setting_name_category_clash", "archiveLabel")]
 
 
 def test_given_a_name_that_is_a_gmail_system_label_for_the_archive_when_parsed_then_it_is_refused():
     body = "archiveLabel: INBOX\ncategories:\n  - name: Huis\n    description: A\n"
 
-    assert pairs(doc(body)) == [("archive_system_label", "archiveLabel")]
+    assert pairs(doc(body)) == [("setting_name_system_label", "archiveLabel")]
 
 
 # Criterion 4: the anonymised golden file.
@@ -529,7 +529,7 @@ HOSTILE_VALUES = [
 
 @pytest.mark.parametrize("item", HOSTILE_VALUES)
 def test_given_any_problem_when_reported_then_no_message_contains_the_value(item: str):
-    text = f"schema: 1\ngeneralInstructions: {CANARY}\narchiveLabel: Assistant/{CANARY}\ncategories:\n  - {item}"
+    text = f"schema: 1\ngeneralInstructions: {CANARY}\narchiveLabel: Other/{CANARY}\ncategories:\n  - {item}"
 
     result = parse_category_file(text.encode())
 

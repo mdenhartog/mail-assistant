@@ -58,8 +58,8 @@ services:
       RUNTIME_ROLE_PASSWORD: ${MAIL_TRIAGE_RUNTIME_PASSWORD:-}
       WEB_ROLE_PASSWORD: ${WEB_ROLE_PASSWORD:-}
       # Read once by the contract v2 migration into the list settings (U-label-structure-05, ADR-0059); afterwards the
-      # archive label is set on the Categories page and this value is ignored.
-      ARCHIVE_LABEL: ${MAIL_TRIAGE_ARCHIVE_LABEL:-Assistant/Archive}
+      # archive label is set on the Categories page and this value is ignored. The value must not start with Assistant/.
+      ARCHIVE_LABEL: ${MAIL_TRIAGE_ARCHIVE_LABEL:-Archive}
     volumes:
       - ../../deploy/prod-like/certs:/certs:ro
 

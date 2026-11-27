@@ -32,7 +32,7 @@ async def test_a_request_starts_the_plan_and_only_a_changed_pair_becomes_an_item
     rig = Rig()
     _list(rig)
     rig.request(threshold=80)
-    news = rig.gmail.add_label("Assistant/Newsletter")
+    news = rig.gmail.add_label("Newsletter")
     same = rig.gmail.add_mail(("INBOX", rig.finance_label, news), subject="same")  # Finance + Newsletter stays
     extra_gone = rig.gmail.add_mail(("INBOX", rig.finance_label, news), subject="extra gone")
     extra_new = rig.gmail.add_mail(("INBOX", rig.finance_label), subject="extra new")
@@ -85,7 +85,7 @@ async def test_a_mail_with_a_topic_and_an_extra_label_is_in_scope_not_unclear() 
     rig = Rig()
     _list(rig)
     rig.request()
-    news = rig.gmail.add_label("Assistant/Newsletter")
+    news = rig.gmail.add_label("Newsletter")
     rig.gmail.add_mail((rig.finance_label, news), subject="pair")
     rig.gmail.add_mail((rig.finance_label, rig.travel_label), subject="two topics")
     rig.judge.answers = {"pair": (TRAVEL, NEWSLETTER, 0.9)}

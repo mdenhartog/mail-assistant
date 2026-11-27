@@ -1,6 +1,6 @@
 schema: 1
 generalInstructions: Mail from the school is always important.
-archiveLabel: Assistant/Archive
+archiveLabel: Archive
 categories:
   - name: Huis/Energie
     kind: topic

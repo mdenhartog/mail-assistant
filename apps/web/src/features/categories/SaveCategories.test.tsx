@@ -158,7 +158,7 @@ describe("Categories page: saving", () => {
     expect(seen.puts).toEqual([
       {
         token: TOKEN,
-        body: { version: 3, generalInstructions: LIST.generalInstructions, archiveLabel: LIST.archiveLabel, categories: [{ ...V2(INVOICES), name: "Bills" }, V2(NEWS)] },
+        body: { version: 3, generalInstructions: LIST.generalInstructions, archiveLabel: LIST.archiveLabel, otherLabel: LIST.otherLabel, categories: [{ ...V2(INVOICES), name: "Bills" }, V2(NEWS)] },
       },
     ]);
     expect(screen.getByRole("button", { name: "Edit Bills" })).toBeInTheDocument();
@@ -184,12 +184,13 @@ describe("Categories page: saving", () => {
     ]);
   });
 
-  it("given a deleted category and an older one added, then the body leaves out the deleted id and sends the new one without an id", async () => {
+  it("given a deleted category and a new one added, then the body leaves out the deleted id and sends the new one without an id", async () => {
     const seen = wire();
     await loaded();
     await userEvent.click((await edit("Newsletters")).getByRole("button", { name: "Delete Newsletters" }));
-    await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
     const added = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(added.getByLabelText("Name"), "Travel");
     await userEvent.type(added.getByLabelText("Description"), "Flights and hotels");
     await userEvent.click(added.getByRole("button", { name: "Save" }));
     await confirm();
@@ -299,11 +300,12 @@ function problem422(problems: unknown[]): Response {
 }
 
 describe("Categories page: invalid fields (AC-2)", () => {
-  it("given an adopted category without a description, when Save is pressed, then the error shows by the field, focus moves to it and the view stays", async () => {
+  it("given a new category without a description, when Save is pressed, then the error shows by the field, focus moves to it and the view stays", async () => {
     const seen = wire();
     await loaded();
-    await userEvent.click(screen.getByRole("button", { name: "Add to my list: Travel" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
     const view = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(view.getByLabelText("Name"), "Travel");
     await userEvent.click(view.getByRole("button", { name: "Save" }));
 
     const description = view.getByLabelText("Description");
@@ -324,6 +326,22 @@ describe("Categories page: invalid fields (AC-2)", () => {
     expect(view.getByLabelText("Name")).toHaveFocus();
   });
 
+  it("given a typed name equal to the archive label, when saving, then name_setting_clash shows as plain text tied to the field and nothing is sent (AC 13, AC 17)", async () => {
+    const seen = wire({ get: () => json({ ...LIST, archiveLabel: "Bewaard" }) });
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
+    const view = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(view.getByLabelText("Name"), "bewaard");
+    await userEvent.type(view.getByLabelText("Description"), "Old mail");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+
+    const reason = view.getByText("This name is already used for your Other or archive label. Choose another name.");
+    expect(view.getByLabelText("Name")).toBeInvalid();
+    expect(view.getByLabelText("Name")).toHaveAccessibleDescription(/already used for your Other or archive label/);
+    expect(reason.innerHTML).not.toContain("<");
+    expect(seen.puts).toHaveLength(0);
+  });
+
   it("given a typed name that is an older category, when saving, then the page does not refuse it and the save is asked for", async () => {
     const seen = wire();
     await loaded();
@@ -336,18 +354,18 @@ describe("Categories page: invalid fields (AC-2)", () => {
     await userEvent.click(saveButton());
 
     expect(await screen.findByRole("alertdialog", { name: "Save 1 change?" })).toBeInTheDocument();
-    expect(screen.queryByText("A Gmail label with this name already exists.")).not.toBeInTheDocument();
+    expect(screen.queryByText("This name is already used for your Other or archive label. Choose another name.")).not.toBeInTheDocument();
     expect(seen.puts).toHaveLength(0);
   });
 
   it("given the api refuses a name (422), then the edit view of that category opens with the error and focus on the field", async () => {
-    wire({ put: () => problem422([{ rule: "name_label_exists", field: "name", index: 1, position: null, otherIndex: null }]) });
+    wire({ put: () => problem422([{ rule: "name_setting_clash", field: "name", index: 1, position: null, otherIndex: null }]) });
     await loaded();
     await rename("Newsletters", "Trips");
     await confirm();
 
     const view = within(await screen.findByRole("region", { name: "Edit category" }));
-    expect(view.getByText("A Gmail label with this name already exists.")).toBeInTheDocument();
+    expect(view.getByText("This name is already used for your Other or archive label. Choose another name.")).toBeInTheDocument();
     await waitFor(() => {
       expect(view.getByLabelText("Name")).toHaveFocus();
     });
@@ -556,7 +574,7 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
     wire();
     await loaded();
     const field = screen.getByLabelText("Archive label");
-    expect(field).toHaveValue("Assistant/Archive");
+    expect(field).toHaveValue("Archive");
     expect(field).toHaveClass("min-h-11");
     expect(
       screen.getByText("Mail in this label is never sorted or moved. Renaming it renames the Gmail label, nothing else."),
@@ -596,13 +614,13 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
   });
 
   it("given a refused name, then the field shows the reason, is invalid, described and focused", async () => {
-    wire({ put: () => problem422([{ rule: "archive_system_label", field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    wire({ put: () => problem422([{ rule: "setting_name_system_label", field: "archive_label", index: null, position: null, otherIndex: null }]) });
     await loaded();
     await replace(screen.getByLabelText("Archive label"), "INBOX");
     await confirm();
 
     const field = await screen.findByLabelText("Archive label");
-    const reason = await screen.findByText("This is a Gmail label of its own and cannot be your archive label.");
+    const reason = await screen.findByText("This is a Gmail label of its own and cannot be used here.");
     expect(field).toBeInvalid();
     expect(field).toHaveAccessibleDescription(/Gmail label of its own/);
     expect(reason.closest("[role=alert]")).not.toBeNull();
@@ -612,9 +630,10 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
   });
 
   it.each([
-    ["archive_invalid", "This is not a valid label name."],
-    ["archive_inside_assistant", "Use a name outside Assistant/, or exactly Assistant/Archive."],
-    ["archive_category_label", "A category already uses this label, or lies below it. Choose another name."],
+    ["setting_name_invalid", "This is not a valid label name."],
+    ["setting_name_too_long", "Use at most 255 characters for the label name."],
+    ["setting_name_reserved", "This name is kept for the assistant, or the other setting already uses it. Choose another name."],
+    ["setting_name_category_clash", "A category already uses this label, or lies below it. Choose another name."],
   ])("given the rule %s, then the reason reads %j", async (rule, text) => {
     wire({ put: () => problem422([{ rule, field: "archive_label", index: null, position: null, otherIndex: null }]) });
     await loaded();
@@ -624,7 +643,7 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
   });
 
   it("given a reason is shown, when the user edits the name, then the reason goes away", async () => {
-    wire({ put: () => problem422([{ rule: "archive_invalid", field: "archive_label", index: null, position: null, otherIndex: null }]) });
+    wire({ put: () => problem422([{ rule: "setting_name_invalid", field: "archive_label", index: null, position: null, otherIndex: null }]) });
     await loaded();
     await replace(screen.getByLabelText("Archive label"), "Bad");
     await confirm();
@@ -643,5 +662,87 @@ describe("Categories page: the archive label (criterion 5, AC-41, AC-42, AC-68)"
     await waitFor(() => {
       expect(screen.getByLabelText("Archive label")).toHaveAttribute("readonly");
     });
+  });
+});
+
+describe("Categories page: the Other label (U-label-prefix-removal-12, AC 12, AC 13, AC 17)", () => {
+  const otherField = (): HTMLElement => screen.getByLabelText("Other label");
+
+  it("given the defaults, then the Other label field shows the stored name next to the archive label, with help and a 44 px target", async () => {
+    wire();
+    await loaded();
+    expect(otherField()).toHaveValue("Other");
+    expect(otherField()).toHaveClass("min-h-11");
+    expect(otherField()).toHaveAccessibleDescription(/Mail that fits no category/);
+    expect(screen.getByLabelText("Archive label")).toHaveValue("Archive");
+  });
+
+  it("given a list save without touching it, then the stored Other name is sent back with the list", async () => {
+    const seen = wire({ get: () => json({ ...LIST, otherLabel: "Overig" }) });
+    await loaded();
+    const view = await edit("Invoices");
+    await replace(view.getByLabelText("Description"), "Bills only");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    await confirm();
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(seen.puts[0]?.body.otherLabel).toBe("Overig");
+  });
+
+  it("given a new name, when saved, then it is sent and the summary names the change", async () => {
+    const seen = wire();
+    await loaded();
+    await replace(otherField(), "Overig");
+    expect(screen.getByText("1 change not saved")).toBeInTheDocument();
+    await userEvent.click(saveButton());
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Change the Other label")).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Save changes" }));
+    await waitFor(() => {
+      expect(seen.puts).toHaveLength(1);
+    });
+    expect(seen.puts[0]?.body.otherLabel).toBe("Overig");
+  });
+
+  it("given a category named like the stored Other label, when saving, then name_setting_clash shows and nothing is sent (AC 13)", async () => {
+    const seen = wire({ get: () => json({ ...LIST, otherLabel: "Overig" }) });
+    await loaded();
+    await userEvent.click(screen.getByRole("button", { name: "Add category" }));
+    const view = within(screen.getByRole("region", { name: "New category" }));
+    await userEvent.type(view.getByLabelText("Name"), "overig");
+    await userEvent.type(view.getByLabelText("Description"), "Rest");
+    await userEvent.click(view.getByRole("button", { name: "Save" }));
+    expect(view.getByText("This name is already used for your Other or archive label. Choose another name.")).toBeInTheDocument();
+    expect(seen.puts).toHaveLength(0);
+  });
+
+  it.each([
+    ["setting_name_system_label", "This is a Gmail label of its own and cannot be used here."],
+    ["setting_name_reserved", "This name is kept for the assistant, or the other setting already uses it. Choose another name."],
+    ["setting_name_category_clash", "A category already uses this label, or lies below it. Choose another name."],
+  ])("given the api refuses the Other name with %s, then the reason is tied to the field, which is focused (AC 17)", async (rule, text) => {
+    wire({ put: () => problem422([{ rule, field: "other_label", index: null, position: null, otherIndex: null }]) });
+    await loaded();
+    await replace(otherField(), "INBOX");
+    await confirm();
+    const reason = await screen.findByText(text);
+    expect(otherField()).toBeInvalid();
+    expect(otherField().getAttribute("aria-describedby")).toContain(reason.closest("[role=alert]")?.id ?? "missing");
+    expect(reason.closest("[role=alert]")).not.toBeNull();
+    expect(screen.getByLabelText("Archive label")).not.toBeInvalid();
+    await waitFor(() => {
+      expect(otherField()).toHaveFocus();
+    });
+  });
+
+  it("given a reason is shown, when the user edits the name, then the reason goes away; and while saving the field is read-only", async () => {
+    wire({ put: () => problem422([{ rule: "setting_name_invalid", field: "other_label", index: null, position: null, otherIndex: null }]) });
+    await loaded();
+    await replace(otherField(), "Bad");
+    await confirm();
+    await screen.findByText("This is not a valid label name.");
+    await userEvent.type(otherField(), "x");
+    expect(screen.queryByText("This is not a valid label name.")).not.toBeInTheDocument();
   });
 });

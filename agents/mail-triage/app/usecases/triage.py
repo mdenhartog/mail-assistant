@@ -14,14 +14,13 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Protocol
 
-from app.adapters.gmail_read import HistoryExpiredError
+from app.adapters.gmail_read import HistoryExpiredError, LabelRefused
 from app.adapters.judge_anthropic import ModelUnavailable, trim_mail
 from app.core.alert_decision import AlertCause, decide_alert
 from app.core.alert_state import AlertState, initial_state
 from app.core.authentication import authenticated_from_domain
 from app.core.judgement import (
     OTHER_ID,
-    OTHER_LABEL,
     Filing,
     Judgement,
     JudgingList,
@@ -29,7 +28,10 @@ from app.core.judgement import (
     category_label,
     resolve,
 )
+from app.core.mail_errors import LabelWritesHeld
+from app.core.managed import LabelRef
 from app.core.pinned import PinnedKind, PinnedSenders, pinned_kind
+from app.core.scope import Scope, classify
 from app.core.sender_rules import (
     ExtraRule,
     FilingSource,
@@ -48,6 +50,7 @@ if TYPE_CHECKING:
     from app.adapters.gmail_read import FetchedMail
     from app.adapters.judge_anthropic import TrimmedMail
     from app.core.judgement import ListedCategory
+    from app.core.managed import ManagedLabel, ManagedSet
     from app.core.sender_rules import UrgencyJudge
     from app.usecases.policy_notice import PolicySource
     from schedule_policy.policy import TimePolicy
@@ -123,16 +126,40 @@ class Mailbox(Protocol):
         """Headers and text of one mail."""
         ...
 
-    def ensure_label(self, name: str) -> str:
-        """Id of the label, created when missing."""
+    def ensure_label(self, label: ManagedLabel) -> str:
+        """Id of the managed label, created when missing."""
         ...
 
-    def file(self, message_id: str, label_id: str) -> None:
-        """Add the category label and remove the inbox label."""
+    def file(self, message_id: str, label_id: str) -> str:
+        """Add the managed label and remove the inbox label; the id used comes back (new when it was recreated)."""
         ...
 
-    def add_label(self, message_id: str, label_id: str) -> None:
-        """Add one more label (the extra label) and change nothing else."""
+    def add_label(self, message_id: str, label_id: str) -> str:
+        """Add one more managed label (the extra label) and change nothing else; the id used comes back."""
+        ...
+
+
+class LabelBook(Protocol):
+    """The managed labels and the label settings, as the settings and the stored label ids know them (ADR-0060)."""
+
+    async def managed(self) -> ManagedSet:
+        """The managed labels of this moment: the list's categories, "Other" and the archive label."""
+        ...
+
+    async def names(self) -> dict[str, str]:
+        """Gmail label id to its current name, for the labels a mail carries."""
+        ...
+
+    async def other(self) -> ManagedLabel:
+        """The "Other" setting: its name and, once known, its Gmail id."""
+        ...
+
+    async def topic(self, category_id: str) -> ManagedLabel:
+        """The list label of one category of the current list (a topic or an extra label)."""
+        ...
+
+    async def remember(self, label: ManagedLabel, label_id: str) -> None:
+        """Store the Gmail id of a managed label when it is not the id stored before."""
         ...
 
 
@@ -194,8 +221,51 @@ class RunSummary:
     alerts: int = 0
     retry_later: int = 0
     given_up: int = 0
+    held: int = 0  # left alone because the rename plan is not done and its label has no stored id (R4)
     model_down: bool = False
     listing_failed: bool = False
+
+
+async def mail_scope(mail: FetchedMail, book: LabelBook) -> Scope:
+    """What the managed set says about the labels one mail carries; ids decide, names only while no id is known."""
+    names = await book.names()
+    refs = [LabelRef(label_id, names.get(label_id, "")) for label_id in mail.labels]
+    return classify(refs, await book.managed())
+
+
+async def label_of(outcome: Outcome, book: LabelBook) -> ManagedLabel:
+    """The managed label an outcome is filed under: its category's list label, else the "Other" setting."""
+    filing = outcome.filing
+    if filing is None or filing.category_id == OTHER_ID:
+        return await book.other()
+    return await book.topic(filing.category_id)
+
+
+class _Filer(Protocol):
+    def ensure_label(self, label: ManagedLabel) -> str: ...
+
+    def file(self, message_id: str, label_id: str) -> str: ...
+
+
+async def ensure_id(mailbox: _Filer, book: LabelBook, label: ManagedLabel) -> str:
+    """The Gmail id of a managed label (created when missing); stored when it is not the id stored before."""
+    label_id = await asyncio.to_thread(mailbox.ensure_label, label)
+    if label_id != label.label_id:
+        await book.remember(label, label_id)
+    return label_id
+
+
+async def file_under_label(mailbox: _Filer, book: LabelBook, message_id: str, label: ManagedLabel) -> None:
+    """Add the managed label to the mail by id and take it out of the inbox; store a changed id."""
+    label_id = await ensure_id(mailbox, book, label)
+    await file_ensured(mailbox, book, message_id, label, label_id)
+
+
+async def file_ensured(mailbox: _Filer, book: LabelBook, message_id: str, label: ManagedLabel, label_id: str) -> None:
+    """File a mail under the managed label with its ensured id; store the id when Gmail used another."""
+    used = await asyncio.to_thread(mailbox.file, message_id, label_id)
+    if used != label_id:
+        await book.remember(label, used)
 
 
 def _verified_domain(mail: FetchedMail) -> str | None:
@@ -243,20 +313,25 @@ def pinned_outcome(kind: PinnedKind, mail: FetchedMail, now: datetime, policy: T
     )
 
 
-def decide_outcome(
+def decide_outcome(  # noqa: PLR0913 - the snapshot of one decision, as rule_outcome
     verdict: Judgement | NeedsAttention,
     mail: FetchedMail,
     current: JudgingList,
     now: datetime,
     policy: TimePolicy,
+    *,
+    other_label: str,
 ) -> Outcome:
     """Label, urgency, filing and content of one judged mail. Anything untrustworthy is urgent, never ignorable.
 
     Shared by the pipeline (new mail) and the catch-up (old mail), so both decide exactly alike. ``policy`` is the
     snapshot of this one decision: inside its quiet hours the alert is held until the next quiet end under it.
     ``current`` is the list snapshot the mail was judged against; its version goes into the filing.
+    ``other_label`` is the name of the "Other" setting, where a mail with no fitting category goes.
     """
-    decision = resolve(verdict, current.categories) if isinstance(verdict, Judgement) else verdict
+    decision = (
+        resolve(verdict, current.categories, other_label=other_label) if isinstance(verdict, Judgement) else verdict
+    )
     category_id, extra = OTHER_ID, None
     if isinstance(decision, Filing):
         extra = decision.extra
@@ -268,7 +343,7 @@ def decide_outcome(
             "",
         )
     else:
-        label, urgent, confidence, note = OTHER_LABEL, True, None, f"needs_attention:{decision.reason}"
+        label, urgent, confidence, note = other_label, True, None, f"needs_attention:{decision.reason}"
     if isinstance(verdict, Judgement):
         reason, summary = verdict.reason, verdict.summary
     else:
@@ -396,8 +471,10 @@ class TriagePipeline:
         policy: PolicySource,
         pinned: PinnedSenders,
         urgency: UrgencyJudge,
+        labels: LabelBook,
     ) -> None:
-        """Wire the ports, the clock, the policy source, the pinned sender domains and the urgency-only judge."""
+        """Wire the ports, the clock, the policy source, the pinned domains, the urgency-only judge and the labels."""
+        self._labels = labels
         self._urgency = urgency
         self._rules = SenderRulesCache()
         self._pinned = pinned
@@ -444,6 +521,10 @@ class TriagePipeline:
             summary.model_down = True
             summary.retry_later += 1
             return False
+        except LabelWritesHeld:  # no label is made before the plan is done: not a failure, tried again later
+            logger.info("label writes held; leaving a mail for the next run")
+            summary.held += 1
+            summary.retry_later += 1
         except Exception as error:
             logger.warning("processing failed id=%s kind=%s", message_id, type(error).__name__)
             await self._fail(message_id, summary)
@@ -461,6 +542,8 @@ class TriagePipeline:
 
     async def _triage(self, message_id: str, summary: RunSummary) -> None:
         mail = await asyncio.to_thread(self._mail.fetch, message_id)
+        if await mail_scope(mail, self._labels) is not Scope.IN_SCOPE:  # archived, excluded or unclear: not ours
+            return
         if await self._store.claim(mail.message_id, mail.thread_id) is Claim.DONE:
             return
         kind = pinned_mail_kind(mail, self._pinned)  # checked again here, right before anything could move it
@@ -489,7 +572,8 @@ class TriagePipeline:
         judged = await self._judge.judge(trimmed, current.categories, current.general_instructions)
         policy = await self._policy.current()  # one snapshot for this mail: the decision never mixes old and new values
         now = self._now()
-        outcome = decide_outcome(judged, mail, current, now, policy)
+        other = await self._labels.other()
+        outcome = decide_outcome(judged, mail, current, now, policy, other_label=other.name)
         if isinstance(ruled, ExtraRule):  # the topic is the model's; the rule's extra label is added to it
             outcome = with_rule_extra(outcome, ruled)
         else:
@@ -497,26 +581,31 @@ class TriagePipeline:
         return with_always_notify(outcome, current, now, policy)
 
     async def _file(self, mail: FetchedMail, outcome: Outcome) -> None:
-        outcome, label_id = await self._topic_label(mail, outcome)
+        outcome, label, label_id = await self._topic_label(mail, outcome)
         outcome = await self._add_extra(mail, outcome)
-        await asyncio.to_thread(self._mail.file, mail.message_id, label_id)
+        await file_ensured(self._mail, self._labels, mail.message_id, label, label_id)
         await self._store.complete(mail.message_id, outcome)
 
-    async def _topic_label(self, mail: FetchedMail, outcome: Outcome) -> tuple[Outcome, str]:
+    async def _topic_label(self, mail: FetchedMail, outcome: Outcome) -> tuple[Outcome, ManagedLabel, str]:
+        label = await label_of(outcome, self._labels)
         try:
-            return outcome, await asyncio.to_thread(self._mail.ensure_label, outcome.label or OTHER_LABEL)
-        except ValueError:  # the mailbox refuses this label name: file under Other, never lose the mail or its alert
+            return outcome, label, await ensure_id(self._mail, self._labels, label)
+        except LabelRefused:  # the mailbox refuses this label: file under Other, never lose the mail or its alert
             logger.warning("label refused; filing under Other id=%s", mail.message_id)
-            return replace(outcome, label=OTHER_LABEL), await asyncio.to_thread(self._mail.ensure_label, OTHER_LABEL)
+            other = await self._labels.other()
+            return replace(outcome, label=other.name), other, await ensure_id(self._mail, self._labels, other)
 
     async def _add_extra(self, mail: FetchedMail, outcome: Outcome) -> Outcome:
-        """Add the extra label before the mail leaves the inbox; a refused name drops the extra, never the mail."""
-        if outcome.extra_label is None or outcome.filing is None:
+        """Add the extra label before the mail leaves the inbox; a refused label drops the extra, never the mail."""
+        if outcome.extra_label is None or outcome.filing is None or outcome.filing.extra_id is None:
             return outcome
+        extra = await self._labels.topic(outcome.filing.extra_id)
         try:
-            label_id = await asyncio.to_thread(self._mail.ensure_label, outcome.extra_label)
-        except ValueError:
+            label_id = await ensure_id(self._mail, self._labels, extra)
+        except LabelRefused:
             logger.warning("extra label refused id=%s", mail.message_id)
             return replace(outcome, extra_label=None, filing=replace(outcome.filing, extra_id=None))
-        await asyncio.to_thread(self._mail.add_label, mail.message_id, label_id)
+        used = await asyncio.to_thread(self._mail.add_label, mail.message_id, label_id)
+        if used != label_id:
+            await self._labels.remember(extra, used)
         return outcome

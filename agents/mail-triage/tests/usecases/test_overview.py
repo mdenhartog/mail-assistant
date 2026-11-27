@@ -87,10 +87,10 @@ def service(
 async def test_given_mails_filed_today_when_the_time_arrives_then_one_message_has_counts_and_unsure_mails() -> None:
     store = FakeStore(
         [
-            filed("Assistant/Newsletters"),
-            filed("Assistant/Newsletters"),
-            filed("Assistant/Finance"),
-            filed("Assistant/Other", confidence=0.3, sender="odd@example.com", subject="Strange mail"),
+            filed("Newsletters"),
+            filed("Newsletters"),
+            filed("Finance"),
+            filed("Other", confidence=0.3, sender="odd@example.com", subject="Strange mail"),
         ]
     )
     outbox = FakeOutbox()
@@ -105,7 +105,7 @@ async def test_given_mails_filed_today_when_the_time_arrives_then_one_message_ha
     assert "odd@example.com" in text
     assert "Strange mail" in text
     assert outbox.messages[0].buttons == ()
-    assert "Assistant/" not in text  # the prefix is noise for Marco
+    assert "Assistant" not in text
 
 
 async def test_given_nothing_was_filed_when_the_time_arrives_then_no_message_is_sent() -> None:
@@ -117,7 +117,7 @@ async def test_given_nothing_was_filed_when_the_time_arrives_then_no_message_is_
 
 
 async def test_given_the_overview_was_already_sent_today_when_run_again_then_nothing_is_sent() -> None:
-    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+    store, outbox = FakeStore([filed("Finance")]), FakeOutbox()
     run = service(store, outbox, AFTER)
 
     await run.send_overview()
@@ -128,7 +128,7 @@ async def test_given_the_overview_was_already_sent_today_when_run_again_then_not
 
 
 async def test_given_it_is_before_the_overview_time_when_run_then_nothing_is_sent_yet() -> None:
-    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+    store, outbox = FakeStore([filed("Finance")]), FakeOutbox()
 
     await service(store, outbox, BEFORE).send_overview()
 
@@ -140,7 +140,7 @@ async def test_given_the_overview_time_skipped_by_a_clock_change_into_quiet_hour
 ):
     # 02:30 does not exist on 29 March 2026 in Amsterdam: the overview resolves to 03:00, the start of quiet hours.
     policy = make_policy(quiet_start=time(3, 0), quiet_end=time(8, 0), overview_at=time(2, 30))
-    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+    store, outbox = FakeStore([filed("Finance")]), FakeOutbox()
 
     await service(store, outbox, datetime(2026, 3, 29, 1, 30, tzinfo=UTC), policy).send_overview()  # 03:30 local
     assert outbox.messages == []
@@ -153,7 +153,7 @@ async def test_given_the_overview_time_skipped_by_a_clock_change_into_quiet_hour
 
 async def test_given_another_zone_when_the_time_arrives_there_then_the_overview_follows_that_zone() -> None:
     new_york = make_policy(zone="America/New_York")
-    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+    store, outbox = FakeStore([filed("Finance")]), FakeOutbox()
 
     await service(store, outbox, datetime(2026, 11, 9, 22, 59, tzinfo=UTC), new_york).send_overview()  # 17:59 there
     assert outbox.messages == []
@@ -166,7 +166,7 @@ async def test_given_another_zone_when_the_time_arrives_there_then_the_overview_
 
 async def test_given_a_day_whose_midnight_is_skipped_when_the_overview_runs_then_the_day_starts_at_01_00() -> None:
     santiago = make_policy(zone="America/Santiago")
-    store, outbox = FakeStore([filed("Assistant/Finance")]), FakeOutbox()
+    store, outbox = FakeStore([filed("Finance")]), FakeOutbox()
 
     await service(store, outbox, datetime(2026, 9, 6, 22, 30, tzinfo=UTC), santiago).send_overview()  # 19:30 there
 
@@ -179,14 +179,14 @@ async def test_given_a_quiet_day_when_the_time_arrives_then_it_is_remembered_so_
     store, outbox = FakeStore(), FakeOutbox()
     await service(store, outbox, AFTER).send_overview()
 
-    store.mails.append(filed("Assistant/Finance"))
+    store.mails.append(filed("Finance"))
     await service(store, outbox, AFTER).send_overview()
 
     assert outbox.messages == []
 
 
 async def test_given_many_unsure_mails_with_growing_text_when_built_then_the_list_is_shortened_to_fit() -> None:
-    mails = [filed("Assistant/Other", 0.1, sender="&" * 60, subject="&" * 80) for _ in range(30)]
+    mails = [filed("Other", 0.1, sender="&" * 60, subject="&" * 80) for _ in range(30)]
 
     store, outbox = FakeStore(mails), FakeOutbox()
     await service(store, outbox, AFTER).send_overview()
@@ -198,7 +198,7 @@ async def test_given_many_unsure_mails_with_growing_text_when_built_then_the_lis
 
 
 async def test_given_hostile_text_and_many_mails_when_built_then_it_is_escaped_and_fits_one_message() -> None:
-    mails = [filed("Assistant/Other", 0.1, sender="<b>x</b>@example.com", subject="<a href='x'>y</a>" * 20)] * 300
+    mails = [filed("Other", 0.1, sender="<b>x</b>@example.com", subject="<a href='x'>y</a>" * 20)] * 300
 
     store, outbox = FakeStore(mails), FakeOutbox()
     await service(store, outbox, AFTER).send_overview()
@@ -213,11 +213,11 @@ async def test_given_hostile_text_and_many_mails_when_built_then_it_is_escaped_a
 
 
 def old_urgent(sender: str = "boss@example.com", subject: str = "Pay the invoice") -> FiledMail:
-    return FiledMail(label="Assistant/Finance", confidence=0.9, sender=sender, subject=subject, urgent=True)
+    return FiledMail(label="Finance", confidence=0.9, sender=sender, subject=subject, urgent=True)
 
 
 def test_given_urgent_mail_filed_without_an_alert_when_the_overview_is_built_then_it_gets_its_own_section() -> None:
-    text = build_overview([filed("Assistant/Newsletter"), old_urgent()]).text
+    text = build_overview([filed("Newsletter"), old_urgent()]).text
 
     assert "Old mail that looked urgent (1)" in text
     assert "boss@example.com: Pay the invoice" in text
@@ -225,7 +225,7 @@ def test_given_urgent_mail_filed_without_an_alert_when_the_overview_is_built_the
 
 
 def test_given_no_urgent_mail_without_an_alert_when_the_overview_is_built_then_the_text_is_unchanged() -> None:
-    mails = [filed("Assistant/Newsletter"), filed("Assistant/Shipping", confidence=0.5)]
+    mails = [filed("Newsletter"), filed("Shipping", confidence=0.5)]
 
     text = build_overview(mails).text
 
@@ -258,7 +258,7 @@ def test_given_more_than_ten_urgent_mails_when_the_overview_is_built_then_ten_ar
 def test_given_an_urgent_mail_that_is_also_unsure_when_the_overview_is_built_then_it_is_listed_in_both_sections() -> (
     None
 ):
-    text = build_overview([FiledMail("Assistant/Other", 0.4, "x@example.com", "Odd one", urgent=True)]).text
+    text = build_overview([FiledMail("Other", 0.4, "x@example.com", "Odd one", urgent=True)]).text
 
     assert "I was unsure about 1" in text
     assert "Old mail that looked urgent (1)" in text
@@ -282,7 +282,7 @@ class Rig:
         )
 
     def file(self, at: datetime, subject: str = "Hi") -> None:
-        self.store.timed.append((at, filed("Assistant/Finance", subject=subject)))
+        self.store.timed.append((at, filed("Finance", subject=subject)))
 
     async def run(self, at: datetime) -> None:
         self.now = self.store.now = at
@@ -409,9 +409,7 @@ async def test_given_one_run_when_the_overview_is_sent_then_the_policy_is_read_o
 
 
 def test_given_pinned_security_mail_when_the_overview_is_built_then_it_has_its_own_section() -> None:
-    text = build_overview(
-        [filed("Assistant/Finance")], [SecurityMail("no-reply@accounts.google.com", "Security alert")]
-    ).text
+    text = build_overview([filed("Finance")], [SecurityMail("no-reply@accounts.google.com", "Security alert")]).text
 
     assert "Google security mail (1)" in text
     assert "• no-reply@accounts.google.com: Security alert" in text

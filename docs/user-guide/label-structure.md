@@ -2,6 +2,8 @@
 
 Describe your whole mailbox structure on the Categories page or in one YAML file: nested categories such as `Huis/Water`, extra labels, senders that are filed without asking the AI, and a tick that sends you a Telegram message for every new mail in a category.
 
+> Since INT-010 the assistant no longer uses the `Assistant/` prefix and the default archive label is `Archive`. See [Labels without the Assistant prefix](label-prefix-removal.md). Names below that start with `Assistant/` describe the earlier behaviour.
+
 This page covers the whole feature: the category list, sender lists and always-notify, the YAML file, the name of your archive label and the button **Sort everything again** with its review of the mail that is not sure enough.
 
 ## Before you start

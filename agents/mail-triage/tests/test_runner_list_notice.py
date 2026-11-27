@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.scope import ArchiveLabel
 from app.runner import Runner
 from app.settings import load_settings
 from app.usecases.list_notice import ListNotice, ListNoticeActions
@@ -64,6 +63,8 @@ def _runner(steps: Steps, tmp_path: Path, notice: ListNoticeStep) -> Runner:
         inbox=Inbox([]),
         router=Router(),
         list_sync=ListSyncStep(),
+        label_rename=ResortIdle(),
+        label_cleanup=ResortIdle(),
         list_notice=notice,
         approval_notice=ResortIdle(),
         resort_build=ResortIdle(),
@@ -153,9 +154,9 @@ def _wired() -> Any:
         mailbox=object(),
         sender=object(),
         labels=object(),  # type: ignore[arg-type]
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=object(),  # type: ignore[arg-type]
-        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=None,  # type: ignore[arg-type]
         now=lambda: NOW,

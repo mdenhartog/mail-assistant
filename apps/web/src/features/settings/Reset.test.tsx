@@ -6,6 +6,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { setCsrfToken } from "@/api/client";
 import { SettingsPage } from "@/features/settings/SettingsPage";
 import { expectNoAxeViolations } from "@/test/axe";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const DEFAULTS = {
   timeZone: "Europe/Amsterdam",
@@ -13,11 +14,13 @@ const DEFAULTS = {
   quietEnd: "07:00",
   overviewAt: "18:00",
   remindAt: "09:00",
+  ...CLEANUP,
 };
-const CHANGED = { timeZone: "Asia/Bangkok", quietStart: "22:00", quietEnd: "06:30", overviewAt: "19:30", remindAt: "10:00" };
-const STORED = { values: CHANGED, version: 1, updatedAt: "2026-11-12T10:00:00Z", updatedVia: "web" };
+const CHANGED = { timeZone: "Asia/Bangkok", quietStart: "22:00", quietEnd: "06:30", overviewAt: "19:30", remindAt: "10:00", ...CLEANUP };
+const STORED = { values: CHANGED, ranges: RANGES, version: 1, updatedAt: "2026-11-12T10:00:00Z", updatedVia: "web" };
 const TOKEN = "csrf-secret-4711";
-const LISTED = "Time zone Europe/Amsterdam, quiet hours 23:00 to 07:00, daily overview 18:00, reminders 09:00";
+const LISTED =
+  "Time zone Europe/Amsterdam, quiet hours 23:00 to 07:00, daily overview 18:00, reminders 09:00, label cleanup waiting time 12 hours, protection 7 days, retention 30 days";
 
 type Answer = Response | Promise<Response>;
 

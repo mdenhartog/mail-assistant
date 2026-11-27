@@ -80,8 +80,8 @@ async def test_given_a_topic_and_an_extra_label_from_the_model_when_filed_then_t
 
     mailbox, store = await run(judge, JudgingList(3, (NO_RULE_HOUSE, FINANCE, FACTUREN)))
 
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
-    assert mailbox.extra == [("m1", "id:Assistant/Facturen")]
+    assert mailbox.filed == [("m1", "id:Finance")]
+    assert mailbox.extra == [("m1", "id:Facturen")]
     assert store.outcomes["m1"].filing == FilingEntry(FINANCE_ID, 3, FACTUREN_ID, FilingSource.MODEL, None)
 
 
@@ -90,7 +90,7 @@ async def test_given_an_unknown_extra_id_when_filed_then_only_the_topic_is_filed
 
     mailbox, store = await run(judge, JudgingList(3, (NO_RULE_HOUSE, FINANCE, FACTUREN)))
 
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
+    assert mailbox.filed == [("m1", "id:Finance")]
     assert mailbox.extra == []
     outcome = store.outcomes["m1"]
     assert (outcome.urgent, outcome.alert) == (True, AlertState.OPEN)
@@ -102,7 +102,7 @@ async def test_given_an_unknown_topic_id_from_the_model_when_filed_then_it_is_ot
 
     mailbox, store = await run(judge, JudgingList(3, (NO_RULE_HOUSE, FINANCE, FACTUREN)))
 
-    assert mailbox.filed == [("m1", "id:Assistant/Other")]
+    assert mailbox.filed == [("m1", "id:Other")]
     assert mailbox.extra == []
     outcome = store.outcomes["m1"]
     assert outcome.urgent is True
@@ -118,8 +118,8 @@ async def test_given_a_sender_that_only_an_extra_label_lists_when_processed_then
 
     assert judge.instructions == ["rules"]  # the model was asked
     assert urgency.calls == 0  # and the urgency comes from that one call
-    assert mailbox.filed == [("m1", "id:Assistant/Finance")]
-    assert mailbox.extra == [("m1", f"id:Assistant/{EXTRA_ONLY.name}")]
+    assert mailbox.filed == [("m1", "id:Finance")]
+    assert mailbox.extra == [("m1", f"id:{EXTRA_ONLY.name}")]
     assert store.outcomes["m1"].filing == FilingEntry(FINANCE_ID, 3, IMPORTANT_ID, FilingSource.MODEL, None)
 
 
@@ -128,7 +128,7 @@ async def test_given_an_extra_only_sender_and_no_model_extra_then_the_rule_extra
 
     mailbox, store = await run(judge, JudgingList(3, (NO_RULE_HOUSE, FINANCE, EXTRA_ONLY)))
 
-    assert mailbox.extra == [("m1", f"id:Assistant/{EXTRA_ONLY.name}")]
+    assert mailbox.extra == [("m1", f"id:{EXTRA_ONLY.name}")]
     outcome = store.outcomes["m1"]
     assert (outcome.urgent, outcome.alert) == (True, AlertState.OPEN)  # the model's urgency stays
 
@@ -138,8 +138,8 @@ async def test_given_an_extra_only_sender_and_an_unusable_model_answer_when_proc
 
     mailbox, store = await run(judge, JudgingList(3, (NO_RULE_HOUSE, FINANCE, EXTRA_ONLY)))
 
-    assert mailbox.filed == [("m1", "id:Assistant/Other")]
-    assert mailbox.extra == [("m1", f"id:Assistant/{EXTRA_ONLY.name}")]
+    assert mailbox.filed == [("m1", "id:Other")]
+    assert mailbox.extra == [("m1", f"id:{EXTRA_ONLY.name}")]
     outcome = store.outcomes["m1"]
     assert (outcome.urgent, outcome.alert) == (True, AlertState.OPEN)
     assert outcome.filing == FilingEntry(OTHER_ID, 3, IMPORTANT_ID, FilingSource.MODEL, None)
@@ -155,7 +155,7 @@ async def test_given_an_unauthenticated_extra_only_sender_then_the_model_judges_
 
     await pipeline(mailbox, judge, store, urgency=FixedUrgency(UrgencyVerdict(True, "x"))).run_once()
 
-    assert mailbox.extra == [("m1", "id:Assistant/Facturen")]
+    assert mailbox.extra == [("m1", "id:Facturen")]
     filing = store.outcomes["m1"].filing
     assert filing == FilingEntry(FINANCE_ID, 3, FACTUREN_ID, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
 
@@ -165,7 +165,7 @@ async def test_given_no_budget_when_a_rule_mail_arrives_then_it_is_filed_without
 
     mailbox, store = await run(RecordingJudge(verdict()), JudgingList(3, (HOUSE, FINANCE)), urgency)
 
-    assert mailbox.filed == [("m1", "id:Assistant/Huis")]
+    assert mailbox.filed == [("m1", "id:Huis")]
     outcome = store.outcomes["m1"]
     assert (outcome.urgent, outcome.alert) == (False, None)  # filed and left for the daily overview
     assert outcome.note == "sender_rule:urgency_not_judged"

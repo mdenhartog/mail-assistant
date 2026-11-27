@@ -545,7 +545,7 @@ async def test_given_a_file_with_a_new_archive_label_when_uploaded_then_the_prev
     assert await owner.fetchval("select archive_label from categories.list_settings where version = 2") == "Bewaard"
 
 
-@pytest.mark.parametrize("stored_name", ["Bewaard", "Assistant/Archive"])
+@pytest.mark.parametrize("stored_name", ["Bewaard", "Archive"])
 async def test_given_a_file_without_an_archive_label_when_uploaded_then_the_stored_name_is_kept(
     api: Api,
     owner: asyncpg.Connection,
@@ -593,7 +593,7 @@ async def test_given_the_same_archive_label_when_uploaded_then_it_is_not_reporte
     assert preview["archiveLabelChanged"] is False
 
 
-@pytest.mark.parametrize("name", ["INBOX", "Assistant/Invoices", "Assistant/Other", "Assistant/Invoices/Old"])
+@pytest.mark.parametrize("name", ["INBOX", "Invoices", "Other", "Invoices/Old"])
 async def test_given_a_file_with_an_invalid_archive_label_when_uploaded_then_422_on_the_field_and_nothing_is_stored(
     api: Api,
     owner: asyncpg.Connection,
@@ -605,7 +605,8 @@ async def test_given_a_file_with_an_invalid_archive_label_when_uploaded_then_422
     response = await client.upload(ARCHIVE_FILE.replace("Bewaard", name))
 
     assert response.status_code == 422
-    assert [p["field"] for p in response.json()["problems"]] == ["archiveLabel"]
+    # the parser also flags the category that equals the archive name the file gives
+    assert "archiveLabel" in [p["field"] for p in response.json()["problems"]]
     assert await owner.fetchval(VERSIONS, MAILBOX) == 1
 
 
@@ -620,3 +621,35 @@ async def test_given_a_restore_when_the_previous_version_had_another_archive_lab
     restored = (await client.restore(2)).json()
 
     assert (restored["version"], restored["archiveLabel"]) == (3, "Eerder")
+
+
+# U-label-prefix-removal-19: an existing Gmail label is adopted, the setting names clash (AC 13, AC 19)
+async def test_given_a_name_equal_to_a_gmail_label_when_uploaded_then_the_preview_counts_it_as_adopted(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills and receipts")])
+    await owner.execute("insert into categories.gmail_label (mailbox_id, name) values ($1, 'Travel')", MAILBOX)
+    client = await sign_in(api)
+
+    preview = await preview_of(client)
+    confirmed = await client.confirm(preview)
+
+    assert (preview["added"], preview["adopted"]) == (1, 1)
+    assert confirmed.status_code == 200
+
+
+async def test_given_a_name_equal_to_the_current_other_name_when_uploaded_then_422_name_setting_clash(
+    api: Api,
+    owner: asyncpg.Connection,
+) -> None:
+    await seed(owner, [("Invoices", "Bills")], other_label="Travel")
+    client = await sign_in(api)
+
+    response = await client.upload()
+
+    assert response.status_code == 422
+    assert [(p["rule"], p["field"]) for p in response.json()["problems"]] == [
+        ("name_setting_clash", "categories[1].name")
+    ]
+    assert await owner.fetchval(VERSIONS, MAILBOX) == 1

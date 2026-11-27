@@ -40,7 +40,7 @@ def stored(*, labels: tuple[str, ...] = ()) -> StoredList:
         StoredCategory(INVOICES, "Invoices", "Bills", Kind.TOPIC, notify=False, senders=()),
         StoredCategory(OLD, "Old", "Gone soon", Kind.TOPIC, notify=False, senders=()),
     )
-    return StoredList(1, categories, "", "Assistant/Archive", {}, {}, labels)
+    return StoredList(1, categories, "", "Archive", "Other", {}, {}, labels)
 
 
 def file_of(*categories: tuple[str, str]) -> bytes:
@@ -84,21 +84,40 @@ def test_given_the_same_list_when_planned_then_nothing_is_added_changed_or_remov
     assert (plan.added, plan.changed, plan.removed, plan.new_ids) == (0, 0, [], frozenset())
 
 
-def test_given_a_name_whose_label_is_an_older_category_when_planned_then_it_is_adopted_not_refused() -> None:
-    parsed = parse_file(file_of(("Trips", "d")))
+def test_given_a_name_equal_to_a_gmail_label_when_planned_then_it_is_adopted_counted_and_not_refused() -> None:
+    parsed = parse_file(file_of(("Invoices", "Bills"), ("Trips", "d"), ("Fresh", "d")))
 
-    plan = plan_of(parsed, stored(labels=("Assistant/Trips",)), lambda: NEW)
+    ids = iter([NEW, uuid.UUID(int=100)])
 
-    assert [row.id for row in plan.rows] == [NEW]
+    plan = plan_of(parsed, stored(labels=("trips", "Invoices")), lambda: next(ids))
+
+    assert next(row.id for row in plan.rows) == INVOICES
+    assert (plan.added, plan.adopted) == (2, 1)  # Invoices was already on the list: not an adoption
+
+
+def test_given_a_name_equal_to_the_current_other_name_when_planned_then_it_is_refused_as_a_setting_clash() -> None:
+    custom = replace(stored(), other_label="Rest")
+
+    with pytest.raises(FileRefused) as refused:
+        plan_of(parse_file(file_of(("rest", "d"))), custom, lambda: NEW)
+
+    assert [(p.rule, p.field) for p in refused.value.problems] == [("name_setting_clash", "categories[0].name")]
+
+
+def test_given_a_reserved_name_when_planned_then_it_is_refused_in_any_case() -> None:
+    for name in ("Archive", "other", "archive/Taxes", "inbox"):
+        with pytest.raises(FileRefused) as refused:
+            plan_of(parse_file(file_of((name, "d"))), stored(), lambda: NEW)
+        assert refused.value.problems
 
 
 def test_given_a_problem_against_the_stored_list_when_reported_then_it_names_field_and_line_but_no_value() -> None:
-    found = [CategoryProblem(rule="name_label_exists", field="name", index=2, position=None, other_index=None)]
+    found = [CategoryProblem(rule="name_setting_clash", field="name", index=2, position=None, other_index=None)]
 
     problems = policy_problems(found)
 
-    assert [(p.rule, p.line, p.field) for p in problems] == [("name_label_exists", 1, "categories[2].name")]
-    assert problems[0].message == FILE_RULE_TEXT["name_label_exists"]
+    assert [(p.rule, p.line, p.field) for p in problems] == [("name_setting_clash", 1, "categories[2].name")]
+    assert problems[0].message == FILE_RULE_TEXT["name_setting_clash"]
 
 
 def test_given_a_hostile_file_when_parsed_then_every_problem_has_a_line_a_field_and_a_fixed_text() -> None:

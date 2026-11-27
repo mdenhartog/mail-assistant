@@ -16,10 +16,12 @@ from app.core.judgement import (
     NeedsAttention,
     parse_judgement,
 )
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from app.core.pinned import PinnedSenders
 from app.core.resort_plan import PlanKind, PlanState
-from app.core.scope import ArchiveLabel
+from app.usecases.resort_apply import ResortLabels
 from app.usecases.resort_build import BuildList, Candidate, ItemDraft, PlanRecord, ResortBuild, ResortRequest
+from category_policy.kinds import Kind
 from tests.fakes.budget_ledger import BudgetLedger
 from tests.fakes.fake_clock import FakeClock
 from tests.fakes.fake_gmail import FakeGmail
@@ -30,7 +32,8 @@ if TYPE_CHECKING:
 
     from app.adapters.judge_anthropic import TrimmedMail
 
-ARCHIVE = ArchiveLabel("Archive")
+OTHER_NAME = "Other"  # the default of the "Other" setting
+ARCHIVE_NAME = "Archive"  # the default of the archive setting
 
 
 START = datetime(2026, 11, 15, 9, 0, tzinfo=UTC)
@@ -45,11 +48,43 @@ DAILY_TOTAL = 100
 RESERVE = 50
 
 
+def resort_labels(  # noqa: PLR0913
+    gmail: FakeGmail,
+    categories: Sequence[ListedCategory],
+    *,
+    stored: dict[str, str] | None = None,
+    other: str = OTHER_NAME,
+    archive: str = ARCHIVE_NAME,
+    extras: frozenset[str] = frozenset(),
+    writes_held: bool = False,
+) -> ResortLabels:
+    """The managed labels as the database would hold them: a stored id wins, else the Gmail label of that name.
+
+    ``stored`` maps a category id (``OTHER_ID`` for "Other", ``"archive"`` for the archive label) to the label id
+    the database stored for it. ``extras`` lists category ids that are extra labels. ``writes_held`` is the rename
+    plan that is not done: the set carries the hold and only a stored id counts (no label is found by its name).
+    """
+    ids = {} if writes_held else {name: label_id for label_id, name in gmail.label_table.items()}
+    kept = stored or {}
+    by_category: dict[str, ManagedLabel] = {}
+    for category in categories:
+        name = category.name.strip()
+        role = Role.EXTRA if category.kind is Kind.EXTRA or category.category_id in extras else Role.TOPIC
+        by_category[category.category_id] = ManagedLabel(name, kept.get(category.category_id) or ids.get(name), role)
+    by_category[OTHER_ID] = ManagedLabel(other, kept.get(OTHER_ID) or ids.get(other), Role.OTHER)
+    archive_label = ManagedLabel(archive, kept.get("archive") or ids.get(archive), Role.ARCHIVE)
+    return ResortLabels(ManagedSet([*by_category.values(), archive_label], writes_held=writes_held), by_category)
+
+
 class FakeBuildStore:
     """The plan tables in memory. A plan that is not ``building`` refuses progress, like the compare-and-set."""
 
-    def __init__(self, clock: FakeClock) -> None:
+    def __init__(self, clock: FakeClock, gmail: FakeGmail | None = None) -> None:
         self._clock = clock
+        self._gmail = FakeGmail() if gmail is None else gmail
+        self.stored_ids: dict[str, str] = {}
+        self.other_name = OTHER_NAME
+        self.writes_held = False  # the rename plan is not done (R4)
         self.list = BuildList(version=1, changed_at=clock(), categories=CATEGORIES)
         self.plans: list[PlanRecord] = []
         self.items: dict[uuid.UUID, list[ItemDraft]] = {}
@@ -84,6 +119,15 @@ class FakeBuildStore:
 
     async def current_list(self) -> BuildList:
         return self.list
+
+    async def managed_labels(self) -> ResortLabels:
+        return resort_labels(
+            self._gmail,
+            self.list.categories,
+            stored=self.stored_ids,
+            other=self.other_name,
+            writes_held=self.writes_held,
+        )
 
     async def latest_plan(self) -> PlanRecord | None:
         return self.plans[-1] if self.plans else None
@@ -169,11 +213,12 @@ class FakeBuildStore:
 
 
 class GmailBuildMailbox:
-    """The mailbox port on the Gmail double: listing is what the real query returns (inbox or ``Assistant/`` label)."""
+    """The mailbox port on the Gmail double: listing is what the real query returns (inbox or a list label)."""
 
     def __init__(self, gmail: FakeGmail) -> None:
         self.gmail = gmail
         self.ghosts: list[str] = []  # listed, then deleted before they are read
+        self.listed_names: set[str] = {"Finance", "Travel", "Newsletter", "Receipt", OTHER_NAME}
 
     def label_names(self) -> dict[str, str]:
         return dict(self.gmail.label_table)
@@ -184,7 +229,7 @@ class GmailBuildMailbox:
             m.mid
             for m in reversed(self.gmail.mail_table.values())
             if not {"SPAM", "TRASH"} & m.labels
-            and ("INBOX" in m.labels or any(names[i].startswith("Assistant/") for i in m.labels))
+            and ("INBOX" in m.labels or any(names[i] in self.listed_names for i in m.labels))
         ]
         return [*self.ghosts, *ids]
 
@@ -277,13 +322,13 @@ class Rig:
         self.clock = FakeClock(START)
         self.gmail = FakeGmail()
         self.mailbox = GmailBuildMailbox(self.gmail)
-        self.store = FakeBuildStore(self.clock)
+        self.store = FakeBuildStore(self.clock, self.gmail)
         self.ledger = BudgetLedger(self.clock, daily_total=daily_total, reserve=RESERVE)
         self.judge = ScriptedJudge(ledger=self.ledger)
         self.telegram = FakeTelegram()
         self.tips = FakeTips(self.telegram)
-        self.finance_label = self.gmail.add_label("Assistant/Finance")
-        self.travel_label = self.gmail.add_label("Assistant/Travel")
+        self.finance_label = self.gmail.add_label("Finance")
+        self.travel_label = self.gmail.add_label("Travel")
         self.build = ResortBuild(
             mailbox=self.mailbox,
             judge=self.judge,
@@ -293,7 +338,6 @@ class Rig:
             budget=self,
             now=self.clock,
             pinned=PINNED,
-            archive=ARCHIVE,
             per_run=per_run,
         )
 
@@ -306,4 +350,4 @@ class Rig:
         return self.ledger.available() + RESERVE
 
 
-__all__ = ["CATEGORIES", "FINANCE", "OTHER_ID", "PINNED", "RESERVE", "START", "TRAVEL", "Rig"]
+__all__ = ["ARCHIVE_NAME", "CATEGORIES", "FINANCE", "OTHER_ID", "PINNED", "RESERVE", "START", "TRAVEL", "Rig"]

@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import { FIELD_KEYS } from "@/features/settings/useSettings";
-import type { ConflictState, FieldKey, Settings, SettingsValues } from "@/features/settings/useSettings";
+import { valueText } from "@/features/settings/cleanupText";
+import { FIELD_KEYS, isNumberKey } from "@/features/settings/useSettings";
+import type { ConflictState, FieldKey, FieldValue, Settings, SettingsValues } from "@/features/settings/useSettings";
 
 /** One edited field whose stored value moved on while the user typed. */
 export interface ConflictMark {
@@ -30,7 +31,15 @@ const LABELS: Record<FieldKey, string> = {
   quietEnd: "Quiet hours until",
   overviewAt: "Daily overview",
   remindAt: "Remind-me-later default",
+  waitingMinutes: "Waiting time before a delete",
+  protectionDays: "Protection period",
+  retentionDays: "Retention",
 };
+
+/** A value as the conflict banner words it: the cleanup numbers with their unit, the rest as stored. */
+function shownValue(field: FieldKey, value: FieldValue): string {
+  return isNumberKey(field) && typeof value === "number" ? valueText(field, value) : String(value);
+}
 
 /** "Europe/Amsterdam" becomes "Amsterdam"; anything else is shown as it is. */
 function placeName(zone: string): string {
@@ -97,7 +106,7 @@ function markOf(field: FieldKey, conflict: ConflictState, values: SettingsValues
   if (shown !== mine && shown !== theirs) {
     return null;
   }
-  return { field, label: LABELS[field], mine, theirs, usingMine: shown === mine };
+  return { field, label: LABELS[field], mine: shownValue(field, mine), theirs: shownValue(field, theirs), usingMine: shown === mine };
 }
 
 /**
@@ -108,7 +117,7 @@ function markOf(field: FieldKey, conflict: ConflictState, values: SettingsValues
 export function useConflict(
   conflict: ConflictState | null,
   values: SettingsValues,
-  setValue: (field: FieldKey, value: string) => void,
+  setValue: (field: FieldKey, value: FieldValue) => void,
 ): ConflictView | null {
   const [dismissed, dismiss] = useDismissed(conflict);
   if (conflict === null) {

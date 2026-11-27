@@ -64,10 +64,10 @@ export function errorsOf(problems: readonly Refusal[], rows: readonly Row[]): Er
 const noPosition = { position: null, otherIndex: null } as const;
 
 /** The problems of one category that can be seen without the api: its name and description, and its senders. */
-export function rowErrors(rows: readonly Row[], row: Row, labels: readonly string[]): ErrorsByRow {
+export function rowErrors(rows: readonly Row[], row: Row, settings: readonly string[]): ErrorsByRow {
   const index = rows.indexOf(row);
   const others = rows.filter((other) => other.key !== row.key).map((other) => other.name);
-  const problems = validateCategory(row.name, row.description, others, labels, labels).map((problem) => ({
+  const problems = validateCategory(row.name, row.description, others, settings).map((problem) => ({
     ...problem,
     ...noPosition,
     index,
@@ -78,10 +78,10 @@ export function rowErrors(rows: readonly Row[], row: Row, labels: readonly strin
 }
 
 /** Everything the draft gets wrong that can be seen without the api, per category. */
-export function draftErrors(rows: readonly Row[], labels: readonly string[]): ErrorsByRow {
+export function draftErrors(rows: readonly Row[], settings: readonly string[]): ErrorsByRow {
   const merged: ErrorsByRow = {};
   const named = errorsOf(
-    validateList(rows, labels, labels).map((problem) => ({ ...problem, ...noPosition })),
+    validateList(rows, settings).map((problem) => ({ ...problem, ...noPosition })),
     rows,
   );
   for (const row of rows) {

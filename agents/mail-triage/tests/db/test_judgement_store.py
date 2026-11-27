@@ -87,7 +87,7 @@ async def test_given_general_instructions_in_the_list_settings_when_the_list_is_
         await insert_list(cat_api, MAILBOX, 2, ["Bills"])
         await cat_api.execute(
             "insert into categories.list_settings (mailbox_id, version, general_instructions, archive_label) "
-            "values ($1, 2, 'Invoices are never urgent.', 'Assistant/Archive')",
+            "values ($1, 2, 'Invoices are never urgent.', 'Archive')",
             MAILBOX,
         )
     del cat_owner
@@ -122,8 +122,8 @@ async def test_given_a_filed_mail_when_completed_then_the_filing_row_has_ids_and
     await store.claim("m1", "t1")
     await store.claim("m2", "t2")
 
-    await store.complete("m1", outcome("Assistant/Bills", FilingEntry(str(bills), 1)))
-    await store.complete("m2", outcome("Assistant/Other", FilingEntry(OTHER_ID, 1)))
+    await store.complete("m1", outcome("Bills", FilingEntry(str(bills), 1)))
+    await store.complete("m2", outcome("Other", FilingEntry(OTHER_ID, 1)))
 
     rows = await cat_owner.fetch("select * from categories.filing order by message_id")
     assert [(r["mailbox_id"], r["message_id"], r["list_version"], r["topic_id"]) for r in rows] == [
@@ -184,8 +184,8 @@ async def test_given_the_same_mail_completed_twice_when_retried_then_there_is_st
     await store.claim("m1", "t1")
     entry = FilingEntry(OTHER_ID, 1)
 
-    await store.complete("m1", outcome("Assistant/Other", entry))
-    await store.complete("m1", outcome("Assistant/Other", entry))
+    await store.complete("m1", outcome("Other", entry))
+    await store.complete("m1", outcome("Other", entry))
 
     assert await cat_owner.fetchval("select count(*) from categories.filing") == 1
 
@@ -238,8 +238,8 @@ async def test_given_a_sender_rule_filing_when_completed_then_the_row_has_extra_
     ruled = FilingEntry(str(house), 1, str(important), FilingSource.SENDER_RULE, "julianahoeve.nl")
     skipped = FilingEntry(str(house), 1, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
 
-    await store.complete("m1", outcome("Assistant/Huis", ruled))
-    await store.complete("m2", outcome("Assistant/Huis", skipped))
+    await store.complete("m1", outcome("Huis", ruled))
+    await store.complete("m2", outcome("Huis", skipped))
 
     rows = await cat_owner.fetch("select * from categories.filing order by message_id")
     assert [(r["topic_id"], r["extra_id"], r["source"], r["source_ref"]) for r in rows] == [
@@ -255,7 +255,7 @@ async def test_given_a_sender_rule_filing_then_the_refile_report_store_and_the_f
     house, important = await _rule_list(cat_owner)
     await store.claim("m1", "t1")
     ruled = FilingEntry(str(house), 1, str(important), FilingSource.SENDER_RULE, "julianahoeve.nl")
-    await store.complete("m1", outcome("Assistant/Huis", ruled))
+    await store.complete("m1", outcome("Huis", ruled))
     sessions = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
     filed = await PgRefileStore(sessions, MAILBOX).filings_since(datetime.now(UTC) - timedelta(days=1))
@@ -279,7 +279,7 @@ async def test_given_a_sender_rule_filing_with_an_alert_when_completed_then_the_
 
     for message_id, filing in (("m1", ruled), ("m2", plain)):
         content = replace(base, sender=f"{message_id}@example.com", verified_domain="example.com")
-        result = replace(outcome("Assistant/Bills", filing), content=content, alert=AlertState.OPEN, causes=causes)
+        result = replace(outcome("Bills", filing), content=content, alert=AlertState.OPEN, causes=causes)
         await store.complete(message_id, result)
 
     bases = {p.meta.sender: p.basis for p in await store.unsent()}
@@ -298,10 +298,10 @@ async def test_given_skipped_and_other_filings_when_completed_then_only_the_skip
     skipped = FilingEntry(str(house), 1, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
     ruled = FilingEntry(str(house), 1, str(important), FilingSource.SENDER_RULE, "julianahoeve.nl")
 
-    await store.complete("m1", outcome("Assistant/Huis", skipped))
-    await store.complete("m2", outcome("Assistant/Huis", skipped))
-    await store.complete("m3", outcome("Assistant/Huis", ruled))
-    await store.complete("m4", outcome("Assistant/Huis", FilingEntry(str(house), 1)))
+    await store.complete("m1", outcome("Huis", skipped))
+    await store.complete("m2", outcome("Huis", skipped))
+    await store.complete("m3", outcome("Huis", ruled))
+    await store.complete("m4", outcome("Huis", FilingEntry(str(house), 1)))
 
     rows = await cat_owner.fetch("select mailbox_id, entry, skipped, last_skipped_at from categories.sender_skip")
     assert [(r["mailbox_id"], r["entry"], r["skipped"]) for r in rows] == [(MAILBOX, "julianahoeve.nl", 2)]
@@ -315,7 +315,7 @@ async def test_given_the_same_skipped_mail_completed_twice_when_counted_then_it_
     await store.claim("m1", "t1")
     skipped = FilingEntry(str(house), 1, None, FilingSource.SENDER_RULE_NOT_APPLIED, "julianahoeve.nl")
 
-    await store.complete("m1", outcome("Assistant/Huis", skipped))
-    await store.complete("m1", outcome("Assistant/Huis", skipped))  # a restart completes the mail again
+    await store.complete("m1", outcome("Huis", skipped))
+    await store.complete("m1", outcome("Huis", skipped))  # a restart completes the mail again
 
     assert await cat_owner.fetchval("select skipped from categories.sender_skip") == 1

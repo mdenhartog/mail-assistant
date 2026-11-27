@@ -14,6 +14,7 @@ import pytest
 from googleapiclient.errors import HttpError
 
 from app.adapters.gmail_read import GmailReader
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from tests.fakes.fake_gmail import FakeGmail
 
 # Shapes documented for the Gmail v1 API (users.labels, users.messages); the fake must return at least these keys.
@@ -21,8 +22,11 @@ LABEL_KEYS = {"id", "name"}
 MODIFY_KEYS = {"id", "threadId", "labelIds"}
 
 
+BILLS = ManagedLabel("Bills", None, Role.TOPIC)
+
+
 def reader(gmail: FakeGmail) -> GmailReader:
-    return GmailReader(gmail, sleep=lambda _seconds: None)
+    return GmailReader(gmail, sleep=lambda _seconds: None, managed=ManagedSet([BILLS]))
 
 
 def test_given_unread_inbox_mail_when_listed_by_the_real_wrapper_then_the_fake_returns_the_same_ids() -> None:
@@ -53,21 +57,22 @@ def test_given_a_mail_when_read_by_the_real_wrapper_then_headers_text_and_labels
 def test_given_a_missing_label_when_the_real_wrapper_ensures_it_then_it_is_created_once_and_reused() -> None:
     gmail = FakeGmail()
 
-    first = reader(gmail).ensure_label("Assistant/Bills")
-    second = reader(gmail).ensure_label("Assistant/Bills")
+    first = reader(gmail).ensure_label(BILLS)
+    second = reader(gmail).ensure_label(BILLS)
 
     assert first == second
-    assert gmail.label_names().count("Assistant/Bills") == 1
+    assert gmail.label_names().count("Bills") == 1
 
 
 def test_given_a_mail_when_the_real_wrapper_files_it_then_label_is_added_and_inbox_removed() -> None:
     gmail = FakeGmail()
     mid = gmail.add_mail()
-    label = reader(gmail).ensure_label("Assistant/Bills")
+    wrapper = reader(gmail)
+    label = wrapper.ensure_label(BILLS)
 
-    reader(gmail).file(mid, label)
+    wrapper.file(mid, label)
 
-    assert reader(gmail).fetch(mid).labels == frozenset({label})
+    assert wrapper.fetch(mid).labels == frozenset({label})
 
 
 def test_given_the_raw_chain_when_labels_are_created_renamed_listed_then_the_documented_keys_are_present() -> None:

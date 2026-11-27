@@ -5,9 +5,11 @@ the list).
 
 Only an ``applied`` plan with an open request is processed, once: one run holds a lease on the request, and the one
 compare-and-set that closes it decides who sends the single Telegram notice. A mail is restored only when it still
-looks the way the apply left it (in scope and carrying the new label and no other ``Assistant/`` label); anything else
-was changed meanwhile and is skipped. Like the apply, the swap adds the old label first and removes the new one second,
-so a crash between the two leaves both labels and a retry finishes it. The web lock stops it before the next batch.
+looks the way the apply left it (in scope and carrying the new label and no other managed label); anything else
+was changed meanwhile and is skipped. Only managed labels are looked at and changed, by id (ADR-0060): a label of the
+user stays, and an old label that is not managed any more (its category left the list) is not restored. Like the
+apply, the swap adds the old label first and removes the new one second, so a crash between the two leaves both
+labels and a retry finishes it. The web lock stops it before the next batch.
 """
 
 from __future__ import annotations
@@ -18,13 +20,15 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from app.core.mail_errors import MailFailed, MailGone
+from app.core.managed import LabelRef
 from app.core.resort_plan import PlanState
 from app.core.scope import Scope, classify
-from app.usecases.resort_apply import AuditMove, MailFailed, MailGone, held_label_ids, label_ids
+from app.usecases.resort_apply import AuditMove, held_label_ids, label_ids
 
 if TYPE_CHECKING:
-    from app.core.scope import ArchiveLabel
-    from app.usecases.resort_apply import ApplyLock, ApplyMailbox, ApplyNotifier
+    from app.core.managed import ManagedSet
+    from app.usecases.resort_apply import ApplyLock, ApplyMailbox, ApplyNotifier, ResortLabels
 
 __all__ = ["BATCH_SIZE", "MoveBack", "MoveBackJob", "MoveBackStore"]
 
@@ -62,8 +66,8 @@ class MoveBackStore(Protocol):
         """The apply rows of the plan (not rows written by a move back)."""
         ...
 
-    async def extra_label_names(self) -> frozenset[str]:
-        """The Gmail label names (``Assistant/...``) of the extra-label categories of the current list."""
+    async def managed_labels(self) -> ResortLabels:
+        """The managed labels now: the current list, the "Other" setting and the archive label (ADR-0060)."""
         ...
 
     async def record_restore(self, plan_id: uuid.UUID, move: AuditMove, channel: str) -> None:
@@ -78,14 +82,13 @@ class MoveBackStore(Protocol):
 class MoveBack:
     """Restores the labels of applied plans on request."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         *,
         mailbox: ApplyMailbox,
         store: MoveBackStore,
         lock: ApplyLock,
         notifier: ApplyNotifier,
-        archive: ArchiveLabel,  # the protected label (C-14, ADR-0059)
         batch_size: int = BATCH_SIZE,
     ) -> None:
         """Wire the ports."""
@@ -93,7 +96,6 @@ class MoveBack:
         self._store = store
         self._lock = lock
         self._notifier = notifier
-        self._archive = archive
         self._batch = batch_size
 
     async def run_once(self) -> None:
@@ -114,10 +116,11 @@ class MoveBack:
                 return  # the request stays open; a later run continues
             if not await self._store.renew_request(job.plan_id, run_id):
                 return
+            managed = (await self._store.managed_labels()).managed
+            self._mail.set_managed(managed)
             names = await asyncio.to_thread(self._mail.label_names)
-            extras = await self._store.extra_label_names()
             for move in moves[start : start + self._batch]:
-                if await self._restore_one(job, move, names, extras):
+                if await self._restore_one(job, move, names, managed):
                     restored += 1
                 else:
                     skipped += 1
@@ -127,9 +130,7 @@ class MoveBack:
                 f"Move back done: {restored} restored, {skipped} skipped because they changed meanwhile."
             )
 
-    async def _restore_one(
-        self, job: MoveBackJob, move: AuditMove, names: dict[str, str], extras: frozenset[str]
-    ) -> bool:
+    async def _restore_one(self, job: MoveBackJob, move: AuditMove, names: dict[str, str], managed: ManagedSet) -> bool:
         """True when the mail carries its old pair afterwards; false when it was changed and is left alone.
 
         The audit row holds the labels of the whole pair before and after. The swap adds the labels the old pair
@@ -138,15 +139,14 @@ class MoveBack:
         mail = await asyncio.to_thread(self._mail.fetch, move.message_id)
         if mail is None:
             return False
-        held = held_label_ids(mail, names)
+        held = held_label_ids(mail, names, managed)
         old, new = label_ids(move.old_label), label_ids(move.new_label)
         if frozenset(held) == old:
             return True  # already back (a retry, or the user did it)
         if not new - old <= held or held - (new | old):
             return False  # not as the apply left it, or another label as well: changed meanwhile
-        if not (old and old <= held) and (
-            classify({names[i] for i in mail.labels if i in names}, self._archive.name, extras) is not Scope.IN_SCOPE
-        ):
+        refs = [LabelRef(i, names.get(i, "")) for i in mail.labels]
+        if not (old and old <= held) and classify(refs, managed) is not Scope.IN_SCOPE:
             return False  # archived, trashed or out of the inbox meanwhile
         try:
             for label_id in sorted(old - held):

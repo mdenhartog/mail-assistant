@@ -14,7 +14,6 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.scope import ArchiveLabel
 from app.runner import Runner
 from app.settings import SettingsError, load_settings
 from app.wiring import build_runner
@@ -72,6 +71,8 @@ def _runner(steps: Steps, tmp_path: Path, clock: Clock, hour: int = HOUR) -> Run
         inbox=Inbox([]),
         router=Router(),
         list_sync=ListSyncStep(),
+        label_rename=ResortIdle(),
+        label_cleanup=ResortIdle(),
         list_notice=ListNoticeIdle(),
         approval_notice=ResortIdle(),
         resort_build=ResortIdle(),
@@ -176,9 +177,9 @@ def test_given_the_wiring_when_built_then_the_report_hour_cap_and_gmail_come_fro
         mailbox=object(),
         sender=object(),
         labels=object(),  # type: ignore[arg-type]
+        label_delete=object(),  # type: ignore[arg-type]
         build_mailbox=object(),  # type: ignore[arg-type]
         apply_mailbox=apply_mailbox,
-        archive=ArchiveLabel("Archive"),
         own_address="marco@example.com",
         heartbeat=None,  # type: ignore[arg-type]
         now=lambda: MORNING,

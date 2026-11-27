@@ -27,6 +27,8 @@ function fieldLine(change: Exclude<Change, { kind: "rename" | "describe" | "remo
       return "Change the general instructions";
     case "archiveLabel":
       return "Change the archive label";
+    case "otherLabel":
+      return "Change the Other label";
   }
 }
 

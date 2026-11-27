@@ -7,6 +7,7 @@ import { afterEach, beforeEach, vi } from "vitest";
 import { App, routes } from "@/App";
 import { apiFetch, setCsrfToken } from "@/api/client";
 import { expectNoAxeViolations } from "@/test/axe";
+import { CLEANUP, RANGES } from "@/test/settings";
 
 const SESSION = {
   maskedAddress: "m***@example.com",
@@ -32,7 +33,8 @@ function json(body: unknown, status = 200): Response {
 }
 
 const SETTINGS = {
-  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00" },
+  values: { timeZone: "Europe/Amsterdam", quietStart: "23:00", quietEnd: "07:00", overviewAt: "18:00", remindAt: "09:00", ...CLEANUP },
+  ranges: RANGES,
   version: 1,
   updatedAt: null,
   updatedVia: null,

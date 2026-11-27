@@ -11,26 +11,25 @@ from app.categories_models import (
     CategoryItem,
     CategoryList,
     CategoryProblem,
-    OlderCategory,
     OtherItem,
     SenderItem,
     SenderView,
 )
 from app.categories_repo import OTHER_ID, StoredCategory, StoredList, StoredSender
 from category_policy import (
-    LABEL_PREFIX,
+    ARCHIVE_LABEL_DEFAULT,
+    OTHER_LABEL_DEFAULT,
     Category,
     SenderCategory,
     SenderEntry,
     label_for,
     normalise_name,
     parse_entry,
-    validate_archive_label,
     validate_entries,
     validate_instructions,
+    validate_label_setting_name,
     validate_list,
 )
-from category_policy.policy import RESERVED_NAMES
 
 
 def canonical_text(raw: str) -> str:
@@ -42,39 +41,28 @@ def canonical_text(raw: str) -> str:
     Returns:
         The stored form of a name.
     """
-    return label_for(raw).removeprefix(LABEL_PREFIX)
+    return label_for(raw)
 
 
-def older_labels(stored: StoredList) -> list[str]:
-    """Return the ``Assistant/`` labels in Gmail that are not on the list (and are not a reserved name).
+def adopted_names(rows: list[StoredCategory], stored: StoredList) -> list[str]:
+    """Return the names of the categories that take over a label that exists in Gmail (ADR-0060 point 3).
+
+    A category adopts a label when it is new or renamed and its comparison key equals the key of a label of the mailbox.
 
     Args:
-        stored: The stored list with the label names the agent saw.
+        rows: The categories the list would have.
+        stored: The stored list with the Gmail label names the agent saw.
 
     Returns:
-        The label names as Gmail has them.
+        The names of the adopting categories in list order.
     """
-    on_list = {normalise_name(label_for(category.name)) for category in stored.categories}
+    before = {category.id: normalise_name(category.name) for category in stored.categories}
+    labels = {normalise_name(label) for label in stored.labels}
     return [
-        label
-        for label in stored.labels
-        if label.startswith(LABEL_PREFIX)
-        and normalise_name(label) not in on_list
-        and normalise_name(label.removeprefix(LABEL_PREFIX)) not in RESERVED_NAMES
+        row.name
+        for row in rows
+        if before.get(row.id) != normalise_name(row.name) and normalise_name(label_for(row.name)) in labels
     ]
-
-
-def _labels_in_use(items: list[CategoryInput], stored: StoredList) -> set[str]:
-    """Return the normalised labels of stored categories that the request keeps under the same name.
-
-    A kept category owns its label; it is no clash with itself.
-    """
-    kept = {item.id: normalise_name(item.name) for item in items if item.id is not None}
-    return {
-        normalise_name(label_for(category.name))
-        for category in stored.categories
-        if kept.get(category.id) == normalise_name(category.name)
-    }
 
 
 def to_response(stored: StoredList) -> CategoryList:
@@ -110,8 +98,8 @@ def to_response(stored: StoredList) -> CategoryList:
         ],
         general_instructions=stored.general_instructions,
         archive_label=stored.archive_label,
+        other_label=stored.other_label,
         other=OtherItem(mail_count=stored.counts.get(OTHER_ID, 0)),
-        older_categories=[OlderCategory(label_name=label, mail_count=None) for label in older_labels(stored)],
     )
 
 
@@ -137,35 +125,40 @@ def _sender_problems(items: list[CategoryInput]) -> list[CategoryProblem]:
 
 
 def problems_of(
-    items: list[CategoryInput], instructions: str, archive_label: str, stored: StoredList
+    items: list[CategoryInput], instructions: str, archive_label: str, other_label: str, stored: StoredList
 ) -> list[CategoryProblem]:
     """Check a whole list against the shared rules and the ids of the stored list.
 
     Args:
         items: The categories as sent.
         instructions: The general instructions as sent.
-        archive_label: The archive label name as sent (ADR-0059).
-        stored: The stored list: the known ids and the Gmail labels. A name whose label is an older category adopts it;
-            a kept category's own label is no clash.
+        archive_label: The archive label name as sent.
+        other_label: The name of "Other" as sent.
+        stored: The stored list: the known ids and the current names of "Other" and the archive. A name equal to an
+            existing Gmail label adopts it and is no problem (ADR-0060); a category equal to a current setting name is.
+            Each setting name is checked against the other one as sent; the name of "Other" only when it changed (an
+            upload keeps the stored name, and a clash with a category is then reported on the category).
 
     Returns:
         Every problem with the rule, the field and the position; no value. Empty when the list is valid.
     """
-    found = _list_problems(items, instructions, stored)
+    categories = [Category(item.name, item.description, item.kind) for item in items]
+    found = _list_problems(categories, instructions, (stored.other_label, stored.archive_label))
     found.extend(_sender_problems(items))
     found.extend(
         CategoryProblem(rule=problem.rule, field="archive_label", index=None, position=None, other_index=None)
-        for problem in validate_archive_label(
-            archive_label, [Category(item.name, item.description, item.kind) for item in items]
-        )
+        for problem in validate_label_setting_name(archive_label, categories, other_label, ARCHIVE_LABEL_DEFAULT)
     )
+    if other_label != stored.other_label:
+        found.extend(
+            CategoryProblem(rule=problem.rule, field="other_label", index=None, position=None, other_index=None)
+            for problem in validate_label_setting_name(other_label, categories, archive_label, OTHER_LABEL_DEFAULT)
+        )
     found.extend(_id_problems(items, stored))
     return found
 
 
-def _list_problems(items: list[CategoryInput], instructions: str, stored: StoredList) -> list[CategoryProblem]:
-    own = _labels_in_use(items, stored)
-    existing = [label for label in stored.labels if normalise_name(label) not in own]
+def _list_problems(categories: list[Category], instructions: str, settings: tuple[str, str]) -> list[CategoryProblem]:
     return [
         CategoryProblem(
             rule=problem.rule,
@@ -174,12 +167,7 @@ def _list_problems(items: list[CategoryInput], instructions: str, stored: Stored
             position=None,
             other_index=None,
         )
-        for problem in [
-            *validate_list(
-                [Category(item.name, item.description, item.kind) for item in items], existing, older_labels(stored)
-            ),
-            *validate_instructions(instructions),
-        ]
+        for problem in [*validate_list(categories, settings), *validate_instructions(instructions)]
     ]
 
 
@@ -249,13 +237,16 @@ def canonical_instructions(raw: str) -> str:
     return raw.strip()
 
 
-def is_unchanged(rows: list[StoredCategory], instructions: str, archive_label: str, stored: StoredList) -> bool:
-    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order, instructions, archive.
+def is_unchanged(
+    rows: list[StoredCategory], instructions: str, archive_label: str, other_label: str, stored: StoredList
+) -> bool:
+    """Tell whether the new list equals the stored one: categories (kind, tick, senders), order, instructions, names.
 
     Args:
         rows: The rows built from the request.
         instructions: The general instructions in their stored form.
         archive_label: The archive label name.
+        other_label: The name of "Other".
         stored: The stored list.
 
     Returns:
@@ -265,4 +256,5 @@ def is_unchanged(rows: list[StoredCategory], instructions: str, archive_label: s
         tuple(rows) == stored.categories
         and instructions == stored.general_instructions
         and archive_label == stored.archive_label
+        and other_label == stored.other_label
     )

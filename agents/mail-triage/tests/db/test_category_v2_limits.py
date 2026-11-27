@@ -63,7 +63,7 @@ def _numbers(definition: str) -> list[int]:
 async def test_given_the_v2_limits_when_a_category_at_each_limit_is_inserted_then_postgresql_accepts_it(
     cat_owner: asyncpg.Connection,
 ) -> None:
-    await _add(cat_owner, 1, "n" * 215, "d" * 1500, 99)
+    await _add(cat_owner, 1, "n" * 255, "d" * 1500, 99)
 
     assert await cat_owner.fetchval("select count(*) from categories.category") == 1
 
@@ -71,7 +71,7 @@ async def test_given_the_v2_limits_when_a_category_at_each_limit_is_inserted_the
 @pytest.mark.parametrize(
     ("name", "description", "position", "constraint"),
     [
-        ("n" * 216, "d", 0, "ck_category_name_length"),
+        ("n" * 256, "d", 0, "ck_category_name_length"),
         ("", "d", 0, "ck_category_name_length"),
         ("n", "d" * 1501, 0, "ck_category_description_length"),
         ("n", "d", 100, "ck_category_position"),
@@ -170,6 +170,6 @@ async def test_given_the_head_when_compared_with_the_models_then_the_category_ch
         await engine.dispose()
 
     assert differences == []
-    assert model_checks["ck_category_name_length"] == "char_length(name) BETWEEN 1 AND 215"
+    assert model_checks["ck_category_name_length"] == "char_length(name) BETWEEN 1 AND 255"
     assert model_checks["ck_category_description_length"] == "char_length(description) <= 1500"
     assert model_checks["ck_category_position"] == "position BETWEEN 0 AND 99"

@@ -5,23 +5,23 @@ from __future__ import annotations
 import uuid
 
 from app.db.pg_categories import CategoryRow, CurrentList
-from app.usecases.list_sync import ArchiveNames, StoredLabel
+from app.usecases.list_sync import LabelKey, LabelSettings, MigrationState, StoredLabel
 
 
 class FakeListStore:
-    """The list, the label map, the derived tables and the cursor of one mailbox, with a crash hook."""
+    """The list, the managed label map, the derived tables and the cursor of one mailbox, with a crash hook."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, migration: MigrationState | None = None) -> None:
         self.version = 0
         self.categories: tuple[CategoryRow, ...] = ()
-        self.labels: dict[uuid.UUID, StoredLabel] = {}
+        self.managed: dict[LabelKey, StoredLabel] = {}
         self.counts: dict[uuid.UUID, int] = {}
         self.label_names: list[str] = []
         self.cursor_version = 0
         self.crash_before_cursor = False
-        self.seeded: list[tuple[str, ...]] = []
-        self.archive = ArchiveNames(wanted="Archive", applied=None)  # the name the list wants and the one in Gmail
-        self.plan_open = False  # a plan is ``scheduled`` or ``applying``
+        self.settings = LabelSettings(other="Other", archive="Archive")  # the names of the latest list version
+        self.migration = migration  # ``None``: the mailbox has no row yet
+        self.migration_starts: list[MigrationState] = []
 
     def save_list(self, names: list[str], keep: dict[str, uuid.UUID] | None = None) -> dict[str, uuid.UUID]:
         """The api writes a new version: ``keep`` maps a name to a category id that stays (a rename keeps its id)."""
@@ -30,23 +30,32 @@ class FakeListStore:
         self.categories = tuple(CategoryRow(ids[n], n, "about", i) for i, n in enumerate(names))
         return ids
 
+    def stored(self, category_id: uuid.UUID) -> StoredLabel | None:
+        return self.managed.get(LabelKey("category", category_id))
+
     async def current_list(self) -> CurrentList:
         return CurrentList(self.version, self.categories)
 
     async def cursor(self) -> int:
         return self.cursor_version
 
-    async def stored_labels(self) -> dict[uuid.UUID, StoredLabel]:
-        return dict(self.labels)
+    async def migration_state(self) -> MigrationState | None:
+        return self.migration
 
-    async def seed(self, names: tuple[str, ...]) -> CurrentList:
-        if self.version == 0:  # a second writer finds version 1 and writes nothing
-            self.seeded.append(names)
-            self.save_list(list(names))
-        return await self.current_list()
+    async def start_migration(self, state: MigrationState) -> MigrationState:
+        if self.migration is None:  # a second writer finds the row and writes nothing
+            self.migration = state
+            self.migration_starts.append(state)
+        return self.migration
 
-    async def save_label(self, category_id: uuid.UUID, label_id: str, label_name: str) -> None:
-        self.labels[category_id] = StoredLabel(label_id, label_name)
+    async def label_settings(self) -> LabelSettings:
+        return self.settings
+
+    async def managed_ids(self) -> dict[LabelKey, StoredLabel]:
+        return dict(self.managed)
+
+    async def save_managed(self, key: LabelKey, label_id: str, label_name: str) -> None:
+        self.managed[key] = StoredLabel(label_id, label_name)
 
     async def replace_derived(self, counts: dict[uuid.UUID, int], label_names: list[str]) -> None:
         self.counts = dict(counts)
@@ -57,10 +66,3 @@ class FakeListStore:
             self.crash_before_cursor = False
             raise ConnectionResetError("injected: the process dies before the cursor moves")
         self.cursor_version = version
-        self.archive = ArchiveNames(self.archive.wanted, self.archive.wanted)  # the Gmail effects are done
-
-    async def archive_names(self) -> ArchiveNames:
-        return self.archive
-
-    async def plan_in_flight(self) -> bool:
-        return self.plan_open

@@ -26,7 +26,7 @@ from app.ids import SecretsIdSource
 from app.main import discover_routers
 from app.security_events import SecurityEvents
 from app.settings_models import SettingsValues
-from app.settings_repo import SettingsRepository
+from app.settings_repo import DEFAULT_CLEANUP, LabelCleanup, SettingsRepository
 from app.settings_write import field_problems, to_policy
 from app.startup import attach_database
 from schedule_policy.policy import DEFAULT_POLICY, Problem, TimePolicy, validate
@@ -53,6 +53,9 @@ NEW_YORK = {
     "quietEnd": "06:45",
     "overviewAt": "18:05",
     "remindAt": "09:15",
+    "waitingMinutes": 720,
+    "protectionDays": 7,
+    "retentionDays": 30,
 }
 DEFAULTS = {
     "timeZone": "Europe/Amsterdam",
@@ -60,6 +63,9 @@ DEFAULTS = {
     "quietEnd": "07:00",
     "overviewAt": "18:00",
     "remindAt": "09:00",
+    "waitingMinutes": 720,
+    "protectionDays": 7,
+    "retentionDays": 30,
 }
 BREAK_AUDIT = (
     "CREATE OR REPLACE FUNCTION settings.settings_audit() RETURNS trigger LANGUAGE plpgsql AS "
@@ -137,7 +143,7 @@ async def test_given_a_valid_put_at_the_current_version_when_sent_then_200_with_
     assert first.json()["values"] == NEW_YORK
     assert first.json()["version"] == 1
     assert first.json()["updatedVia"] == "web"
-    assert set(first.json()) == {"values", "version", "updatedAt", "updatedVia"}
+    assert set(first.json()) == {"values", "ranges", "version", "updatedAt", "updatedVia"}
     assert second.status_code == 200
     assert (second.json()["version"], second.json()["values"]["timeZone"]) == (2, "Europe/Paris")
     stored = await SettingsRepository(api.app.state.database).read()
@@ -232,7 +238,7 @@ async def test_given_an_old_version_when_put_then_409_with_the_current_settings_
     api: Api,
     owner: asyncpg.Connection,  # noqa: F811
 ) -> None:
-    await SettingsRepository(api.app.state.database).write(DEFAULT_POLICY, 0, USER)
+    await SettingsRepository(api.app.state.database).write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, USER)
 
     response = await _put(api, _update(NEW_YORK, version=0))
 
@@ -244,7 +250,7 @@ async def test_given_an_old_version_when_put_then_409_with_the_current_settings_
     assert set(body) == {"type", "title", "status", "current"}
     assert body["current"]["values"] == DEFAULTS
     assert body["current"]["version"] == 1
-    assert set(body["current"]) == {"values", "version", "updatedAt", "updatedVia"}
+    assert set(body["current"]) == {"values", "ranges", "version", "updatedAt", "updatedVia"}
     assert await owner.fetchval("select zone from settings.schedule") == "Europe/Amsterdam"
     assert await owner.fetchval("select count(*) from settings.settings_change") == 1
 
@@ -391,9 +397,9 @@ async def test_given_a_guard_that_refuses_when_put_then_the_request_never_reache
     reached: list[int] = []
     original = SettingsRepository.write
 
-    async def spy(self: SettingsRepository, policy: TimePolicy, expected: int, by: str) -> Any:
+    async def spy(self: SettingsRepository, policy: TimePolicy, cleanup: LabelCleanup, expected: int, by: str) -> Any:
         reached.append(1)
-        return await original(self, policy, expected, by)
+        return await original(self, policy, cleanup, expected, by)
 
     monkeypatch.setattr(SettingsRepository, "write", spy)
 
@@ -410,7 +416,7 @@ async def test_given_a_failing_audit_trigger_when_put_then_a_generic_500_nothing
     owner: asyncpg.Connection,  # noqa: F811
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    await SettingsRepository(api.app.state.database).write(DEFAULT_POLICY, 0, USER)
+    await SettingsRepository(api.app.state.database).write(DEFAULT_POLICY, DEFAULT_CLEANUP, 0, USER)
     await owner.execute(BREAK_AUDIT)
     caplog.set_level(logging.DEBUG)
 

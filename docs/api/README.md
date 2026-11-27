@@ -55,7 +55,7 @@ The export and the template are sent with `Content-Disposition: attachment`, `X-
 
 ## Archive label
 
-`GET /api/categories` returns `archiveLabel` (a string, `Assistant/Archive` until it is changed) next to the categories and the general instructions. `PUT /api/categories` takes `archiveLabel` as a required field of the whole list: the name is saved with the list as one version, together with the audit record and the Telegram change notice. A name that breaks the rules is a `422` problem with the rule and the field `archive_label`; the rules are in the [user guide](../user-guide/label-structure.md#name-your-archive-label). The same field is part of the YAML file: `archiveLabel` in an upload and in the export. A file without the field keeps the stored name, so the upload preview and the stored list use the stored name. The upload preview has `archiveLabelChanged` (a boolean, `true` when the file gives another name than the stored one).
+`GET /api/categories` returns `archiveLabel` (a string, `Archive` until it is changed) and `otherLabel` (a string, `Other` until it is changed, the Gmail label for mail that fits no category) next to the categories and the general instructions. `PUT /api/categories` takes `archiveLabel` and `otherLabel` as required fields of the whole list: the name is saved with the list as one version, together with the audit record and the Telegram change notice. A name that breaks the rules is a `422` problem with the rule and the field `archive_label`; a name for the "Other" label that breaks the rules is a `422` with the field `other_label`. The rules are in the [user guide](../user-guide/label-prefix-removal.md#names-for-other-and-the-archive-label); a name cannot be a Gmail system label, start with the old `Assistant/` prefix or clash with a category of the list, and has at most 255 characters. The same field is part of the YAML file: `archiveLabel` in an upload and in the export. A file without the field keeps the stored name, so the upload preview and the stored list use the stored name. The upload preview has `archiveLabelChanged` (a boolean, `true` when the file gives another name than the stored one).
 
 ## Sort everything again
 
@@ -78,6 +78,26 @@ The routes of the review plan (`GET /api/plan`, `GET /api/plan/items`, `POST /ap
 - `tip` is plain text exactly as stored. It is a suggestion, never used in any write, and a client must show it as text only. It is `null` for an item without a tip.
 
 The existing contracts of approve, decisions and move-back do not change. Their status codes are in the [reference](reference.md).
+
+## Label rename and label cleanup
+
+The rename of the old `Assistant/` labels is a one-time plan (ADR-0061). The agent builds the plan; the api only shows it and stores the confirmation. The api never calls Gmail. All routes need a live session; the two `POST` routes also need the CSRF token and `Origin`. Label names appear only in the two read responses, never in an error.
+
+| Operation | Needs | Request | Success | Errors |
+| --- | --- | --- | --- | --- |
+| `GET /api/label-rename` | session | none | `200` the plan | `401`, `429` |
+| `POST /api/label-rename/confirmation` | session, CSRF token, `Origin` | JSON `{"planHash": "<64 hex characters>", "skippedIds": ["<label id>", ...]}` | `200` `{"confirmationId": "<uuid>"}` | `401`, `403`, `409`, `415`, `422`, `429`, `500` |
+| `POST /api/label-rename/restore` | session, CSRF token, `Origin` | none | `200` `{"requestId": "<uuid>"}` | `401`, `403`, `409`, `429`, `500` |
+| `GET /api/label-rename/deleted` | session | none | `200` `{"retentionDays": 30, "items": [{"name": "...", "deletedAt": "..."}]}` | `401`, `429` |
+
+- The plan has `state` (`none`, `pending`, `confirmed` or `done`), `planHash`, `items` and `summary` (`labels`, `mails`). An item has `id`, `oldName`, `newName`, `mailCount`, `action` (`rename` or `merge`) and `itemState` (`planned`, `skipped`, `done` or `kept`). Items are ordered with the largest label first. `state` is `none` and `planHash` is `null` when the mailbox has no migration.
+- The confirmation binds the hash of the plan the caller saw (it covers each label's id, old name and new name) and the ids to skip. `409`: the hash is wrong, stale or replayed, or the plan is not `pending`. `422`: the body has the wrong shape or a skipped id is not in the plan. Nothing is stored on an error. The same hash and skip set again returns the same `confirmationId`.
+- The restore stores one request for the agent, which gives the renamed labels their old names by id; it does not undo a merge. `409`: no label was renamed yet. A repeat while a request is open returns the same `requestId`.
+- `deleted` lists the labels the agent deleted within the retention period, newest first, read-only.
+
+## Settings
+
+`GET /api/settings` and `PUT /api/settings` carry the label cleanup numbers next to the schedule, in `values`: `waitingMinutes`, `protectionDays` and `retentionDays` (JSON integers). `GET` also returns `ranges`, with `min`, `max` and `default` for each of the three, so a client shows the limits without a copy of its own: waiting time 5 to 720 minutes (default 720), protection 1 to 30 days (default 7), retention 7 to 90 days (default 30). A value outside its range is a `422` problem and nothing is stored. The version check of the other settings applies as before. The names of the "Other" label and the archive label are part of the category list (`GET` and `PUT /api/categories`), see [Archive label](#archive-label).
 
 ## Other operations
 

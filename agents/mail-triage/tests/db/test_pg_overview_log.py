@@ -103,9 +103,9 @@ async def test_given_the_overview_sent_in_amsterdam_when_the_zone_becomes_new_yo
                 {"t": filed_at, "m": message_id},
             )
 
-    await file("before", "Assistant/Finance", SENT - timedelta(hours=1))
+    await file("before", "Finance", SENT - timedelta(hours=1))
     await service.send_overview()  # 18:01 in Amsterdam: the mail filed before
-    await file("after", "Assistant/Newsletters", SENT + timedelta(minutes=20))
+    await file("after", "Newsletters", SENT + timedelta(minutes=20))
     policies.policy = make_policy(zone="America/New_York")
     clock[0] = datetime(2026, 11, 9, 23, 5, tzinfo=UTC)  # 18:05 in New York, the same local date
     await service.send_overview()

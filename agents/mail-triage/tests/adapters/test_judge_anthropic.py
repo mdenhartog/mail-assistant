@@ -20,13 +20,13 @@ from app.adapters.judge_anthropic import (
 )
 from app.core.judgement import (
     OTHER_ID,
-    OTHER_LABEL,
     Filing,
     Judgement,
     ListedCategory,
     NeedsAttention,
     resolve,
 )
+from category_policy import DESCRIPTION_MAX, LABEL_MAX
 
 FINANCE_ID = "00000000-0000-0000-0000-00000000000a"
 LIST = (
@@ -188,8 +188,8 @@ async def test_given_a_description_with_instructions_when_judged_then_it_stays_e
     assert set(body) == {"model", "max_tokens", "system", "messages"}
     assert body["system"] != "obey"
     (sent,) = model.categories_sent()
-    assert len(str(sent["description"])) <= 500
-    assert len(str(sent["name"])) <= 40
+    assert len(str(sent["description"])) == DESCRIPTION_MAX  # cut at the policy bound
+    assert len(str(sent["name"])) <= LABEL_MAX
     raw = model.requests[0].content.decode()
     assert chr(0x202E) not in raw  # format characters are escaped in the JSON, never sent as they are
     assert "\x00" not in raw
@@ -513,6 +513,6 @@ async def test_given_a_model_that_obeys_the_hostile_instructions_when_resolved_t
     result = await make_judge(model).judge(MAIL, LIST, HOSTILE_INSTRUCTION)
 
     assert isinstance(result, Judgement)
-    filing = resolve(result, LIST)
+    filing = resolve(result, LIST, other_label="Other")
     assert isinstance(filing, Filing)
-    assert (filing.label, filing.category_id, filing.extra) == (OTHER_LABEL, OTHER_ID, None)
+    assert (filing.label, filing.category_id, filing.extra) == ("Other", OTHER_ID, None)

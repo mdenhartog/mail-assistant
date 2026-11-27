@@ -1,7 +1,7 @@
 """U-mail-categories-22, open point (c): the real ``ApplyMailbox`` on the Gmail double.
 
 A deleted mail is ``None`` (read) or ``MailGone`` (write); any other Gmail failure on a mail is ``MailFailed``; the
-label guards of the narrow adapter stay in force; ``ensure_label`` lists first and creates only a missing label.
+label guards of the narrow adapter stay in force (label creation is in ``tests/adapters/test_gmail_apply_labels.py``).
 """
 
 from __future__ import annotations
@@ -9,56 +9,24 @@ from __future__ import annotations
 import pytest
 
 from app.adapters.gmail_apply import GmailApply
-from app.core.scope import ArchiveLabel
+from app.core.managed import ManagedLabel, ManagedSet, Role
 from app.usecases.resort_apply import MailFailed, MailGone
 from tests.fakes.fake_gmail import FakeGmail
 
 
 def _apply(gmail: FakeGmail) -> GmailApply:
-    return GmailApply(gmail, ArchiveLabel("Archive"), sleep=lambda _seconds: None)
-
-
-def test_ensure_label_returns_the_existing_label_without_creating_one() -> None:
-    gmail = FakeGmail()
-    finance = gmail.add_label("Assistant/Finance")
-
-    assert _apply(gmail).ensure_label("Assistant/Finance") == finance
-    assert "labels.create" not in gmail.calls
-
-
-def test_ensure_label_creates_a_missing_label_once_and_is_idempotent() -> None:
-    gmail = FakeGmail()
-    mailbox = _apply(gmail)
-
-    first = mailbox.ensure_label("Assistant/Travel")
-    second = mailbox.ensure_label("Assistant/Travel")
-
-    assert first == second == gmail.label_id("Assistant/Travel")
-    assert gmail.calls.count("labels.create") == 1
-
-
-def test_ensure_label_survives_a_run_that_made_the_label_at_the_same_time() -> None:
-    gmail = FakeGmail()
-    gmail.race_on_create("Assistant/Travel")
-
-    label_id = _apply(gmail).ensure_label("Assistant/Travel")
-
-    assert label_id == gmail.label_id("Assistant/Travel")
-    assert gmail.label_names().count("Assistant/Travel") == 1
-
-
-def test_ensure_label_refuses_a_name_outside_the_assistant_labels() -> None:
-    gmail = FakeGmail()
-
-    with pytest.raises(MailFailed):
-        _apply(gmail).ensure_label("Work")
-    assert "Work" not in gmail.label_names()
+    managed = [
+        ManagedLabel(name, label_id, Role.TOPIC)
+        for label_id, name in gmail.label_table.items()
+        if label_id.startswith("Label_")
+    ]
+    return GmailApply(gmail, ManagedSet(managed), sleep=lambda _seconds: None)
 
 
 def test_add_and_remove_label_change_only_that_label() -> None:
     gmail = FakeGmail()
-    finance = gmail.add_label("Assistant/Finance")
-    travel = gmail.add_label("Assistant/Travel")
+    finance = gmail.add_label("Finance")
+    travel = gmail.add_label("Travel")
     mid = gmail.add_mail(("INBOX", finance))
     mailbox = _apply(gmail)
 
@@ -70,7 +38,7 @@ def test_add_and_remove_label_change_only_that_label() -> None:
 
 def test_a_deleted_mail_is_none_when_read_and_mail_gone_when_written() -> None:
     gmail = FakeGmail()
-    finance = gmail.add_label("Assistant/Finance")
+    finance = gmail.add_label("Finance")
     mid = gmail.add_mail(("INBOX",))
     mailbox = _apply(gmail)
     mailbox.label_names()
@@ -85,7 +53,7 @@ def test_a_deleted_mail_is_none_when_read_and_mail_gone_when_written() -> None:
 
 def test_another_failure_of_gmail_on_a_mail_is_mail_failed_not_mail_gone() -> None:
     gmail = FakeGmail()
-    finance = gmail.add_label("Assistant/Finance")
+    finance = gmail.add_label("Finance")
     mid = gmail.add_mail(("INBOX",))
     mailbox = _apply(gmail)
     mailbox.label_names()  # the label names are known, so the failure hits the change itself
@@ -98,7 +66,7 @@ def test_another_failure_of_gmail_on_a_mail_is_mail_failed_not_mail_gone() -> No
         mailbox.fetch(mid)
 
 
-def test_the_guards_of_the_narrow_adapter_hold_a_label_outside_assistant_is_refused() -> None:
+def test_the_guards_of_the_narrow_adapter_hold_an_unmanaged_label_is_refused() -> None:
     gmail = FakeGmail()
     mid = gmail.add_mail(("INBOX",))
 
@@ -110,7 +78,7 @@ def test_the_guards_of_the_narrow_adapter_hold_a_label_outside_assistant_is_refu
 
 def test_count_mail_is_the_number_of_mails_with_the_label() -> None:
     gmail = FakeGmail()
-    finance = gmail.add_label("Assistant/Finance")
+    finance = gmail.add_label("Finance")
     for _ in range(3):
         gmail.add_mail(("INBOX", finance))
     gmail.add_mail(("INBOX",))
@@ -120,6 +88,6 @@ def test_count_mail_is_the_number_of_mails_with_the_label() -> None:
 
 def test_the_label_names_map_ids_to_names() -> None:
     gmail = FakeGmail()
-    finance = gmail.add_label("Assistant/Finance")
+    finance = gmail.add_label("Finance")
 
-    assert _apply(gmail).label_names()[finance] == "Assistant/Finance"
+    assert _apply(gmail).label_names()[finance] == "Finance"
